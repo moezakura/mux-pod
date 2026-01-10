@@ -3,6 +3,7 @@
  */
 import { useConnectionStore } from '@/stores/connectionStore';
 import type { ConnectionInput } from '@/types/connection';
+import { DEFAULT_RECONNECT_SETTINGS } from '@/types/connection';
 
 describe('connectionStore', () => {
   beforeEach(() => {
@@ -20,6 +21,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       };
 
       const id = useConnectionStore.getState().addConnection(input);
@@ -43,6 +45,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
       const afterAdd = Date.now();
 
@@ -61,6 +64,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       const state = useConnectionStore.getState().connectionStates[id];
@@ -78,6 +82,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       useConnectionStore.getState().updateConnection(id, { name: 'Updated Name' });
@@ -95,6 +100,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       const originalUpdatedAt = useConnectionStore.getState().getConnection(id)?.updatedAt;
@@ -117,6 +123,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       expect(useConnectionStore.getState().connections).toHaveLength(1);
@@ -135,6 +142,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       expect(useConnectionStore.getState().connectionStates[id]).toBeDefined();
@@ -153,6 +161,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       useConnectionStore.getState().setActiveConnection(id);
@@ -173,6 +182,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       useConnectionStore.getState().setConnectionState(id, {
@@ -193,6 +203,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       useConnectionStore.getState().setActiveConnection(id);
@@ -208,6 +219,7 @@ describe('connectionStore', () => {
         authMethod: 'password',
         timeout: 30,
         keepAliveInterval: 60,
+        ...DEFAULT_RECONNECT_SETTINGS,
       });
 
       useConnectionStore.getState().setActiveConnection(id);

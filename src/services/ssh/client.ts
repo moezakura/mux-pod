@@ -182,9 +182,14 @@ export class SSHClient implements ISSHClient {
       if (this.events.onData) {
         this.client.on('Shell', this.events.onData);
       }
-      if (this.events.onClose) {
-        this.client.on('Disconnect', this.events.onClose);
-      }
+
+      // Disconnectイベント時にconnectedフラグを更新
+      this.client.on('Disconnect', () => {
+        this.connected = false;
+        if (this.events.onClose) {
+          this.events.onClose();
+        }
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new SSHConnectionError(`Failed to start shell: ${message}`);

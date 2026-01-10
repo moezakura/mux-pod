@@ -3,6 +3,7 @@
  */
 import { SSHClient, SSHConnectionError, SSHAuthenticationError } from '@/services/ssh/client';
 import type { Connection } from '@/types/connection';
+import { DEFAULT_RECONNECT_SETTINGS } from '@/types/connection';
 
 describe('SSHClient', () => {
   let client: SSHClient;
@@ -15,6 +16,7 @@ describe('SSHClient', () => {
     authMethod: 'password',
     timeout: 30,
     keepAliveInterval: 60,
+    ...DEFAULT_RECONNECT_SETTINGS,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

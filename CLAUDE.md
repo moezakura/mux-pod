@@ -72,6 +72,7 @@ interface TmuxPane { index: number; id: string; active: boolean; }
 
 ## Active Technologies
 - AsyncStorage (接続設定), expo-secure-store (パスワード暗号化) (001-phase1-mvp)
+- TypeScript 5.6+ + Expo ~52.0.0, React Native 0.76.0, Zustand 5.0+, react-native-ssh-sftp (002-ssh-reconnect)
 
 ## Recent Changes
 - 001-phase1-mvp: Added TypeScript 5.6+

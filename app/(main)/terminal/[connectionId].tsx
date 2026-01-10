@@ -17,12 +17,15 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSSH } from '@/hooks/useSSH';
 import { useTmux } from '@/hooks/useTmux';
 import { useTerminal } from '@/hooks/useTerminal';
+import { useReconnectDialog } from '@/hooks/useReconnectDialog';
+import { useConnectionStore } from '@/stores/connectionStore';
 import {
   TerminalView,
   TerminalInput,
   SpecialKeys,
   TerminalHeader,
 } from '@/components/terminal';
+import { ReconnectDialog } from '@/components/connection';
 import { colors, spacing, fontSize } from '@/theme';
 
 export default function TerminalScreen() {
@@ -61,6 +64,21 @@ export default function TerminalScreen() {
     selectedWindow,
     selectedPane
   );
+
+  // 接続情報を取得
+  const connection = useConnectionStore((state) =>
+    state.connections.find((c) => c.id === connectionId)
+  );
+
+  // 再接続ダイアログ
+  const {
+    isVisible: reconnectVisible,
+    connectionState,
+    reconnect,
+    cancel: cancelReconnect,
+    retry,
+    hide: hideReconnect,
+  } = useReconnectDialog(connection!, client!);
 
   // 接続を開始
   useEffect(() => {
@@ -274,6 +292,19 @@ export default function TerminalScreen() {
           />
         )}
       </KeyboardAvoidingView>
+
+      {/* 再接続ダイアログ */}
+      {connection && (
+        <ReconnectDialog
+          visible={reconnectVisible}
+          connection={connection}
+          connectionState={connectionState}
+          onReconnect={reconnect}
+          onCancel={cancelReconnect}
+          onDismiss={hideReconnect}
+          onRetry={retry}
+        />
+      )}
     </>
   );
 }

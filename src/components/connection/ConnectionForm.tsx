@@ -14,11 +14,11 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { ConnectionInput } from '@/types/connection';
+import { DEFAULT_RECONNECT_SETTINGS } from '@/types/connection';
 import { colors, spacing, fontSize, borderRadius } from '@/theme';
 
 export interface ConnectionFormProps {
@@ -124,6 +124,17 @@ export function ConnectionForm({
   const [testing, setTesting] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // 自動再接続設定
+  const [autoReconnect, setAutoReconnect] = useState(
+    initialValues?.autoReconnect ?? DEFAULT_RECONNECT_SETTINGS.autoReconnect
+  );
+  const [maxReconnectAttempts, setMaxReconnectAttempts] = useState(
+    String(initialValues?.maxReconnectAttempts ?? DEFAULT_RECONNECT_SETTINGS.maxReconnectAttempts)
+  );
+  const [reconnectInterval, setReconnectInterval] = useState(
+    String((initialValues?.reconnectInterval ?? DEFAULT_RECONNECT_SETTINGS.reconnectInterval) / 1000)
+  );
+
   const handleSubmit = useCallback(() => {
     const values: Partial<ConnectionInput> = {
       name: name.trim(),
@@ -133,6 +144,9 @@ export function ConnectionForm({
       authMethod,
       timeout: parseInt(timeout, 10) || 10,
       keepAliveInterval: initialValues?.keepAliveInterval ?? 60,
+      autoReconnect,
+      maxReconnectAttempts: parseInt(maxReconnectAttempts, 10) || DEFAULT_RECONNECT_SETTINGS.maxReconnectAttempts,
+      reconnectInterval: (parseInt(reconnectInterval, 10) || DEFAULT_RECONNECT_SETTINGS.reconnectInterval / 1000) * 1000,
     };
 
     const validationErrors = validateForm(values);
@@ -143,7 +157,7 @@ export function ConnectionForm({
 
     setErrors({});
     onSubmit(values as ConnectionInput);
-  }, [name, host, port, timeout, username, authMethod, initialValues, onSubmit]);
+  }, [name, host, port, timeout, username, authMethod, initialValues, onSubmit, autoReconnect, maxReconnectAttempts, reconnectInterval]);
 
   const handleTestConnection = useCallback(async () => {
     const values: Partial<ConnectionInput> = {
@@ -460,6 +474,79 @@ export function ConnectionForm({
               color={colors.textMuted}
             />
           </Pressable>
+
+          {/* Advanced Options Section */}
+          {showAdvanced && (
+            <View style={styles.section}>
+              <SectionHeader title="AUTO RECONNECT" icon="refresh" />
+              <View style={styles.sectionCard}>
+                {/* Auto Reconnect Toggle */}
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleLabelContainer}>
+                    <MaterialCommunityIcons
+                      name="refresh-auto"
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                    <View>
+                      <Text style={styles.toggleLabel}>Auto Reconnect</Text>
+                      <Text style={styles.toggleDescription}>
+                        Automatically reconnect on disconnect
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    style={[
+                      styles.toggleSwitch,
+                      autoReconnect && styles.toggleSwitchActive,
+                    ]}
+                    onPress={() => setAutoReconnect(!autoReconnect)}
+                  >
+                    <View
+                      style={[
+                        styles.toggleKnob,
+                        autoReconnect && styles.toggleKnobActive,
+                      ]}
+                    />
+                  </Pressable>
+                </View>
+
+                {/* Reconnect Settings (shown when auto-reconnect is enabled) */}
+                {autoReconnect && (
+                  <>
+                    <View style={styles.separator} />
+                    <View style={styles.rowFields}>
+                      <View style={styles.fieldHalf}>
+                        <Text style={styles.fieldLabel}>MAX ATTEMPTS</Text>
+                        <TextInput
+                          style={[styles.input, styles.inputMono, styles.inputCenter]}
+                          value={maxReconnectAttempts}
+                          onChangeText={setMaxReconnectAttempts}
+                          placeholder="3"
+                          placeholderTextColor={colors.textDim}
+                          keyboardType="number-pad"
+                        />
+                      </View>
+                      <View style={styles.fieldHalf}>
+                        <Text style={styles.fieldLabel}>INTERVAL</Text>
+                        <View style={styles.timeoutContainer}>
+                          <TextInput
+                            style={[styles.input, styles.inputMono, styles.inputCenter]}
+                            value={reconnectInterval}
+                            onChangeText={setReconnectInterval}
+                            placeholder="5"
+                            placeholderTextColor={colors.textDim}
+                            keyboardType="number-pad"
+                          />
+                          <Text style={styles.timeoutUnit}>s</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
 
           {/* Spacer for bottom button */}
           <View style={styles.bottomSpacer} />
@@ -838,5 +925,48 @@ const styles = StyleSheet.create({
     color: colors.error,
     marginTop: spacing.xs,
     marginLeft: spacing.xs,
+  },
+  // Toggle styles for auto-reconnect
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  toggleLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  toggleLabel: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  toggleDescription: {
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.textMuted,
+  },
+  toggleKnobActive: {
+    backgroundColor: colors.background,
+    alignSelf: 'flex-end',
   },
 });

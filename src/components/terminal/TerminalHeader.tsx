@@ -8,7 +8,9 @@ import { memo } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { TmuxWindow } from '@/types/tmux';
+import type { ConnectionState } from '@/types/connection';
 import { colors, spacing, fontSize, borderRadius, header } from '@/theme';
+import { ConnectionStatusIndicator } from '@/components/connection';
 
 export interface TerminalHeaderProps {
   /** セッション名 */
@@ -21,6 +23,10 @@ export interface TerminalHeaderProps {
   onSelectWindow: (index: number) => void;
   /** レイテンシ（ミリ秒） */
   latency?: number;
+  /** 接続状態 */
+  connectionState?: ConnectionState;
+  /** 接続状態インジケーター押下時 */
+  onStatusPress?: () => void;
   /** 設定ボタン押下時 */
   onSettingsPress?: () => void;
 }
@@ -34,6 +40,8 @@ export const TerminalHeader = memo(function TerminalHeader({
   selectedWindow,
   onSelectWindow,
   latency,
+  connectionState,
+  onStatusPress,
   onSettingsPress,
 }: TerminalHeaderProps) {
   return (
@@ -98,8 +106,15 @@ export const TerminalHeader = memo(function TerminalHeader({
         })}
       </ScrollView>
 
-      {/* 右側: レイテンシ + 設定 */}
+      {/* 右側: 接続状態 + レイテンシ + 設定 */}
       <View style={styles.rightSection}>
+        {connectionState && (
+          <ConnectionStatusIndicator
+            state={connectionState}
+            size="sm"
+            onPress={onStatusPress}
+          />
+        )}
         {latency !== undefined && (
           <View style={styles.latency}>
             <MaterialCommunityIcons
