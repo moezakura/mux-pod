@@ -28,3 +28,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   multiSet: jest.fn(),
   multiRemove: jest.fn(),
 }));
+
+// Mock @expo/vector-icons
+jest.mock('@expo/vector-icons', () => ({
+  MaterialCommunityIcons: 'MaterialCommunityIcons',
+  MaterialIcons: 'MaterialIcons',
+}));
