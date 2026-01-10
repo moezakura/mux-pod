@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<title>Terminal View</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#00c0d1",
+                    "background-light": "#f1f2f4",
+                    "background-dark": "#17191c",
+                    "terminal-bg": "#0d0e10","accessory-bg": "#1e2023",
+                    "key-bg": "#434343",
+                    "key-bg-dark": "#2b2b2b",
+                },
+                fontFamily: {
+                    "display": ["Space Grotesk", "sans-serif"],
+                    "mono": ["JetBrains Mono", "monospace"],
+                    "sans": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
+                },
+                boxShadow: {
+                    "key": "0 1px 0 rgba(0,0,0,0.4)",
+                    "accessory": "0 -4px 12px rgba(0,0,0,0.3)",
+                }
+            },
+        },
+    }
+</script>
+<style>
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .cursor-blink {
+        animation: blink 1s step-end infinite;
+    }
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+    }.pb-safe {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+</style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-black text-white h-[100dvh] w-full overflow-hidden flex flex-col antialiased selection:bg-primary/30 touch-none">
+<header class="flex items-center justify-between bg-background-dark border-b border-white/5 px-3 h-10 shrink-0 z-10">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
+<div class="flex items-baseline gap-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis font-display">
+<span class="text-gray-400 font-medium">sess:dev</span>
+<span class="text-gray-600">/</span>
+<span class="text-gray-400 font-medium">win:1</span>
+<span class="text-gray-600">/</span>
+<span class="text-primary font-bold">vim</span>
+</div>
+</div>
+<div class="flex items-center gap-3 pl-2 shrink-0">
+<div class="flex items-center gap-1.5 bg-green-900/20 px-1.5 py-0.5 rounded border border-green-500/20">
+<div class="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)]"></div>
+<span class="text-[9px] text-green-400 font-bold tracking-wider">SSH</span>
+</div>
+<button class="text-white/60 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
+</button>
+</div>
+</header>
+<main class="flex-1 bg-terminal-bg overflow-y-auto p-2 font-mono text-[11px] leading-[1.35rem] text-gray-300 w-full">
+<div class="mb-2 opacity-60">
+<div class="flex flex-wrap">
+<span class="text-green-400 font-bold">user@devbox</span><span class="text-gray-500">:</span><span class="text-blue-400">~/project</span><span class="text-gray-500">$</span>
+<span class="ml-2">git status</span>
+</div>
+<div class="text-gray-400 pl-2 border-l border-white/5 mt-0.5 mb-2 text-[10px] leading-relaxed">
+            On branch main<br/>
+            Your branch is up to date with 'origin/main'.
+        </div>
+</div>
+<div class="flex flex-col relative">
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">10</span>
+<span><span class="text-pink-400">func</span> <span class="text-blue-300">main</span><span class="text-yellow-200">()</span> {</span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">11</span>
+<span><span class="w-4 inline-block"></span><span class="text-gray-500 italic">// TODO: Implement tmux client logic</span></span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">12</span>
+<span><span class="w-4 inline-block"></span><span class="text-blue-300">fmt</span>.<span class="text-yellow-200">Println</span>(<span class="text-green-400">"Starting server on :8080..."</span>)</span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">13</span>
+<span><span class="w-4 inline-block"></span><span class="text-primary">if</span> <span class="text-blue-300">err</span> := <span class="text-blue-300">server</span>.<span class="text-yellow-200">Start</span>(); <span class="text-blue-300">err</span> != <span class="text-pink-400">nil</span> {</span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">14</span>
+<span><span class="w-8 inline-block"></span><span class="text-blue-300">log</span>.<span class="text-yellow-200">Fatal</span>(<span class="text-blue-300">err</span>)</span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">15</span>
+<span><span class="w-4 inline-block"></span>}</span>
+</div>
+<div class="flex gap-3">
+<span class="text-gray-700 select-none text-right w-4 shrink-0 text-[10px]">16</span>
+<span><span class="w-4 inline-block"></span><span class="text-blue-300">server</span>.<span class="text-yellow-200">Stop</span><span class="bg-primary/50 text-white animate-pulse">_</span></span>
+</div>
+<div class="text-blue-900 font-bold mt-1 leading-relaxed text-[10px]">
+            ~<br/>~<br/>~<br/>~<br/>~
+        </div>
+</div>
+</main>
+<div class="shrink-0 bg-background-dark/90 backdrop-blur-sm border-t border-white/5 text-[10px] px-2 py-0.5 text-gray-400 font-mono flex justify-between z-10">
+<div class="flex gap-3">
+<span class="text-primary font-bold">[NORMAL]</span>
+<span>server.go</span>
+</div>
+<div class="flex gap-3">
+<span>go</span>
+<span>utf-8</span>
+<span>16,21</span>
+<span>Top</span>
+</div>
+</div>
+<div class="shrink-0 bg-accessory-bg border-t border-b border-black/20 w-full z-40 shadow-accessory relative">
+<div class="flex overflow-x-auto no-scrollbar gap-1.5 px-2 py-1.5 items-center">
+<button class="h-8 min-w-[3rem] px-1 shrink-0 rounded bg-white/5 hover:bg-white/10 active:bg-primary active:text-black border-b border-black/40 active:border-transparent active:translate-y-[1px] transition-all flex items-center justify-center">
+<span class="text-[10px] font-bold tracking-wider text-gray-200">ESC</span>
+</button>
+<button class="h-8 min-w-[3rem] px-1 shrink-0 rounded bg-white/5 hover:bg-white/10 active:bg-primary active:text-black border-b border-black/40 active:border-transparent active:translate-y-[1px] transition-all flex items-center justify-center">
+<span class="text-[10px] font-bold tracking-wider text-gray-200">TAB</span>
+</button>
+<div class="w-px h-5 bg-white/10 mx-0.5"></div>
+<button class="group h-8 min-w-[3rem] px-1 shrink-0 rounded bg-primary/10 border border-primary/30 active:bg-primary active:text-black transition-all flex items-center justify-center gap-1">
+<div class="w-1 h-1 rounded-full bg-primary group-active:bg-black"></div>
+<span class="text-[10px] font-bold tracking-wider text-primary group-active:text-black">CTRL</span>
+</button>
+<button class="h-8 min-w-[3rem] px-1 shrink-0 rounded bg-white/5 hover:bg-white/10 active:bg-primary active:text-black border-b border-black/40 active:border-transparent active:translate-y-[1px] transition-all flex items-center justify-center">
+<span class="text-[10px] font-bold tracking-wider text-gray-200">ALT</span>
+</button>
+<div class="w-px h-5 bg-white/10 mx-0.5"></div>
+<div class="flex bg-black/30 rounded p-0.5 gap-0.5 h-8 items-center">
+<button class="h-full w-8 rounded hover:bg-white/10 active:bg-primary active:text-black flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[16px]">arrow_left</span>
+</button>
+<div class="flex flex-col h-full gap-0.5 w-6">
+<button class="h-1/2 w-full rounded hover:bg-white/10 active:bg-primary active:text-black flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[12px] leading-none">arrow_drop_up</span>
+</button>
+<button class="h-1/2 w-full rounded hover:bg-white/10 active:bg-primary active:text-black flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[12px] leading-none">arrow_drop_down</span>
+</button>
+</div>
+<button class="h-full w-8 rounded hover:bg-white/10 active:bg-primary active:text-black flex items-center justify-center transition-colors">
+<span class="material-symbols-outlined text-[16px]">arrow_right</span>
+</button>
+</div>
+<button class="h-8 w-10 shrink-0 rounded bg-white/5 hover:bg-white/10 active:bg-primary active:text-black border-b border-black/40 active:border-transparent active:translate-y-[1px] transition-all flex items-center justify-center ml-auto">
+<span class="material-symbols-outlined text-[16px]">content_paste</span>
+</button>
+</div>
+</div>
+<div class="shrink-0 w-full bg-[#1c1c1e] z-50 pt-2 pb-safe select-none font-sans">
+<div class="flex flex-col gap-3 px-1.5 pb-2">
+<div class="flex w-full gap-1.5 justify-center">
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">q</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">w</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">e</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">r</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">t</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">y</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">u</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">i</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">o</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">p</button>
+</div>
+<div class="flex w-full gap-1.5 justify-center px-4">
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">a</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">s</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">d</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">f</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">g</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">h</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">j</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">k</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">l</button>
+</div>
+<div class="flex w-full gap-1.5 justify-center">
+<button class="h-[44px] w-[13%] rounded bg-key-bg-dark text-white active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">arrow_upward</span>
+</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">z</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">x</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">c</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">v</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">b</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">n</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white text-xl active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center font-normal">m</button>
+<button class="h-[44px] w-[13%] rounded bg-key-bg-dark text-white active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">backspace</span>
+</button>
+</div>
+<div class="flex w-full gap-1.5 justify-center items-end mt-1">
+<button class="h-[44px] w-[12%] rounded bg-key-bg-dark text-white text-sm font-medium active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center">123</button>
+<button class="h-[44px] w-[12%] rounded bg-key-bg-dark text-white active:bg-white active:text-black shadow-key transition-colors duration-75 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">language</span>
+</button>
+<button class="h-[44px] flex-1 rounded bg-key-bg text-white shadow-key active:bg-white active:text-black transition-colors duration-75"></button>
+<button class="h-[44px] w-[24%] rounded bg-[#0A84FF] text-white text-sm font-semibold active:bg-white active:text-[#0A84FF] shadow-key transition-colors duration-75 flex items-center justify-center">return</button>
+</div>
+</div>
+<div class="h-1 w-full"></div>
+</div>
+
+</body></html>

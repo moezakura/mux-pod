@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Server Connections</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00c0d1",
+                        "background-light": "#f9fafb",
+                        "background-dark": "#0e0e11",
+                        "surface-dark": "#1E1F27",
+                        "canvas-dark": "#101116",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: "Space Grotesk", sans-serif;
+        }
+        .font-mono {
+            font-family: "JetBrains Mono", monospace;
+        }
+        /* Custom scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #101116; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2A2B36; 
+            border-radius: 4px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-canvas-dark text-white min-h-screen flex flex-col overflow-hidden relative selection:bg-primary selection:text-black">
+<!-- Top App Bar -->
+<header class="flex-none pt-12 pb-4 px-6 bg-canvas-dark/95 backdrop-blur-sm border-b border-[#1E1F27] z-20 sticky top-0">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="text-white text-2xl font-bold leading-tight tracking-tight">Connections</h2>
+<span class="text-gray-500 text-xs font-mono mt-1">GATEWAY_STATUS: ONLINE</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center justify-center size-10 rounded-full hover:bg-[#1E1F27] text-gray-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="flex items-center justify-center size-10 rounded-full hover:bg-[#1E1F27] text-gray-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined">sort</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Scrollable Content -->
+<main class="flex-1 overflow-y-auto px-4 py-6 space-y-4 pb-32">
+<!-- Server Card 1: Expanded -->
+<div class="group relative flex flex-col bg-surface-dark rounded-lg border border-[#2A2B36] shadow-lg overflow-hidden transition-all duration-300">
+<!-- Card Header -->
+<div class="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors">
+<div class="flex items-center gap-4">
+<!-- Status Icon -->
+<div class="relative flex items-center justify-center size-10 rounded-lg bg-[#153e42] shrink-0 border border-[#1f5f66]">
+<span class="material-symbols-outlined text-primary text-[20px]">dns</span>
+<div class="absolute -top-1 -right-1 size-2.5 bg-green-500 rounded-full border border-surface-dark shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-white text-base font-bold leading-tight tracking-wide">Production AWS</p>
+<p class="text-gray-400 text-xs font-mono mt-0.5 tracking-tight">192.168.1.105 <span class="text-gray-600 mx-1">•</span> us-east-1</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-400 group-hover:text-white transition-colors rotate-180">expand_less</span>
+</div>
+<!-- Expanded Content: Sessions List -->
+<div class="bg-[#15161c] border-t border-[#2A2B36]">
+<div class="px-4 py-2">
+<p class="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2 mt-2 pl-2">Active Sessions</p>
+<!-- Session Item 1 -->
+<div class="flex items-center justify-between p-2 rounded hover:bg-white/5 cursor-pointer group/item mb-1">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-sm">terminal</span>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-gray-200 group-hover/item:text-primary transition-colors">api-gateway</span>
+<span class="text-xs text-gray-500">3 windows • 14:20 uptime</span>
+</div>
+</div>
+<div class="px-2 py-0.5 rounded bg-green-900/30 border border-green-900/50 text-[10px] text-green-400 font-medium">
+                            Attached
+                        </div>
+</div>
+<!-- Session Item 2 -->
+<div class="flex items-center justify-between p-2 rounded hover:bg-white/5 cursor-pointer group/item mb-1">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-gray-500 text-sm">terminal</span>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-gray-200 group-hover/item:text-primary transition-colors">worker-queue</span>
+<span class="text-xs text-gray-500">1 window • background</span>
+</div>
+</div>
+<div class="px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-[10px] text-gray-400 font-medium">
+                            Detached
+                        </div>
+</div>
+<!-- Add Session Action -->
+<button class="w-full mt-2 mb-2 py-2 flex items-center justify-center gap-2 text-xs font-medium text-primary/80 border border-dashed border-primary/20 rounded hover:bg-primary/5 hover:text-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                        New Session
+                    </button>
+</div>
+</div>
+</div>
+<!-- Server Card 2: Connected but Collapsed -->
+<div class="group relative flex flex-col bg-surface-dark rounded-lg border border-[#2A2B36] shadow-sm hover:border-gray-600 transition-all duration-200">
+<div class="flex items-center justify-between p-4 cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative flex items-center justify-center size-10 rounded-lg bg-[#2A2B36] shrink-0">
+<span class="material-symbols-outlined text-gray-300 text-[20px]">dns</span>
+<div class="absolute -top-1 -right-1 size-2.5 bg-green-500 rounded-full border border-surface-dark"></div>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-white text-base font-bold leading-tight tracking-wide">Personal VPS</p>
+<p class="text-gray-400 text-xs font-mono mt-0.5 tracking-tight">45.33.22.11 <span class="text-gray-600 mx-1">•</span> linode</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-500">expand_more</span>
+</div>
+</div>
+<!-- Server Card 3: Disconnected -->
+<div class="group relative flex flex-col bg-surface-dark/60 rounded-lg border border-[#2A2B36] shadow-sm transition-all duration-200 opacity-80 hover:opacity-100">
+<div class="flex items-center justify-between p-4 cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative flex items-center justify-center size-10 rounded-lg bg-[#2A2B36]/50 shrink-0 grayscale">
+<span class="material-symbols-outlined text-gray-500 text-[20px]">dns</span>
+<div class="absolute -top-1 -right-1 size-2.5 bg-red-500/80 rounded-full border border-surface-dark"></div>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-gray-300 text-base font-medium leading-tight tracking-wide">Staging DigitalOcean</p>
+<p class="text-gray-500 text-xs font-mono mt-0.5 tracking-tight">10.0.0.42 <span class="text-gray-600 mx-1">•</span> disconnected</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600">expand_more</span>
+</div>
+</div>
+<!-- Server Card 4: Collapsed -->
+<div class="group relative flex flex-col bg-surface-dark rounded-lg border border-[#2A2B36] shadow-sm hover:border-gray-600 transition-all duration-200">
+<div class="flex items-center justify-between p-4 cursor-pointer">
+<div class="flex items-center gap-4">
+<div class="relative flex items-center justify-center size-10 rounded-lg bg-[#2A2B36] shrink-0">
+<span class="material-symbols-outlined text-gray-300 text-[20px]">storage</span>
+<div class="absolute -top-1 -right-1 size-2.5 bg-green-500 rounded-full border border-surface-dark"></div>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-white text-base font-bold leading-tight tracking-wide">Legacy Backend</p>
+<p class="text-gray-400 text-xs font-mono mt-0.5 tracking-tight">172.16.0.55 <span class="text-gray-600 mx-1">•</span> local</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-500">expand_more</span>
+</div>
+</div>
+</main>
+<!-- Floating Action / Bottom Area -->
+<div class="fixed bottom-[72px] left-0 w-full px-4 pb-4 pointer-events-none z-30">
+<div class="w-full flex justify-end pointer-events-auto">
+<button class="flex items-center justify-center gap-2 h-14 px-6 bg-primary text-black rounded-xl shadow-[0_0_20px_rgba(0,192,209,0.3)] hover:bg-[#2adbde] hover:shadow-[0_0_25px_rgba(0,192,209,0.5)] active:scale-95 transition-all duration-200 font-bold text-base tracking-tight">
+<span class="material-symbols-outlined font-bold">add</span>
+                Add New Connection
+            </button>
+</div>
+</div>
+<!-- Bottom Navigation -->
+<nav class="fixed bottom-0 w-full bg-[#0e0e11]/90 backdrop-blur-xl border-t border-[#1E1F27] pb-safe z-40">
+<div class="flex items-center justify-around h-[72px] pb-2">
+<!-- Active Tab -->
+<button class="flex flex-col items-center justify-center gap-1 w-16 h-full text-primary relative">
+<div class="absolute -top-[1px] w-8 h-[2px] bg-primary rounded-full shadow-[0_0_10px_#00c0d1]"></div>
+<span class="material-symbols-outlined fill-1" style="font-variation-settings: 'FILL' 1, 'wght' 400;">lan</span>
+<span class="text-[10px] font-medium tracking-wide">Net</span>
+</button>
+<!-- Inactive Tabs -->
+<button class="flex flex-col items-center justify-center gap-1 w-16 h-full text-gray-500 hover:text-gray-300 transition-colors">
+<span class="material-symbols-outlined">terminal</span>
+<span class="text-[10px] font-medium tracking-wide">Term</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-1 w-16 h-full text-gray-500 hover:text-gray-300 transition-colors">
+<span class="material-symbols-outlined">key</span>
+<span class="text-[10px] font-medium tracking-wide">Keys</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-1 w-16 h-full text-gray-500 hover:text-gray-300 transition-colors">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] font-medium tracking-wide">Settings</span>
+</button>
+</div>
+</nav>
+<!-- Decoration/Glow effects (Subtle) -->
+<div class="fixed top-0 left-0 w-full h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none z-0"></div>
+</body></html>

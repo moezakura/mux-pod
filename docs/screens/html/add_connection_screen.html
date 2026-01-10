@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Add Connection - Tmux Client</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00c0d1",
+                        "primary-dark": "#009aa8",
+                        "background-light": "#f1f2f4",
+                        "background-dark": "#0f141a",
+                        "surface-dark": "#1c242b",
+                        "input-dark": "#0b0f13", 
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", "monospace"],
+                    },
+                    boxShadow: {
+                        "glow": "0 0 10px rgba(0, 192, 209, 0.2)",
+                        "inner-heavy": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.6)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom Scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f141a; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2e3b47; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00c0d1; 
+        }
+        
+        /* Specific overrides to prevent generic iOS form styling */
+        input[type="text"], input[type="password"], input[type="number"] {
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        
+        /* Cyberpunk grid overlay effect */
+        .bg-grid-pattern {
+            background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-800 dark:text-white font-display overflow-x-hidden antialiased selection:bg-primary selection:text-black">
+<div class="relative min-h-screen flex flex-col max-w-md mx-auto shadow-2xl bg-background-light dark:bg-background-dark">
+<!-- Background Ambient Effect -->
+<div class="fixed inset-0 pointer-events-none z-0 bg-grid-pattern opacity-20"></div>
+<div class="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent"></div>
+<!-- Header -->
+<header class="sticky top-0 z-50 flex items-center justify-between px-4 py-4 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md border-b border-black/5 dark:border-white/5">
+<button class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-base font-medium transition-colors">
+                Cancel
+            </button>
+<h1 class="text-lg font-bold tracking-tight text-center flex-1">Add Connection</h1>
+<button class="text-primary hover:text-primary-dark font-bold text-base transition-colors shadow-glow hover:shadow-none">
+                Save
+            </button>
+</header>
+<!-- Scrollable Content -->
+<main class="flex-1 flex flex-col p-4 gap-6 z-10 pb-32">
+<!-- Section: General -->
+<section>
+<div class="flex items-center justify-between px-1 mb-2">
+<h3 class="text-xs font-bold tracking-[0.15em] text-slate-400 dark:text-slate-500 uppercase">General Info</h3>
+<span class="material-symbols-outlined text-slate-600 text-[16px]">info</span>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-xl p-1 shadow-sm border border-slate-200 dark:border-white/5">
+<div class="relative group">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-slate-400 dark:text-slate-600">label</span>
+</div>
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border-0 py-4 pl-12 pr-4 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:ring-2 focus:ring-inset focus:ring-primary font-medium transition-all shadow-inner dark:shadow-inner-heavy" placeholder="e.g. Production AWS" type="text" value=""/>
+<label class="absolute -top-2.5 left-4 bg-white dark:bg-surface-dark px-1 text-[10px] font-bold tracking-wider text-primary uppercase">Connection Name</label>
+</div>
+</div>
+</section>
+<!-- Section: Network -->
+<section>
+<h3 class="px-1 mb-2 text-xs font-bold tracking-[0.15em] text-slate-400 dark:text-slate-500 uppercase">Network</h3>
+<div class="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-4">
+<!-- Host Field -->
+<div class="relative">
+<label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Host / IP Address</label>
+<div class="relative">
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border border-slate-200 dark:border-white/10 py-3.5 pl-4 pr-10 text-slate-900 dark:text-white font-mono placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:border-primary focus:ring-1 focus:ring-primary shadow-inner dark:shadow-inner-heavy transition-all" placeholder="192.168.1.1 or example.com" type="url"/>
+<!-- Validation Dot -->
+<div class="absolute inset-y-0 right-3 flex items-center">
+<span class="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" title="Valid Format"></span>
+</div>
+</div>
+</div>
+<!-- Port & Timeout Row -->
+<div class="flex gap-4">
+<div class="flex-1">
+<label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Port</label>
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border border-slate-200 dark:border-white/10 py-3.5 px-4 text-slate-900 dark:text-white font-mono placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:border-primary focus:ring-1 focus:ring-primary shadow-inner dark:shadow-inner-heavy transition-all" placeholder="22" type="number" value="22"/>
+</div>
+<div class="w-1/3">
+<label class="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Timeout</label>
+<div class="relative">
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border border-slate-200 dark:border-white/10 py-3.5 px-4 text-slate-900 dark:text-white font-mono text-center placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:border-primary focus:ring-1 focus:ring-primary shadow-inner dark:shadow-inner-heavy transition-all" type="number" value="10"/>
+<span class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-500">s</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Security -->
+<section>
+<div class="flex items-center justify-between px-1 mb-2">
+<h3 class="text-xs font-bold tracking-[0.15em] text-slate-400 dark:text-slate-500 uppercase">Security &amp; Auth</h3>
+<div class="flex gap-2">
+<!-- Protocol Badges/Toggles -->
+<button class="bg-primary text-black px-3 py-0.5 rounded-full text-[10px] font-bold shadow-glow">SSH</button>
+<button class="bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400 px-3 py-0.5 rounded-full text-[10px] font-bold hover:bg-slate-300 dark:hover:bg-white/20 transition-colors">MOSH</button>
+</div>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-xl p-4 shadow-sm border border-slate-200 dark:border-white/5 flex flex-col gap-5">
+<!-- Username -->
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-slate-400 text-[20px]">person</span>
+</div>
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border-0 py-3.5 pl-10 pr-4 text-slate-900 dark:text-white font-mono placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:ring-1 focus:ring-primary shadow-inner dark:shadow-inner-heavy transition-all" placeholder="root" type="text"/>
+<div class="absolute right-3 top-1/2 -translate-y-1/2">
+<span class="text-[10px] text-slate-400 font-mono opacity-50">USER</span>
+</div>
+</div>
+<!-- Separator -->
+<div class="h-px bg-slate-200 dark:bg-white/5 mx-2"></div>
+<!-- Auth Method Toggle -->
+<div>
+<div class="flex bg-slate-100 dark:bg-black/40 p-1 rounded-lg mb-4">
+<button class="flex-1 py-1.5 rounded-md text-xs font-bold shadow-sm bg-white dark:bg-primary text-slate-900 dark:text-black transition-all">Password</button>
+<button class="flex-1 py-1.5 rounded-md text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all">Private Key</button>
+</div>
+<!-- Password Input -->
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-symbols-outlined text-slate-400 text-[20px]">key</span>
+</div>
+<input class="block w-full rounded-lg bg-slate-50 dark:bg-input-dark border-0 py-3.5 pl-10 pr-10 text-slate-900 dark:text-white font-mono placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:ring-1 focus:ring-primary shadow-inner dark:shadow-inner-heavy transition-all" placeholder="••••••••••••" type="password"/>
+<button class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+<span class="material-symbols-outlined text-[20px]">visibility_off</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Advanced Toggle (Collapsible hint) -->
+<div class="flex items-center justify-center py-2 opacity-60">
+<button class="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary transition-colors">
+<span>Show Advanced Options</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</button>
+</div>
+</main>
+<!-- Sticky Footer Action -->
+<div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background-light via-background-light to-transparent dark:from-background-dark dark:via-background-dark dark:to-transparent z-40 max-w-md mx-auto pb-8">
+<button class="group relative w-full flex items-center justify-center gap-3 bg-primary hover:bg-primary-dark text-black font-bold py-4 rounded-xl transition-all active:scale-[0.98] overflow-hidden">
+<!-- Button Glow Effect -->
+<div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+<span class="tracking-tight">TEST CONNECTION</span>
+<!-- Status Badge (Hidden by default, shown for demo structure) -->
+<!-- <span class="absolute right-4 flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-30"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-black/20"></span>
+                </span> -->
+</button>
+</div>
+</div>
+</body></html>

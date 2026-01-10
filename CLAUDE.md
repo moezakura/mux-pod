@@ -69,3 +69,9 @@ interface TmuxPane { index: number; id: string; active: boolean; }
 - SSH鍵: Android Keystore / Secure Enclave
 - パスワード: expo-secure-store（暗号化）
 - 生体認証対応
+
+## Active Technologies
+- AsyncStorage (接続設定), expo-secure-store (パスワード暗号化) (001-phase1-mvp)
+
+## Recent Changes
+- 001-phase1-mvp: Added TypeScript 5.6+

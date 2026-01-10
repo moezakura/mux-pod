@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Compact Terminal View</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@300;400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00c0d1",
+                        "background-dark": "#0e0e11",
+                        "surface-dark": "#16171d",
+                        "surface-elevated": "#1E1F27",
+                        "terminal-green": "#22c55e",
+                        "terminal-yellow": "#eab308",
+                        "terminal-red": "#ef4444",
+                        "terminal-blue": "#3b82f6",
+                        "terminal-purple": "#a855f7",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    fontSize: {
+                        "xxs": "0.6rem",
+                        "tiny": "0.65rem",
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px", "md": "0.375rem" },
+                    boxShadow: {
+                        "glow": "0 0 10px rgba(0, 192, 209, 0.15)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .cursor-blink {
+            animation: blink 1s step-end infinite;
+        }
+    </style>
+<style>
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark text-white font-mono overflow-hidden h-screen w-full flex flex-col selection:bg-primary selection:text-black">
+<header class="flex-none bg-surface-elevated/90 backdrop-blur-sm border-b border-white/5 z-20 h-10 flex items-center px-2 select-none">
+<div class="flex items-center gap-2 overflow-x-auto no-scrollbar w-full whitespace-nowrap text-xs text-white/70">
+<span class="material-symbols-outlined text-[14px] text-primary/80">dns</span>
+<button class="flex items-center gap-1 hover:text-primary transition-colors">
+<span class="font-bold text-primary">ses-01</span>
+</button>
+<span class="text-white/20 font-light text-[10px]">/</span>
+<button class="flex items-center gap-1 text-white bg-white/5 px-2 py-0.5 rounded text-[11px] border border-white/5">
+<span class="material-symbols-outlined text-[12px] text-primary">article</span>
+<span class="font-bold">logs</span>
+</button>
+<span class="text-white/20 font-light text-[10px]">/</span>
+<button class="flex items-center gap-1 hover:text-white transition-colors opacity-50">
+<span>htop</span>
+</button>
+<span class="text-white/20 font-light text-[10px]">/</span>
+<button class="flex items-center gap-1 hover:text-white transition-colors opacity-50">
+<span>nvim</span>
+</button>
+</div>
+<div class="flex items-center gap-2 pl-2 border-l border-white/10 ml-auto bg-surface-elevated/90">
+<div class="flex items-center gap-1 text-xxs font-mono text-primary/80">
+<span class="material-symbols-outlined text-[10px]">bolt</span>
+<span>12ms</span>
+</div>
+<button class="p-1 hover:bg-white/10 rounded">
+<span class="material-symbols-outlined text-[16px] text-white/60">settings</span>
+</button>
+</div>
+</header>
+<main class="flex-1 relative w-full overflow-hidden bg-background-dark flex flex-col">
+<div class="flex-1 overflow-y-auto w-full p-2 font-mono text-xs md:text-tiny leading-snug" style="scroll-padding-bottom: 120px;">
+<div class="text-white/90 break-all whitespace-pre-wrap font-light tracking-tight">
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~</span>$ tail -f /var/log/nginx/access.log
+127.0.0.1 - - [10/Jan/2024:14:32:01 +0000] "GET /api/v1/status HTTP/1.1" 200 132
+127.0.0.1 - - [10/Jan/2024:14:32:05 +0000] "POST /auth/login HTTP/1.1" 200 456
+192.168.1.105 - - [10/Jan/2024:14:32:12 +0000] "GET /dashboard HTTP/1.1" 200 2405
+192.168.1.105 - - [10/Jan/2024:14:32:12 +0000] "GET /assets/main.css HTTP/1.1" 304 0
+<span class="text-white/40"># Checking system load...</span>
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~</span>$ uptime
+ 14:32:45 up 45 days, 12:30,  1 user,  load average: 0.45, 0.60, 0.55
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~</span>$ docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}"
+CONTAINER ID   IMAGE          STATUS
+a1b2c3d4e5f6   nginx:latest   Up 2 weeks
+f6e5d4c3b2a1   postgres:14    Up 2 weeks
+9876543210ab   redis:alpine   Up 45 days
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~</span>$ git status
+On branch <span class="text-terminal-purple">main</span>
+Your branch is up to date with 'origin/main'.
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        <span class="text-terminal-red">modified:   src/controllers/auth.ts</span>
+<span class="text-terminal-red">modified:   src/controllers/user.ts</span>
+<span class="text-terminal-red">modified:   src/routes/api.ts</span>
+no changes added to commit (use "git add" and/or "git commit -a")
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~/app</span>$ cat src/controllers/auth.ts | grep "function login"
+export async function login(req: Request, res: Response) {
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~/app</span>$ # Running diagnostics on connection pool
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~/app</span>$ ./scripts/check_db_pool.sh
+[INFO] Checking connection pool size...
+[OK] Active connections: 5
+[OK] Idle connections: 2
+[OK] Max connections: 20
+<span class="text-terminal-green">user@prod-01</span>:<span class="text-terminal-blue">~/app</span>$ vi src/controllers/auth.ts
+            </file></file></div>
+<div class="flex items-center mt-0.5">
+<span class="text-terminal-green mr-1.5">➜</span>
+<span>npm run build</span><span class="inline-block w-2 h-4 bg-primary align-middle ml-0.5 cursor-blink"></span>
+</div>
+<div class="h-32 w-full"></div>
+</div>
+<div class="absolute top-2 right-2 flex flex-col gap-0.5 opacity-30 pointer-events-none scale-75 origin-top-right">
+<div class="w-6 h-8 border border-primary bg-primary/20"></div>
+<div class="w-6 h-6 border border-white/20 bg-black/40"></div>
+</div>
+</main>
+<footer class="flex-none z-30 bg-[#14151a] border-t border-white/10 pb-safe">
+<div class="flex items-center justify-between px-1 py-1 gap-1 bg-[#1E1F27] overflow-x-auto no-scrollbar">
+<button class="h-8 min-w-[3rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">ESC</button>
+<button class="h-8 min-w-[3rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">TAB</button>
+<button class="h-8 min-w-[3rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-primary font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">CTRL</button>
+<button class="h-8 min-w-[3rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">ALT</button>
+<button class="h-8 min-w-[2.5rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">/</button>
+<button class="h-8 min-w-[2.5rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">-</button>
+<button class="h-8 min-w-[2.5rem] flex-1 rounded bg-[#2A2B35] hover:bg-[#353640] text-white/90 font-mono text-[10px] font-bold border-b border-black active:border-none active:translate-y-[1px] active:bg-primary active:text-black transition-all shadow-sm">|</button>
+</div>
+<div class="flex items-center gap-1.5 px-1 pb-2 pt-1">
+<div class="flex gap-0.5 shrink-0">
+<button class="h-9 w-9 rounded bg-[#2A2B35] border border-white/5 flex items-center justify-center text-white active:bg-primary active:text-black transition-colors">
+<span class="material-symbols-outlined text-[16px]">arrow_left</span>
+</button>
+<div class="flex flex-col gap-0.5">
+<button class="h-[17px] w-9 rounded bg-[#2A2B35] border border-white/5 flex items-center justify-center text-white active:bg-primary active:text-black transition-colors">
+<span class="material-symbols-outlined text-[14px]">arrow_drop_up</span>
+</button>
+<button class="h-[17px] w-9 rounded bg-[#2A2B35] border border-white/5 flex items-center justify-center text-white active:bg-primary active:text-black transition-colors">
+<span class="material-symbols-outlined text-[14px]">arrow_drop_down</span>
+</button>
+</div>
+<button class="h-9 w-9 rounded bg-[#2A2B35] border border-white/5 flex items-center justify-center text-white active:bg-primary active:text-black transition-colors">
+<span class="material-symbols-outlined text-[16px]">arrow_right</span>
+</button>
+</div>
+<button class="flex-1 h-9 rounded bg-primary/5 border border-primary/20 flex items-center justify-between px-3 active:bg-primary/20 transition-colors group">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary/70 text-[16px]">keyboard</span>
+<span class="text-primary/50 text-xs font-mono">Input...</span>
+</div>
+<span class="text-[10px] bg-primary/10 text-primary px-1.5 rounded border border-primary/10">cmd</span>
+</button>
+<button class="h-9 w-9 rounded bg-[#2A2B35] border border-white/5 flex items-center justify-center text-white active:bg-white active:text-black transition-colors">
+<span class="material-symbols-outlined text-[18px]">add</span>
+</button>
+</div>
+<div class="h-4 w-full bg-[#14151a]"></div>
+</footer>
+
+</body></html>

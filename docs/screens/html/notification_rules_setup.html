@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Notification Rules Setup</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00c0d1",
+                        "primary-dark": "#009aa8",
+                        "background-light": "#f9fafb",
+                        "background-dark": "#101116", /* Deep blue-black */
+                        "surface-dark": "#1E1F27",   /* Cool dark grey */
+                        "surface-darker": "#16171d",
+                        "border-dim": "#2a2d36",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    boxShadow: {
+                        "glow": "0 0 10px rgba(0, 192, 209, 0.15)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for code editor feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #101116; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a2d36; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00c0d1; 
+        }
+        
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #00c0d1;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #00c0d1;
+        }
+        
+        /* Utilitarian Pattern Background */
+        .bg-grid-pattern {
+            background-image: radial-gradient(#2a2d36 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display antialiased selection:bg-primary selection:text-black">
+<div class="relative flex flex-col w-full max-w-md mx-auto min-h-screen overflow-hidden bg-background-light dark:bg-background-dark border-x border-border-dim shadow-2xl">
+<!-- Header -->
+<header class="sticky top-0 z-50 bg-background-light/90 dark:bg-background-dark/95 backdrop-blur-md border-b border-border-dim px-4 py-3 flex items-center justify-between">
+<button class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors group">
+<span class="material-symbols-outlined text-slate-500 dark:text-slate-400 group-hover:text-primary transition-colors">chevron_left</span>
+</button>
+<h1 class="text-base font-bold tracking-tight uppercase text-slate-800 dark:text-slate-200">Notification Rules</h1>
+<button class="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 hover:bg-primary/20 text-primary transition-colors">
+<span class="material-symbols-outlined">add</span>
+</button>
+</header>
+<!-- Context Bar -->
+<div class="bg-surface-darker border-b border-border-dim py-2 px-5 flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-slate-500">terminal</span>
+<span class="font-mono text-xs text-slate-400 truncate">session-0:window-1:pane-0</span>
+</div>
+<main class="flex-1 flex flex-col p-4 gap-6 pb-32">
+<!-- Active Rules Section -->
+<section>
+<div class="flex items-center justify-between mb-3 px-1">
+<h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">Active Watchers</h2>
+<span class="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-full">3 Active</span>
+</div>
+<div class="space-y-3">
+<!-- Rule Card 1: Regex Error -->
+<div class="group relative overflow-hidden rounded-lg bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dim shadow-sm hover:border-primary/50 transition-all">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-rose-500"></div>
+<div class="p-4 flex items-start gap-3">
+<div class="mt-1 flex-shrink-0 w-8 h-8 rounded bg-rose-500/10 flex items-center justify-center text-rose-500">
+<span class="material-symbols-outlined text-[20px]">code</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-sm font-bold text-slate-800 dark:text-white">Critical Error Match</h3>
+<div class="flex items-center">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</div>
+<code class="block font-mono text-xs text-rose-600 dark:text-rose-400 bg-rose-500/5 px-2 py-1.5 rounded border border-rose-500/10 truncate">
+                                    /FATAL|CRITICAL|Error 50[0-5]/
+                                </code>
+</div>
+</div>
+</div>
+<!-- Rule Card 2: Idle Timeout -->
+<div class="group relative overflow-hidden rounded-lg bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dim shadow-sm hover:border-primary/50 transition-all">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-amber-500"></div>
+<div class="p-4 flex items-start gap-3">
+<div class="mt-1 flex-shrink-0 w-8 h-8 rounded bg-amber-500/10 flex items-center justify-center text-amber-500">
+<span class="material-symbols-outlined text-[20px]">timer</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-sm font-bold text-slate-800 dark:text-white">Idle Timeout</h3>
+<div class="flex items-center">
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-slate-500 dark:text-slate-400">Notify if silent for</span>
+<span class="font-mono text-xs font-bold text-amber-500 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">&gt; 300s</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Rule Card 3: Success Match -->
+<div class="group relative overflow-hidden rounded-lg bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dim shadow-sm hover:border-primary/50 transition-all opacity-60">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
+<div class="p-4 flex items-start gap-3">
+<div class="mt-1 flex-shrink-0 w-8 h-8 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+<span class="material-symbols-outlined text-[20px]">check_circle</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-sm font-bold text-slate-800 dark:text-white">Build Success</h3>
+<div class="flex items-center">
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox"/>
+<div class="w-9 h-5 bg-slate-200 peer-focus:outline-none dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</div>
+<code class="block font-mono text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 px-2 py-1.5 rounded border border-emerald-500/10 truncate">
+                                    "BUILD SUCCESSFUL"
+                                </code>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Quick Create (Bottom Sheet Simulation) -->
+<section class="mt-4 pt-4 border-t border-dashed border-border-dim">
+<div class="bg-surface-darker rounded-xl border border-border-dim p-5 shadow-2xl relative overflow-hidden">
+<!-- Tech decoration -->
+<div class="absolute top-0 right-0 p-2 opacity-10">
+<span class="material-symbols-outlined text-6xl rotate-12">settings_suggest</span>
+</div>
+<div class="flex justify-between items-center mb-4 relative z-10">
+<h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                            New Rule Configuration
+                        </h2>
+<span class="text-[10px] font-mono text-slate-500">DRAFT</span>
+</div>
+<!-- Condition Type Selector -->
+<div class="grid grid-cols-4 gap-1 p-1 bg-background-dark rounded-lg mb-4 border border-border-dim">
+<button class="py-1.5 text-[10px] font-bold rounded text-white bg-surface-dark border border-border-dim shadow-sm">TEXT</button>
+<button class="py-1.5 text-[10px] font-bold rounded text-slate-500 hover:text-white transition-colors">REGEX</button>
+<button class="py-1.5 text-[10px] font-bold rounded text-slate-500 hover:text-white transition-colors">IDLE</button>
+<button class="py-1.5 text-[10px] font-bold rounded text-slate-500 hover:text-white transition-colors">ANY</button>
+</div>
+<!-- Input Area -->
+<div class="space-y-4">
+<div class="relative group">
+<label class="text-[10px] font-mono text-primary mb-1 block">MATCH PATTERN</label>
+<div class="relative">
+<span class="absolute left-3 top-3 text-slate-500 select-none font-mono">/</span>
+<input class="w-full bg-background-dark border border-border-dim focus:border-primary rounded-md py-2.5 pl-6 pr-10 text-sm font-mono text-white placeholder-slate-600 outline-none transition-all shadow-inner" type="text" value="segmentation_fault"/>
+<span class="absolute right-3 top-3 text-slate-500 select-none font-mono">/i</span>
+<div class="absolute right-10 top-2">
+<span class="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-primary opacity-75"></span>
+</div>
+</div>
+</div>
+<!-- Settings Grid -->
+<div class="grid grid-cols-2 gap-3">
+<div>
+<label class="text-[10px] font-mono text-slate-500 mb-1 block">FREQUENCY</label>
+<select class="w-full bg-surface-dark border border-border-dim text-white text-xs rounded-md py-2 px-2 outline-none focus:border-primary/50 appearance-none">
+<option>Once per session</option>
+<option>Every occurrence</option>
+</select>
+</div>
+<div>
+<label class="text-[10px] font-mono text-slate-500 mb-1 block">ACTION</label>
+<select class="w-full bg-surface-dark border border-border-dim text-white text-xs rounded-md py-2 px-2 outline-none focus:border-primary/50 appearance-none">
+<option>Push Notification</option>
+<option>Silent Log</option>
+</select>
+</div>
+</div>
+<!-- Test Button -->
+<div class="flex items-center justify-between pt-2">
+<button class="text-xs font-mono text-primary hover:text-white transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px]">play_arrow</span> Test Pattern
+                            </button>
+<span class="text-[10px] text-emerald-500 font-mono flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">check</span> Valid Regex
+                            </span>
+</div>
+</div>
+<!-- Primary Action -->
+<div class="mt-5 flex gap-3">
+<button class="flex-1 bg-surface-dark hover:bg-surface-darker border border-border-dim text-white py-3 rounded-lg text-sm font-bold transition-colors">
+                            Cancel
+                        </button>
+<button class="flex-[2] bg-primary hover:bg-primary-dark text-black py-3 rounded-lg text-sm font-bold shadow-glow transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[20px]">save</span>
+                            Save Rule
+                        </button>
+</div>
+</div>
+</section>
+</main>
+<!-- Decoration: Bottom gradient fade -->
+<div class="fixed bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background-dark to-transparent pointer-events-none"></div>
+</div>
+</body></html>

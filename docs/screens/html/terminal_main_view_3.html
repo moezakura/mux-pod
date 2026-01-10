@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SSH Key Manager</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;family=Noto+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#00c0d1",
+                        "background-light": "#f9fafb",
+                        "background-dark": "#0e0e11",
+                        "surface-dark": "#16171d",
+                        "surface-elevated": "#1E1F27",
+                        "terminal-green": "#22c55e",
+                        "terminal-yellow": "#eab308",
+                        "terminal-red": "#ef4444",
+                        "terminal-blue": "#3b82f6",
+                        "terminal-purple": "#a855f7",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px", "md": "0.375rem" },
+                    boxShadow: {
+                        "glow": "0 0 10px rgba(0, 192, 209, 0.15)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>.no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }.glass-panel {
+            background: rgba(30, 31, 39, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .pb-safe {
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+        }
+    </style>
+<style>
+        body {
+          min-height: max(600px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-dark text-white font-display overflow-hidden h-screen w-full flex flex-col selection:bg-primary selection:text-black">
+<header class="flex-none bg-surface-elevated border-b border-white/5 shadow-md z-20">
+<div class="flex items-center justify-between px-4 py-3">
+<button class="flex items-center justify-center size-10 -ml-2 rounded-full text-white/70 hover:bg-white/5 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[24px]">arrow_back</span>
+</button>
+<div class="flex flex-col items-center">
+<h1 class="text-base font-bold tracking-tight text-white leading-none">SSH Keys</h1>
+<span class="text-[10px] font-mono text-white/50 tracking-wide mt-1">Key Store &amp; Management</span>
+</div>
+<button class="flex items-center justify-center size-10 -mr-2 rounded-full text-primary hover:bg-white/5 transition-colors">
+<span class="text-sm font-bold">Done</span>
+</button>
+</div>
+<div class="bg-primary/5 border-t border-primary/10 px-4 py-1.5 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[14px] text-primary">verified_user</span>
+<span class="text-[10px] text-primary/80 font-medium tracking-wide uppercase">Secure Enclave Active</span>
+</div>
+</header>
+<main class="flex-1 relative w-full overflow-hidden bg-background-dark flex flex-col">
+<div class="flex-1 overflow-y-auto w-full p-4 pb-24 no-scrollbar">
+<div class="space-y-3 mb-8">
+<div class="group relative p-4 rounded-xl bg-surface-elevated border border-white/5 hover:border-primary/30 transition-all active:scale-[0.99]">
+<div class="flex items-start gap-3">
+<div class="size-10 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary text-[20px]">key</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between mb-1">
+<h3 class="font-bold text-white text-sm truncate">id_rsa_prod</h3>
+<div class="flex items-center gap-1.5 bg-background-dark/50 px-2 py-0.5 rounded-full border border-white/5">
+<span class="material-symbols-outlined text-[12px] text-terminal-green">lock</span>
+<span class="text-[10px] text-white/60 font-medium">Encrypted</span>
+</div>
+</div>
+<div class="font-mono text-[11px] text-white/40 truncate mb-2">SHA256:yl9...jK3</div>
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-white/80 border border-white/10 font-mono tracking-tight">RSA 4096</span>
+<span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-white/50 border border-white/10">Default</span>
+</div>
+</div>
+<button class="size-8 flex items-center justify-center rounded-lg text-white/30 hover:bg-white/5 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+<div class="group relative p-4 rounded-xl bg-surface-elevated border border-white/5 hover:border-primary/30 transition-all active:scale-[0.99]">
+<div class="flex items-start gap-3">
+<div class="size-10 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-terminal-purple text-[20px]">key</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between mb-1">
+<h3 class="font-bold text-white text-sm truncate">github_deploy_main</h3>
+<div class="flex items-center gap-1.5 bg-background-dark/50 px-2 py-0.5 rounded-full border border-white/5">
+<span class="material-symbols-outlined text-[12px] text-terminal-green">lock</span>
+<span class="text-[10px] text-white/60 font-medium">Encrypted</span>
+</div>
+</div>
+<div class="font-mono text-[11px] text-white/40 truncate mb-2">SHA256:m02...x9P</div>
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-terminal-purple border border-terminal-purple/20 font-mono tracking-tight">Ed25519</span>
+<span class="text-[10px] text-white/30 ml-1">Used today</span>
+</div>
+</div>
+<button class="size-8 flex items-center justify-center rounded-lg text-white/30 hover:bg-white/5 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+<div class="group relative p-4 rounded-xl bg-surface-elevated border border-white/5 hover:border-primary/30 transition-all active:scale-[0.99]">
+<div class="flex items-start gap-3">
+<div class="size-10 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-terminal-blue text-[20px]">key</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between mb-1">
+<h3 class="font-bold text-white text-sm truncate">aws_us_east_legacy</h3>
+<div class="flex items-center gap-1.5 bg-background-dark/50 px-2 py-0.5 rounded-full border border-white/5">
+<span class="material-symbols-outlined text-[12px] text-terminal-green">lock</span>
+<span class="text-[10px] text-white/60 font-medium">Encrypted</span>
+</div>
+</div>
+<div class="font-mono text-[11px] text-white/40 truncate mb-2">SHA256:p5L...B21</div>
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-white/80 border border-white/10 font-mono tracking-tight">RSA 2048</span>
+</div>
+</div>
+<button class="size-8 flex items-center justify-center rounded-lg text-white/30 hover:bg-white/5 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+<div class="group relative p-4 rounded-xl bg-surface-elevated border border-white/5 hover:border-primary/30 transition-all active:scale-[0.99] opacity-75">
+<div class="flex items-start gap-3">
+<div class="size-10 rounded-lg bg-white/5 border border-white/5 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-white/40 text-[20px]">key_off</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between mb-1">
+<h3 class="font-bold text-white/80 text-sm truncate">digitalocean_revoked</h3>
+<div class="flex items-center gap-1.5 bg-background-dark/50 px-2 py-0.5 rounded-full border border-white/5">
+<span class="material-symbols-outlined text-[12px] text-terminal-red">lock_open</span>
+<span class="text-[10px] text-white/40 font-medium">Disabled</span>
+</div>
+</div>
+<div class="font-mono text-[11px] text-white/30 truncate mb-2">SHA256:x7K...m99</div>
+<div class="flex items-center gap-2">
+<span class="px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-white/50 border border-white/10 font-mono tracking-tight">RSA 4096</span>
+</div>
+</div>
+<button class="size-8 flex items-center justify-center rounded-lg text-white/30 hover:bg-white/5 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<div class="flex items-center justify-between px-1">
+<h2 class="text-xs font-bold uppercase tracking-wider text-white/40">Actions</h2>
+</div>
+<div class="grid grid-cols-2 gap-3">
+<div class="col-span-2 grid grid-cols-2 gap-3">
+<button class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-surface-elevated border border-white/10 active:bg-white/10 active:scale-[0.98] transition-all group">
+<div class="size-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-white group-hover:text-primary text-[20px]">content_paste</span>
+</div>
+<span class="text-xs font-medium text-white/80">Paste Key</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-2 p-3 rounded-xl bg-surface-elevated border border-white/10 active:bg-white/10 active:scale-[0.98] transition-all group">
+<div class="size-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-white group-hover:text-primary text-[20px]">upload_file</span>
+</div>
+<span class="text-xs font-medium text-white/80">Import File</span>
+</button>
+</div>
+<button class="col-span-2 flex items-center justify-between p-4 rounded-xl bg-primary text-black shadow-lg shadow-primary/10 active:scale-[0.98] transition-all hover:bg-primary/90">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[24px]">add_circle</span>
+<div class="flex flex-col items-start">
+<span class="text-sm font-bold">Generate New Key</span>
+<span class="text-[10px] opacity-70 font-mono">RSA / Ed25519</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[20px] opacity-60">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<nav class="flex-none bg-surface-elevated border-t border-white/5 pb-safe z-50">
+<div class="flex items-center justify-around px-2 py-2">
+<button class="flex flex-col items-center gap-1 p-2 group w-16">
+<span class="material-symbols-outlined text-white/40 group-hover:text-white transition-colors text-[24px]">dns</span>
+<span class="text-[10px] font-medium text-white/40 group-hover:text-white transition-colors">Net</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 group w-16">
+<span class="material-symbols-outlined text-white/40 group-hover:text-white transition-colors text-[24px]">terminal</span>
+<span class="text-[10px] font-medium text-white/40 group-hover:text-white transition-colors">Term</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 group w-16">
+<div class="relative">
+<span class="material-symbols-outlined text-primary text-[24px]">key</span>
+<span class="absolute -top-0 -right-0.5 size-1.5 bg-primary rounded-full shadow-glow"></span>
+</div>
+<span class="text-[10px] font-bold text-primary">Keys</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 group w-16">
+<span class="material-symbols-outlined text-white/40 group-hover:text-white transition-colors text-[24px]">settings</span>
+<span class="text-[10px] font-medium text-white/40 group-hover:text-white transition-colors">Settings</span>
+</button>
+</div>
+</nav>
+</body></html>
