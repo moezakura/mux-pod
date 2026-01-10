@@ -52,8 +52,8 @@ await ssh.exec(`tmux send-keys -t ${sessionName} ${keys}`);
 
 ## ターミナル表示
 
-- ANSIエスケープシーケンス処理: `src/utils/ansi.ts`
-- 文字幅計算（日本語対応）: `src/utils/wcwidth.ts`
+- ANSIエスケープシーケンス処理: `src/services/ansi/parser.ts`
+- 文字幅計算（日本語対応）: `src/services/terminal/charWidth.ts`
 - ポーリング間隔: 100ms（`useTerminal` hook内）
 
 ## TypeScript

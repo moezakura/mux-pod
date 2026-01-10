@@ -23,10 +23,10 @@ AndroidスマートフォンからSSH経由でリモートサーバーのtmuxセ
 ## 開発コマンド
 
 ```bash
-npm start           # 開発サーバー起動
-npm run android     # Android実機/エミュレータ
-npm run typecheck   # 型チェック
-npm run lint        # Lint
+pnpm start          # 開発サーバー起動
+pnpm android        # Android実機/エミュレータ
+pnpm typecheck      # 型チェック
+pnpm lint           # Lint
 ```
 
 ## ドキュメント
@@ -46,8 +46,7 @@ muxpod/
 │   ├── components/   # UIコンポーネント
 │   ├── hooks/        # カスタムhooks
 │   ├── stores/       # Zustand stores
-│   ├── services/     # SSH, tmux, notification, keychain
-│   ├── utils/        # ユーティリティ
+│   ├── services/     # SSH, tmux, notification, keychain, ansi, terminal
 │   └── types/        # TypeScript型定義
 └── assets/           # フォント、画像等
 ```

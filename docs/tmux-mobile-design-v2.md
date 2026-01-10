@@ -125,13 +125,14 @@ muxpod/
 │   │   │   ├── engine.ts           # 通知エンジン（アプリ内）
 │   │   │   ├── rules.ts            # ルール管理
 │   │   │   └── matchers.ts         # パターンマッチャー
-│   │   └── keychain/
-│   │       ├── secureStore.ts      # Secure Enclave連携
-│   │       └── keyManager.ts       # 鍵管理
-│   ├── utils/
-│   │   ├── wcwidth.ts              # 文字幅計算
-│   │   ├── ansi.ts                 # ANSIエスケープ処理
-│   │   └── terminal.ts             # ターミナルユーティリティ
+│   │   ├── keychain/
+│   │   │   ├── secureStore.ts      # Secure Enclave連携
+│   │   │   └── keyManager.ts       # 鍵管理
+│   │   ├── ansi/
+│   │   │   └── parser.ts           # ANSIエスケープ処理
+│   │   └── terminal/
+│   │       ├── charWidth.ts        # 文字幅計算
+│   │       └── formatter.ts        # ターミナル出力整形
 │   └── types/
 │       ├── connection.ts
 │       ├── tmux.ts
