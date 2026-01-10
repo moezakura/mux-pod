@@ -20,6 +20,9 @@ const mockConnection: Connection = {
   keepAliveInterval: 60,
   createdAt: Date.now(),
   updatedAt: Date.now(),
+  autoReconnect: true,
+  maxReconnectAttempts: 3,
+  reconnectInterval: 5,
 };
 
 const mockConnectedState: ConnectionState = {
