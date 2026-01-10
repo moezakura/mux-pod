@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash screen background (dark theme) -->
+    <color name="splash_background">#1E1E2E</color>
+
+    <!-- Primary color (matching Dracula theme) -->
+    <color name="primary">#BD93F9</color>
+
+    <!-- Surface color -->
+    <color name="surface">#282A36</color>
+</resources>
