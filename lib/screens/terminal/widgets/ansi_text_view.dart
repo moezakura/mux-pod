@@ -93,8 +93,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   ScrollController? _internalVerticalScrollController;
-  final TransformationController _transformationController =
-      TransformationController();
 
   /// 使用する垂直スクロールコントローラー
   ScrollController get _verticalScrollController =>
@@ -112,6 +110,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   /// 現在のズームスケール
   double _currentScale = 1.0;
+
+  /// ピンチズーム開始時のスケール
+  double _baseScale = 1.0;
 
   /// TextSpanキャッシュ
   TextSpan? _cachedTextSpan;
@@ -221,17 +222,39 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _horizontalScrollController.dispose();
     // 内部で作成した場合のみ破棄
     _internalVerticalScrollController?.dispose();
-    _transformationController.dispose();
     super.dispose();
   }
 
   /// ズームをリセット
   void resetZoom() {
-    _transformationController.value = Matrix4.identity();
     setState(() {
       _currentScale = 1.0;
+      _baseScale = 1.0;
     });
     widget.onZoomChanged?.call(1.0);
+  }
+
+  // === ピンチズーム処理 ===
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _baseScale = _currentScale;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    // 1本指のドラッグ（scale == 1.0）はスクロールに任せる
+    if (details.scale == 1.0) return;
+
+    final newScale = (_baseScale * details.scale).clamp(0.5, 5.0);
+    if (newScale != _currentScale) {
+      setState(() {
+        _currentScale = newScale;
+      });
+      widget.onZoomChanged?.call(newScale);
+    }
+  }
+
+  void _onScaleEnd(ScaleEndDetails details) {
+    // ズーム終了時の処理（必要に応じて）
   }
 
   /// 現在のズームスケールを取得
@@ -315,44 +338,26 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           );
         }
 
-        // 垂直スクロール
+        // 垂直スクロールのみ（縦方向に制限）
         textWidget = SingleChildScrollView(
           controller: _verticalScrollController,
+          scrollDirection: Axis.vertical,
           physics: const ClampingScrollPhysics(),
           child: textWidget,
         );
 
-        // ピンチズームが有効な場合、InteractiveViewerでラップ
+        // ピンチズームが有効な場合、GestureDetector + Transform.scaleでズーム
+        // InteractiveViewerは縦横無尽にパンできてしまうため使用しない
         if (widget.zoomEnabled) {
-          textWidget = InteractiveViewer(
-            transformationController: _transformationController,
-            minScale: 0.5,
-            maxScale: 5.0,
-            constrained: false,
-            boundaryMargin: const EdgeInsets.all(double.infinity),
-            panEnabled: true,
-            scaleEnabled: true,
-            onInteractionUpdate: (details) {
-              // ズーム中もスケール表示を更新
-              final scale = _transformationController.value.getMaxScaleOnAxis();
-              if (scale != _currentScale) {
-                setState(() {
-                  _currentScale = scale;
-                });
-                widget.onZoomChanged?.call(scale);
-              }
-            },
-            onInteractionEnd: (details) {
-              // ズームスケールを取得して通知
-              final scale = _transformationController.value.getMaxScaleOnAxis();
-              if (scale != _currentScale) {
-                setState(() {
-                  _currentScale = scale;
-                });
-                widget.onZoomChanged?.call(scale);
-              }
-            },
-            child: textWidget,
+          textWidget = GestureDetector(
+            onScaleStart: _onScaleStart,
+            onScaleUpdate: _onScaleUpdate,
+            onScaleEnd: _onScaleEnd,
+            child: Transform.scale(
+              scale: _currentScale,
+              alignment: Alignment.topLeft,
+              child: textWidget,
+            ),
           );
         }
 
