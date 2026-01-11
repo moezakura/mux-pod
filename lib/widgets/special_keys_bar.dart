@@ -92,14 +92,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     }
   }
 
-  /// DirectInput: Enterキー送信
-  void _sendDirectEnter() {
-    if (widget.hapticFeedback) {
-      HapticFeedback.lightImpact();
-    }
-    widget.onSpecialKeyPressed('Enter');
-  }
-
   /// DirectInput: Backspaceキー送信
   void _sendDirectBackspace() {
     if (widget.hapticFeedback) {
@@ -108,7 +100,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     widget.onSpecialKeyPressed('BSpace');
   }
 
-  /// キーイベントハンドラ（Enter/Backspace等をキャプチャ）
+  /// キーイベントハンドラ（Enter/Backspace/Ctrl+キー等をキャプチャ）
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
@@ -119,10 +111,28 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       return KeyEventResult.ignored;
     }
 
+    // Ctrl/Meta修飾キーの検出
+    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+
+    // Ctrl+キーのショートカット処理
+    if (isCtrlPressed) {
+      final keyLabel = event.logicalKey.keyLabel;
+      // A-Z の単一キーの場合、Ctrl+キーとしてtmuxに送信
+      if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+        // tmux形式: C-c, C-d など（小文字）
+        widget.onSpecialKeyPressed('C-${keyLabel.toLowerCase()}');
+        return KeyEventResult.handled;
+      }
+    }
+
     // Enterキー
     if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-      _sendDirectEnter();
+      _sendDirectEnterAndClear();
       return KeyEventResult.handled;
     }
 
@@ -134,7 +144,36 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       }
     }
 
+    // Escapeキー
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (widget.hapticFeedback) {
+        HapticFeedback.lightImpact();
+      }
+      widget.onSpecialKeyPressed('Escape');
+      return KeyEventResult.handled;
+    }
+
+    // Tabキー
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      if (widget.hapticFeedback) {
+        HapticFeedback.lightImpact();
+      }
+      widget.onSpecialKeyPressed('Tab');
+      return KeyEventResult.handled;
+    }
+
     return KeyEventResult.ignored;
+  }
+
+  /// DirectInput: Enterキー送信して入力欄をクリア
+  void _sendDirectEnterAndClear() {
+    if (widget.hapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+    widget.onSpecialKeyPressed('Enter');
+    // 入力欄をクリア
+    _directInputController.clear();
+    _lastSentText = '';
   }
 
   @override
