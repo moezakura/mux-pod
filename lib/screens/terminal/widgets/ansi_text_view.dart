@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
+import '../../../services/terminal/terminal_diff.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
 
 /// キー入力イベント
@@ -101,6 +102,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   late AnsiParser _parser;
 
+  /// 差分計算サービス
+  final TerminalDiff _terminalDiff = TerminalDiff();
+
   /// 修飾キー状態
   bool _ctrlPressed = false;
   bool _altPressed = false;
@@ -114,6 +118,15 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   String? _cachedText;
   double? _cachedFontSize;
   String? _cachedFontFamily;
+
+  /// 選択状態保持用のキー
+  /// テキスト内容のハッシュをキーに使用し、内容が変わっていない場合は
+  /// SelectableTextの再構築を抑制して選択状態を保持する
+  Key? _selectableTextKey;
+  int _lastTextHash = 0;
+
+  /// 最後の差分結果（適応型ポーリング用）
+  DiffResult? _lastDiffResult;
 
   @override
   void initState() {
@@ -150,11 +163,23 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _cachedFontFamily = null;
   }
 
-  /// TextSpanを取得（キャッシュ使用）
+  /// TextSpanを取得（キャッシュ使用・差分最適化）
   TextSpan _getTextSpan({
     required double fontSize,
     required String fontFamily,
   }) {
+    // 差分計算を実行
+    _lastDiffResult = _terminalDiff.calculateDiff(widget.text);
+
+    // テキストハッシュを更新（選択状態保持用）
+    final currentHash = widget.text.hashCode;
+    if (currentHash != _lastTextHash) {
+      _lastTextHash = currentHash;
+      // テキストが変わった場合のみキーを更新
+      // 変更がない場合は同じキーを維持して選択状態を保持
+      _selectableTextKey = ValueKey<int>(currentHash);
+    }
+
     // キャッシュが有効かチェック
     if (_cachedTextSpan != null &&
         _cachedText == widget.text &&
@@ -174,6 +199,20 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _cachedFontFamily = fontFamily;
 
     return _cachedTextSpan!;
+  }
+
+  /// 最後の差分結果を取得（親ウィジェットから参照用）
+  DiffResult? get lastDiffResult => _lastDiffResult;
+
+  /// 推奨ポーリング間隔を取得（適応型ポーリング用）
+  int get recommendedPollingInterval {
+    if (_lastDiffResult == null) {
+      return AdaptivePollingInterval.defaultInterval;
+    }
+    return AdaptivePollingInterval.calculateInterval(
+      _lastDiffResult!.unchangedFrames,
+      _lastDiffResult!.changeRatio,
+    );
   }
 
   @override
@@ -246,9 +285,11 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
         // テキストウィジェットを構築
         // RepaintBoundaryでラップして再描画を最小化
+        // キーを使用して選択状態を保持（テキストが変わっていない場合）
         Widget textWidget = RepaintBoundary(
           child: SelectableText.rich(
             textSpan,
+            key: _selectableTextKey,
             style: TerminalFontStyles.getTextStyle(
               settings.fontFamily,
               fontSize: fontSize,

@@ -72,6 +72,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   String _pendingContent = '';
   int _pendingLatency = 0;
 
+  // 適応型ポーリング用
+  int _currentPollingInterval = 100;
+  static const int _minPollingInterval = 50;
+  static const int _maxPollingInterval = 500;
+
+  // 選択状態保持用（コピペモード中の更新抑制）
+  String _bufferedContent = '';
+  int _bufferedLatency = 0;
+  bool _hasBufferedUpdate = false;
+
   // 現在のペインサイズ
   int _paneWidth = 80;
   int _paneHeight = 24;
@@ -289,10 +299,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     );
   }
 
-  /// 100msごとにcapture-paneを実行してターミナル内容を更新
+  /// 適応型ポーリングでcapture-paneを実行してターミナル内容を更新
+  ///
+  /// コンテンツの変化頻度に応じてポーリング間隔を動的に調整:
+  /// - 高頻度更新時（htop等）: 50ms
+  /// - 通常時: 100ms
+  /// - アイドル時: 500ms
   void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(milliseconds: 100), (_) => _pollPaneContent());
+    _scheduleNextPoll();
+  }
+
+  /// 次のポーリングをスケジュール
+  void _scheduleNextPoll() {
+    if (_isDisposed) return;
+    _pollTimer?.cancel();
+    _pollTimer = Timer(
+      Duration(milliseconds: _currentPollingInterval),
+      () async {
+        await _pollPaneContent();
+        _scheduleNextPoll();
+      },
+    );
+  }
+
+  /// ポーリング間隔を更新
+  void _updatePollingInterval() {
+    final ansiTextViewState = _ansiTextViewKey.currentState;
+    if (ansiTextViewState != null) {
+      final recommended = ansiTextViewState.recommendedPollingInterval;
+      _currentPollingInterval = recommended.clamp(
+        _minPollingInterval,
+        _maxPollingInterval,
+      );
+    }
   }
 
   /// ペイン内容をポーリング取得
@@ -338,8 +378,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
       // 差分があれば更新（スロットリング適用）
       if (output != _terminalContent || latency != _latency) {
-        _scheduleUpdate(output, latency);
+        // コピペモード中は更新をバッファリングして選択状態を保持
+        if (_terminalMode == TerminalMode.copyPaste) {
+          _bufferedContent = output;
+          _bufferedLatency = latency;
+          _hasBufferedUpdate = true;
+          // レイテンシのみ更新（選択に影響しない）
+          if (mounted && !_isDisposed) {
+            setState(() {
+              _latency = latency;
+            });
+          }
+        } else {
+          _scheduleUpdate(output, latency);
+        }
       }
+
+      // 適応型ポーリング間隔を更新
+      _updatePollingInterval();
     } catch (e) {
       // 通信エラーの場合は自動再接続を試みる
       if (!_isDisposed) {
@@ -350,6 +406,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       }
     } finally {
       _isPolling = false;
+    }
+  }
+
+  /// バッファリングされた更新を適用（コピペモード終了時に呼び出し）
+  void _applyBufferedUpdate() {
+    if (_hasBufferedUpdate) {
+      _scheduleUpdate(_bufferedContent, _bufferedLatency);
+      _hasBufferedUpdate = false;
+      _bufferedContent = '';
+      _bufferedLatency = 0;
     }
   }
 
@@ -1216,21 +1282,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 trailing: Switch(
                   value: _terminalMode == TerminalMode.copyPaste,
                   onChanged: (value) {
+                    final newMode = value
+                        ? TerminalMode.copyPaste
+                        : TerminalMode.normal;
                     setState(() {
-                      _terminalMode = value
-                          ? TerminalMode.copyPaste
-                          : TerminalMode.normal;
+                      _terminalMode = newMode;
                     });
+                    // コピペモードから通常モードに戻る時、バッファリングされた更新を適用
+                    if (newMode == TerminalMode.normal) {
+                      _applyBufferedUpdate();
+                    }
                     Navigator.pop(context);
                   },
                   activeColor: DesignColors.primary,
                 ),
                 onTap: () {
+                  final newMode = _terminalMode == TerminalMode.copyPaste
+                      ? TerminalMode.normal
+                      : TerminalMode.copyPaste;
                   setState(() {
-                    _terminalMode = _terminalMode == TerminalMode.copyPaste
-                        ? TerminalMode.normal
-                        : TerminalMode.copyPaste;
+                    _terminalMode = newMode;
                   });
+                  // コピペモードから通常モードに戻る時、バッファリングされた更新を適用
+                  if (newMode == TerminalMode.normal) {
+                    _applyBufferedUpdate();
+                  }
                   Navigator.pop(context);
                 },
               ),
