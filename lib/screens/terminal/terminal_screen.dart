@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -39,29 +39,27 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   bool _isConnecting = false;
   String? _connectionError;
 
-  // UI表示用（後でtmux状態から取得）
+  // UI表示用
   String _currentSession = '';
   String _currentWindow = '';
+  int _currentWindowIndex = 0;
+  int _currentPaneIndex = 0;
   int _latency = 0;
+
+  // ポーリング用タイマー
+  Timer? _pollTimer;
+  String _lastContent = '';
+  bool _isPolling = false;
 
   @override
   void initState() {
     super.initState();
     _terminal = Terminal(maxLines: 10000);
-    // ターミナルリサイズ時のハンドラ設定
-    _terminal.onResize = _onTerminalResize;
-    _connectAndAttach();
+    _connectAndSetup();
   }
 
-  /// ターミナルリサイズハンドラ
-  void _onTerminalResize(int cols, int rows, int pixelWidth, int pixelHeight) {
-    final sshState = ref.read(sshProvider);
-    if (sshState.isConnected) {
-      ref.read(sshProvider.notifier).resize(cols, rows);
-    }
-  }
-
-  Future<void> _connectAndAttach() async {
+  /// SSH接続してtmuxセッションをセットアップ
+  Future<void> _connectAndSetup() async {
     setState(() {
       _isConnecting = true;
       _connectionError = null;
@@ -77,44 +75,46 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       // 2. 認証情報を取得
       final options = await _getAuthOptions(connection);
 
-      // 3. SSH接続
+      // 3. SSH接続（シェルは起動しない - execのみ使用）
       final sshNotifier = ref.read(sshProvider.notifier);
-      await sshNotifier.connect(connection, options);
+      await sshNotifier.connectWithoutShell(connection, options);
 
-      // 4. イベントハンドラを設定
+      // 4. tmuxセッション一覧を取得
       final sshClient = sshNotifier.client;
-      if (sshClient != null) {
-        sshClient.setEventHandlers(SshEvents(
-          onData: (Uint8List data) {
-            _terminal.write(String.fromCharCodes(data));
-          },
-          onClose: _handleDisconnect,
-          onError: _handleError,
-        ));
-      }
-
-      // 5. tmuxセッション一覧を取得
       final sessionsOutput = await sshClient?.exec(TmuxCommands.listSessions());
       if (sessionsOutput != null) {
         final sessions = TmuxParser.parseSessions(sessionsOutput);
         ref.read(tmuxProvider.notifier).updateSessions(sessions);
 
-        // 6. セッションにアタッチまたは新規作成
+        // 5. セッションを選択または新規作成
+        String sessionName;
         if (sessions.isNotEmpty) {
-          final sessionName = widget.sessionName ?? sessions.first.name;
-          sshClient?.write('${TmuxCommands.attachSession(sessionName)}\n');
-          ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
-          setState(() {
-            _currentSession = sessionName;
-          });
+          sessionName = widget.sessionName ?? sessions.first.name;
         } else {
-          final newSessionName = 'muxpod-${DateTime.now().millisecondsSinceEpoch}';
-          sshClient?.write('${TmuxCommands.newSession(name: newSessionName, detached: false)}\n');
-          ref.read(tmuxProvider.notifier).setActiveSession(newSessionName);
-          setState(() {
-            _currentSession = newSessionName;
-          });
+          // セッションがない場合は新規作成
+          sessionName = 'muxpod-${DateTime.now().millisecondsSinceEpoch}';
+          await sshClient?.exec(TmuxCommands.newSession(name: sessionName, detached: true));
         }
+
+        ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
+
+        // 6. ウィンドウ・ペイン情報を取得
+        final windowsOutput = await sshClient?.exec(TmuxCommands.listWindows(sessionName));
+        if (windowsOutput != null) {
+          final windows = TmuxParser.parseWindows(windowsOutput);
+          if (windows.isNotEmpty) {
+            final activeWindow = windows.firstWhere((w) => w.active, orElse: () => windows.first);
+            setState(() {
+              _currentSession = sessionName;
+              _currentWindow = activeWindow.name;
+              _currentWindowIndex = activeWindow.index;
+              _currentPaneIndex = 0; // デフォルトで最初のペイン
+            });
+          }
+        }
+
+        // 7. 100msポーリング開始
+        _startPolling();
       }
 
       setState(() {
@@ -126,6 +126,53 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         _connectionError = e.toString();
       });
       _showErrorSnackBar(e.toString());
+    }
+  }
+
+  /// 100msごとにcapture-paneを実行してターミナル内容を更新
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 100), (_) => _pollPaneContent());
+  }
+
+  /// ペイン内容をポーリング取得
+  Future<void> _pollPaneContent() async {
+    if (_isPolling) return; // 前回のポーリングがまだ実行中
+    _isPolling = true;
+
+    try {
+      final sshClient = ref.read(sshProvider.notifier).client;
+      if (sshClient == null || !sshClient.isConnected) {
+        _isPolling = false;
+        return;
+      }
+
+      // ペインIDを構築: session:window.pane
+      final paneId = '$_currentSession:$_currentWindowIndex.$_currentPaneIndex';
+      final startTime = DateTime.now();
+      final output = await sshClient.exec(
+        TmuxCommands.capturePane(paneId, escapeSequences: true),
+        timeout: const Duration(milliseconds: 500),
+      );
+      final endTime = DateTime.now();
+
+      // レイテンシを更新
+      setState(() {
+        _latency = endTime.difference(startTime).inMilliseconds;
+      });
+
+      // 差分があれば更新
+      if (output != _lastContent) {
+        _lastContent = output;
+        // ターミナルをクリアして新しい内容を書き込む
+        _terminal.write('\x1b[2J\x1b[H'); // 画面クリア + カーソルホーム
+        _terminal.write(output);
+      }
+    } catch (e) {
+      // ポーリングエラーは静かに無視（接続エラーは別途ハンドリング）
+      debugPrint('Poll error: $e');
+    } finally {
+      _isPolling = false;
     }
   }
 
@@ -141,21 +188,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     }
   }
 
-  /// 切断ハンドラ
-  void _handleDisconnect() {
-    if (mounted) {
-      _showErrorSnackBar('Connection closed');
-      Navigator.of(context).pop();
-    }
-  }
-
-  /// エラーハンドラ
-  void _handleError(Object error) {
-    if (mounted) {
-      _showErrorSnackBar('Error: $error');
-    }
-  }
-
   /// エラーSnackBar表示
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -165,7 +197,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         action: SnackBarAction(
           label: 'Retry',
           textColor: Colors.white,
-          onPressed: _connectAndAttach,
+          onPressed: _connectAndSetup,
         ),
       ),
     );
@@ -173,6 +205,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   @override
   void dispose() {
+    // ポーリングタイマーを停止
+    _pollTimer?.cancel();
     _terminalController.dispose();
     // SSH接続をクリーンアップ
     ref.read(sshProvider.notifier).disconnect();
@@ -217,6 +251,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
               ),
               SpecialKeysBar(
                 onKeyPressed: _sendKey,
+                onSpecialKeyPressed: _sendSpecialKey,
                 onInputTap: _showInputDialog,
               ),
             ],
@@ -254,7 +289,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _connectAndAttach,
+              onPressed: _connectAndSetup,
               child: const Text('Retry'),
             ),
           ],
@@ -455,12 +490,34 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     );
   }
 
-  void _sendKey(String key) {
-    final sshState = ref.read(sshProvider);
-    if (sshState.isConnected) {
-      ref.read(sshProvider.notifier).write(key);
+  /// tmux send-keysでキーを送信
+  ///
+  /// [key] 送信するキー
+  /// [literal] trueの場合はリテラル送信（-l フラグ）
+  Future<void> _sendKey(String key, {bool literal = true}) async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) return;
+
+    try {
+      final paneId = '$_currentSession:$_currentWindowIndex.$_currentPaneIndex';
+      await sshClient.exec(TmuxCommands.sendKeys(paneId, key, literal: literal));
+    } catch (e) {
+      debugPrint('Send key error: $e');
     }
-    // ローカルエコーは不要（サーバーから返ってくる）
+  }
+
+  /// tmux特殊キーを送信（Ctrl+C, Escape等）
+  Future<void> _sendSpecialKey(String tmuxKey) async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) return;
+
+    try {
+      final paneId = '$_currentSession:$_currentWindowIndex.$_currentPaneIndex';
+      // 特殊キーはリテラルではなくtmux形式で送信
+      await sshClient.exec(TmuxCommands.sendKeys(paneId, tmuxKey, literal: false));
+    } catch (e) {
+      debugPrint('Send special key error: $e');
+    }
   }
 
   void _showInputDialog() {
@@ -513,21 +570,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                   borderSide: const BorderSide(color: DesignColors.primary),
                 ),
               ),
-              onSubmitted: (value) {
+              onSubmitted: (value) async {
                 if (value.isNotEmpty) {
-                  _sendKey('$value\r');
+                  await _sendKey(value);
+                  await _sendSpecialKey('Enter');
                 }
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               },
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 final value = controller.text;
                 if (value.isNotEmpty) {
-                  _sendKey('$value\r');
+                  await _sendKey(value);
+                  await _sendSpecialKey('Enter');
                 }
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: DesignColors.primary,

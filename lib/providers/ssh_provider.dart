@@ -49,7 +49,7 @@ class SshNotifier extends Notifier<SshState> {
   /// SSHクライアントを取得
   SshClient? get client => _client;
 
-  /// SSH接続を確立
+  /// SSH接続を確立（シェル付き - 従来方式）
   Future<void> connect(Connection connection, SshConnectOptions options) async {
     state = state.copyWith(
       connectionState: SshConnectionState.connecting,
@@ -67,6 +67,57 @@ class SshNotifier extends Notifier<SshState> {
       );
 
       await _client!.startShell();
+
+      state = state.copyWith(
+        connectionState: SshConnectionState.connected,
+      );
+
+      // 最終接続日時を更新
+      ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
+    } on SshConnectionError catch (e) {
+      state = state.copyWith(
+        connectionState: SshConnectionState.error,
+        error: e.message,
+      );
+      _client?.dispose();
+      _client = null;
+    } on SshAuthenticationError catch (e) {
+      state = state.copyWith(
+        connectionState: SshConnectionState.error,
+        error: e.message,
+      );
+      _client?.dispose();
+      _client = null;
+    } catch (e) {
+      state = state.copyWith(
+        connectionState: SshConnectionState.error,
+        error: e.toString(),
+      );
+      _client?.dispose();
+      _client = null;
+    }
+  }
+
+  /// SSH接続を確立（シェルなし - tmuxコマンド方式用）
+  ///
+  /// exec()のみ使用するため、シェルは起動しない。
+  Future<void> connectWithoutShell(Connection connection, SshConnectOptions options) async {
+    state = state.copyWith(
+      connectionState: SshConnectionState.connecting,
+      error: null,
+    );
+
+    try {
+      _client = SshClient();
+
+      await _client!.connect(
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        options: options,
+      );
+
+      // シェルは起動しない（exec専用）
 
       state = state.copyWith(
         connectionState: SshConnectionState.connected,

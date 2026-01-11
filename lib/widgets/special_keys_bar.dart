@@ -5,14 +5,23 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/design_colors.dart';
 
 /// 特殊キーバー（HTMLデザイン仕様準拠）
+///
+/// tmuxコマンド方式でキーを送信するため、
+/// tmux send-keys形式のキー名を使用する。
 class SpecialKeysBar extends StatefulWidget {
+  /// リテラルキー送信（通常の文字）
   final void Function(String key) onKeyPressed;
+
+  /// 特殊キー送信（tmux形式: Enter, Escape, C-c等）
+  final void Function(String tmuxKey) onSpecialKeyPressed;
+
   final VoidCallback? onInputTap;
   final bool hapticFeedback;
 
   const SpecialKeysBar({
     super.key,
     required this.onKeyPressed,
+    required this.onSpecialKeyPressed,
     this.onInputTap,
     this.hapticFeedback = true,
   });
@@ -55,17 +64,17 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       color: DesignColors.surfaceDark,
       child: Row(
         children: [
-          _buildKeyButton('ESC', '\x1b'),
-          _buildKeyButton('TAB', '\t'),
+          _buildSpecialKeyButton('ESC', 'Escape'),
+          _buildSpecialKeyButton('TAB', 'Tab'),
           _buildModifierButton('CTRL', _ctrlPressed, () {
             setState(() => _ctrlPressed = !_ctrlPressed);
           }),
-          _buildKeyButton('ALT', '\x1b', isModifier: true, isActive: _altPressed, onTap: () {
+          _buildModifierButton('ALT', _altPressed, () {
             setState(() => _altPressed = !_altPressed);
           }),
-          _buildKeyButton('/', '/'),
-          _buildKeyButton('-', '-'),
-          _buildKeyButton('|', '|'),
+          _buildLiteralKeyButton('/', '/'),
+          _buildLiteralKeyButton('-', '-'),
+          _buildLiteralKeyButton('|', '|'),
         ],
       ),
     );
@@ -77,20 +86,20 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         children: [
-          // 左矢印
-          _buildArrowButton(Icons.arrow_left, '\x1b[D'),
+          // 左矢印 (tmux: Left)
+          _buildArrowButton(Icons.arrow_left, 'Left'),
           const SizedBox(width: 2),
           // 上下矢印スタック
           Column(
             children: [
-              _buildSmallArrowButton(Icons.arrow_drop_up, '\x1b[A'),
+              _buildSmallArrowButton(Icons.arrow_drop_up, 'Up'),
               const SizedBox(height: 2),
-              _buildSmallArrowButton(Icons.arrow_drop_down, '\x1b[B'),
+              _buildSmallArrowButton(Icons.arrow_drop_down, 'Down'),
             ],
           ),
           const SizedBox(width: 2),
-          // 右矢印
-          _buildArrowButton(Icons.arrow_right, '\x1b[C'),
+          // 右矢印 (tmux: Right)
+          _buildArrowButton(Icons.arrow_right, 'Right'),
           const SizedBox(width: 8),
           // Input ボタン
           Expanded(child: _buildInputButton()),
@@ -102,15 +111,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  Widget _buildKeyButton(
-    String label,
-    String key, {
-    bool isModifier = false,
-    bool isActive = false,
-    VoidCallback? onTap,
-  }) {
-    final isPrimary = label == 'CTRL' && _ctrlPressed;
-
+  /// 特殊キーボタン（tmux形式で送信）
+  Widget _buildSpecialKeyButton(String label, String tmuxKey) {
     return Expanded(
       child: GestureDetector(
         onTapDown: (_) {
@@ -118,24 +120,15 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             HapticFeedback.lightImpact();
           }
         },
-        onTap: () {
-          if (onTap != null) {
-            onTap();
-          } else if (!isModifier) {
-            _sendKey(key);
-          }
-        },
+        onTap: () => _sendSpecialKey(tmuxKey),
         child: Container(
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isActive ? DesignColors.primary : DesignColors.keyBackground,
+            color: DesignColors.keyBackground,
             borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: isActive ? DesignColors.primary : Colors.black,
-                width: 2,
-              ),
+            border: const Border(
+              bottom: BorderSide(color: Colors.black, width: 2),
             ),
             boxShadow: [
               BoxShadow(
@@ -151,9 +144,49 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: isPrimary || isActive
-                    ? Colors.black
-                    : (label == 'CTRL' ? DesignColors.primary : Colors.white.withValues(alpha: 0.9)),
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// リテラルキーボタン（そのまま文字として送信）
+  Widget _buildLiteralKeyButton(String label, String key) {
+    return Expanded(
+      child: GestureDetector(
+        onTapDown: (_) {
+          if (widget.hapticFeedback) {
+            HapticFeedback.lightImpact();
+          }
+        },
+        onTap: () => _sendLiteralKey(key),
+        child: Container(
+          height: 32,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: DesignColors.keyBackground,
+            borderRadius: BorderRadius.circular(4),
+            border: const Border(
+              bottom: BorderSide(color: Colors.black, width: 2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
           ),
@@ -206,14 +239,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  Widget _buildArrowButton(IconData icon, String key) {
+  Widget _buildArrowButton(IconData icon, String tmuxKey) {
     return GestureDetector(
       onTapDown: (_) {
         if (widget.hapticFeedback) {
           HapticFeedback.lightImpact();
         }
       },
-      onTap: () => _sendKey(key),
+      onTap: () => _sendSpecialKey(tmuxKey),
       child: Container(
         width: 36,
         height: 36,
@@ -231,14 +264,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  Widget _buildSmallArrowButton(IconData icon, String key) {
+  Widget _buildSmallArrowButton(IconData icon, String tmuxKey) {
     return GestureDetector(
       onTapDown: (_) {
         if (widget.hapticFeedback) {
           HapticFeedback.lightImpact();
         }
       },
-      onTap: () => _sendKey(key),
+      onTap: () => _sendSpecialKey(tmuxKey),
       child: Container(
         width: 36,
         height: 17,
@@ -327,32 +360,61 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  void _sendKey(String key) {
+  /// 特殊キーを送信（tmux形式）
+  void _sendSpecialKey(String tmuxKey) {
     if (widget.hapticFeedback) {
       HapticFeedback.lightImpact();
     }
 
-    String modifiedKey = key;
+    String key = tmuxKey;
 
-    // CTRL修飾子を適用
-    if (_ctrlPressed && key.length == 1) {
-      final code = key.codeUnitAt(0);
-      if (code >= 0x61 && code <= 0x7a) {
-        // a-z -> Ctrl+A-Z (0x01-0x1a)
-        modifiedKey = String.fromCharCode(code - 0x60);
-      } else if (code >= 0x41 && code <= 0x5a) {
-        // A-Z -> Ctrl+A-Z (0x01-0x1a)
-        modifiedKey = String.fromCharCode(code - 0x40);
+    // CTRL修飾子を適用（tmux形式: C-キー）
+    if (_ctrlPressed) {
+      // tmux形式では C-a, C-b などで表現
+      if (tmuxKey.length == 1) {
+        key = 'C-$tmuxKey';
       }
       setState(() => _ctrlPressed = false);
     }
 
-    // ALT修飾子を適用
+    // ALT修飾子を適用（tmux形式: M-キー）
     if (_altPressed) {
-      modifiedKey = '\x1b$modifiedKey';
+      // tmux形式では M-a, M-b などで表現
+      if (tmuxKey.length == 1) {
+        key = 'M-$tmuxKey';
+      } else {
+        // 特殊キーの場合はそのまま送信
+        key = 'M-$tmuxKey';
+      }
       setState(() => _altPressed = false);
     }
 
-    widget.onKeyPressed(modifiedKey);
+    widget.onSpecialKeyPressed(key);
+  }
+
+  /// リテラルキーを送信（文字そのまま）
+  void _sendLiteralKey(String key) {
+    if (widget.hapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+
+    // CTRL修飾子を適用
+    if (_ctrlPressed && key.length == 1) {
+      // tmux形式: C-/等
+      widget.onSpecialKeyPressed('C-$key');
+      setState(() => _ctrlPressed = false);
+      return;
+    }
+
+    // ALT修飾子を適用
+    if (_altPressed && key.length == 1) {
+      // tmux形式: M-/等
+      widget.onSpecialKeyPressed('M-$key');
+      setState(() => _altPressed = false);
+      return;
+    }
+
+    // 修飾子なしの場合はリテラル送信
+    widget.onKeyPressed(key);
   }
 }
