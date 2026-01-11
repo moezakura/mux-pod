@@ -103,9 +103,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           const SizedBox(width: 8),
           // Input ボタン
           Expanded(child: _buildInputButton()),
-          const SizedBox(width: 8),
-          // + ボタン
-          _buildAddButton(),
         ],
       ),
     );
@@ -333,28 +330,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAddButton() {
-    return GestureDetector(
-      onTap: () {
-        // TODO: Add new pane/window
-      },
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: DesignColors.keyBackground,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
-        child: const Icon(
-          Icons.add,
-          size: 18,
-          color: Colors.white,
         ),
       ),
     );
