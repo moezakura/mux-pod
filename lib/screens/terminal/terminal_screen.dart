@@ -660,7 +660,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   /// ウィンドウを選択
   Future<void> _selectWindow(String sessionName, int windowIndex) async {
     final sshClient = ref.read(sshProvider.notifier).client;
-    if (sshClient == null) return;
+    if (sshClient == null || !sshClient.isConnected) return;
 
     // セッションが異なる場合はセッションも切り替え
     final currentSession = ref.read(tmuxProvider).activeSessionName;
@@ -668,8 +668,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
     }
 
-    // tmux select-windowを実行
-    await sshClient.exec(TmuxCommands.selectWindow(sessionName, windowIndex));
+    try {
+      // tmux select-windowを実行
+      await sshClient.exec(TmuxCommands.selectWindow(sessionName, windowIndex));
+    } catch (e) {
+      // SSH接続が閉じている場合は無視
+      debugPrint('[Terminal] Failed to select window: $e');
+      return;
+    }
     if (!mounted || _isDisposed) return;
 
     // tmux_providerでアクティブウィンドウを更新
@@ -686,10 +692,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   /// ペインを選択
   Future<void> _selectPane(String paneId) async {
     final sshClient = ref.read(sshProvider.notifier).client;
-    if (sshClient == null) return;
+    if (sshClient == null || !sshClient.isConnected) return;
 
-    // tmux select-paneを実行
-    await sshClient.exec(TmuxCommands.selectPane(paneId));
+    try {
+      // tmux select-paneを実行
+      await sshClient.exec(TmuxCommands.selectPane(paneId));
+    } catch (e) {
+      // SSH接続が閉じている場合は無視
+      debugPrint('[Terminal] Failed to select pane: $e');
+      return;
+    }
     if (!mounted || _isDisposed) return;
 
     // tmux_providerでアクティブペインを更新

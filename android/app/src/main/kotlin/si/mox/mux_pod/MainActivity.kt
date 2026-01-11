@@ -1,4 +1,4 @@
-package dev.muxpod.flutter_muxpod
+package si.mox.mux_pod
 
 import io.flutter.embedding.android.FlutterActivity
 
