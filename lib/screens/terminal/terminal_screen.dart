@@ -93,6 +93,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   // ズームスケール
   double _zoomScale = 1.0;
 
+  // EnterCommand入力内容保持（ボトムシートを閉じても保持）
+  String _savedCommandInput = '';
+
   // Riverpodリスナー
   ProviderSubscription<SshState>? _sshSubscription;
   ProviderSubscription<TmuxState>? _tmuxSubscription;
@@ -1588,8 +1591,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) => _InputDialogContent(
+        initialValue: _savedCommandInput,
+        onValueChanged: (value) {
+          // 入力内容をリアルタイムで保存
+          _savedCommandInput = value;
+        },
         onSend: (value) async {
           await _sendMultilineText(value);
+          // 送信成功したら入力内容をクリア
+          _savedCommandInput = '';
           if (sheetContext.mounted) Navigator.pop(sheetContext);
         },
       ),
@@ -1853,9 +1863,13 @@ class _PaneLayoutVisualizer extends StatelessWidget {
 
 /// 入力ダイアログのコンテンツ（複数行対応、Shift+Enterで改行）
 class _InputDialogContent extends StatefulWidget {
+  final String initialValue;
+  final void Function(String value) onValueChanged;
   final Future<void> Function(String value) onSend;
 
   const _InputDialogContent({
+    this.initialValue = '',
+    required this.onValueChanged,
     required this.onSend,
   });
 
@@ -1866,26 +1880,40 @@ class _InputDialogContent extends StatefulWidget {
 class _InputDialogContentState extends State<_InputDialogContent> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  late final ScrollController _scrollController;
   bool _isSending = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController();
+    _controller = TextEditingController(text: widget.initialValue);
     _focusNode = FocusNode();
+    _scrollController = ScrollController();
     // キーイベントをハンドルするためにonKeyEventを設定
     _focusNode.onKeyEvent = _handleKeyEvent;
-    // 自動フォーカス
+    // テキスト変更時に親へ通知
+    _controller.addListener(_onTextChanged);
+    // 自動フォーカス（カーソルを末尾に）
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
+      // カーソルを末尾に移動
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
     });
+  }
+
+  void _onTextChanged() {
+    widget.onValueChanged(_controller.text);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTextChanged);
     _focusNode.onKeyEvent = null;
     _focusNode.dispose();
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1972,29 +2000,36 @@ class _InputDialogContentState extends State<_InputDialogContent> {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            maxLines: null,
-            minLines: 1,
-            keyboardType: TextInputType.multiline,
-            style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface),
-            decoration: InputDecoration(
-              hintText: 'Type your command... (Enter to send)',
-              hintStyle: GoogleFonts.jetBrainsMono(
-                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: 200, // 最大高さを制限してスクロール可能に
+            ),
+            child: TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              scrollController: _scrollController,
+              maxLines: null, // 無制限にして内部スクロール
+              minLines: 1,
+              keyboardType: TextInputType.multiline,
+              textInputAction: TextInputAction.newline, // ペースト時の複数行対応
+              style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface),
+              decoration: InputDecoration(
+                hintText: 'Type your command... (Enter to send)',
+                hintStyle: GoogleFonts.jetBrainsMono(
+                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                ),
+                filled: true,
+                fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: colorScheme.primary),
+                ),
+                contentPadding: const EdgeInsets.all(16),
               ),
-              filled: true,
-              fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: colorScheme.primary),
-              ),
-              contentPadding: const EdgeInsets.all(16),
             ),
           ),
           const SizedBox(height: 16),
