@@ -64,3 +64,4 @@ temp/
 
 expo-env.d.ts
 # @end expo-cli/worktree/
+/worktree/

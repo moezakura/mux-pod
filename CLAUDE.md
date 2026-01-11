@@ -75,6 +75,8 @@ interface TmuxPane { index: number; id: string; active: boolean; }
 - TypeScript 5.6+ + Expo ~52.0.0, React Native 0.76.0, Zustand 5.0+, react-native-ssh-sftp (002-ssh-reconnect)
 - expo-document-picker, expo-local-authentication (002-ssh-key-management)
 - expo-secure-store (秘密鍵), AsyncStorage (メタデータ) (002-ssh-key-management)
+- Dart 3.x / Flutter 3.24+ + dartssh2 2.13+, xterm 4.0+, flutter_riverpod, flutter_secure_storage, shared_preferences (001-flutter-migration)
+- SharedPreferences (接続設定), flutter_secure_storage (秘密鍵/パスワード暗号化) (001-flutter-migration)
 
 ## Recent Changes
 - 001-phase1-mvp: Added TypeScript 5.6+
