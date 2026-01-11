@@ -10,6 +10,7 @@ import '../../providers/tmux_provider.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart' show SshConnectOptions;
 import '../../services/tmux/tmux_commands.dart';
+import '../../services/tmux/tmux_parser.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/special_keys_bar.dart';
 import '../../providers/terminal_display_provider.dart';
@@ -367,8 +368,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
   /// AnsiTextViewからのキー入力を処理
   void _handleKeyInput(KeyInputEvent event) {
-    // キー入力をtmux send-keysで送信
-    _sendKeyData(event.data);
+    // 特殊キーの場合はtmux形式で送信
+    if (event.isSpecialKey && event.tmuxKeyName != null) {
+      _sendSpecialKey(event.tmuxKeyName!);
+    } else {
+      // 通常の文字はリテラル送信
+      _sendKeyData(event.data);
+    }
   }
 
   /// キーデータをtmux send-keysで送信
@@ -886,80 +892,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     );
   }
 
-  /// 右上のペインインジケーター
-  Widget _buildPaneIndicator(TmuxState tmuxState) {
-    final window = tmuxState.activeWindow;
-    final panes = window?.panes ?? [];
-    final activePaneId = tmuxState.activePaneId;
-
-    if (panes.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    // 簡易的なペインレイアウト表示（最大4ペイン）
-    return GestureDetector(
-      onTap: () => _showPaneSelector(tmuxState),
-      child: Opacity(
-        opacity: 0.4,
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 上段
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int i = 0; i < panes.length.clamp(0, 2); i++)
-                    Container(
-                      width: 18,
-                      height: 14,
-                      margin: EdgeInsets.only(left: i > 0 ? 2 : 0),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: panes[i].id == activePaneId
-                              ? DesignColors.primary
-                              : Colors.white30,
-                        ),
-                        color: panes[i].id == activePaneId
-                            ? DesignColors.primary.withValues(alpha: 0.3)
-                            : Colors.black26,
-                      ),
-                    ),
-                ],
-              ),
-              // 下段（3ペイン以上の場合）
-              if (panes.length > 2) ...[
-                const SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (int i = 2; i < panes.length.clamp(0, 4); i++)
-                      Container(
-                        width: 18,
-                        height: 14,
-                        margin: EdgeInsets.only(left: i > 2 ? 2 : 0),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: panes[i].id == activePaneId
-                                ? DesignColors.primary
-                                : Colors.white30,
-                          ),
-                          color: panes[i].id == activePaneId
-                              ? DesignColors.primary.withValues(alpha: 0.3)
-                              : Colors.black26,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   /// tmux send-keysでキーを送信
   ///
   /// [key] 送信するキー
@@ -1082,5 +1014,224 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         ),
       ),
     );
+  }
+
+  /// 右上のペインインジケーター
+  ///
+  /// ペインの実際のサイズ比率に基づいてレイアウトを表示
+  Widget _buildPaneIndicator(TmuxState tmuxState) {
+    final window = tmuxState.activeWindow;
+    final panes = window?.panes ?? [];
+    final activePaneId = tmuxState.activePaneId;
+
+    if (panes.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // インジケーター全体のサイズ
+    const double indicatorSize = 48.0;
+
+    return GestureDetector(
+      onTap: () => _showPaneSelector(tmuxState),
+      child: Opacity(
+        opacity: 0.5,
+        child: Container(
+          width: indicatorSize,
+          height: indicatorSize,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: Colors.black26,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: CustomPaint(
+            size: Size(indicatorSize - 4, indicatorSize - 4),
+            painter: _PaneLayoutPainter(
+              panes: panes,
+              activePaneId: activePaneId,
+              activeColor: DesignColors.primary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ペインレイアウトを描画するCustomPainter
+class _PaneLayoutPainter extends CustomPainter {
+  final List<TmuxPane> panes;
+  final String? activePaneId;
+  final Color activeColor;
+
+  _PaneLayoutPainter({
+    required this.panes,
+    this.activePaneId,
+    required this.activeColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (panes.isEmpty) return;
+
+    // ペインの総面積を計算
+    int totalWidth = 0;
+    int totalHeight = 0;
+    for (final pane in panes) {
+      totalWidth = totalWidth < pane.width ? pane.width : totalWidth;
+      totalHeight = totalHeight < pane.height ? pane.height : totalHeight;
+    }
+
+    // ペインごとに描画
+    final layout = _calculateLayout(panes, size);
+    for (int i = 0; i < panes.length && i < layout.length; i++) {
+      final pane = panes[i];
+      final rect = layout[i];
+      final isActive = pane.id == activePaneId;
+
+      // 背景
+      final bgPaint = Paint()
+        ..color = isActive
+            ? activeColor.withValues(alpha: 0.3)
+            : Colors.black45;
+      canvas.drawRect(rect, bgPaint);
+
+      // 枠線
+      final borderPaint = Paint()
+        ..color = isActive ? activeColor : Colors.white30
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = isActive ? 1.5 : 1.0;
+      canvas.drawRect(rect, borderPaint);
+    }
+  }
+
+  /// ペインのレイアウトを計算
+  List<Rect> _calculateLayout(List<TmuxPane> panes, Size size) {
+    if (panes.isEmpty) return [];
+    if (panes.length == 1) {
+      return [Rect.fromLTWH(0, 0, size.width, size.height)];
+    }
+
+    // ペイン同士の位置関係を推測してレイアウトを決定
+    // 幅と高さの比較から、水平分割か垂直分割かを判断
+    final firstPane = panes[0];
+    final secondPane = panes[1];
+
+    // ペインサイズから分割タイプを推測
+    final bool isHorizontalSplit = _isHorizontalSplit(panes);
+
+    final List<Rect> rects = [];
+    final double gap = 2.0;
+
+    if (panes.length == 2) {
+      if (isHorizontalSplit) {
+        // 左右分割
+        final totalWidth = firstPane.width + secondPane.width;
+        final w1 = (size.width - gap) * firstPane.width / totalWidth;
+        final w2 = (size.width - gap) * secondPane.width / totalWidth;
+        rects.add(Rect.fromLTWH(0, 0, w1, size.height));
+        rects.add(Rect.fromLTWH(w1 + gap, 0, w2, size.height));
+      } else {
+        // 上下分割
+        final totalHeight = firstPane.height + secondPane.height;
+        final h1 = (size.height - gap) * firstPane.height / totalHeight;
+        final h2 = (size.height - gap) * secondPane.height / totalHeight;
+        rects.add(Rect.fromLTWH(0, 0, size.width, h1));
+        rects.add(Rect.fromLTWH(0, h1 + gap, size.width, h2));
+      }
+    } else {
+      // 3ペイン以上の場合
+      // サイズに基づいてグリッドレイアウトを計算
+      _calculateMultiPaneLayout(panes, size, rects, gap);
+    }
+
+    return rects;
+  }
+
+  /// 水平分割（左右）かどうかを判定
+  bool _isHorizontalSplit(List<TmuxPane> panes) {
+    if (panes.length < 2) return false;
+
+    // 高さが近い（差が20%以内）なら水平分割と判定
+    final heightRatio =
+        (panes[0].height - panes[1].height).abs() / panes[0].height.toDouble();
+    final widthRatio =
+        (panes[0].width - panes[1].width).abs() / panes[0].width.toDouble();
+
+    return heightRatio < widthRatio;
+  }
+
+  /// 複数ペインのレイアウトを計算
+  void _calculateMultiPaneLayout(
+    List<TmuxPane> panes,
+    Size size,
+    List<Rect> rects,
+    double gap,
+  ) {
+    // ペインのサイズ情報に基づいてレイアウトを推測
+    // 簡略化のため、以下のヒューリスティックを使用：
+    // 1. 幅が同じペインは縦に並ぶ
+    // 2. 高さが同じペインは横に並ぶ
+
+    // まずペインを幅でグループ化
+    final widthGroups = <int, List<int>>{};
+    for (int i = 0; i < panes.length; i++) {
+      final w = panes[i].width;
+      // 幅が5%以内の誤差なら同じグループ
+      int groupKey = -1;
+      for (final key in widthGroups.keys) {
+        if ((key - w).abs() / key.toDouble() < 0.1) {
+          groupKey = key;
+          break;
+        }
+      }
+      if (groupKey < 0) {
+        widthGroups[w] = [i];
+      } else {
+        widthGroups[groupKey]!.add(i);
+      }
+    }
+
+    // グループ数に基づいてレイアウト
+    final groups = widthGroups.values.toList();
+    if (groups.length == 1) {
+      // 全て同じ幅 → 縦に並べる
+      final height = (size.height - gap * (panes.length - 1)) / panes.length;
+      for (int i = 0; i < panes.length; i++) {
+        rects.add(Rect.fromLTWH(0, i * (height + gap), size.width, height));
+      }
+    } else if (groups.length >= 2) {
+      // 複数の幅グループ → 横に並べ、各グループ内は縦に並べる
+      final columnWidth =
+          (size.width - gap * (groups.length - 1)) / groups.length;
+      double x = 0;
+      for (final group in groups) {
+        final rowHeight = (size.height - gap * (group.length - 1)) / group.length;
+        double y = 0;
+        for (final _ in group) {
+          rects.add(Rect.fromLTWH(x, y, columnWidth, rowHeight));
+          y += rowHeight + gap;
+        }
+        x += columnWidth + gap;
+      }
+      // rectsをインデックス順にソート
+      final sortedRects = List<Rect?>.filled(panes.length, null);
+      int rectIdx = 0;
+      for (final group in groups) {
+        for (final idx in group) {
+          sortedRects[idx] = rects[rectIdx++];
+        }
+      }
+      rects.clear();
+      for (final r in sortedRects) {
+        if (r != null) rects.add(r);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PaneLayoutPainter oldDelegate) {
+    return panes != oldDelegate.panes ||
+        activePaneId != oldDelegate.activePaneId ||
+        activeColor != oldDelegate.activeColor;
   }
 }

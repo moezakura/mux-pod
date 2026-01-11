@@ -9,12 +9,20 @@ import '../../../services/terminal/terminal_font_styles.dart';
 
 /// キー入力イベント
 class KeyInputEvent {
+  /// キーデータ（エスケープシーケンスまたは文字）
   final String data;
+
+  /// 特殊キーかどうか
   final bool isSpecialKey;
+
+  /// tmux形式のキー名（Enterの場合は'Enter'など）
+  /// isSpecialKeyがtrueの場合に使用
+  final String? tmuxKeyName;
 
   const KeyInputEvent({
     required this.data,
     this.isSpecialKey = false,
+    this.tmuxKeyName,
   });
 }
 
@@ -244,82 +252,108 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
       // 特殊キーの処理
       String? data;
       bool isSpecialKey = false;
+      String? tmuxKeyName;
 
       if (key == LogicalKeyboardKey.escape) {
         data = '\x1b';
         isSpecialKey = true;
+        tmuxKeyName = 'Escape';
       } else if (key == LogicalKeyboardKey.enter) {
         data = '\r';
         isSpecialKey = true;
+        tmuxKeyName = 'Enter';
       } else if (key == LogicalKeyboardKey.backspace) {
         data = '\x7f';
         isSpecialKey = true;
+        tmuxKeyName = 'BSpace';
       } else if (key == LogicalKeyboardKey.delete) {
         data = '\x1b[3~';
         isSpecialKey = true;
+        tmuxKeyName = 'DC';
       } else if (key == LogicalKeyboardKey.tab) {
         data = '\t';
         isSpecialKey = true;
+        tmuxKeyName = 'Tab';
       } else if (key == LogicalKeyboardKey.arrowUp) {
         data = _getArrowSequence('A');
         isSpecialKey = true;
+        tmuxKeyName = _getArrowTmuxKey('Up');
       } else if (key == LogicalKeyboardKey.arrowDown) {
         data = _getArrowSequence('B');
         isSpecialKey = true;
+        tmuxKeyName = _getArrowTmuxKey('Down');
       } else if (key == LogicalKeyboardKey.arrowRight) {
         data = _getArrowSequence('C');
         isSpecialKey = true;
+        tmuxKeyName = _getArrowTmuxKey('Right');
       } else if (key == LogicalKeyboardKey.arrowLeft) {
         data = _getArrowSequence('D');
         isSpecialKey = true;
+        tmuxKeyName = _getArrowTmuxKey('Left');
       } else if (key == LogicalKeyboardKey.home) {
         data = '\x1b[H';
         isSpecialKey = true;
+        tmuxKeyName = 'Home';
       } else if (key == LogicalKeyboardKey.end) {
         data = '\x1b[F';
         isSpecialKey = true;
+        tmuxKeyName = 'End';
       } else if (key == LogicalKeyboardKey.pageUp) {
         data = '\x1b[5~';
         isSpecialKey = true;
+        tmuxKeyName = 'PPage';
       } else if (key == LogicalKeyboardKey.pageDown) {
         data = '\x1b[6~';
         isSpecialKey = true;
+        tmuxKeyName = 'NPage';
       } else if (key == LogicalKeyboardKey.f1) {
         data = '\x1bOP';
         isSpecialKey = true;
+        tmuxKeyName = 'F1';
       } else if (key == LogicalKeyboardKey.f2) {
         data = '\x1bOQ';
         isSpecialKey = true;
+        tmuxKeyName = 'F2';
       } else if (key == LogicalKeyboardKey.f3) {
         data = '\x1bOR';
         isSpecialKey = true;
+        tmuxKeyName = 'F3';
       } else if (key == LogicalKeyboardKey.f4) {
         data = '\x1bOS';
         isSpecialKey = true;
+        tmuxKeyName = 'F4';
       } else if (key == LogicalKeyboardKey.f5) {
         data = '\x1b[15~';
         isSpecialKey = true;
+        tmuxKeyName = 'F5';
       } else if (key == LogicalKeyboardKey.f6) {
         data = '\x1b[17~';
         isSpecialKey = true;
+        tmuxKeyName = 'F6';
       } else if (key == LogicalKeyboardKey.f7) {
         data = '\x1b[18~';
         isSpecialKey = true;
+        tmuxKeyName = 'F7';
       } else if (key == LogicalKeyboardKey.f8) {
         data = '\x1b[19~';
         isSpecialKey = true;
+        tmuxKeyName = 'F8';
       } else if (key == LogicalKeyboardKey.f9) {
         data = '\x1b[20~';
         isSpecialKey = true;
+        tmuxKeyName = 'F9';
       } else if (key == LogicalKeyboardKey.f10) {
         data = '\x1b[21~';
         isSpecialKey = true;
+        tmuxKeyName = 'F10';
       } else if (key == LogicalKeyboardKey.f11) {
         data = '\x1b[23~';
         isSpecialKey = true;
+        tmuxKeyName = 'F11';
       } else if (key == LogicalKeyboardKey.f12) {
         data = '\x1b[24~';
         isSpecialKey = true;
+        tmuxKeyName = 'F12';
       } else if (event.character != null && event.character!.isNotEmpty) {
         // 通常文字
         data = event.character!;
@@ -343,6 +377,7 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
         widget.onKeyInput!(KeyInputEvent(
           data: data,
           isSpecialKey: isSpecialKey,
+          tmuxKeyName: tmuxKeyName,
         ));
         return KeyEventResult.handled;
       }
@@ -375,6 +410,18 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
       return '\x1b[1;3$code';
     }
     return '\x1b[$code';
+  }
+
+  /// 矢印キーのtmux形式キー名を取得
+  String _getArrowTmuxKey(String direction) {
+    if (_shiftPressed) {
+      return 'S-$direction';
+    } else if (_ctrlPressed) {
+      return 'C-$direction';
+    } else if (_altPressed) {
+      return 'M-$direction';
+    }
+    return direction;
   }
 
   // === 修飾キートグル（外部からの制御用） ===

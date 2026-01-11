@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../services/terminal/terminal_font_styles.dart';
+
 /// フォントファミリー選択ダイアログ
 class FontFamilyDialog extends StatefulWidget {
   final String currentFamily;
@@ -16,13 +18,6 @@ class FontFamilyDialog extends StatefulWidget {
 class _FontFamilyDialogState extends State<FontFamilyDialog> {
   late String _selectedFamily;
 
-  static const List<String> _fontFamilies = [
-    'JetBrains Mono',
-    'Fira Code',
-    'Source Code Pro',
-    'Roboto Mono',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -36,11 +31,28 @@ class _FontFamilyDialogState extends State<FontFamilyDialog> {
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: _fontFamilies.map((family) {
+          children: TerminalFontStyles.supportedFontFamilies.map((family) {
+            final isSelected = family == _selectedFamily;
             return RadioListTile<String>(
-              title: Text(family),
+              title: Text(
+                family,
+                style: TerminalFontStyles.getTextStyle(
+                  family,
+                  fontSize: 14,
+                  color: Theme.of(context).textTheme.bodyLarge?.color,
+                ),
+              ),
+              subtitle: Text(
+                'AaBbCc 012',
+                style: TerminalFontStyles.getTextStyle(
+                  family,
+                  fontSize: 12,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
               value: family,
               groupValue: _selectedFamily,
+              selected: isSelected,
               onChanged: (value) {
                 if (value != null) {
                   Navigator.pop(context, value);
