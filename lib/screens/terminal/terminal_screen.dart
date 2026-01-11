@@ -37,6 +37,7 @@ class TerminalScreen extends ConsumerStatefulWidget {
 class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final _secureStorage = SecureStorageService();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _ansiTextViewKey = GlobalKey<AnsiTextViewState>();
 
   // 接続状態（ローカルで管理）
   bool _isConnecting = false;
@@ -56,6 +57,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   // 現在のペインサイズ
   int _paneWidth = 80;
   int _paneHeight = 24;
+
+  // ターミナルモード
+  TerminalMode _terminalMode = TerminalMode.normal;
+
+  // ズームスケール
+  double _zoomScale = 1.0;
 
   // Riverpodリスナー
   ProviderSubscription<SshState>? _sshSubscription;
@@ -392,12 +399,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 child: Stack(
                   children: [
                     AnsiTextView(
+                      key: _ansiTextViewKey,
                       text: _terminalContent,
                       paneWidth: _paneWidth,
                       paneHeight: _paneHeight,
                       backgroundColor: DesignColors.backgroundDark,
                       foregroundColor: Colors.white.withValues(alpha: 0.9),
                       onKeyInput: _handleKeyInput,
+                      mode: _terminalMode,
+                      zoomEnabled: true,
+                      onZoomChanged: (scale) {
+                        setState(() {
+                          _zoomScale = scale;
+                        });
+                      },
                     ),
                     // Pane indicator (右上)
                     Positioned(
@@ -606,11 +621,54 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 ),
               ),
             ),
+            // Copy/Paste mode indicator
+            if (_terminalMode == TerminalMode.copyPaste)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: DesignColors.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: DesignColors.primary.withValues(alpha: 0.5)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.content_copy, size: 12, color: DesignColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Copy',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 10,
+                        color: DesignColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Zoom indicator
+            if (_zoomScale != 1.0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: DesignColors.warning.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${(_zoomScale * 100).toStringAsFixed(0)}%',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10,
+                    color: DesignColors.warning,
+                  ),
+                ),
+              ),
             // Latency / Reconnect indicator
             _buildConnectionIndicator(),
             // Settings button
             IconButton(
-              onPressed: () {},
+              onPressed: _showTerminalMenu,
               icon: Icon(
                 Icons.settings,
                 size: 16,
@@ -940,6 +998,124 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
           color: Colors.white.withValues(alpha: 0.2),
         ),
       ),
+    );
+  }
+
+  /// ターミナルメニューを表示
+  void _showTerminalMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: DesignColors.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.tune, color: DesignColors.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Terminal Options',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: Color(0xFF2A2B36)),
+              // コピペモード切り替え
+              ListTile(
+                leading: Icon(
+                  _terminalMode == TerminalMode.copyPaste
+                      ? Icons.content_copy
+                      : Icons.keyboard,
+                  color: _terminalMode == TerminalMode.copyPaste
+                      ? DesignColors.primary
+                      : Colors.white60,
+                ),
+                title: Text(
+                  _terminalMode == TerminalMode.copyPaste
+                      ? 'Copy/Paste Mode (Active)'
+                      : 'Normal Mode',
+                  style: TextStyle(
+                    color: _terminalMode == TerminalMode.copyPaste
+                        ? DesignColors.primary
+                        : Colors.white,
+                    fontWeight: _terminalMode == TerminalMode.copyPaste
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                subtitle: Text(
+                  _terminalMode == TerminalMode.copyPaste
+                      ? 'Tap to return to normal mode'
+                      : 'Tap to enable text selection',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                trailing: Switch(
+                  value: _terminalMode == TerminalMode.copyPaste,
+                  onChanged: (value) {
+                    setState(() {
+                      _terminalMode = value
+                          ? TerminalMode.copyPaste
+                          : TerminalMode.normal;
+                    });
+                    Navigator.pop(context);
+                  },
+                  activeColor: DesignColors.primary,
+                ),
+                onTap: () {
+                  setState(() {
+                    _terminalMode = _terminalMode == TerminalMode.copyPaste
+                        ? TerminalMode.normal
+                        : TerminalMode.copyPaste;
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+              // ズームリセット
+              ListTile(
+                leading: Icon(
+                  Icons.zoom_out_map,
+                  color: _zoomScale != 1.0 ? DesignColors.warning : Colors.white60,
+                ),
+                title: Text(
+                  'Reset Zoom',
+                  style: TextStyle(
+                    color: _zoomScale != 1.0 ? Colors.white : Colors.white38,
+                  ),
+                ),
+                subtitle: Text(
+                  _zoomScale != 1.0
+                      ? 'Current: ${(_zoomScale * 100).toStringAsFixed(0)}%'
+                      : 'Pinch to zoom in/out',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                enabled: _zoomScale != 1.0,
+                onTap: _zoomScale != 1.0
+                    ? () {
+                        _ansiTextViewKey.currentState?.resetZoom();
+                        setState(() {
+                          _zoomScale = 1.0;
+                        });
+                        Navigator.pop(context);
+                      }
+                    : null,
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 

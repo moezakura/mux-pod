@@ -26,6 +26,15 @@ class KeyInputEvent {
   });
 }
 
+/// ターミナルの操作モード
+enum TerminalMode {
+  /// 通常モード（キー入力が有効）
+  normal,
+
+  /// コピペモード（テキスト選択が有効、キー入力は無効）
+  copyPaste,
+}
+
 /// ANSIテキスト表示ウィジェット
 ///
 /// capture-pane -e の出力をANSIカラー付きで表示する。
@@ -49,6 +58,15 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// 前景色
   final Color foregroundColor;
 
+  /// 操作モード
+  final TerminalMode mode;
+
+  /// ピンチズームが有効かどうか
+  final bool zoomEnabled;
+
+  /// ズームスケール変更時のコールバック
+  final void Function(double scale)? onZoomChanged;
+
   const AnsiTextView({
     super.key,
     required this.text,
@@ -57,16 +75,21 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.onKeyInput,
     this.backgroundColor = const Color(0xFF1E1E1E),
     this.foregroundColor = const Color(0xFFD4D4D4),
+    this.mode = TerminalMode.normal,
+    this.zoomEnabled = true,
+    this.onZoomChanged,
   });
 
   @override
-  ConsumerState<AnsiTextView> createState() => _AnsiTextViewState();
+  ConsumerState<AnsiTextView> createState() => AnsiTextViewState();
 }
 
-class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
+class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   final ScrollController _verticalScrollController = ScrollController();
+  final TransformationController _transformationController =
+      TransformationController();
 
   late AnsiParser _parser;
 
@@ -74,6 +97,9 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
   bool _ctrlPressed = false;
   bool _altPressed = false;
   bool _shiftPressed = false;
+
+  /// 現在のズームスケール
+  double _currentScale = 1.0;
 
   /// TextSpanキャッシュ
   TextSpan? _cachedTextSpan;
@@ -143,12 +169,26 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _focusNode.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();
+    _transformationController.dispose();
     super.dispose();
   }
+
+  /// ズームをリセット
+  void resetZoom() {
+    _transformationController.value = Matrix4.identity();
+    setState(() {
+      _currentScale = 1.0;
+    });
+    widget.onZoomChanged?.call(1.0);
+  }
+
+  /// 現在のズームスケールを取得
+  double get currentScale => _currentScale;
 
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    final isCopyPasteMode = widget.mode == TerminalMode.copyPaste;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -223,7 +263,37 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
           child: textWidget,
         );
 
-        // キーボード入力をハンドリング（Focus使用、KeyboardListenerは非推奨）
+        // ピンチズームが有効な場合、InteractiveViewerでラップ
+        if (widget.zoomEnabled) {
+          textWidget = InteractiveViewer(
+            transformationController: _transformationController,
+            minScale: 0.5,
+            maxScale: 5.0,
+            panEnabled: true,
+            scaleEnabled: true,
+            onInteractionEnd: (details) {
+              // ズームスケールを取得して通知
+              final scale = _transformationController.value.getMaxScaleOnAxis();
+              if (scale != _currentScale) {
+                setState(() {
+                  _currentScale = scale;
+                });
+                widget.onZoomChanged?.call(scale);
+              }
+            },
+            child: textWidget,
+          );
+        }
+
+        // コピペモードの場合はキー入力を無効化
+        if (isCopyPasteMode) {
+          return Container(
+            color: widget.backgroundColor,
+            child: textWidget,
+          );
+        }
+
+        // 通常モード：キーボード入力をハンドリング
         return Focus(
           focusNode: _focusNode,
           autofocus: true,
