@@ -100,3 +100,9 @@ class TmuxPane {
 - SSH鍵: flutter_secure_storage（暗号化）
 - パスワード: flutter_secure_storage（暗号化）
 - 生体認証対応（local_auth）
+
+## Active Technologies
+- Dart 3.x / Flutter 3.24+ (003-ssh-key-management)
+
+## Recent Changes
+- 003-ssh-key-management: Added Dart 3.x / Flutter 3.24+
