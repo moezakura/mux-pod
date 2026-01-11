@@ -323,6 +323,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         );
 
         // ピンチズームが有効な場合、InteractiveViewerでラップ
+        // panEnabled: false で横方向のパンを無効化し、縦スクロールのみに制限
         if (widget.zoomEnabled) {
           textWidget = InteractiveViewer(
             transformationController: _transformationController,
@@ -330,7 +331,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             maxScale: 5.0,
             constrained: false,
             boundaryMargin: const EdgeInsets.all(double.infinity),
-            panEnabled: true,
+            panEnabled: false,
             scaleEnabled: true,
             onInteractionUpdate: (details) {
               // ズーム中もスケール表示を更新
