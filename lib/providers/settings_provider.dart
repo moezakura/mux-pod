@@ -9,6 +9,7 @@ class AppSettings {
   final bool requireBiometricAuth;
   final bool enableNotifications;
   final bool enableVibration;
+  final bool keepScreenOn;
   final int scrollbackLines;
 
   const AppSettings({
@@ -18,6 +19,7 @@ class AppSettings {
     this.requireBiometricAuth = false,
     this.enableNotifications = true,
     this.enableVibration = true,
+    this.keepScreenOn = true,
     this.scrollbackLines = 10000,
   });
 
@@ -28,6 +30,7 @@ class AppSettings {
     bool? requireBiometricAuth,
     bool? enableNotifications,
     bool? enableVibration,
+    bool? keepScreenOn,
     int? scrollbackLines,
   }) {
     return AppSettings(
@@ -37,6 +40,7 @@ class AppSettings {
       requireBiometricAuth: requireBiometricAuth ?? this.requireBiometricAuth,
       enableNotifications: enableNotifications ?? this.enableNotifications,
       enableVibration: enableVibration ?? this.enableVibration,
+      keepScreenOn: keepScreenOn ?? this.keepScreenOn,
       scrollbackLines: scrollbackLines ?? this.scrollbackLines,
     );
   }
@@ -50,6 +54,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _biometricKey = 'settings_biometric_auth';
   static const String _notificationsKey = 'settings_notifications';
   static const String _vibrationKey = 'settings_vibration';
+  static const String _keepScreenOnKey = 'settings_keep_screen_on';
   static const String _scrollbackKey = 'settings_scrollback';
 
   @override
@@ -68,6 +73,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       requireBiometricAuth: prefs.getBool(_biometricKey) ?? false,
       enableNotifications: prefs.getBool(_notificationsKey) ?? true,
       enableVibration: prefs.getBool(_vibrationKey) ?? true,
+      keepScreenOn: prefs.getBool(_keepScreenOnKey) ?? true,
       scrollbackLines: prefs.getInt(_scrollbackKey) ?? 10000,
     );
   }
@@ -119,6 +125,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setEnableVibration(bool value) async {
     state = state.copyWith(enableVibration: value);
     await _saveSetting(_vibrationKey, value);
+  }
+
+  /// 画面常時オンを設定
+  Future<void> setKeepScreenOn(bool value) async {
+    state = state.copyWith(keepScreenOn: value);
+    await _saveSetting(_keepScreenOnKey, value);
   }
 
   /// スクロールバック行数を設定

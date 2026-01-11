@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../providers/settings_provider.dart';
+import '../../widgets/dialogs/font_size_dialog.dart';
+import '../../widgets/dialogs/font_family_dialog.dart';
+import '../../widgets/dialogs/theme_dialog.dart';
 import '../notifications/notification_rules_screen.dart';
 
 /// 設定画面
@@ -9,6 +14,8 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -19,17 +26,33 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.text_fields),
             title: const Text('Font Size'),
-            subtitle: const Text('14'),
-            onTap: () {
-              // TODO: フォントサイズ変更ダイアログ
+            subtitle: Text('${settings.fontSize.toInt()}'),
+            onTap: () async {
+              final size = await showDialog<double>(
+                context: context,
+                builder: (context) => FontSizeDialog(
+                  currentSize: settings.fontSize,
+                ),
+              );
+              if (size != null) {
+                ref.read(settingsProvider.notifier).setFontSize(size);
+              }
             },
           ),
           ListTile(
             leading: const Icon(Icons.font_download),
             title: const Text('Font Family'),
-            subtitle: const Text('JetBrains Mono'),
-            onTap: () {
-              // TODO: フォント選択ダイアログ
+            subtitle: Text(settings.fontFamily),
+            onTap: () async {
+              final family = await showDialog<String>(
+                context: context,
+                builder: (context) => FontFamilyDialog(
+                  currentFamily: settings.fontFamily,
+                ),
+              );
+              if (family != null) {
+                ref.read(settingsProvider.notifier).setFontFamily(family);
+              }
             },
           ),
           const Divider(),
@@ -38,18 +61,18 @@ class SettingsScreen extends ConsumerWidget {
             secondary: const Icon(Icons.vibration),
             title: const Text('Haptic Feedback'),
             subtitle: const Text('Vibrate on key press'),
-            value: true,
+            value: settings.enableVibration,
             onChanged: (value) {
-              // TODO: 設定を保存
+              ref.read(settingsProvider.notifier).setEnableVibration(value);
             },
           ),
           SwitchListTile(
             secondary: const Icon(Icons.brightness_high),
             title: const Text('Keep Screen On'),
             subtitle: const Text('Prevent screen from sleeping'),
-            value: true,
+            value: settings.keepScreenOn,
             onChanged: (value) {
-              // TODO: 設定を保存
+              ref.read(settingsProvider.notifier).setKeepScreenOn(value);
             },
           ),
           const Divider(),
@@ -72,9 +95,17 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.dark_mode),
             title: const Text('Theme'),
-            subtitle: const Text('Dark'),
-            onTap: () {
-              // TODO: テーマ選択ダイアログ
+            subtitle: Text(settings.darkMode ? 'Dark' : 'Light'),
+            onTap: () async {
+              final isDark = await showDialog<bool>(
+                context: context,
+                builder: (context) => ThemeDialog(
+                  isDarkMode: settings.darkMode,
+                ),
+              );
+              if (isDark != null) {
+                ref.read(settingsProvider.notifier).setDarkMode(isDark);
+              }
             },
           ),
           const Divider(),
@@ -88,8 +119,11 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.code),
             title: const Text('Source Code'),
             subtitle: const Text('github.com/muxpod'),
-            onTap: () {
-              // TODO: ブラウザでGitHubを開く
+            onTap: () async {
+              final url = Uri.parse('https://github.com/muxpod');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
             },
           ),
         ],

@@ -48,6 +48,8 @@ dependencies:
   cryptography: ^2.7.0
   pointycastle: ^3.9.1
   crypto: ^3.0.3
+  # Settings/notifications
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
