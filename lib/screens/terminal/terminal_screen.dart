@@ -652,6 +652,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // ターミナル内容をクリアして再取得
     setState(() {
       _terminalContent = '';
+      // セッション切り替え時は初回スクロールフラグをリセット
+      _hasInitialScrolled = false;
     });
   }
 
@@ -676,6 +678,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // ターミナル内容をクリアして再取得
     setState(() {
       _terminalContent = '';
+      // ウィンドウ切り替え時は初回スクロールフラグをリセット
+      _hasInitialScrolled = false;
     });
   }
 
@@ -700,6 +704,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         _paneWidth = activePane.width;
         _paneHeight = activePane.height;
         _terminalContent = '';
+        // ペイン切り替え時は初回スクロールフラグをリセット
+        // 次のコンテンツ受信時に最下部へスクロールされる
+        _hasInitialScrolled = false;
       });
 
       // セッション情報を保存（復元用）
@@ -713,9 +720,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
               paneId: paneId,
             );
       }
-
-      // ペイン選択後は一番下へスクロール
-      _scrollToBottom();
     }
   }
 
