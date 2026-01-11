@@ -153,7 +153,11 @@ class TmuxCommands {
         '#{pane_id}$delimiter'
         '#{pane_active}$delimiter'
         '#{pane_width}$delimiter'
-        '#{pane_height}'
+        '#{pane_height}$delimiter'
+        '#{pane_left}$delimiter'
+        '#{pane_top}$delimiter'
+        '#{pane_title}$delimiter'
+        '#{pane_current_command}'
         '"';
   }
 

@@ -244,7 +244,8 @@ class TmuxParser {
       if (parts.length < 10) continue;
 
       // フォーマット: session_name, session_id, window_index, window_id, window_name, window_active,
-      //              pane_index, pane_id, pane_active, pane_width, pane_height
+      //              pane_index, pane_id, pane_active, pane_width, pane_height, pane_left, pane_top,
+      //              pane_title, pane_current_command
       final sessionName = parts[0];
       final sessionId = parts[1];
       final windowIndex = int.tryParse(parts[2]) ?? 0;
@@ -256,6 +257,10 @@ class TmuxParser {
       final paneActive = parts[8] == '1';
       final paneWidth = int.tryParse(parts[9]) ?? 80;
       final paneHeight = parts.length > 10 ? int.tryParse(parts[10]) ?? 24 : 24;
+      final paneLeft = parts.length > 11 ? int.tryParse(parts[11]) ?? 0 : 0;
+      final paneTop = parts.length > 12 ? int.tryParse(parts[12]) ?? 0 : 0;
+      final paneTitle = parts.length > 13 && parts[13].isNotEmpty ? parts[13] : null;
+      final paneCurrentCommand = parts.length > 14 && parts[14].isNotEmpty ? parts[14] : null;
 
       // セッションを取得または作成
       sessionsMap.putIfAbsent(
@@ -285,6 +290,10 @@ class TmuxParser {
         active: paneActive,
         width: paneWidth,
         height: paneHeight,
+        left: paneLeft,
+        top: paneTop,
+        title: paneTitle,
+        currentCommand: paneCurrentCommand,
       ));
     }
 
@@ -517,6 +526,8 @@ class TmuxPane {
   final String? title;
   final int width;
   final int height;
+  final int left;
+  final int top;
   final int cursorX;
   final int cursorY;
 
@@ -528,6 +539,8 @@ class TmuxPane {
     this.title,
     this.width = 80,
     this.height = 24,
+    this.left = 0,
+    this.top = 0,
     this.cursorX = 0,
     this.cursorY = 0,
   });
@@ -540,6 +553,8 @@ class TmuxPane {
     String? title,
     int? width,
     int? height,
+    int? left,
+    int? top,
     int? cursorX,
     int? cursorY,
   }) {
@@ -551,6 +566,8 @@ class TmuxPane {
       title: title ?? this.title,
       width: width ?? this.width,
       height: height ?? this.height,
+      left: left ?? this.left,
+      top: top ?? this.top,
       cursorX: cursorX ?? this.cursorX,
       cursorY: cursorY ?? this.cursorY,
     );
