@@ -1294,7 +1294,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                     }
                     Navigator.pop(context);
                   },
-                  activeColor: DesignColors.primary,
+                  activeThumbColor: DesignColors.primary,
                 ),
                 onTap: () {
                   final newMode = _terminalMode == TerminalMode.copyPaste
