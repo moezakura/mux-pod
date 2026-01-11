@@ -173,7 +173,7 @@ class _TerminalTab extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          _buildAppBar(context),
+          _buildAppBar(context, ref),
           if (sessions.isEmpty)
             const SliverFillRemaining(
               child: _EmptySessionsView(),
@@ -190,6 +190,7 @@ class _TerminalTab extends ConsumerWidget {
                       child: _SessionCard(
                         session: session,
                         onTap: () => _openSession(context, ref, session),
+                        onClose: () => _closeSession(ref, session),
                       ),
                     );
                   },
@@ -202,7 +203,7 @@ class _TerminalTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, WidgetRef ref) {
     return SliverAppBar(
       floating: true,
       pinned: true,
@@ -237,6 +238,14 @@ class _TerminalTab extends ConsumerWidget {
           ],
         ),
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.settings, color: DesignColors.textSecondary),
+          onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
+          tooltip: 'Settings',
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 
@@ -250,9 +259,18 @@ class _TerminalTab extends ConsumerWidget {
         builder: (context) => TerminalScreen(
           connectionId: session.connectionId,
           sessionName: session.sessionName,
+          lastWindowIndex: session.lastWindowIndex,
+          lastPaneId: session.lastPaneId,
         ),
       ),
     );
+  }
+
+  void _closeSession(WidgetRef ref, ActiveSession session) {
+    ref.read(activeSessionsProvider.notifier).closeSession(
+          session.connectionId,
+          session.sessionName,
+        );
   }
 }
 
@@ -307,118 +325,194 @@ class _EmptySessionsView extends StatelessWidget {
 class _SessionCard extends StatelessWidget {
   final ActiveSession session;
   final VoidCallback onTap;
+  final VoidCallback onClose;
 
   const _SessionCard({
     required this.session,
     required this.onTap,
+    required this.onClose,
   });
 
   @override
   Widget build(BuildContext context) {
     final isAttached = session.isAttached;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
+    return Dismissible(
+      key: Key(session.key),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: DesignColors.surfaceDark,
+          color: DesignColors.error.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: DesignColors.borderDark),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
-        child: Row(
-          children: [
-            // Terminal Icon
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isAttached
-                    ? const Color(0xFF153E42)
-                    : DesignColors.borderDark,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isAttached
-                      ? const Color(0xFF1F5F66)
-                      : Colors.transparent,
-                ),
-              ),
-              child: Icon(
-                Icons.terminal,
-                size: 20,
-                color: isAttached
-                    ? DesignColors.primary
-                    : DesignColors.textSecondary,
+        child: const Icon(
+          Icons.close,
+          color: DesignColors.error,
+        ),
+      ),
+      confirmDismiss: (direction) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: DesignColors.surfaceDark,
+            title: Text(
+              'Close Session?',
+              style: GoogleFonts.spaceGrotesk(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(width: 16),
-            // Session Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    session.sessionName,
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${session.connectionName} • ${session.host}',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 12,
-                      color: DesignColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${session.windowCount} windows',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 11,
-                      color: DesignColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+            content: Text(
+              'Remove "${session.sessionName}" from active sessions?',
+              style: GoogleFonts.spaceGrotesk(color: DesignColors.textSecondary),
             ),
-            // Status Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: isAttached
-                    ? const Color(0xFF14532D).withValues(alpha: 0.5)
-                    : DesignColors.borderDark,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ) ?? false;
+      },
+      onDismissed: (_) => onClose(),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: DesignColors.surfaceDark,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DesignColors.borderDark),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // Terminal Icon
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
                   color: isAttached
-                      ? const Color(0xFF166534).withValues(alpha: 0.7)
+                      ? const Color(0xFF153E42)
                       : DesignColors.borderDark,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isAttached
+                        ? const Color(0xFF1F5F66)
+                        : Colors.transparent,
+                  ),
                 ),
-              ),
-              child: Text(
-                isAttached ? 'Attached' : 'Detached',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
+                child: Icon(
+                  Icons.terminal,
+                  size: 20,
                   color: isAttached
-                      ? const Color(0xFF4ADE80)
-                      : DesignColors.textMuted,
+                      ? DesignColors.primary
+                      : DesignColors.textSecondary,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              // Session Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      session.sessionName,
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${session.connectionName} • ${session.host}',
+                      style: GoogleFonts.jetBrainsMono(
+                        fontSize: 12,
+                        color: DesignColors.textMuted,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          '${session.windowCount} windows',
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 11,
+                            color: DesignColors.textMuted,
+                          ),
+                        ),
+                        // 最後に開いていたペイン情報を表示
+                        if (session.lastPaneId != null) ...[
+                          Text(
+                            ' • ',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: DesignColors.textMuted,
+                            ),
+                          ),
+                          Icon(
+                            Icons.history,
+                            size: 12,
+                            color: DesignColors.primary.withValues(alpha: 0.7),
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            'Last: W${session.lastWindowIndex ?? 0}',
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 10,
+                              color: DesignColors.primary.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isAttached
+                      ? const Color(0xFF14532D).withValues(alpha: 0.5)
+                      : DesignColors.borderDark,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isAttached
+                        ? const Color(0xFF166534).withValues(alpha: 0.7)
+                        : DesignColors.borderDark,
+                  ),
+                ),
+                child: Text(
+                  isAttached ? 'Attached' : 'Detached',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: isAttached
+                        ? const Color(0xFF4ADE80)
+                        : DesignColors.textMuted,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

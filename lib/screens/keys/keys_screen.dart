@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/key_provider.dart';
+import '../home_screen.dart';
 import 'key_generate_screen.dart';
 import 'key_import_screen.dart';
 import 'widgets/key_tile.dart';
@@ -18,6 +19,16 @@ class KeysScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SSH Keys'),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.settings,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       body: _buildBody(context, ref, keysState),
       floatingActionButton: FloatingActionButton(

@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
+import '../home_screen.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/tmux_commands.dart';
@@ -119,9 +120,19 @@ class ConnectionsScreen extends ConsumerWidget {
           onPressed: () => _showSortDialog(context, ref),
           tooltip: 'Sort',
         ),
+        IconButton(
+          icon: const Icon(Icons.settings, color: DesignColors.textSecondary),
+          onPressed: () => _openSettings(context, ref),
+          tooltip: 'Settings',
+        ),
         const SizedBox(width: 8),
       ],
     );
+  }
+
+  void _openSettings(BuildContext context, WidgetRef ref) {
+    // 設定タブ（インデックス3）に切り替え
+    ref.read(currentTabProvider.notifier).setTab(3);
   }
 
   void _showSortDialog(BuildContext context, WidgetRef ref) {

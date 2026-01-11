@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
@@ -17,6 +18,7 @@ import '../../services/tmux/tmux_parser.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/special_keys_bar.dart';
 import '../../providers/terminal_display_provider.dart';
+import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
 
 /// ターミナル画面（HTMLデザイン仕様準拠）
@@ -24,10 +26,18 @@ class TerminalScreen extends ConsumerStatefulWidget {
   final String connectionId;
   final String? sessionName;
 
+  /// 復元用: 最後に開いていたウィンドウインデックス
+  final int? lastWindowIndex;
+
+  /// 復元用: 最後に開いていたペインID
+  final String? lastPaneId;
+
   const TerminalScreen({
     super.key,
     required this.connectionId,
     this.sessionName,
+    this.lastWindowIndex,
+    this.lastPaneId,
   });
 
   @override
@@ -38,6 +48,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final _secureStorage = SecureStorageService();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _ansiTextViewKey = GlobalKey<AnsiTextViewState>();
+  final _terminalScrollController = ScrollController();
 
   // 接続状態（ローカルで管理）
   bool _isConnecting = false;
@@ -187,6 +198,29 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
       // 6. アクティブセッション/ウィンドウ/ペインを設定
       ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
+
+      // 6.1 保存されたウィンドウ/ペイン位置を復元
+      if (widget.lastWindowIndex != null) {
+        final tmuxState = ref.read(tmuxProvider);
+        final session = tmuxState.activeSession;
+        if (session != null) {
+          // 指定されたウィンドウが存在するか確認
+          final window = session.windows.firstWhere(
+            (w) => w.index == widget.lastWindowIndex,
+            orElse: () => session.windows.first,
+          );
+          ref.read(tmuxProvider.notifier).setActiveWindow(window.index);
+
+          // ペインIDが指定されていて存在する場合は復元
+          if (widget.lastPaneId != null) {
+            final pane = window.panes.firstWhere(
+              (p) => p.id == widget.lastPaneId,
+              orElse: () => window.panes.first,
+            );
+            ref.read(tmuxProvider.notifier).setActivePane(pane.id);
+          }
+        }
+      }
 
       // 7. TerminalDisplayProviderにペイン情報を通知（フォントサイズ計算用）
       final activePane = ref.read(tmuxProvider).activePane;
@@ -378,6 +412,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     _pollTimer = null;
     _treeRefreshTimer?.cancel();
     _treeRefreshTimer = null;
+    // スクロールコントローラーを破棄
+    _terminalScrollController.dispose();
     super.dispose();
   }
 
@@ -406,6 +442,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                       backgroundColor: DesignColors.backgroundDark,
                       foregroundColor: Colors.white.withValues(alpha: 0.9),
                       onKeyInput: _handleKeyInput,
+<<<<<<< HEAD
                       mode: _terminalMode,
                       zoomEnabled: true,
                       onZoomChanged: (scale) {
@@ -413,6 +450,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                           _zoomScale = scale;
                         });
                       },
+=======
+                      verticalScrollController: _terminalScrollController,
+>>>>>>> feat-navigation
                     ),
                     // Pane indicator (右上)
                     Positioned(
@@ -529,6 +569,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 
     // TerminalDisplayProviderにペイン情報を通知（フォントサイズ計算用）
     final activePane = ref.read(tmuxProvider).activePane;
+    final tmuxState = ref.read(tmuxProvider);
     if (activePane != null) {
       ref.read(terminalDisplayProvider.notifier).updatePane(activePane);
       setState(() {
@@ -536,7 +577,35 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         _paneHeight = activePane.height;
         _terminalContent = '';
       });
+
+      // セッション情報を保存（復元用）
+      final sessionName = tmuxState.activeSessionName;
+      final windowIndex = tmuxState.activeWindowIndex;
+      if (sessionName != null && windowIndex != null) {
+        ref.read(activeSessionsProvider.notifier).updateLastPane(
+              connectionId: widget.connectionId,
+              sessionName: sessionName,
+              windowIndex: windowIndex,
+              paneId: paneId,
+            );
+      }
+
+      // ペイン選択後は一番下へスクロール
+      _scrollToBottom();
     }
+  }
+
+  /// 一番下までスクロール
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_terminalScrollController.hasClients) {
+        _terminalScrollController.animateTo(
+          _terminalScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   /// エラーオーバーレイ
@@ -668,7 +737,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             _buildConnectionIndicator(),
             // Settings button
             IconButton(
+<<<<<<< HEAD
               onPressed: _showTerminalMenu,
+=======
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                );
+              },
+>>>>>>> feat-navigation
               icon: Icon(
                 Icons.settings,
                 size: 16,
@@ -856,7 +933,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (context) {
-        final maxHeight = MediaQuery.of(context).size.height * 0.6;
+        final maxHeight = MediaQuery.of(context).size.height * 0.7;
         return SafeArea(
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxHeight),
@@ -881,6 +958,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                   ),
                 ),
                 const Divider(height: 1, color: Color(0xFF2A2B36)),
+                // ペインレイアウトのビジュアル表示
+                if (window.panes.length > 1)
+                  _PaneLayoutVisualizer(
+                    panes: window.panes,
+                    activePaneId: tmuxState.activePaneId,
+                    onPaneSelected: (paneId) {
+                      Navigator.pop(context);
+                      _selectPane(paneId);
+                    },
+                  ),
+                const Divider(height: 1, color: Color(0xFF2A2B36)),
+                // ペイン一覧
                 Flexible(
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -895,9 +984,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                               ? pane.currentCommand!
                               : 'Pane ${pane.index}');
                       return ListTile(
-                        leading: Icon(
-                          Icons.terminal,
-                          color: isActive ? DesignColors.primary : Colors.white60,
+                        leading: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? DesignColors.primary.withValues(alpha: 0.2)
+                                : Colors.white.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isActive
+                                  ? DesignColors.primary.withValues(alpha: 0.5)
+                                  : Colors.white.withValues(alpha: 0.1),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${pane.index}',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: isActive ? DesignColors.primary : Colors.white60,
+                              ),
+                            ),
+                          ),
                         ),
                         title: Text(
                           paneTitle,
@@ -1386,6 +1496,123 @@ class _PaneLayoutPainter extends CustomPainter {
     return panes != oldDelegate.panes ||
         activePaneId != oldDelegate.activePaneId ||
         activeColor != oldDelegate.activeColor;
+  }
+}
+
+/// ペインレイアウトをインタラクティブに表示するウィジェット
+///
+/// 各ペインをタップで選択可能。ペイン番号も表示。
+class _PaneLayoutVisualizer extends StatelessWidget {
+  final List<TmuxPane> panes;
+  final String? activePaneId;
+  final void Function(String paneId) onPaneSelected;
+
+  const _PaneLayoutVisualizer({
+    required this.panes,
+    this.activePaneId,
+    required this.onPaneSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (panes.isEmpty) return const SizedBox.shrink();
+
+    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）
+    int maxRight = 0;
+    int maxBottom = 0;
+    for (final pane in panes) {
+      final right = pane.left + pane.width;
+      final bottom = pane.top + pane.height;
+      if (right > maxRight) maxRight = right;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+
+    if (maxRight == 0 || maxBottom == 0) return const SizedBox.shrink();
+
+    // アスペクト比を計算
+    final aspectRatio = maxRight / maxBottom;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: AspectRatio(
+        aspectRatio: aspectRatio.clamp(0.5, 3.0),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final containerWidth = constraints.maxWidth;
+            final containerHeight = constraints.maxHeight;
+
+            // スケール係数を計算
+            final scaleX = containerWidth / maxRight;
+            final scaleY = containerHeight / maxBottom;
+            const gap = 2.0;
+
+            return Stack(
+              children: panes.map((pane) {
+                final isActive = pane.id == activePaneId;
+
+                // 実際の位置とサイズからRectを計算
+                final left = pane.left * scaleX;
+                final top = pane.top * scaleY;
+                final width = pane.width * scaleX - gap;
+                final height = pane.height * scaleY - gap;
+
+                return Positioned(
+                  left: left,
+                  top: top,
+                  width: width,
+                  height: height,
+                  child: GestureDetector(
+                    onTap: () => onPaneSelected(pane.id),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? DesignColors.primary.withValues(alpha: 0.3)
+                            : Colors.black45,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: isActive
+                              ? DesignColors.primary
+                              : Colors.white.withValues(alpha: 0.3),
+                          width: isActive ? 2 : 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${pane.index}',
+                              style: GoogleFonts.jetBrainsMono(
+                                fontSize: width > 60 ? 18 : 14,
+                                fontWeight: FontWeight.w700,
+                                color: isActive
+                                    ? DesignColors.primary
+                                    : Colors.white.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            if (width > 80 && height > 50) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                '${pane.width}x${pane.height}',
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 9,
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ),
+    );
   }
 }
 
