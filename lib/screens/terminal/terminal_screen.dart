@@ -87,6 +87,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   int _paneWidth = 80;
   int _paneHeight = 24;
 
+  // 初回スクロール完了フラグ
+  bool _hasInitialScrolled = false;
+
   // ターミナルモード
   TerminalMode _terminalMode = TerminalMode.normal;
 
@@ -456,6 +459,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       _terminalContent = _pendingContent;
       _latency = _pendingLatency;
     });
+
+    // 初回コンテンツ受信時に一番下へスクロール
+    if (!_hasInitialScrolled && _terminalContent.isNotEmpty) {
+      _hasInitialScrolled = true;
+      _scrollToBottom();
+    }
   }
 
   /// 自動再接続を試みる
