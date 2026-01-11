@@ -249,10 +249,233 @@ class AppTheme {
     );
   }
 
-  /// ライトテーマ（現時点ではダークモード主体）
+  /// ライトテーマ
   static ThemeData get light {
-    // 現在はダークテーマをベースに使用
-    return dark;
+    final colorScheme = ColorScheme.light(
+      primary: DesignColors.primary,
+      onPrimary: Colors.white,
+      primaryContainer: DesignColors.primary.withValues(alpha: 0.1),
+      onPrimaryContainer: DesignColors.primaryDark,
+      secondary: DesignColors.primary,
+      onSecondary: Colors.white,
+      surface: DesignColors.surfaceLight,
+      onSurface: DesignColors.textPrimaryLight,
+      error: DesignColors.error,
+      onError: Colors.white,
+      outline: DesignColors.borderLight,
+      outlineVariant: DesignColors.borderLight.withValues(alpha: 0.5),
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: DesignColors.backgroundLight,
+      textTheme: _textTheme.apply(
+        bodyColor: DesignColors.textPrimaryLight,
+        displayColor: DesignColors.textPrimaryLight,
+      ),
+      appBarTheme: AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        backgroundColor: DesignColors.canvasLight.withValues(alpha: 0.95),
+        foregroundColor: DesignColors.textPrimaryLight,
+        titleTextStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+          color: DesignColors.textPrimaryLight,
+          letterSpacing: -0.5,
+        ),
+        surfaceTintColor: Colors.transparent,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: DesignColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        extendedTextStyle: GoogleFonts.spaceGrotesk(
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          letterSpacing: -0.5,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: DesignColors.surfaceLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: DesignColors.borderLight),
+        ),
+        margin: EdgeInsets.zero,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: DesignColors.inputLight,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: DesignColors.borderLight),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: DesignColors.primary),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: DesignColors.error),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        labelStyle: const TextStyle(color: DesignColors.textMutedLight),
+        hintStyle: TextStyle(color: DesignColors.textMutedLight.withValues(alpha: 0.7)),
+      ),
+      listTileTheme: const ListTileThemeData(
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: DesignColors.backgroundLight.withValues(alpha: 0.9),
+        selectedItemColor: DesignColors.primary,
+        unselectedItemColor: DesignColors.textMutedLight,
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+        selectedLabelStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+        ),
+        unselectedLabelStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: DesignColors.backgroundLight.withValues(alpha: 0.9),
+        indicatorColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return GoogleFonts.spaceGrotesk(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: DesignColors.primary,
+            );
+          }
+          return GoogleFonts.spaceGrotesk(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: DesignColors.textMutedLight,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(color: DesignColors.primary);
+          }
+          return const IconThemeData(color: DesignColors.textMutedLight);
+        }),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: DesignColors.borderLight,
+        thickness: 1,
+      ),
+      iconTheme: const IconThemeData(
+        color: DesignColors.textSecondaryLight,
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: DesignColors.primary,
+          textStyle: GoogleFonts.spaceGrotesk(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: DesignColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: GoogleFonts.spaceGrotesk(
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return DesignColors.primary;
+            }
+            return DesignColors.inputLight;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return Colors.white;
+            }
+            return DesignColors.textMutedLight;
+          }),
+          side: WidgetStateProperty.all(BorderSide.none),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: DesignColors.surfaceLight,
+        contentTextStyle: GoogleFonts.spaceGrotesk(
+          color: DesignColors.textPrimaryLight,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: DesignColors.borderLight),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: DesignColors.surfaceLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: DesignColors.borderLight),
+        ),
+        titleTextStyle: GoogleFonts.spaceGrotesk(
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          color: DesignColors.textPrimaryLight,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: DesignColors.surfaceLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: DesignColors.borderLight),
+        ),
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: DesignColors.surfaceLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return DesignColors.primary;
+          }
+          return DesignColors.textMutedLight;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return DesignColors.primary.withValues(alpha: 0.3);
+          }
+          return DesignColors.borderLight;
+        }),
+      ),
+    );
   }
 
   /// テーマモードを取得

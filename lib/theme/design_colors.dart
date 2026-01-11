@@ -19,11 +19,22 @@ class DesignColors {
 
   // Border Colors
   static const borderDark = Color(0xFF2A2B36);
+  static const borderLight = Color(0xFFE5E7EB);
 
-  // Text Colors
+  // Text Colors (Dark Theme)
   static const textPrimary = Color(0xFFFFFFFF);
   static const textSecondary = Color(0xFF9CA3AF);
   static const textMuted = Color(0xFF6B7280);
+
+  // Text Colors (Light Theme)
+  static const textPrimaryLight = Color(0xFF111827);
+  static const textSecondaryLight = Color(0xFF4B5563);
+  static const textMutedLight = Color(0xFF9CA3AF);
+
+  // Surface Colors (Light Theme)
+  static const surfaceLight = Color(0xFFFFFFFF);
+  static const canvasLight = Color(0xFFF3F4F6);
+  static const inputLight = Color(0xFFF9FAFB);
 
   // Status Colors
   static const success = Color(0xFF22C55E);

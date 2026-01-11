@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../providers/connection_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/keychain/secure_storage.dart';
@@ -57,6 +59,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   // Riverpodリスナー
   ProviderSubscription<SshState>? _sshSubscription;
   ProviderSubscription<TmuxState>? _tmuxSubscription;
+  ProviderSubscription<AppSettings>? _settingsSubscription;
 
   @override
   void initState() {
@@ -67,7 +70,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       if (!mounted) return;
       _setupListeners();
       _connectAndSetup();
+      _applyKeepScreenOn();
     });
+  }
+
+  /// Keep screen on設定を適用
+  void _applyKeepScreenOn() {
+    final settings = ref.read(settingsProvider);
+    if (settings.keepScreenOn) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
   }
 
   /// Providerのリスナーを設定
@@ -94,6 +108,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
         });
       },
       fireImmediately: true,
+    );
+
+    // 設定の変化を監視（Keep screen on用）
+    _settingsSubscription = ref.listenManual<AppSettings>(
+      settingsProvider,
+      (previous, next) {
+        if (!mounted || _isDisposed) return;
+        // keepScreenOn設定が変更された場合に適用
+        if (previous?.keepScreenOn != next.keepScreenOn) {
+          _applyKeepScreenOn();
+        }
+      },
+      fireImmediately: false,
     );
   }
 
@@ -297,11 +324,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   void dispose() {
     // まず_isDisposedをセットして非同期処理を停止
     _isDisposed = true;
+    // WakeLockを無効化
+    WakelockPlus.disable();
     // Riverpodサブスクリプションをキャンセル
     _sshSubscription?.close();
     _sshSubscription = null;
     _tmuxSubscription?.close();
     _tmuxSubscription = null;
+    _settingsSubscription?.close();
+    _settingsSubscription = null;
     // タイマーを停止
     _pollTimer?.cancel();
     _pollTimer = null;

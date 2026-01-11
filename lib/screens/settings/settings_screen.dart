@@ -24,21 +24,37 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         children: [
           const _SectionHeader(title: 'Terminal'),
+          SwitchListTile(
+            secondary: const Icon(Icons.fit_screen),
+            title: const Text('Auto Fit'),
+            subtitle: const Text('Fit terminal width to screen'),
+            value: settings.autoFitEnabled,
+            onChanged: (value) {
+              ref.read(settingsProvider.notifier).setAutoFitEnabled(value);
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.text_fields),
             title: const Text('Font Size'),
-            subtitle: Text('${settings.fontSize.toInt()}'),
-            onTap: () async {
-              final size = await showDialog<double>(
-                context: context,
-                builder: (context) => FontSizeDialog(
-                  currentSize: settings.fontSize,
-                ),
-              );
-              if (size != null) {
-                ref.read(settingsProvider.notifier).setFontSize(size);
-              }
-            },
+            subtitle: Text(
+              settings.autoFitEnabled
+                  ? '${settings.fontSize.toInt()} pt (auto-fit enabled)'
+                  : '${settings.fontSize.toInt()} pt',
+            ),
+            enabled: !settings.autoFitEnabled,
+            onTap: settings.autoFitEnabled
+                ? null
+                : () async {
+                    final size = await showDialog<double>(
+                      context: context,
+                      builder: (context) => FontSizeDialog(
+                        currentSize: settings.fontSize,
+                      ),
+                    );
+                    if (size != null) {
+                      ref.read(settingsProvider.notifier).setFontSize(size);
+                    }
+                  },
           ),
           ListTile(
             leading: const Icon(Icons.font_download),
@@ -59,18 +75,25 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.format_size),
             title: const Text('Minimum Font Size'),
-            subtitle: Text('${settings.minFontSize.toInt()} pt (auto-fit limit)'),
-            onTap: () async {
-              final size = await showDialog<double>(
-                context: context,
-                builder: (context) => MinFontSizeDialog(
-                  currentSize: settings.minFontSize,
-                ),
-              );
-              if (size != null) {
-                ref.read(settingsProvider.notifier).setMinFontSize(size);
-              }
-            },
+            subtitle: Text(
+              settings.autoFitEnabled
+                  ? '${settings.minFontSize.toInt()} pt (auto-fit limit)'
+                  : '${settings.minFontSize.toInt()} pt (not used)',
+            ),
+            enabled: settings.autoFitEnabled,
+            onTap: settings.autoFitEnabled
+                ? () async {
+                    final size = await showDialog<double>(
+                      context: context,
+                      builder: (context) => MinFontSizeDialog(
+                        currentSize: settings.minFontSize,
+                      ),
+                    );
+                    if (size != null) {
+                      ref.read(settingsProvider.notifier).setMinFontSize(size);
+                    }
+                  }
+                : null,
           ),
           const Divider(),
           const _SectionHeader(title: 'Behavior'),

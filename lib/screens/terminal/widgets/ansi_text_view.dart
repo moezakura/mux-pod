@@ -152,16 +152,31 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // フォントサイズを計算
-        final calcResult = FontCalculator.calculate(
-          screenWidth: constraints.maxWidth,
-          paneCharWidth: widget.paneWidth,
-          fontFamily: settings.fontFamily,
-          minFontSize: settings.minFontSize,
-        );
+        // フォントサイズを決定
+        late final double fontSize;
+        late final bool needsHorizontalScroll;
 
-        final fontSize = calcResult.fontSize;
-        final needsHorizontalScroll = calcResult.needsScroll;
+        if (settings.autoFitEnabled) {
+          // 自動フィット: 画面幅に合わせて計算
+          final calcResult = FontCalculator.calculate(
+            screenWidth: constraints.maxWidth,
+            paneCharWidth: widget.paneWidth,
+            fontFamily: settings.fontFamily,
+            minFontSize: settings.minFontSize,
+          );
+          fontSize = calcResult.fontSize;
+          needsHorizontalScroll = calcResult.needsScroll;
+        } else {
+          // 手動設定: settings.fontSizeを使用
+          fontSize = settings.fontSize;
+          // 水平スクロールの必要性を判定
+          final terminalWidth = FontCalculator.calculateTerminalWidth(
+            paneCharWidth: widget.paneWidth,
+            fontSize: fontSize,
+            fontFamily: settings.fontFamily,
+          );
+          needsHorizontalScroll = terminalWidth > constraints.maxWidth;
+        }
 
         // ターミナル幅を計算
         final terminalWidth = FontCalculator.calculateTerminalWidth(
