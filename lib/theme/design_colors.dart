@@ -7,6 +7,7 @@ class DesignColors {
   // Primary Colors
   static const primary = Color(0xFF00C0D1);
   static const primaryDark = Color(0xFF009AA8);
+  static const secondary = Color(0xFFF59E0B); // オレンジ/アンバー
 
   // Background Colors
   static const backgroundDark = Color(0xFF0E0E11);

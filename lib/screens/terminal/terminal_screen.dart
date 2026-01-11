@@ -412,6 +412,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                 onKeyPressed: _sendKey,
                 onSpecialKeyPressed: _sendSpecialKey,
                 onInputTap: _showInputDialog,
+                directInputEnabled: ref.watch(settingsProvider).directInputEnabled,
+                onDirectInputToggle: () {
+                  ref.read(settingsProvider.notifier).toggleDirectInput();
+                },
               ),
             ],
           ),

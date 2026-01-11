@@ -14,6 +14,9 @@ class AppSettings {
   final double minFontSize;
   final bool autoFitEnabled;
 
+  /// DirectInputモード（入力した文字を即座にターミナルに送信）
+  final bool directInputEnabled;
+
   const AppSettings({
     this.darkMode = true,
     this.fontSize = 14.0,
@@ -25,6 +28,7 @@ class AppSettings {
     this.scrollbackLines = 10000,
     this.minFontSize = 8.0,
     this.autoFitEnabled = true,
+    this.directInputEnabled = false,
   });
 
   AppSettings copyWith({
@@ -38,6 +42,7 @@ class AppSettings {
     int? scrollbackLines,
     double? minFontSize,
     bool? autoFitEnabled,
+    bool? directInputEnabled,
   }) {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
@@ -50,6 +55,7 @@ class AppSettings {
       scrollbackLines: scrollbackLines ?? this.scrollbackLines,
       minFontSize: minFontSize ?? this.minFontSize,
       autoFitEnabled: autoFitEnabled ?? this.autoFitEnabled,
+      directInputEnabled: directInputEnabled ?? this.directInputEnabled,
     );
   }
 }
@@ -66,6 +72,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _scrollbackKey = 'settings_scrollback';
   static const String _minFontSizeKey = 'settings_min_font_size';
   static const String _autoFitEnabledKey = 'settings_auto_fit_enabled';
+  static const String _directInputEnabledKey = 'settings_direct_input_enabled';
 
   @override
   AppSettings build() {
@@ -87,6 +94,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       scrollbackLines: prefs.getInt(_scrollbackKey) ?? 10000,
       minFontSize: prefs.getDouble(_minFontSizeKey) ?? 8.0,
       autoFitEnabled: prefs.getBool(_autoFitEnabledKey) ?? true,
+      directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
     );
   }
 
@@ -161,6 +169,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setAutoFitEnabled(bool value) async {
     state = state.copyWith(autoFitEnabled: value);
     await _saveSetting(_autoFitEnabledKey, value);
+  }
+
+  /// DirectInputモードを設定
+  Future<void> setDirectInputEnabled(bool value) async {
+    state = state.copyWith(directInputEnabled: value);
+    await _saveSetting(_directInputEnabledKey, value);
+  }
+
+  /// DirectInputモードをトグル
+  Future<void> toggleDirectInput() async {
+    await setDirectInputEnabled(!state.directInputEnabled);
   }
 
   /// リロード

@@ -18,12 +18,20 @@ class SpecialKeysBar extends StatefulWidget {
   final VoidCallback? onInputTap;
   final bool hapticFeedback;
 
+  /// DirectInputモードが有効か
+  final bool directInputEnabled;
+
+  /// DirectInputモードのトグルコールバック
+  final VoidCallback? onDirectInputToggle;
+
   const SpecialKeysBar({
     super.key,
     required this.onKeyPressed,
     required this.onSpecialKeyPressed,
     this.onInputTap,
     this.hapticFeedback = true,
+    this.directInputEnabled = false,
+    this.onDirectInputToggle,
   });
 
   @override
@@ -33,6 +41,34 @@ class SpecialKeysBar extends StatefulWidget {
 class _SpecialKeysBarState extends State<SpecialKeysBar> {
   bool _ctrlPressed = false;
   bool _altPressed = false;
+  bool _shiftPressed = false;
+  final TextEditingController _directInputController = TextEditingController();
+  final FocusNode _directInputFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _directInputController.addListener(_onDirectInputChanged);
+  }
+
+  @override
+  void dispose() {
+    _directInputController.removeListener(_onDirectInputChanged);
+    _directInputController.dispose();
+    _directInputFocusNode.dispose();
+    super.dispose();
+  }
+
+  /// DirectInput: 入力した文字を即座に送信
+  void _onDirectInputChanged() {
+    final text = _directInputController.text;
+    if (text.isNotEmpty) {
+      // 最後の文字を送信
+      widget.onKeyPressed(text);
+      // 入力をクリア
+      _directInputController.clear();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +93,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  /// 上部の修飾キー行（ESC, TAB, CTRL, ALT, ENTER, /, -, |）
+  /// 上部の修飾キー行（ESC, TAB, CTRL, ALT, SHIFT, ENTER, S-RET, /, -）
   Widget _buildModifierKeysRow() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -72,11 +108,56 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           _buildModifierButton('ALT', _altPressed, () {
             setState(() => _altPressed = !_altPressed);
           }),
+          _buildModifierButton('SHIFT', _shiftPressed, () {
+            setState(() => _shiftPressed = !_shiftPressed);
+          }),
           _buildEnterKeyButton(),
+          _buildShiftEnterKeyButton(),
           _buildLiteralKeyButton('/', '/'),
           _buildLiteralKeyButton('-', '-'),
-          _buildLiteralKeyButton('|', '|'),
         ],
+      ),
+    );
+  }
+
+  /// Shift+Enterキーボタン（Claude CodeのAcceptEdits等用）
+  Widget _buildShiftEnterKeyButton() {
+    return Expanded(
+      child: GestureDetector(
+        onTapDown: (_) {
+          if (widget.hapticFeedback) {
+            HapticFeedback.lightImpact();
+          }
+        },
+        onTap: () => _sendSpecialKey('S-Enter'),
+        child: Container(
+          height: 32,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: DesignColors.secondary.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(4),
+            border: Border(
+              bottom: BorderSide(color: DesignColors.secondary.withValues(alpha: 0.5), width: 2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              'S-RET',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 8,
+                fontWeight: FontWeight.w700,
+                color: DesignColors.secondary,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -155,8 +236,103 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           // 右矢印 (tmux: Right)
           _buildArrowButton(Icons.arrow_right, 'Right'),
           const SizedBox(width: 8),
-          // Input ボタン
-          Expanded(child: _buildInputButton()),
+          // DirectInputモードトグルボタン
+          _buildDirectInputToggle(),
+          const SizedBox(width: 4),
+          // DirectInputモードに応じて表示を切り替え
+          Expanded(
+            child: widget.directInputEnabled
+                ? _buildDirectInputField()
+                : _buildInputButton(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// DirectInputモードのトグルボタン
+  Widget _buildDirectInputToggle() {
+    final isEnabled = widget.directInputEnabled;
+    return GestureDetector(
+      onTap: () {
+        if (widget.hapticFeedback) {
+          HapticFeedback.selectionClick();
+        }
+        widget.onDirectInputToggle?.call();
+      },
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isEnabled
+              ? DesignColors.success.withValues(alpha: 0.3)
+              : DesignColors.keyBackground,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isEnabled
+                ? DesignColors.success.withValues(alpha: 0.5)
+                : Colors.white.withValues(alpha: 0.05),
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            isEnabled ? Icons.flash_on : Icons.flash_off,
+            size: 18,
+            color: isEnabled ? DesignColors.success : Colors.white70,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// DirectInput用テキストフィールド（リアルタイム送信）
+  Widget _buildDirectInputField() {
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(
+        color: DesignColors.success.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: DesignColors.success.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _directInputController,
+              focusNode: _directInputFocusNode,
+              autofocus: true,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 12,
+                color: Colors.white,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Direct input...',
+                hintStyle: GoogleFonts.jetBrainsMono(
+                  fontSize: 12,
+                  color: DesignColors.success.withValues(alpha: 0.5),
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                isDense: true,
+              ),
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: DesignColors.success.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              'LIVE',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 8,
+                fontWeight: FontWeight.w700,
+                color: DesignColors.success,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -397,25 +573,26 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
     String key = tmuxKey;
 
-    // CTRL修飾子を適用（tmux形式: C-キー）
+    // 修飾子を組み合わせる（Shift, Ctrl, Alt順）
+    final List<String> modifiers = [];
+    if (_shiftPressed) {
+      modifiers.add('S');
+      setState(() => _shiftPressed = false);
+    }
     if (_ctrlPressed) {
-      // tmux形式では C-a, C-b などで表現
-      if (tmuxKey.length == 1) {
-        key = 'C-$tmuxKey';
-      }
+      modifiers.add('C');
       setState(() => _ctrlPressed = false);
     }
-
-    // ALT修飾子を適用（tmux形式: M-キー）
     if (_altPressed) {
-      // tmux形式では M-a, M-b などで表現
-      if (tmuxKey.length == 1) {
-        key = 'M-$tmuxKey';
-      } else {
-        // 特殊キーの場合はそのまま送信
-        key = 'M-$tmuxKey';
-      }
+      modifiers.add('M');
       setState(() => _altPressed = false);
+    }
+
+    // tmux形式で修飾子を適用
+    if (modifiers.isNotEmpty) {
+      // 例: S-Enter, C-M-a など
+      final prefix = modifiers.join('-');
+      key = '$prefix-$tmuxKey';
     }
 
     widget.onSpecialKeyPressed(key);
@@ -427,19 +604,25 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       HapticFeedback.lightImpact();
     }
 
-    // CTRL修飾子を適用
-    if (_ctrlPressed && key.length == 1) {
-      // tmux形式: C-/等
-      widget.onSpecialKeyPressed('C-$key');
+    // 修飾子を組み合わせる
+    final List<String> modifiers = [];
+    if (_shiftPressed) {
+      modifiers.add('S');
+      setState(() => _shiftPressed = false);
+    }
+    if (_ctrlPressed) {
+      modifiers.add('C');
       setState(() => _ctrlPressed = false);
-      return;
+    }
+    if (_altPressed) {
+      modifiers.add('M');
+      setState(() => _altPressed = false);
     }
 
-    // ALT修飾子を適用
-    if (_altPressed && key.length == 1) {
-      // tmux形式: M-/等
-      widget.onSpecialKeyPressed('M-$key');
-      setState(() => _altPressed = false);
+    // 修飾子がある場合はtmux形式で送信
+    if (modifiers.isNotEmpty && key.length == 1) {
+      final prefix = modifiers.join('-');
+      widget.onSpecialKeyPressed('$prefix-$key');
       return;
     }
 

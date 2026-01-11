@@ -274,9 +274,17 @@ class _AnsiTextViewState extends ConsumerState<AnsiTextView> {
         isSpecialKey = true;
         tmuxKeyName = 'Escape';
       } else if (key == LogicalKeyboardKey.enter) {
-        data = '\r';
-        isSpecialKey = true;
-        tmuxKeyName = 'Enter';
+        // Shift+Enterの場合は別のキー名で送信
+        if (_shiftPressed) {
+          data = '\x1b[27;2;13~'; // xterm拡張: Shift+Enter
+          isSpecialKey = true;
+          tmuxKeyName = 'S-Enter';
+          _shiftPressed = false;
+        } else {
+          data = '\r';
+          isSpecialKey = true;
+          tmuxKeyName = 'Enter';
+        }
       } else if (key == LogicalKeyboardKey.backspace) {
         data = '\x7f';
         isSpecialKey = true;
