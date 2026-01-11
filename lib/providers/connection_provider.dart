@@ -238,6 +238,95 @@ class SelectedConnectionIdNotifier extends Notifier<String?> {
   }
 }
 
+/// 検索クエリを管理するNotifier
+class ConnectionSearchNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void setQuery(String query) {
+    state = query;
+  }
+
+  void clear() {
+    state = '';
+  }
+}
+
+/// 検索クエリプロバイダー
+final connectionSearchProvider =
+    NotifierProvider<ConnectionSearchNotifier, String>(() {
+  return ConnectionSearchNotifier();
+});
+
+/// ソートオプション
+enum ConnectionSortOption {
+  nameAsc,
+  nameDesc,
+  lastConnectedDesc,
+  lastConnectedAsc,
+  hostAsc,
+  hostDesc,
+}
+
+/// ソートオプションを管理するNotifier
+class ConnectionSortNotifier extends Notifier<ConnectionSortOption> {
+  @override
+  ConnectionSortOption build() => ConnectionSortOption.lastConnectedDesc;
+
+  void setSort(ConnectionSortOption option) {
+    state = option;
+  }
+}
+
+/// ソートオプションプロバイダー
+final connectionSortProvider =
+    NotifierProvider<ConnectionSortNotifier, ConnectionSortOption>(() {
+  return ConnectionSortNotifier();
+});
+
+/// フィルタリング・ソート済み接続リストプロバイダー
+final filteredConnectionsProvider = Provider<List<Connection>>((ref) {
+  final connectionsState = ref.watch(connectionsProvider);
+  final searchQuery = ref.watch(connectionSearchProvider).toLowerCase();
+  final sortOption = ref.watch(connectionSortProvider);
+
+  // 検索フィルタリング
+  var connections = connectionsState.connections;
+  if (searchQuery.isNotEmpty) {
+    connections = connections.where((c) {
+      return c.name.toLowerCase().contains(searchQuery) ||
+          c.host.toLowerCase().contains(searchQuery) ||
+          c.username.toLowerCase().contains(searchQuery);
+    }).toList();
+  }
+
+  // ソート
+  switch (sortOption) {
+    case ConnectionSortOption.nameAsc:
+      connections.sort((a, b) => a.name.compareTo(b.name));
+    case ConnectionSortOption.nameDesc:
+      connections.sort((a, b) => b.name.compareTo(a.name));
+    case ConnectionSortOption.lastConnectedDesc:
+      connections.sort((a, b) {
+        final aTime = a.lastConnectedAt ?? a.createdAt;
+        final bTime = b.lastConnectedAt ?? b.createdAt;
+        return bTime.compareTo(aTime);
+      });
+    case ConnectionSortOption.lastConnectedAsc:
+      connections.sort((a, b) {
+        final aTime = a.lastConnectedAt ?? a.createdAt;
+        final bTime = b.lastConnectedAt ?? b.createdAt;
+        return aTime.compareTo(bTime);
+      });
+    case ConnectionSortOption.hostAsc:
+      connections.sort((a, b) => a.host.compareTo(b.host));
+    case ConnectionSortOption.hostDesc:
+      connections.sort((a, b) => b.host.compareTo(a.host));
+  }
+
+  return connections;
+});
+
 /// 現在選択中の接続IDプロバイダー
 final selectedConnectionIdProvider =
     NotifierProvider<SelectedConnectionIdNotifier, String?>(() {

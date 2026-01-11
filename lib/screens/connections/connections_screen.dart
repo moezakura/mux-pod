@@ -14,6 +14,19 @@ import '../../theme/design_colors.dart';
 import 'connection_form_screen.dart';
 import '../terminal/terminal_screen.dart';
 
+/// 検索バーの表示状態を管理するNotifier
+class _SearchVisibleNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void toggle() => state = !state;
+  void hide() => state = false;
+}
+
+final _searchVisibleProvider = NotifierProvider<_SearchVisibleNotifier, bool>(() {
+  return _SearchVisibleNotifier();
+});
+
 /// 接続一覧画面
 class ConnectionsScreen extends ConsumerWidget {
   const ConnectionsScreen({super.key});
@@ -21,6 +34,10 @@ class ConnectionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connectionsState = ref.watch(connectionsProvider);
+    final filteredConnections = ref.watch(filteredConnectionsProvider);
+    final isSearchVisible = ref.watch(_searchVisibleProvider);
+    final searchQuery = ref.watch(connectionSearchProvider);
+
     developer.log(
       'ConnectionsScreen.build() - connections: ${connectionsState.connections.length}, isLoading: ${connectionsState.isLoading}',
       name: 'ConnectionsScreen',
@@ -29,10 +46,10 @@ class ConnectionsScreen extends ConsumerWidget {
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          _buildAppBar(context),
+          _buildAppBar(context, ref, isSearchVisible, searchQuery),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
-            sliver: _buildBody(context, ref, connectionsState),
+            sliver: _buildBody(context, ref, connectionsState, filteredConnections),
           ),
         ],
       ),
@@ -40,38 +57,164 @@ class ConnectionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isSearchVisible, String searchQuery) {
     return SliverAppBar(
       floating: true,
       pinned: true,
-      expandedHeight: 100,
+      expandedHeight: isSearchVisible ? 140 : 100,
       backgroundColor: DesignColors.canvasDark.withValues(alpha: 0.95),
       surfaceTintColor: Colors.transparent,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
-        title: Text(
-          'Connections',
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            letterSpacing: -0.5,
-          ),
+        title: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Connections',
+              style: GoogleFonts.spaceGrotesk(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.5,
+              ),
+            ),
+            if (isSearchVisible) const SizedBox(height: 8),
+            if (isSearchVisible)
+              SizedBox(
+                height: 36,
+                width: MediaQuery.of(context).size.width - 120,
+                child: _SearchField(
+                  initialValue: searchQuery,
+                  onChanged: (value) {
+                    ref.read(connectionSearchProvider.notifier).setQuery(value);
+                  },
+                  onClear: () {
+                    ref.read(connectionSearchProvider.notifier).clear();
+                    ref.read(_searchVisibleProvider.notifier).hide();
+                  },
+                ),
+              ),
+          ],
         ),
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.search, color: DesignColors.textSecondary),
-          onPressed: () {},
-          tooltip: 'Search',
+          icon: Icon(
+            isSearchVisible ? Icons.search_off : Icons.search,
+            color: isSearchVisible ? DesignColors.primary : DesignColors.textSecondary,
+          ),
+          onPressed: () {
+            ref.read(_searchVisibleProvider.notifier).toggle();
+            if (!isSearchVisible) {
+              // 検索を閉じる際にクエリをクリア
+            } else {
+              ref.read(connectionSearchProvider.notifier).clear();
+            }
+          },
+          tooltip: isSearchVisible ? 'Close Search' : 'Search',
         ),
         IconButton(
           icon: const Icon(Icons.sort, color: DesignColors.textSecondary),
-          onPressed: () {},
+          onPressed: () => _showSortDialog(context, ref),
           tooltip: 'Sort',
         ),
         const SizedBox(width: 8),
       ],
+    );
+  }
+
+  void _showSortDialog(BuildContext context, WidgetRef ref) {
+    final currentSort = ref.read(connectionSortProvider);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: DesignColors.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.sort, color: DesignColors.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Sort Connections',
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: DesignColors.borderDark),
+              _SortOptionTile(
+                title: 'Name (A-Z)',
+                option: ConnectionSortOption.nameAsc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.nameAsc);
+                  Navigator.pop(context);
+                },
+              ),
+              _SortOptionTile(
+                title: 'Name (Z-A)',
+                option: ConnectionSortOption.nameDesc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.nameDesc);
+                  Navigator.pop(context);
+                },
+              ),
+              _SortOptionTile(
+                title: 'Last Connected (Recent First)',
+                option: ConnectionSortOption.lastConnectedDesc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.lastConnectedDesc);
+                  Navigator.pop(context);
+                },
+              ),
+              _SortOptionTile(
+                title: 'Last Connected (Oldest First)',
+                option: ConnectionSortOption.lastConnectedAsc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.lastConnectedAsc);
+                  Navigator.pop(context);
+                },
+              ),
+              _SortOptionTile(
+                title: 'Host (A-Z)',
+                option: ConnectionSortOption.hostAsc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.hostAsc);
+                  Navigator.pop(context);
+                },
+              ),
+              _SortOptionTile(
+                title: 'Host (Z-A)',
+                option: ConnectionSortOption.hostDesc,
+                currentOption: currentSort,
+                onTap: () {
+                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.hostDesc);
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -87,7 +230,7 @@ class ConnectionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, WidgetRef ref, ConnectionsState state) {
+  Widget _buildBody(BuildContext context, WidgetRef ref, ConnectionsState state, List<Connection> filteredConnections) {
     if (state.isLoading) {
       return const SliverFillRemaining(
         child: Center(child: CircularProgressIndicator()),
@@ -106,10 +249,16 @@ class ConnectionsScreen extends ConsumerWidget {
       );
     }
 
+    if (filteredConnections.isEmpty) {
+      return SliverFillRemaining(
+        child: _buildNoResultsState(context, ref),
+      );
+    }
+
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final connection = state.connections[index];
+          final connection = filteredConnections[index];
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _ConnectionCard(
@@ -121,7 +270,59 @@ class ConnectionsScreen extends ConsumerWidget {
             ),
           );
         },
-        childCount: state.connections.length,
+        childCount: filteredConnections.length,
+      ),
+    );
+  }
+
+  Widget _buildNoResultsState(BuildContext context, WidgetRef ref) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: DesignColors.surfaceDark,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: DesignColors.borderDark),
+            ),
+            child: const Icon(
+              Icons.search_off,
+              size: 64,
+              color: DesignColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'No matching connections',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              color: DesignColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Try a different search term',
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 14,
+              color: DesignColors.textMuted,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: () {
+              ref.read(connectionSearchProvider.notifier).clear();
+              ref.read(_searchVisibleProvider.notifier).hide();
+            },
+            icon: const Icon(Icons.clear),
+            label: const Text('Clear Search'),
+            style: TextButton.styleFrom(
+              foregroundColor: DesignColors.primary,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -675,5 +876,122 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         ),
       );
     }).toList();
+  }
+}
+
+/// 検索フィールドウィジェット
+class _SearchField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  const _SearchField({
+    required this.initialValue,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  @override
+  State<_SearchField> createState() => _SearchFieldState();
+}
+
+class _SearchFieldState extends State<_SearchField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SearchField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialValue != _controller.text && widget.initialValue.isEmpty) {
+      _controller.clear();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      autofocus: true,
+      onChanged: widget.onChanged,
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 12,
+        color: Colors.white,
+      ),
+      decoration: InputDecoration(
+        hintText: 'Search connections...',
+        hintStyle: GoogleFonts.jetBrainsMono(
+          fontSize: 12,
+          color: DesignColors.textMuted,
+        ),
+        filled: true,
+        fillColor: DesignColors.inputDark,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: DesignColors.primary, width: 1),
+        ),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 16),
+                onPressed: () {
+                  _controller.clear();
+                  widget.onClear();
+                },
+                color: DesignColors.textMuted,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+/// ソートオプションタイル
+class _SortOptionTile extends StatelessWidget {
+  final String title;
+  final ConnectionSortOption option;
+  final ConnectionSortOption currentOption;
+  final VoidCallback onTap;
+
+  const _SortOptionTile({
+    required this.title,
+    required this.option,
+    required this.currentOption,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = option == currentOption;
+    return ListTile(
+      title: Text(
+        title,
+        style: GoogleFonts.spaceGrotesk(
+          fontSize: 14,
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+          color: isSelected ? DesignColors.primary : Colors.white,
+        ),
+      ),
+      trailing: isSelected
+          ? const Icon(Icons.check, color: DesignColors.primary, size: 20)
+          : null,
+      onTap: onTap,
+    );
   }
 }
