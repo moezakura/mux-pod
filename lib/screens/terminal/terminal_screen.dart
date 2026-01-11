@@ -239,8 +239,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       }
 
       final startTime = DateTime.now();
+      // 履歴を多く取得するため、-S -1000で過去1000行を含める
       final output = await sshClient.exec(
-        TmuxCommands.capturePane(target, escapeSequences: true),
+        TmuxCommands.capturePane(target, escapeSequences: true, startLine: -1000),
         timeout: const Duration(milliseconds: 500),
       );
       final endTime = DateTime.now();
@@ -785,13 +786,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                     itemBuilder: (context, index) {
                       final pane = window.panes[index];
                       final isActive = pane.id == tmuxState.activePaneId;
+                      // タイトルを優先表示、なければコマンド名、それもなければPaneインデックス
+                      final paneTitle = pane.title?.isNotEmpty == true
+                          ? pane.title!
+                          : (pane.currentCommand?.isNotEmpty == true
+                              ? pane.currentCommand!
+                              : 'Pane ${pane.index}');
                       return ListTile(
                         leading: Icon(
                           Icons.terminal,
                           color: isActive ? DesignColors.primary : Colors.white60,
                         ),
                         title: Text(
-                          'Pane ${pane.index}',
+                          paneTitle,
                           style: TextStyle(
                             color: isActive ? DesignColors.primary : Colors.white,
                             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
@@ -1058,6 +1065,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
 }
 
 /// ペインレイアウトを描画するCustomPainter
+///
+/// tmuxから取得したpane_left/pane_topを使用して
+/// 実際のレイアウトを正確に再現する
 class _PaneLayoutPainter extends CustomPainter {
   final List<TmuxPane> panes;
   final String? activePaneId;
@@ -1073,20 +1083,34 @@ class _PaneLayoutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (panes.isEmpty) return;
 
-    // ペインの総面積を計算
-    int totalWidth = 0;
-    int totalHeight = 0;
+    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）
+    int maxRight = 0;
+    int maxBottom = 0;
     for (final pane in panes) {
-      totalWidth = totalWidth < pane.width ? pane.width : totalWidth;
-      totalHeight = totalHeight < pane.height ? pane.height : totalHeight;
+      final right = pane.left + pane.width;
+      final bottom = pane.top + pane.height;
+      if (right > maxRight) maxRight = right;
+      if (bottom > maxBottom) maxBottom = bottom;
     }
 
+    if (maxRight == 0 || maxBottom == 0) return;
+
+    // スケール係数を計算
+    final scaleX = size.width / maxRight;
+    final scaleY = size.height / maxBottom;
+    final gap = 1.0;
+
     // ペインごとに描画
-    final layout = _calculateLayout(panes, size);
-    for (int i = 0; i < panes.length && i < layout.length; i++) {
-      final pane = panes[i];
-      final rect = layout[i];
+    for (final pane in panes) {
       final isActive = pane.id == activePaneId;
+
+      // 実際の位置とサイズからRectを計算
+      final left = pane.left * scaleX;
+      final top = pane.top * scaleY;
+      final width = pane.width * scaleX - gap;
+      final height = pane.height * scaleY - gap;
+
+      final rect = Rect.fromLTWH(left, top, width, height);
 
       // 背景
       final bgPaint = Paint()
@@ -1101,130 +1125,6 @@ class _PaneLayoutPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = isActive ? 1.5 : 1.0;
       canvas.drawRect(rect, borderPaint);
-    }
-  }
-
-  /// ペインのレイアウトを計算
-  List<Rect> _calculateLayout(List<TmuxPane> panes, Size size) {
-    if (panes.isEmpty) return [];
-    if (panes.length == 1) {
-      return [Rect.fromLTWH(0, 0, size.width, size.height)];
-    }
-
-    // ペイン同士の位置関係を推測してレイアウトを決定
-    // 幅と高さの比較から、水平分割か垂直分割かを判断
-    final firstPane = panes[0];
-    final secondPane = panes[1];
-
-    // ペインサイズから分割タイプを推測
-    final bool isHorizontalSplit = _isHorizontalSplit(panes);
-
-    final List<Rect> rects = [];
-    final double gap = 2.0;
-
-    if (panes.length == 2) {
-      if (isHorizontalSplit) {
-        // 左右分割
-        final totalWidth = firstPane.width + secondPane.width;
-        final w1 = (size.width - gap) * firstPane.width / totalWidth;
-        final w2 = (size.width - gap) * secondPane.width / totalWidth;
-        rects.add(Rect.fromLTWH(0, 0, w1, size.height));
-        rects.add(Rect.fromLTWH(w1 + gap, 0, w2, size.height));
-      } else {
-        // 上下分割
-        final totalHeight = firstPane.height + secondPane.height;
-        final h1 = (size.height - gap) * firstPane.height / totalHeight;
-        final h2 = (size.height - gap) * secondPane.height / totalHeight;
-        rects.add(Rect.fromLTWH(0, 0, size.width, h1));
-        rects.add(Rect.fromLTWH(0, h1 + gap, size.width, h2));
-      }
-    } else {
-      // 3ペイン以上の場合
-      // サイズに基づいてグリッドレイアウトを計算
-      _calculateMultiPaneLayout(panes, size, rects, gap);
-    }
-
-    return rects;
-  }
-
-  /// 水平分割（左右）かどうかを判定
-  bool _isHorizontalSplit(List<TmuxPane> panes) {
-    if (panes.length < 2) return false;
-
-    // 高さが近い（差が20%以内）なら水平分割と判定
-    final heightRatio =
-        (panes[0].height - panes[1].height).abs() / panes[0].height.toDouble();
-    final widthRatio =
-        (panes[0].width - panes[1].width).abs() / panes[0].width.toDouble();
-
-    return heightRatio < widthRatio;
-  }
-
-  /// 複数ペインのレイアウトを計算
-  void _calculateMultiPaneLayout(
-    List<TmuxPane> panes,
-    Size size,
-    List<Rect> rects,
-    double gap,
-  ) {
-    // ペインのサイズ情報に基づいてレイアウトを推測
-    // 簡略化のため、以下のヒューリスティックを使用：
-    // 1. 幅が同じペインは縦に並ぶ
-    // 2. 高さが同じペインは横に並ぶ
-
-    // まずペインを幅でグループ化
-    final widthGroups = <int, List<int>>{};
-    for (int i = 0; i < panes.length; i++) {
-      final w = panes[i].width;
-      // 幅が5%以内の誤差なら同じグループ
-      int groupKey = -1;
-      for (final key in widthGroups.keys) {
-        if ((key - w).abs() / key.toDouble() < 0.1) {
-          groupKey = key;
-          break;
-        }
-      }
-      if (groupKey < 0) {
-        widthGroups[w] = [i];
-      } else {
-        widthGroups[groupKey]!.add(i);
-      }
-    }
-
-    // グループ数に基づいてレイアウト
-    final groups = widthGroups.values.toList();
-    if (groups.length == 1) {
-      // 全て同じ幅 → 縦に並べる
-      final height = (size.height - gap * (panes.length - 1)) / panes.length;
-      for (int i = 0; i < panes.length; i++) {
-        rects.add(Rect.fromLTWH(0, i * (height + gap), size.width, height));
-      }
-    } else if (groups.length >= 2) {
-      // 複数の幅グループ → 横に並べ、各グループ内は縦に並べる
-      final columnWidth =
-          (size.width - gap * (groups.length - 1)) / groups.length;
-      double x = 0;
-      for (final group in groups) {
-        final rowHeight = (size.height - gap * (group.length - 1)) / group.length;
-        double y = 0;
-        for (final _ in group) {
-          rects.add(Rect.fromLTWH(x, y, columnWidth, rowHeight));
-          y += rowHeight + gap;
-        }
-        x += columnWidth + gap;
-      }
-      // rectsをインデックス順にソート
-      final sortedRects = List<Rect?>.filled(panes.length, null);
-      int rectIdx = 0;
-      for (final group in groups) {
-        for (final idx in group) {
-          sortedRects[idx] = rects[rectIdx++];
-        }
-      }
-      rects.clear();
-      for (final r in sortedRects) {
-        if (r != null) rects.add(r);
-      }
     }
   }
 
