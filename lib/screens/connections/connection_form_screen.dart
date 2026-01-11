@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
 import '../../services/keychain/secure_storage.dart';
+import '../../services/ssh/ssh_client.dart';
 import '../../theme/design_colors.dart';
 
 /// 接続編集画面
@@ -874,17 +875,92 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     setState(() => _isTesting = true);
 
-    // Simulate connection test
-    await Future.delayed(const Duration(seconds: 2));
+    final sshClient = SshClient();
+    String? errorMessage;
+    bool tmuxInstalled = false;
+
+    try {
+      // 認証情報を準備
+      String? password;
+      String? privateKey;
+      String? passphrase;
+
+      if (_authMethod == 'password') {
+        password = _passwordController.text;
+        if (password.isEmpty) {
+          throw SshAuthenticationError('Password is required');
+        }
+      } else if (_authMethod == 'key') {
+        if (_selectedKeyId == null) {
+          throw SshAuthenticationError('SSH key is required');
+        }
+        final storage = SecureStorageService();
+        privateKey = await storage.getPrivateKey(_selectedKeyId!);
+        passphrase = await storage.getPassphrase(_selectedKeyId!);
+        if (privateKey == null) {
+          throw SshAuthenticationError('Private key not found');
+        }
+      }
+
+      final timeout = int.tryParse(_timeoutController.text) ?? 10;
+
+      // SSH接続テスト
+      await sshClient.connect(
+        host: _hostController.text.trim(),
+        port: int.tryParse(_portController.text) ?? 22,
+        username: _usernameController.text.trim(),
+        options: SshConnectOptions(
+          password: password,
+          privateKey: privateKey,
+          passphrase: passphrase,
+          timeout: timeout,
+        ),
+      );
+
+      // tmuxがインストールされているか確認
+      try {
+        final result = await sshClient.execWithExitCode(
+          'which tmux',
+          timeout: const Duration(seconds: 5),
+        );
+        tmuxInstalled = result.exitCode == 0 && result.stdout.trim().isNotEmpty;
+      } catch (e) {
+        // tmux確認に失敗しても接続自体は成功
+        developer.log('Failed to check tmux: $e', name: 'ConnectionForm');
+      }
+    } on SshAuthenticationError catch (e) {
+      errorMessage = 'Authentication failed: ${e.message}';
+    } on SshConnectionError catch (e) {
+      errorMessage = 'Connection failed: ${e.message}';
+    } catch (e) {
+      errorMessage = 'Error: $e';
+    } finally {
+      await sshClient.dispose();
+    }
 
     if (mounted) {
       setState(() => _isTesting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Connection test successful!'),
-          backgroundColor: DesignColors.success,
-        ),
-      );
+
+      if (errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: DesignColors.error,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        final message = tmuxInstalled
+            ? 'Connection successful! tmux is available.'
+            : 'Connection successful! Warning: tmux not found.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: tmuxInstalled ? DesignColors.success : DesignColors.warning,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
