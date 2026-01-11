@@ -57,7 +57,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  /// 上部の修飾キー行（ESC, TAB, CTRL, ALT, /, -, |）
+  /// 上部の修飾キー行（ESC, TAB, CTRL, ALT, ENTER, /, -, |）
   Widget _buildModifierKeysRow() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -72,10 +72,64 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           _buildModifierButton('ALT', _altPressed, () {
             setState(() => _altPressed = !_altPressed);
           }),
+          _buildEnterKeyButton(),
           _buildLiteralKeyButton('/', '/'),
           _buildLiteralKeyButton('-', '-'),
           _buildLiteralKeyButton('|', '|'),
         ],
+      ),
+    );
+  }
+
+  /// ENTERキーボタン（単体でEnterを送信）
+  Widget _buildEnterKeyButton() {
+    return Expanded(
+      child: GestureDetector(
+        onTapDown: (_) {
+          if (widget.hapticFeedback) {
+            HapticFeedback.lightImpact();
+          }
+        },
+        onTap: () => _sendSpecialKey('Enter'),
+        child: Container(
+          height: 32,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: DesignColors.primary.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(4),
+            border: Border(
+              bottom: BorderSide(color: DesignColors.primary.withValues(alpha: 0.5), width: 2),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.keyboard_return,
+                  size: 12,
+                  color: DesignColors.primary,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  'RET',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: DesignColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
