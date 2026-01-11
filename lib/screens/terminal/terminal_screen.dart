@@ -9,7 +9,7 @@ import '../../providers/connection_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/keychain/secure_storage.dart';
-import '../../services/ssh/ssh_client.dart';
+import '../../services/ssh/ssh_client.dart' show SshConnectOptions;
 import '../../services/tmux/tmux_commands.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/special_keys_bar.dart';
@@ -36,9 +36,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   final _secureStorage = SecureStorageService();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
-  // 接続状態
+  // 接続状態（ローカルで管理）
   bool _isConnecting = false;
   String? _connectionError;
+  SshState _sshState = const SshState();
 
   // レイテンシ表示用
   int _latency = 0;
@@ -50,11 +51,48 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   bool _isPolling = false;
   bool _isDisposed = false;
 
+  // Riverpodリスナー
+  ProviderSubscription<SshState>? _sshSubscription;
+  ProviderSubscription<TmuxState>? _tmuxSubscription;
+
   @override
   void initState() {
     super.initState();
     _terminal = Terminal(maxLines: 10000);
-    _connectAndSetup();
+
+    // 次フレームでリスナーを設定（ref使用のため）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _setupListeners();
+      _connectAndSetup();
+    });
+  }
+
+  /// Providerのリスナーを設定
+  void _setupListeners() {
+    // SSH状態の変化を監視
+    _sshSubscription = ref.listenManual<SshState>(
+      sshProvider,
+      (previous, next) {
+        if (!mounted || _isDisposed) return;
+        setState(() {
+          _sshState = next;
+        });
+      },
+      fireImmediately: true,
+    );
+
+    // Tmux状態の変化を監視（UIリビルド用）
+    _tmuxSubscription = ref.listenManual<TmuxState>(
+      tmuxProvider,
+      (previous, next) {
+        if (!mounted || _isDisposed) return;
+        setState(() {
+          // tmuxStateはbuild内で直接読み取る
+        });
+      },
+      fireImmediately: true,
+    );
   }
 
   /// SSH接続してtmuxセッションをセットアップ
@@ -235,21 +273,27 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   void dispose() {
     // まず_isDisposedをセットして非同期処理を停止
     _isDisposed = true;
+    // Riverpodサブスクリプションをキャンセル
+    _sshSubscription?.close();
+    _sshSubscription = null;
+    _tmuxSubscription?.close();
+    _tmuxSubscription = null;
     // タイマーを停止
     _pollTimer?.cancel();
     _pollTimer = null;
     _treeRefreshTimer?.cancel();
     _treeRefreshTimer = null;
     _terminalController.dispose();
-    // SSH接続をクリーンアップ
-    ref.read(sshProvider.notifier).disconnect();
+    // SSH接続をクリーンアップ（refは使わずに直接クライアントを操作）
+    // dispose時にはref.readを避ける
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final sshState = ref.watch(sshProvider);
-    final tmuxState = ref.watch(tmuxProvider);
+    // ローカル状態を使用（ref.watchは使わない）
+    final sshState = _sshState;
+    final tmuxState = ref.read(tmuxProvider);
 
     return Scaffold(
       key: _scaffoldKey,
