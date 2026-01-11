@@ -290,8 +290,8 @@ final filteredConnectionsProvider = Provider<List<Connection>>((ref) {
   final searchQuery = ref.watch(connectionSearchProvider).toLowerCase();
   final sortOption = ref.watch(connectionSortProvider);
 
-  // 検索フィルタリング
-  var connections = connectionsState.connections;
+  // 検索フィルタリング（元のリストを変更しないようコピーを作成）
+  var connections = List.of(connectionsState.connections);
   if (searchQuery.isNotEmpty) {
     connections = connections.where((c) {
       return c.name.toLowerCase().contains(searchQuery) ||

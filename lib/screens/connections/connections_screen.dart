@@ -105,10 +105,10 @@ class ConnectionsScreen extends ConsumerWidget {
             color: isSearchVisible ? DesignColors.primary : DesignColors.textSecondary,
           ),
           onPressed: () {
+            final wasVisible = isSearchVisible;
             ref.read(_searchVisibleProvider.notifier).toggle();
-            if (!isSearchVisible) {
+            if (wasVisible) {
               // 検索を閉じる際にクエリをクリア
-            } else {
               ref.read(connectionSearchProvider.notifier).clear();
             }
           },
