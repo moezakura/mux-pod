@@ -80,13 +80,13 @@ class KeyTile extends StatelessWidget {
               ],
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'delete',
             child: Row(
               children: [
-                Icon(Icons.delete, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Delete', style: TextStyle(color: Colors.red)),
+                Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
+                const SizedBox(width: 8),
+                Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ],
             ),
           ),

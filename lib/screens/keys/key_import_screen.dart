@@ -65,9 +65,9 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
                   : 'Select Private Key File'),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Or paste the private key below:',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: Theme.of(context).colorScheme.outline),
             ),
             const SizedBox(height: 8),
             TextFormField(

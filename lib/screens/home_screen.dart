@@ -47,11 +47,16 @@ class HomeScreen extends ConsumerWidget {
     WidgetRef ref,
     int currentTab,
   ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: DesignColors.backgroundDark.withValues(alpha: 0.9),
-        border: const Border(
-          top: BorderSide(color: DesignColors.surfaceDark),
+        color: isDark
+            ? DesignColors.backgroundDark.withValues(alpha: 0.9)
+            : DesignColors.footerBackgroundLight.withValues(alpha: 0.95),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? DesignColors.surfaceDark : DesignColors.borderLight,
+          ),
         ),
       ),
       child: SafeArea(
@@ -64,8 +69,8 @@ class HomeScreen extends ConsumerWidget {
                 context,
                 ref,
                 index: 0,
-                icon: Icons.lan,
-                label: 'Net',
+                icon: Icons.dns,
+                label: 'Connect',
                 isSelected: currentTab == 0,
               ),
               _buildNavItem(
@@ -73,7 +78,7 @@ class HomeScreen extends ConsumerWidget {
                 ref,
                 index: 1,
                 icon: Icons.terminal,
-                label: 'Term',
+                label: 'Sessions',
                 isSelected: currentTab == 1,
               ),
               _buildNavItem(
@@ -107,6 +112,8 @@ class HomeScreen extends ConsumerWidget {
     required String label,
     required bool isSelected,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inactiveColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
     return GestureDetector(
       onTap: () => ref.read(currentTabProvider.notifier).setTab(index),
       behavior: HitTestBehavior.opaque,
@@ -140,7 +147,7 @@ class HomeScreen extends ConsumerWidget {
               size: 24,
               color: isSelected
                   ? DesignColors.primary
-                  : DesignColors.textMuted,
+                  : inactiveColor,
             ),
             const SizedBox(height: 4),
             Text(
@@ -151,7 +158,7 @@ class HomeScreen extends ConsumerWidget {
                 letterSpacing: 0.5,
                 color: isSelected
                     ? DesignColors.primary
-                    : DesignColors.textMuted,
+                    : inactiveColor,
               ),
             ),
           ],
@@ -204,11 +211,13 @@ class _TerminalTab extends ConsumerWidget {
   }
 
   Widget _buildAppBar(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     return SliverAppBar(
       floating: true,
       pinned: true,
       expandedHeight: 100,
-      backgroundColor: DesignColors.canvasDark.withValues(alpha: 0.95),
+      backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
       surfaceTintColor: Colors.transparent,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
@@ -217,11 +226,11 @@ class _TerminalTab extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Active Sessions',
+              'Sessions',
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: colorScheme.onSurface,
                 letterSpacing: -0.5,
               ),
             ),
@@ -231,7 +240,7 @@ class _TerminalTab extends ConsumerWidget {
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 10,
                 fontWeight: FontWeight.w400,
-                color: DesignColors.textMuted,
+                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                 letterSpacing: 0.5,
               ),
             ),
@@ -240,7 +249,10 @@ class _TerminalTab extends ConsumerWidget {
       ),
       actions: [
         IconButton(
-          icon: const Icon(Icons.settings, color: DesignColors.textSecondary),
+          icon: Icon(
+            Icons.settings,
+            color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+          ),
           onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
           tooltip: 'Settings',
         ),
@@ -280,6 +292,7 @@ class _EmptySessionsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -287,14 +300,16 @@ class _EmptySessionsView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: DesignColors.surfaceDark,
+              color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: DesignColors.borderDark),
+              border: Border.all(
+                color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+              ),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.terminal,
               size: 64,
-              color: DesignColors.textMuted,
+              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
             ),
           ),
           const SizedBox(height: 24),
@@ -303,7 +318,7 @@ class _EmptySessionsView extends StatelessWidget {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: DesignColors.textSecondary,
+              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
@@ -311,7 +326,7 @@ class _EmptySessionsView extends StatelessWidget {
             'Connect to a server to start a terminal session',
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: DesignColors.textMuted,
+              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
             ),
             textAlign: TextAlign.center,
           ),
@@ -335,6 +350,8 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
     final isAttached = session.isAttached;
 
     return Dismissible(
@@ -355,31 +372,34 @@ class _SessionCard extends StatelessWidget {
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
           context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: DesignColors.surfaceDark,
-            title: Text(
-              'Close Session?',
-              style: GoogleFonts.spaceGrotesk(
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+          builder: (dialogContext) {
+            final dialogColorScheme = Theme.of(dialogContext).colorScheme;
+            return AlertDialog(
+              backgroundColor: dialogColorScheme.surface,
+              title: Text(
+                'Close Session?',
+                style: GoogleFonts.spaceGrotesk(
+                  fontWeight: FontWeight.w700,
+                  color: dialogColorScheme.onSurface,
+                ),
               ),
-            ),
-            content: Text(
-              'Remove "${session.sessionName}" from active sessions?',
-              style: GoogleFonts.spaceGrotesk(color: DesignColors.textSecondary),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
+              content: Text(
+                'Remove "${session.sessionName}" from active sessions?',
+                style: GoogleFonts.spaceGrotesk(color: dialogColorScheme.onSurfaceVariant),
               ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
         ) ?? false;
       },
       onDismissed: (_) => onClose(),
@@ -389,12 +409,14 @@ class _SessionCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: DesignColors.surfaceDark,
+            color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: DesignColors.borderDark),
+            border: Border.all(
+              color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -408,12 +430,12 @@ class _SessionCard extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isAttached
-                      ? const Color(0xFF153E42)
-                      : DesignColors.borderDark,
+                      ? (isDark ? DesignColors.connectingCardDark : DesignColors.connectingCardLight)
+                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isAttached
-                        ? const Color(0xFF1F5F66)
+                        ? (isDark ? DesignColors.connectingCardBorderDark : DesignColors.connectingCardBorderLight)
                         : Colors.transparent,
                   ),
                 ),
@@ -422,7 +444,7 @@ class _SessionCard extends StatelessWidget {
                   size: 20,
                   color: isAttached
                       ? DesignColors.primary
-                      : DesignColors.textSecondary,
+                      : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
                 ),
               ),
               const SizedBox(width: 16),
@@ -436,7 +458,7 @@ class _SessionCard extends StatelessWidget {
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: colorScheme.onSurface,
                         letterSpacing: 0.3,
                       ),
                     ),
@@ -445,7 +467,7 @@ class _SessionCard extends StatelessWidget {
                       '${session.connectionName} • ${session.host}',
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 12,
-                        color: DesignColors.textMuted,
+                        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -455,7 +477,7 @@ class _SessionCard extends StatelessWidget {
                           '${session.windowCount} windows',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
-                            color: DesignColors.textMuted,
+                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                           ),
                         ),
                         // 最後に開いていたペイン情報を表示
@@ -464,7 +486,7 @@ class _SessionCard extends StatelessWidget {
                             ' • ',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 11,
-                              color: DesignColors.textMuted,
+                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                             ),
                           ),
                           Icon(
@@ -491,13 +513,17 @@ class _SessionCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: isAttached
-                      ? const Color(0xFF14532D).withValues(alpha: 0.5)
-                      : DesignColors.borderDark,
+                      ? (isDark
+                          ? DesignColors.connectedCardDark.withValues(alpha: 0.5)
+                          : DesignColors.connectedCardLight)
+                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
                     color: isAttached
-                        ? const Color(0xFF166534).withValues(alpha: 0.7)
-                        : DesignColors.borderDark,
+                        ? (isDark
+                            ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7)
+                            : DesignColors.connectedCardBorderLight)
+                        : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
                   ),
                 ),
                 child: Text(
@@ -506,8 +532,8 @@ class _SessionCard extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: isAttached
-                        ? const Color(0xFF4ADE80)
-                        : DesignColors.textMuted,
+                        ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
+                        : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
                   ),
                 ),
               ),

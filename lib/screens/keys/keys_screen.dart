@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/key_provider.dart';
+import '../../theme/design_colors.dart';
 import '../home_screen.dart';
 import 'key_generate_screen.dart';
 import 'key_import_screen.dart';
@@ -17,106 +19,162 @@ class KeysScreen extends ConsumerWidget {
     final keysState = ref.watch(keysProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('SSH Keys'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              Icons.settings,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
-            tooltip: 'Settings',
+      body: CustomScrollView(
+        slivers: [
+          _buildAppBar(context, ref),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            sliver: _buildBody(context, ref, keysState),
           ),
         ],
       ),
-      body: _buildBody(context, ref, keysState),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         heroTag: 'fab_add_ssh_key',
         onPressed: () {
           _showAddKeyOptions(context);
         },
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add, size: 20),
+        label: const Text('Add Key'),
       ),
+    );
+  }
+
+  Widget _buildAppBar(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    return SliverAppBar(
+      floating: true,
+      pinned: true,
+      expandedHeight: 100,
+      backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
+      surfaceTintColor: Colors.transparent,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
+        title: Text(
+          'Keys',
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ),
+      actions: [
+        IconButton(
+          icon: Icon(
+            Icons.settings,
+            color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+          ),
+          onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
+          tooltip: 'Settings',
+        ),
+        const SizedBox(width: 8),
+      ],
     );
   }
 
   Widget _buildBody(BuildContext context, WidgetRef ref, KeysState state) {
     // ローディング中
     if (state.isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return const SliverFillRemaining(
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
     // エラー
     if (state.error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 16),
-            Text('Error: ${state.error}'),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () {
-                ref.read(keysProvider.notifier).reload();
-              },
-              child: const Text('Retry'),
-            ),
-          ],
+      return SliverFillRemaining(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                size: 48,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text('Error: ${state.error}'),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  ref.read(keysProvider.notifier).reload();
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     // 空状態
     if (state.keys.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.vpn_key_off,
-              size: 64,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No SSH keys yet',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tap + to generate or import a key',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      return SliverFillRemaining(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
                   ),
-            ),
-          ],
+                ),
+                child: Icon(
+                  Icons.vpn_key_off,
+                  size: 64,
+                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'No SSH keys yet',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tap the button below to add a key',
+                style: GoogleFonts.spaceGrotesk(
+                  fontSize: 14,
+                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     // 鍵一覧
-    return ListView.builder(
-      itemCount: state.keys.length,
-      itemBuilder: (context, index) {
-        final keyMeta = state.keys[index];
-        return KeyTile(
-          keyMeta: keyMeta,
-          onCopyPublicKey: () {
-            _copyPublicKey(context, keyMeta);
-          },
-          onDelete: () {
-            _showDeleteConfirmation(context, ref, keyMeta);
-          },
-        );
-      },
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final keyMeta = state.keys[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: KeyTile(
+              keyMeta: keyMeta,
+              onCopyPublicKey: () {
+                _copyPublicKey(context, keyMeta);
+              },
+              onDelete: () {
+                _showDeleteConfirmation(context, ref, keyMeta);
+              },
+            ),
+          );
+        },
+        childCount: state.keys.length,
+      ),
     );
   }
 
