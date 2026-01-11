@@ -3,24 +3,37 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/keychain/secure_storage.dart';
+import '../services/keychain/ssh_key_service.dart';
+
+/// 鍵の由来を示すEnum
+enum KeySource {
+  generated, // アプリ内で生成
+  imported, // ファイル/ペーストでインポート
+}
+
 /// SSH鍵メタデータ
 class SshKeyMeta {
   final String id;
   final String name;
-  final String type; // 'rsa' | 'ed25519' | 'ecdsa'
+  final String type; // 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'
   final String? publicKey;
+  final String? fingerprint; // SHA256フィンガープリント
   final bool hasPassphrase;
   final DateTime createdAt;
   final String? comment;
+  final KeySource source; // 鍵の由来
 
   const SshKeyMeta({
     required this.id,
     required this.name,
     required this.type,
     this.publicKey,
+    this.fingerprint,
     this.hasPassphrase = false,
     required this.createdAt,
     this.comment,
+    this.source = KeySource.generated,
   });
 
   SshKeyMeta copyWith({
@@ -28,18 +41,22 @@ class SshKeyMeta {
     String? name,
     String? type,
     String? publicKey,
+    String? fingerprint,
     bool? hasPassphrase,
     DateTime? createdAt,
     String? comment,
+    KeySource? source,
   }) {
     return SshKeyMeta(
       id: id ?? this.id,
       name: name ?? this.name,
       type: type ?? this.type,
       publicKey: publicKey ?? this.publicKey,
+      fingerprint: fingerprint ?? this.fingerprint,
       hasPassphrase: hasPassphrase ?? this.hasPassphrase,
       createdAt: createdAt ?? this.createdAt,
       comment: comment ?? this.comment,
+      source: source ?? this.source,
     );
   }
 
@@ -49,9 +66,11 @@ class SshKeyMeta {
       'name': name,
       'type': type,
       'publicKey': publicKey,
+      'fingerprint': fingerprint,
       'hasPassphrase': hasPassphrase,
       'createdAt': createdAt.toIso8601String(),
       'comment': comment,
+      'source': source.name,
     };
   }
 
@@ -61,9 +80,14 @@ class SshKeyMeta {
       name: json['name'] as String,
       type: json['type'] as String,
       publicKey: json['publicKey'] as String?,
+      fingerprint: json['fingerprint'] as String?,
       hasPassphrase: json['hasPassphrase'] as bool? ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
       comment: json['comment'] as String?,
+      source: KeySource.values.firstWhere(
+        (e) => e.name == (json['source'] as String?),
+        orElse: () => KeySource.generated,
+      ),
     );
   }
 }
@@ -174,4 +198,14 @@ class KeysNotifier extends Notifier<KeysState> {
 /// SSH鍵プロバイダー
 final keysProvider = NotifierProvider<KeysNotifier, KeysState>(() {
   return KeysNotifier();
+});
+
+/// SSH鍵サービスプロバイダー
+final sshKeyServiceProvider = Provider<SshKeyService>((ref) {
+  return SshKeyService();
+});
+
+/// セキュアストレージプロバイダー
+final secureStorageProvider = Provider<SecureStorageService>((ref) {
+  return SecureStorageService();
 });
