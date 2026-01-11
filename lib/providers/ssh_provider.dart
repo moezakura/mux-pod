@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/background/foreground_task_service.dart';
 import '../services/ssh/ssh_client.dart';
 import 'connection_provider.dart';
 
@@ -36,12 +37,14 @@ class SshState {
 /// SSH接続を管理するNotifier
 class SshNotifier extends Notifier<SshState> {
   SshClient? _client;
+  final SshForegroundTaskService _foregroundService = SshForegroundTaskService();
 
   @override
   SshState build() {
     // クリーンアップを登録
     ref.onDispose(() {
       _client?.dispose();
+      _foregroundService.stopService();
     });
     return const SshState();
   }
@@ -74,6 +77,12 @@ class SshNotifier extends Notifier<SshState> {
 
       // 最終接続日時を更新
       ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
+
+      // Foreground Serviceを開始してバックグラウンドでも接続を維持
+      await _foregroundService.startService(
+        connectionName: connection.name,
+        host: connection.host,
+      );
     } on SshConnectionError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
@@ -125,6 +134,12 @@ class SshNotifier extends Notifier<SshState> {
 
       // 最終接続日時を更新
       ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
+
+      // Foreground Serviceを開始してバックグラウンドでも接続を維持
+      await _foregroundService.startService(
+        connectionName: connection.name,
+        host: connection.host,
+      );
     } on SshConnectionError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
@@ -151,6 +166,9 @@ class SshNotifier extends Notifier<SshState> {
 
   /// 切断
   Future<void> disconnect() async {
+    // Foreground Serviceを停止
+    await _foregroundService.stopService();
+
     await _client?.disconnect();
     _client = null;
     state = state.copyWith(

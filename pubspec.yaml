@@ -49,6 +49,8 @@ dependencies:
   crypto: ^3.0.3
   # Settings/notifications
   url_launcher: ^6.3.2
+  # Background SSH connection maintenance
+  flutter_foreground_task: ^8.11.0
 
 dev_dependencies:
   flutter_test:
