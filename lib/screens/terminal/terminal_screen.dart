@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -18,7 +19,6 @@ import '../../services/tmux/tmux_parser.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/special_keys_bar.dart';
 import '../../providers/terminal_display_provider.dart';
-import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
 
 /// ターミナル画面（HTMLデザイン仕様準拠）
@@ -64,6 +64,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
   String _terminalContent = '';
   bool _isPolling = false;
   bool _isDisposed = false;
+
+  // フレームスキップ用（高頻度更新の最適化）
+  static const _minFrameInterval = Duration(milliseconds: 16); // ~60fps
+  DateTime _lastFrameTime = DateTime.now();
+  bool _pendingUpdate = false;
+  String _pendingContent = '';
+  int _pendingLatency = 0;
 
   // 現在のペインサイズ
   int _paneWidth = 80;
@@ -329,12 +336,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       // レイテンシを更新
       final latency = endTime.difference(startTime).inMilliseconds;
 
-      // 差分があれば更新
+      // 差分があれば更新（スロットリング適用）
       if (output != _terminalContent || latency != _latency) {
-        setState(() {
-          _latency = latency;
-          _terminalContent = output;
-        });
+        _scheduleUpdate(output, latency);
       }
     } catch (e) {
       // 通信エラーの場合は自動再接続を試みる
@@ -347,6 +351,44 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     } finally {
       _isPolling = false;
     }
+  }
+
+  /// フレームスキップを考慮して更新をスケジュール
+  ///
+  /// 高頻度更新時（htop等）に毎フレーム更新しないようスロットリングを行う。
+  /// 16ms（約60fps）以内の連続更新は次フレームに延期される。
+  void _scheduleUpdate(String content, int latency) {
+    _pendingContent = content;
+    _pendingLatency = latency;
+
+    // すでに更新がスケジュール済みなら何もしない
+    if (_pendingUpdate) return;
+
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastFrameTime);
+
+    if (elapsed >= _minFrameInterval) {
+      // 十分な時間が経過しているので即時更新
+      _applyUpdate();
+    } else {
+      // フレームスキップ: 次のフレームで更新
+      _pendingUpdate = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _isDisposed) return;
+        _pendingUpdate = false;
+        _applyUpdate();
+      });
+    }
+  }
+
+  /// 保留中の更新を適用
+  void _applyUpdate() {
+    if (!mounted || _isDisposed) return;
+    _lastFrameTime = DateTime.now();
+    setState(() {
+      _terminalContent = _pendingContent;
+      _latency = _pendingLatency;
+    });
   }
 
   /// 自動再接続を試みる
@@ -436,22 +478,26 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    AnsiTextView(
-                      key: _ansiTextViewKey,
-                      text: _terminalContent,
-                      paneWidth: _paneWidth,
-                      paneHeight: _paneHeight,
-                      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                      foregroundColor: colorScheme.onSurface.withValues(alpha: 0.9),
-                      onKeyInput: _handleKeyInput,
-                      mode: _terminalMode,
-                      zoomEnabled: true,
-                      onZoomChanged: (scale) {
-                        setState(() {
-                          _zoomScale = scale;
-                        });
-                      },
-                      verticalScrollController: _terminalScrollController,
+                    // ターミナル表示をRepaintBoundaryでラップして
+                    // ヘッダーやインジケーターの更新から分離
+                    RepaintBoundary(
+                      child: AnsiTextView(
+                        key: _ansiTextViewKey,
+                        text: _terminalContent,
+                        paneWidth: _paneWidth,
+                        paneHeight: _paneHeight,
+                        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                        foregroundColor: colorScheme.onSurface.withValues(alpha: 0.9),
+                        onKeyInput: _handleKeyInput,
+                        mode: _terminalMode,
+                        zoomEnabled: true,
+                        onZoomChanged: (scale) {
+                          setState(() {
+                            _zoomScale = scale;
+                          });
+                        },
+                        verticalScrollController: _terminalScrollController,
+                      ),
                     ),
                     // Pane indicator (右上)
                     Positioned(

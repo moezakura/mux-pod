@@ -245,13 +245,16 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         );
 
         // テキストウィジェットを構築
-        Widget textWidget = SelectableText.rich(
-          textSpan,
-          style: TerminalFontStyles.getTextStyle(
-            settings.fontFamily,
-            fontSize: fontSize,
-            height: 1.4,
-            color: widget.foregroundColor,
+        // RepaintBoundaryでラップして再描画を最小化
+        Widget textWidget = RepaintBoundary(
+          child: SelectableText.rich(
+            textSpan,
+            style: TerminalFontStyles.getTextStyle(
+              settings.fontFamily,
+              fontSize: fontSize,
+              height: 1.4,
+              color: widget.foregroundColor,
+            ),
           ),
         );
 
@@ -266,6 +269,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           textWidget = SingleChildScrollView(
             controller: _horizontalScrollController,
             scrollDirection: Axis.horizontal,
+            physics: const ClampingScrollPhysics(),
             child: textWidget,
           );
         }
@@ -273,6 +277,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         // 垂直スクロール
         textWidget = SingleChildScrollView(
           controller: _verticalScrollController,
+          physics: const ClampingScrollPhysics(),
           child: textWidget,
         );
 
