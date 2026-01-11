@@ -81,6 +81,20 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     // 新しく追加された文字のみを送信
     if (text.length > _lastSentText.length) {
       final newText = text.substring(_lastSentText.length);
+
+      // CTRLボタンが押されている場合はCtrl+キーとして送信
+      if (_ctrlPressed && newText.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(newText)) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+        widget.onSpecialKeyPressed('C-${newText.toLowerCase()}');
+        // 入力をクリアしてCTRL状態をリセット
+        _directInputController.clear();
+        _lastSentText = '';
+        setState(() => _ctrlPressed = false);
+        return;
+      }
+
       widget.onKeyPressed(newText);
     }
     _lastSentText = text;
@@ -90,6 +104,17 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       _directInputController.clear();
       _lastSentText = '';
     }
+  }
+
+  /// DirectInput: ソフトウェアキーボードのEnter（送信）で呼ばれる
+  void _onDirectInputSubmitted(String value) {
+    if (widget.hapticFeedback) {
+      HapticFeedback.lightImpact();
+    }
+    widget.onSpecialKeyPressed('Enter');
+    // 入力欄をクリア
+    _directInputController.clear();
+    _lastSentText = '';
   }
 
   /// DirectInput: Backspaceキー送信
@@ -459,6 +484,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                 controller: _directInputController,
                 focusNode: _directInputFocusNode,
                 autofocus: true,
+                textInputAction: TextInputAction.send,
+                onSubmitted: _onDirectInputSubmitted,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 14,
                   color: isDark ? Colors.white : Colors.black87,
