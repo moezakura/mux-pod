@@ -5,11 +5,7 @@ class SecureStorageService {
   final FlutterSecureStorage _storage;
 
   SecureStorageService()
-      : _storage = const FlutterSecureStorage(
-          aOptions: AndroidOptions(
-            encryptedSharedPreferences: true,
-          ),
-        );
+      : _storage = const FlutterSecureStorage();
 
   // ===== パスワード管理 =====
 

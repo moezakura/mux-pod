@@ -46,3 +46,7 @@ app.*.map.json
 
 # Git worktree
 worktree/
+
+# Environment files
+.env*
+*.env

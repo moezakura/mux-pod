@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../providers/key_provider.dart';
+import '../../services/keychain/ssh_key_service.dart';
 
 /// SSH鍵生成画面
 class KeyGenerateScreen extends ConsumerStatefulWidget {
@@ -15,6 +19,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
   String _keyType = 'ed25519';
   int _rsaBits = 4096;
   bool _isGenerating = false;
+  String? _statusMessage;
 
   @override
   void dispose() {
@@ -88,13 +93,30 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
             FilledButton(
               onPressed: _isGenerating ? null : _generate,
               child: _isGenerating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        if (_statusMessage != null) ...[
+                          const SizedBox(width: 12),
+                          Text(_statusMessage!),
+                        ],
+                      ],
                     )
                   : const Text('Generate'),
             ),
+            if (_keyType == 'rsa') ...[
+              const SizedBox(height: 8),
+              Text(
+                'RSA key generation may take a few seconds',
+                style: Theme.of(context).textTheme.bodySmall,
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ),
       ),
@@ -106,28 +128,72 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
 
     setState(() {
       _isGenerating = true;
+      _statusMessage = 'Generating key...';
     });
 
     try {
-      // TODO: 鍵を生成
-      await Future.delayed(const Duration(seconds: 1));
+      final keyService = ref.read(sshKeyServiceProvider);
+      final storage = ref.read(secureStorageProvider);
+      final keysNotifier = ref.read(keysProvider.notifier);
+
+      final keyId = const Uuid().v4();
+      final name = _nameController.text.trim();
+
+      // 鍵を生成
+      SshKeyPair keyPair;
+      if (_keyType == 'ed25519') {
+        keyPair = await keyService.generateEd25519(comment: name);
+      } else {
+        // RSA生成は時間がかかる（UIをブロックするが許容範囲）
+        setState(() {
+          _statusMessage = 'Generating RSA key...';
+        });
+        // 一瞬UIを更新させるためにmicrotaskで実行
+        await Future.delayed(const Duration(milliseconds: 50));
+        keyPair = await keyService.generateRsa(bits: _rsaBits, comment: name);
+      }
+
+      setState(() {
+        _statusMessage = 'Saving key...';
+      });
+
+      // 秘密鍵をSecureStorageに保存
+      await storage.savePrivateKey(keyId, keyPair.privatePem);
+
+      // メタデータをKeysNotifierに保存
+      final meta = SshKeyMeta(
+        id: keyId,
+        name: name,
+        type: keyPair.type,
+        publicKey: keyPair.publicKeyString,
+        fingerprint: keyPair.fingerprint,
+        hasPassphrase: false,
+        createdAt: DateTime.now(),
+        comment: name,
+        source: KeySource.generated,
+      );
+      await keysNotifier.add(meta);
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Key generated successfully')),
+          SnackBar(content: Text('Key "$name" generated successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to generate key: $e')),
+          SnackBar(
+            content: Text('Failed to generate key: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       }
     } finally {
       if (mounted) {
         setState(() {
           _isGenerating = false;
+          _statusMessage = null;
         });
       }
     }
