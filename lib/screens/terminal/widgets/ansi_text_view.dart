@@ -114,17 +114,14 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// ピンチズーム開始時のスケール
   double _baseScale = 1.0;
 
-  /// TextSpanキャッシュ
-  TextSpan? _cachedTextSpan;
+  /// パース済み行データキャッシュ（仮想スクロール用）
+  List<ParsedLine>? _cachedParsedLines;
   String? _cachedText;
   double? _cachedFontSize;
   String? _cachedFontFamily;
 
-  /// 選択状態保持用のキー
-  /// テキスト内容のハッシュをキーに使用し、内容が変わっていない場合は
-  /// SelectableTextの再構築を抑制して選択状態を保持する
-  Key? _selectableTextKey;
-  int _lastTextHash = 0;
+  /// 行の高さ（仮想スクロールで固定高さを使用）
+  double _lineHeight = 20.0;
 
   /// 最後の差分結果（適応型ポーリング用）
   DiffResult? _lastDiffResult;
@@ -158,48 +155,38 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   /// キャッシュを無効化
   void _invalidateCache() {
-    _cachedTextSpan = null;
+    _cachedParsedLines = null;
     _cachedText = null;
     _cachedFontSize = null;
     _cachedFontFamily = null;
   }
 
-  /// TextSpanを取得（キャッシュ使用・差分最適化）
-  TextSpan _getTextSpan({
+  /// 行データを取得（キャッシュ使用・仮想スクロール用）
+  List<ParsedLine> _getParsedLines({
     required double fontSize,
     required String fontFamily,
   }) {
     // 差分計算を実行
     _lastDiffResult = _terminalDiff.calculateDiff(widget.text);
 
-    // テキストハッシュを更新（選択状態保持用）
-    final currentHash = widget.text.hashCode;
-    if (currentHash != _lastTextHash) {
-      _lastTextHash = currentHash;
-      // テキストが変わった場合のみキーを更新
-      // 変更がない場合は同じキーを維持して選択状態を保持
-      _selectableTextKey = ValueKey<int>(currentHash);
-    }
-
     // キャッシュが有効かチェック
-    if (_cachedTextSpan != null &&
+    if (_cachedParsedLines != null &&
         _cachedText == widget.text &&
         _cachedFontSize == fontSize &&
         _cachedFontFamily == fontFamily) {
-      return _cachedTextSpan!;
+      return _cachedParsedLines!;
     }
 
     // 新しくパースしてキャッシュ
-    _cachedTextSpan = _parser.parseToTextSpan(
-      widget.text,
-      fontSize: fontSize,
-      fontFamily: fontFamily,
-    );
+    _cachedParsedLines = _parser.parseLines(widget.text);
     _cachedText = widget.text;
     _cachedFontSize = fontSize;
     _cachedFontFamily = fontFamily;
 
-    return _cachedTextSpan!;
+    // 行の高さを計算（fontSize * lineHeight係数）
+    _lineHeight = fontSize * 1.4;
+
+    return _cachedParsedLines!;
   }
 
   /// 最後の差分結果を取得（親ウィジェットから参照用）
@@ -300,72 +287,90 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           fontFamily: settings.fontFamily,
         );
 
-        // ANSIテキストをTextSpanに変換（キャッシュ使用）
-        final textSpan = _getTextSpan(
+        // 行データを取得（キャッシュ使用・仮想スクロール用）
+        final parsedLines = _getParsedLines(
           fontSize: fontSize,
           fontFamily: settings.fontFamily,
         );
 
-        // テキストウィジェットを構築
-        // RepaintBoundaryでラップして再描画を最小化
-        // キーを使用して選択状態を保持（テキストが変わっていない場合）
-        Widget textWidget = RepaintBoundary(
-          child: SelectableText.rich(
-            textSpan,
-            key: _selectableTextKey,
-            style: TerminalFontStyles.getTextStyle(
-              settings.fontFamily,
+        // 仮想スクロール対応のListView.builder
+        Widget listWidget = ListView.builder(
+          controller: _verticalScrollController,
+          physics: const ClampingScrollPhysics(),
+          itemCount: parsedLines.length,
+          // 固定の行高さを使用してスクロール計算を高速化
+          itemExtent: _lineHeight,
+          // RepaintBoundaryを自動追加
+          addRepaintBoundaries: true,
+          itemBuilder: (context, index) {
+            final line = parsedLines[index];
+            final textSpan = _parser.lineToTextSpan(
+              line,
               fontSize: fontSize,
-              height: 1.4,
-              color: widget.foregroundColor,
-            ),
-          ),
-        );
+              fontFamily: settings.fontFamily,
+            );
 
-        // 固定幅コンテナ
-        textWidget = SizedBox(
-          width: needsHorizontalScroll ? terminalWidth : null,
-          child: textWidget,
+            // 各行のテキストウィジェット
+            Widget lineWidget = Text.rich(
+              textSpan,
+              style: TerminalFontStyles.getTextStyle(
+                settings.fontFamily,
+                fontSize: fontSize,
+                height: 1.4,
+                color: widget.foregroundColor,
+              ),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+            );
+
+            // 固定幅コンテナ（水平スクロール用）
+            if (needsHorizontalScroll) {
+              lineWidget = SizedBox(
+                width: terminalWidth,
+                child: lineWidget,
+              );
+            }
+
+            return lineWidget;
+          },
         );
 
         // 水平スクロールが必要な場合
         if (needsHorizontalScroll) {
-          textWidget = SingleChildScrollView(
+          listWidget = SingleChildScrollView(
             controller: _horizontalScrollController,
             scrollDirection: Axis.horizontal,
             physics: const ClampingScrollPhysics(),
-            child: textWidget,
+            child: SizedBox(
+              width: terminalWidth,
+              height: constraints.maxHeight,
+              child: listWidget,
+            ),
           );
         }
 
-        // 垂直スクロールのみ（縦方向に制限）
-        textWidget = SingleChildScrollView(
-          controller: _verticalScrollController,
-          scrollDirection: Axis.vertical,
-          physics: const ClampingScrollPhysics(),
-          child: textWidget,
-        );
-
         // ピンチズームが有効な場合、GestureDetector + Transform.scaleでズーム
-        // InteractiveViewerは縦横無尽にパンできてしまうため使用しない
         if (widget.zoomEnabled) {
-          textWidget = GestureDetector(
+          listWidget = GestureDetector(
             onScaleStart: _onScaleStart,
             onScaleUpdate: _onScaleUpdate,
             onScaleEnd: _onScaleEnd,
             child: Transform.scale(
               scale: _currentScale,
               alignment: Alignment.topLeft,
-              child: textWidget,
+              child: listWidget,
             ),
           );
         }
 
-        // コピペモードの場合はキー入力を無効化
+        // コピペモードの場合はテキスト選択を有効化
         if (isCopyPasteMode) {
           return Container(
             color: widget.backgroundColor,
-            child: textWidget,
+            child: SelectionArea(
+              child: listWidget,
+            ),
           );
         }
 
@@ -378,7 +383,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             onTap: () => _focusNode.requestFocus(),
             child: Container(
               color: widget.backgroundColor,
-              child: textWidget,
+              child: listWidget,
             ),
           ),
         );

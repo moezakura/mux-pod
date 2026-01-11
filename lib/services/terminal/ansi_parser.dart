@@ -59,6 +59,27 @@ class AnsiSegment {
   const AnsiSegment(this.text, this.style);
 }
 
+/// パースされた行データ
+class ParsedLine {
+  /// 行番号（0始まり）
+  final int index;
+
+  /// この行のセグメントリスト
+  final List<AnsiSegment> segments;
+
+  /// この行の終了時のスタイル（次の行に引き継ぐ）
+  final AnsiStyle endStyle;
+
+  const ParsedLine({
+    required this.index,
+    required this.segments,
+    required this.endStyle,
+  });
+
+  /// 空行かどうか
+  bool get isEmpty => segments.isEmpty || segments.every((s) => s.text.isEmpty);
+}
+
 /// ANSIエスケープシーケンスパーサー
 ///
 /// capture-pane -e の出力（ANSIカラー付きテキスト）を
@@ -370,5 +391,72 @@ class AnsiParser {
   }) {
     final segments = parse(input);
     return toTextSpan(segments, fontSize: fontSize, fontFamily: fontFamily);
+  }
+
+  /// 行単位でパース（仮想スクロール用）
+  ///
+  /// 各行を個別にパースし、スタイルを次の行に引き継ぐ。
+  /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
+  List<ParsedLine> parseLines(String input) {
+    final lines = input.split('\n');
+    final parsedLines = <ParsedLine>[];
+    var currentStyle = AnsiStyle.defaultStyle;
+
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final result = _parseLineWithStyle(line, currentStyle);
+      parsedLines.add(ParsedLine(
+        index: i,
+        segments: result.segments,
+        endStyle: result.endStyle,
+      ));
+      currentStyle = result.endStyle;
+    }
+
+    return parsedLines;
+  }
+
+  /// 1行をパースし、セグメントと終了スタイルを返す
+  ({List<AnsiSegment> segments, AnsiStyle endStyle}) _parseLineWithStyle(
+    String line,
+    AnsiStyle startStyle,
+  ) {
+    final segments = <AnsiSegment>[];
+    var currentStyle = startStyle;
+    var lastEnd = 0;
+
+    for (final match in _sgrRegex.allMatches(line)) {
+      // マッチ前のテキストを追加
+      if (match.start > lastEnd) {
+        final text = line.substring(lastEnd, match.start);
+        if (text.isNotEmpty) {
+          segments.add(AnsiSegment(text, currentStyle));
+        }
+      }
+
+      // SGRパラメータを解析してスタイルを更新
+      final params = match.group(1) ?? '';
+      currentStyle = _parseSgr(params, currentStyle);
+      lastEnd = match.end;
+    }
+
+    // 残りのテキストを追加
+    if (lastEnd < line.length) {
+      final text = line.substring(lastEnd);
+      if (text.isNotEmpty) {
+        segments.add(AnsiSegment(text, currentStyle));
+      }
+    }
+
+    return (segments: segments, endStyle: currentStyle);
+  }
+
+  /// ParsedLineをTextSpanに変換
+  TextSpan lineToTextSpan(
+    ParsedLine line, {
+    required double fontSize,
+    required String fontFamily,
+  }) {
+    return toTextSpan(line.segments, fontSize: fontSize, fontFamily: fontFamily);
   }
 }
