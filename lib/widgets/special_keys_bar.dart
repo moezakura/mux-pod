@@ -45,9 +45,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   final TextEditingController _directInputController = TextEditingController();
   final FocusNode _directInputFocusNode = FocusNode();
 
-  /// 前回送信済みのテキスト（IME確定検出用）
-  String _lastSentText = '';
-
   /// 現在IME変換中かどうか
   bool _isComposing = false;
 
@@ -65,7 +62,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     super.dispose();
   }
 
-  /// DirectInput: IME変換確定時のみ送信
+  /// DirectInput: IME変換確定時に送信して即座にクリア
   void _onDirectInputChanged() {
     final text = _directInputController.text;
     final value = _directInputController.value;
@@ -78,31 +75,21 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       return;
     }
 
-    // 新しく追加された文字のみを送信
-    if (text.length > _lastSentText.length) {
-      final newText = text.substring(_lastSentText.length);
-
+    // テキストがあれば送信
+    if (text.isNotEmpty) {
       // CTRLボタンが押されている場合はCtrl+キーとして送信
-      if (_ctrlPressed && newText.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(newText)) {
+      if (_ctrlPressed && text.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(text)) {
         if (widget.hapticFeedback) {
           HapticFeedback.lightImpact();
         }
-        widget.onSpecialKeyPressed('C-${newText.toLowerCase()}');
-        // 入力をクリアしてCTRL状態をリセット
-        _directInputController.clear();
-        _lastSentText = '';
+        widget.onSpecialKeyPressed('C-${text.toLowerCase()}');
         setState(() => _ctrlPressed = false);
-        return;
+      } else {
+        widget.onKeyPressed(text);
       }
 
-      widget.onKeyPressed(newText);
-    }
-    _lastSentText = text;
-
-    // テキストが長くなりすぎたらクリア（100文字を超えたら）
-    if (text.length > 100) {
+      // 送信後に即座にクリア
       _directInputController.clear();
-      _lastSentText = '';
     }
   }
 
@@ -112,9 +99,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       HapticFeedback.lightImpact();
     }
     widget.onSpecialKeyPressed('Enter');
-    // 入力欄をクリア
+    // 入力欄をクリア（既に_onDirectInputChangedでクリア済みだが念のため）
     _directInputController.clear();
-    _lastSentText = '';
   }
 
   /// DirectInput: Backspaceキー送信
@@ -198,7 +184,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     widget.onSpecialKeyPressed('Enter');
     // 入力欄をクリア
     _directInputController.clear();
-    _lastSentText = '';
   }
 
   @override
