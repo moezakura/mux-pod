@@ -17,6 +17,9 @@ class AppSettings {
   /// DirectInputモード（入力した文字を即座にターミナルに送信）
   final bool directInputEnabled;
 
+  /// ターミナルカーソルの表示設定
+  final bool showTerminalCursor;
+
   const AppSettings({
     this.darkMode = true,
     this.fontSize = 14.0,
@@ -29,6 +32,7 @@ class AppSettings {
     this.minFontSize = 8.0,
     this.autoFitEnabled = true,
     this.directInputEnabled = false,
+    this.showTerminalCursor = true,
   });
 
   AppSettings copyWith({
@@ -43,6 +47,7 @@ class AppSettings {
     double? minFontSize,
     bool? autoFitEnabled,
     bool? directInputEnabled,
+    bool? showTerminalCursor,
   }) {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
@@ -56,6 +61,7 @@ class AppSettings {
       minFontSize: minFontSize ?? this.minFontSize,
       autoFitEnabled: autoFitEnabled ?? this.autoFitEnabled,
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
+      showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
     );
   }
 }
@@ -73,6 +79,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _minFontSizeKey = 'settings_min_font_size';
   static const String _autoFitEnabledKey = 'settings_auto_fit_enabled';
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
+  static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
 
   @override
   AppSettings build() {
@@ -95,6 +102,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       minFontSize: prefs.getDouble(_minFontSizeKey) ?? 8.0,
       autoFitEnabled: prefs.getBool(_autoFitEnabledKey) ?? true,
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
+      showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
     );
   }
 
@@ -180,6 +188,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   /// DirectInputモードをトグル
   Future<void> toggleDirectInput() async {
     await setDirectInputEnabled(!state.directInputEnabled);
+  }
+
+  /// ターミナルカーソル表示設定を設定
+  Future<void> setShowTerminalCursor(bool value) async {
+    state = state.copyWith(showTerminalCursor: value);
+    await _saveSetting(_showTerminalCursorKey, value);
   }
 
   /// リロード

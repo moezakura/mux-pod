@@ -255,6 +255,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
           _paneWidth = activePane.width;
           _paneHeight = activePane.height;
         });
+
+        // ペインにフォーカスインを送信（Claude Code等のアプリがフォーカスを検知できるようにする）
+        await sshNotifier.client?.exec(TmuxCommands.sendKeys(activePane.id, '\x1b[I', literal: true));
       }
 
       // 8. 100msポーリング開始
@@ -703,12 +706,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // tmux_providerでアクティブセッションを更新
     ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
 
-    // ターミナル内容をクリアして再取得
-    setState(() {
-      _terminalContent = '';
-      // セッション切り替え時は初回スクロールフラグをリセット
-      _hasInitialScrolled = false;
-    });
+    // アクティブなペインを選択状態にする（select-paneコマンドを実行）
+    final activePaneId = ref.read(tmuxProvider).activePaneId;
+    if (activePaneId != null) {
+      await _selectPane(activePaneId);
+    } else {
+      // ターミナル内容をクリアして再取得
+      setState(() {
+        _terminalContent = '';
+        // セッション切り替え時は初回スクロールフラグをリセット
+        _hasInitialScrolled = false;
+      });
+    }
   }
 
   /// ウィンドウを選択
@@ -735,12 +744,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     // tmux_providerでアクティブウィンドウを更新
     ref.read(tmuxProvider.notifier).setActiveWindow(windowIndex);
 
-    // ターミナル内容をクリアして再取得
-    setState(() {
-      _terminalContent = '';
-      // ウィンドウ切り替え時は初回スクロールフラグをリセット
-      _hasInitialScrolled = false;
-    });
+    // アクティブなペインを選択状態にする（select-paneコマンドを実行）
+    final activePaneId = ref.read(tmuxProvider).activePaneId;
+    if (activePaneId != null) {
+      await _selectPane(activePaneId);
+    } else {
+      // ターミナル内容をクリアして再取得
+      setState(() {
+        _terminalContent = '';
+        // ウィンドウ切り替え時は初回スクロールフラグをリセット
+        _hasInitialScrolled = false;
+      });
+    }
   }
 
   /// ペインを選択
@@ -748,9 +763,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
 
+    final oldPaneId = ref.read(tmuxProvider).activePaneId;
+
     try {
+      // 前のペインにフォーカスアウトを送信
+      if (oldPaneId != null && oldPaneId != paneId) {
+        await sshClient.exec(TmuxCommands.sendKeys(oldPaneId, '\x1b[O', literal: true));
+      }
+
       // tmux select-paneを実行
       await sshClient.exec(TmuxCommands.selectPane(paneId));
+
+      // 新しいペインにフォーカスインを送信（Claude Code等のアプリがフォーカスを検知できるようにする）
+      await sshClient.exec(TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true));
     } catch (e) {
       // SSH接続が閉じている場合は無視
       debugPrint('[Terminal] Failed to select pane: $e');
