@@ -7,6 +7,7 @@ import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
 import '../../../services/terminal/terminal_diff.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
+import '../../../theme/design_colors.dart';
 
 /// キー入力イベント
 class KeyInputEvent {
@@ -97,7 +98,7 @@ class AnsiTextView extends ConsumerStatefulWidget {
   ConsumerState<AnsiTextView> createState() => AnsiTextViewState();
 }
 
-class AnsiTextViewState extends ConsumerState<AnsiTextView> {
+class AnsiTextViewState extends ConsumerState<AnsiTextView> with SingleTickerProviderStateMixin {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   ScrollController? _internalVerticalScrollController;
@@ -134,6 +135,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 最後の差分結果（適応型ポーリング用）
   DiffResult? _lastDiffResult;
 
+  /// キャレット点滅用コントローラー
+  late final AnimationController _caretBlinkController;
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +149,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       defaultForeground: widget.foregroundColor,
       defaultBackground: widget.backgroundColor,
     );
+    
+    // 500ms周期で点滅（1秒で1サイクル）
+    _caretBlinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
   }
 
   @override
@@ -213,6 +223,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   @override
   void dispose() {
+    _caretBlinkController.dispose();
     _focusNode.dispose();
     _horizontalScrollController.dispose();
     // 内部で作成した場合のみ破棄
@@ -399,14 +410,22 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                 clipBehavior: Clip.none,
                 children: [
                   lineWidget,
-                  Positioned(
-                    left: cursorLeft,
-                    top: 0,
-                    width: charWidth,
-                    height: _lineHeight,
-                    child: Container(
-                      color: widget.foregroundColor.withValues(alpha: 0.5),
-                    ),
+                  AnimatedBuilder(
+                    animation: _caretBlinkController,
+                    builder: (context, child) {
+                      return Positioned(
+                        left: cursorLeft,
+                        top: 0,
+                        width: 2, // 細い線に変更
+                        height: _lineHeight,
+                        child: Opacity(
+                          opacity: _caretBlinkController.value > 0.5 ? 1.0 : 0.0, // 500msで点滅
+                          child: Container(
+                            color: DesignColors.primary, // primary色に変更
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ],
               );
