@@ -144,6 +144,9 @@ void main() {
       );
       
       final cursorSpan = textSpan.children![1] as TextSpan;
+      // Should replace space with non-breaking space
+      expect(cursorSpan.text, '\u00A0');
+      
       expect(cursorSpan.style!.backgroundColor, isNotNull);
       // Default BG is 0xFF1E1E1E, Default FG is 0xFFD4D4D4
       // Swapped: BG should be 0xFFD4D4D4

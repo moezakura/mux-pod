@@ -364,8 +364,14 @@ class AnsiParser {
           fg = fg.withValues(alpha: 0.5);
         }
 
+        // 反転時のスペースは背景色が描画されないことがあるため、No-Break Spaceに置換
+        String text = segment.text;
+        if (style.inverse) {
+          text = text.replaceAll(' ', '\u00A0');
+        }
+
         return TextSpan(
-          text: segment.text,
+          text: text,
           style: TerminalFontStyles.getTextStyle(
             fontFamily,
             fontSize: fontSize,
