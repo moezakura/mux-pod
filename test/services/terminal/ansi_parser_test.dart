@@ -70,6 +70,48 @@ void main() {
       expect(span.style!.backgroundColor, const Color(0xFFD4D4D4));
     });
 
+    test('toTextSpan sets backgroundColor even if it matches defaultBackground when inverse is true', () {
+      // 30 is Black (0xFF000000), 7 is Inverse
+      // Default BG is 0xFF1E1E1E. If we set FG to 0xFF1E1E1E and invert, 
+      // the new BG will be 0xFF1E1E1E which matches defaultBackground.
+      
+      parser = AnsiParser(
+        defaultForeground: const Color(0xFF000000),
+        defaultBackground: const Color(0xFF1E1E1E),
+      );
+
+      const input = '\x1b[7mInverse\x1b[0m';
+      final segments = parser.parse(input);
+      final textSpan = parser.toTextSpan(
+        segments,
+        fontSize: 14,
+        fontFamily: 'HackGen Console',
+      );
+      
+      final span = textSpan.children![0] as TextSpan;
+      
+      // Swapped: FG -> 0xFF1E1E1E, BG -> 0xFF000000
+      expect(span.style!.backgroundColor, const Color(0xFF000000));
+
+      // Test case where BG matches defaultBackground after swap
+      // Original FG = defaultBackground, then Inverse
+      final styleWithDefaultBGAsFG = const AnsiStyle(inverse: true).copyWith(
+        foreground: const Color(0xFF1E1E1E),
+      );
+      final segment = AnsiSegment('text', styleWithDefaultBGAsFG);
+      final spanWithDefaultBG = parser.toTextSpan(
+        [segment],
+        fontSize: 14,
+        fontFamily: 'HackGen Console',
+      );
+      
+      final span2 = spanWithDefaultBG.children![0] as TextSpan;
+      // fg (swapped) = defaultBackground (0xFF1E1E1E)
+      // bg (swapped) = foreground (0xFF1E1E1E)
+      // Since inverse is true, it should NOT be null.
+      expect(span2.style!.backgroundColor, const Color(0xFF1E1E1E));
+    });
+
     test('parseLines handles reverse video correctly across lines', () {
       const input = '\x1b[7mLine1\nLine2\x1b[27m';
       final parsedLines = parser.parseLines(input);
