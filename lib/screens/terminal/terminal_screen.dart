@@ -256,8 +256,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
           _paneHeight = activePane.height;
         });
 
-        // ペインをアクティブにする（Claude Code等のアプリがフォーカスを検知できるようにする）
-        await sshNotifier.client?.exec(TmuxCommands.selectPane(activePane.id));
+        // ペインにフォーカスインを送信（Claude Code等のアプリがフォーカスを検知できるようにする）
+        await sshNotifier.client?.exec(TmuxCommands.sendKeys(activePane.id, '\x1b[I', literal: true));
       }
 
       // 8. 100msポーリング開始
@@ -763,9 +763,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
 
+    final oldPaneId = ref.read(tmuxProvider).activePaneId;
+
     try {
+      // 前のペインにフォーカスアウトを送信
+      if (oldPaneId != null && oldPaneId != paneId) {
+        await sshClient.exec(TmuxCommands.sendKeys(oldPaneId, '\x1b[O', literal: true));
+      }
+
       // tmux select-paneを実行
       await sshClient.exec(TmuxCommands.selectPane(paneId));
+
+      // 新しいペインにフォーカスインを送信（Claude Code等のアプリがフォーカスを検知できるようにする）
+      await sshClient.exec(TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true));
     } catch (e) {
       // SSH接続が閉じている場合は無視
       debugPrint('[Terminal] Failed to select pane: $e');
