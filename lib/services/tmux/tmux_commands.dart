@@ -157,7 +157,9 @@ class TmuxCommands {
         '#{pane_left}$delimiter'
         '#{pane_top}$delimiter'
         '#{pane_title}$delimiter'
-        '#{pane_current_command}'
+        '#{pane_current_command}$delimiter'
+        '#{cursor_x}$delimiter'
+        '#{cursor_y}'
         '"';
   }
 
@@ -224,6 +226,11 @@ class TmuxCommands {
   /// エスケープキーを送信
   static String sendEscape(String paneId) {
     return 'tmux send-keys -t ${_escapeArg(paneId)} Escape';
+  }
+
+  /// カーソル位置とペインサイズを取得
+  static String getCursorPosition(String target) {
+    return 'tmux display-message -p -t ${_escapeArg(target)} "#{cursor_x},#{cursor_y},#{pane_width},#{pane_height}"';
   }
 
   // ===== ペインコンテンツ =====

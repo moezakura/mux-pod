@@ -7,6 +7,7 @@ import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
 import '../../../services/terminal/terminal_diff.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
+import '../../../theme/design_colors.dart';
 
 /// キー入力イベント
 class KeyInputEvent {
@@ -71,6 +72,12 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// 外部から渡される垂直スクロールコントローラー（オプション）
   final ScrollController? verticalScrollController;
 
+  /// カーソルX位置（0-based）
+  final int cursorX;
+
+  /// カーソルY位置（0-based, ペイン上部基準）
+  final int cursorY;
+
   const AnsiTextView({
     super.key,
     required this.text,
@@ -83,16 +90,22 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.zoomEnabled = true,
     this.onZoomChanged,
     this.verticalScrollController,
+    this.cursorX = 0,
+    this.cursorY = 0,
   });
 
   @override
   ConsumerState<AnsiTextView> createState() => AnsiTextViewState();
 }
 
-class AnsiTextViewState extends ConsumerState<AnsiTextView> {
+class AnsiTextViewState extends ConsumerState<AnsiTextView>
+    with SingleTickerProviderStateMixin {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   ScrollController? _internalVerticalScrollController;
+
+  /// キャレット点滅用コントローラー
+  late final AnimationController _caretBlinkController;
 
   /// 使用する垂直スクロールコントローラー
   ScrollController get _verticalScrollController =>
@@ -137,6 +150,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       defaultForeground: widget.foregroundColor,
       defaultBackground: widget.backgroundColor,
     );
+
+    // 500ms周期で点滅（1秒で1サイクル）
+    _caretBlinkController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
   }
 
   @override
@@ -205,6 +224,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   @override
   void dispose() {
+    _caretBlinkController.dispose();
     _focusNode.dispose();
     _horizontalScrollController.dispose();
     // 内部で作成した場合のみ破棄
@@ -296,6 +316,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         // 仮想スクロール対応のListView.builder
         Widget listWidget = ListView.builder(
           controller: _verticalScrollController,
+          padding: EdgeInsets.zero, // パディングを明示的にゼロにする
           physics: const ClampingScrollPhysics(),
           itemCount: parsedLines.length,
           // 固定の行高さを使用してスクロール計算を高速化
@@ -319,6 +340,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                 height: 1.4,
                 color: widget.foregroundColor,
               ),
+              textScaler: TextScaler.noScaling,
               maxLines: 1,
               softWrap: false,
               overflow: TextOverflow.visible,
@@ -337,8 +359,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             }
 
             // 現在の行がカーソル位置と一致する場合、Stackでカーソルを重ねる
-            if (index == cursorLineIndex && 
-                widget.mode == TerminalMode.normal && 
+            if (index == cursorLineIndex &&
+                widget.mode == TerminalMode.normal &&
                 settings.showTerminalCursor) {
               // TextPainter.getOffsetForCaretを使用して、レンダリングエンジンが計算した正確なカーソル位置を取得
               double cursorLeft;
@@ -350,7 +372,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                 fontSize: fontSize,
                 fontFamily: settings.fontFamily,
               );
-              
+
               final painter = TextPainter(
                 text: textSpanFull,
                 textDirection: TextDirection.ltr,
@@ -367,7 +389,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                    Rect.zero,
                  );
                  cursorLeft = offset.dx;
-                 
+
                  // カーソル幅も現在の文字の位置から取得（次の文字までの幅）
                  // 行末の場合は標準幅を使用
                  if (widget.cursorX < lineTextLength) {
@@ -398,7 +420,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                       final caretHeight = fontSize;
                       // 行内で垂直方向に中央寄せ
                       final caretTop = (_lineHeight - caretHeight) / 2;
-                      
+
                       return Positioned(
                         left: cursorLeft,
                         top: caretTop,

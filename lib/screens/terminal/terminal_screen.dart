@@ -373,24 +373,73 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
       }
 
       final startTime = DateTime.now();
-      // 履歴を多く取得するため、-S -1000で過去1000行を含める
-      final output = await sshClient.exec(
-        TmuxCommands.capturePane(target, escapeSequences: true, startLine: -1000),
-        timeout: const Duration(milliseconds: 500),
-      );
+
+      // 並列実行でコンテンツとカーソル位置を取得
+      final results = await Future.wait([
+        // 1. コンテンツ取得
+        sshClient.exec(
+          TmuxCommands.capturePane(target, escapeSequences: true, startLine: -1000),
+          timeout: const Duration(milliseconds: 500),
+        ),
+        // 2. カーソル位置取得
+        sshClient.exec(
+          TmuxCommands.getCursorPosition(target),
+          timeout: const Duration(milliseconds: 500),
+        ),
+      ]);
+
+      final output = results[0];
+      final cursorOutput = results[1];
+
+      // capture-paneの出力末尾にある改行を削除
+      final processedOutput = output.endsWith('\n')
+          ? output.substring(0, output.length - 1)
+          : output;
+
       final endTime = DateTime.now();
 
       // アンマウント済みならスキップ
       if (!mounted || _isDisposed) return;
 
+      // カーソル位置とペインサイズを更新
+      if (cursorOutput.isNotEmpty) {
+        final parts = cursorOutput.trim().split(',');
+        if (parts.length >= 4) {
+          final x = int.tryParse(parts[0]);
+          final y = int.tryParse(parts[1]);
+          final w = int.tryParse(parts[2]);
+          final h = int.tryParse(parts[3]);
+
+          // ペインサイズの更新検知
+          if (w != null && h != null && (w != _paneWidth || h != _paneHeight)) {
+            setState(() {
+              _paneWidth = w;
+              _paneHeight = h;
+            });
+            // フォントサイズ再計算のために通知
+            final currentActivePane = ref.read(tmuxProvider).activePane;
+            if (currentActivePane != null) {
+              ref.read(terminalDisplayProvider.notifier).updatePane(
+                    currentActivePane.copyWith(width: w, height: h),
+                  );
+            }
+          }
+
+          final activePaneId = ref.read(tmuxProvider).activePaneId;
+          if (activePaneId != null && x != null && y != null) {
+            ref.read(tmuxProvider.notifier).updateCursorPosition(activePaneId, x, y);
+          }
+        }
+      }
+
       // レイテンシを更新
       final latency = endTime.difference(startTime).inMilliseconds;
 
       // 差分があれば更新（スロットリング適用）
-      if (output != _terminalContent || latency != _latency) {
+      if (processedOutput != _terminalContent || latency != _latency) {
         // コピペモード中は更新をバッファリングして選択状態を保持
         if (_terminalMode == TerminalMode.copyPaste) {
-          _bufferedContent = output;
+          _bufferedContent = processedOutput;
           _bufferedLatency = latency;
           _hasBufferedUpdate = true;
           // レイテンシのみ更新（選択に影響しない）
@@ -400,7 +449,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
             });
           }
         } else {
-          _scheduleUpdate(output, latency);
+          _scheduleUpdate(processedOutput, latency);
         }
       }
 
@@ -579,6 +628,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen> {
                           });
                         },
                         verticalScrollController: _terminalScrollController,
+                        cursorX: tmuxState.activePane?.cursorX ?? 0,
+                        cursorY: tmuxState.activePane?.cursorY ?? 0,
                       ),
                     ),
                     // Pane indicator (右上)

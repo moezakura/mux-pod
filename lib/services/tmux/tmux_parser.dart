@@ -245,7 +245,7 @@ class TmuxParser {
 
       // フォーマット: session_name, session_id, window_index, window_id, window_name, window_active,
       //              pane_index, pane_id, pane_active, pane_width, pane_height, pane_left, pane_top,
-      //              pane_title, pane_current_command
+      //              pane_title, pane_current_command, cursor_x, cursor_y
       final sessionName = parts[0];
       final sessionId = parts[1];
       final windowIndex = int.tryParse(parts[2]) ?? 0;
@@ -261,6 +261,8 @@ class TmuxParser {
       final paneTop = parts.length > 12 ? int.tryParse(parts[12]) ?? 0 : 0;
       final paneTitle = parts.length > 13 && parts[13].isNotEmpty ? parts[13] : null;
       final paneCurrentCommand = parts.length > 14 && parts[14].isNotEmpty ? parts[14] : null;
+      final cursorX = parts.length > 15 ? int.tryParse(parts[15]) ?? 0 : 0;
+      final cursorY = parts.length > 16 ? int.tryParse(parts[16]) ?? 0 : 0;
 
       // セッションを取得または作成
       sessionsMap.putIfAbsent(
@@ -294,6 +296,8 @@ class TmuxParser {
         top: paneTop,
         title: paneTitle,
         currentCommand: paneCurrentCommand,
+        cursorX: cursorX,
+        cursorY: cursorY,
       ));
     }
 

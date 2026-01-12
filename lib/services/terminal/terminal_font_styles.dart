@@ -67,6 +67,7 @@ class TerminalFontStyles {
     // バンドルフォント（日本語対応）の場合
     if (_bundledFontFamilies.contains(fontFamily)) {
       return TextStyle(
+        inherit: false, // スタイル継承を無効化してメトリクスを安定させる
         fontFamily: _bundledFontMap[fontFamily],
         fontFamilyFallback: _fontFamilyFallback,
         fontSize: fontSize,
@@ -161,7 +162,10 @@ class TerminalFontStyles {
         );
     }
 
-    // フォントフォールバックを追加（特殊記号・絵文字対応）
-    return baseStyle.copyWith(fontFamilyFallback: _fontFamilyFallback);
+    // フォントフォールバックを追加し、継承を無効化
+    return baseStyle.copyWith(
+      fontFamilyFallback: _fontFamilyFallback,
+      inherit: false,
+    );
   }
 }

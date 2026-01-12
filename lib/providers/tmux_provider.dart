@@ -163,6 +163,24 @@ class TmuxNotifier extends Notifier<TmuxState> {
     );
   }
 
+  /// カーソル位置を更新
+  void updateCursorPosition(String paneId, int x, int y) {
+    final sessions = state.sessions.map((session) {
+      final windows = session.windows.map((window) {
+        final panes = window.panes.map((pane) {
+          if (pane.id == paneId) {
+            return pane.copyWith(cursorX: x, cursorY: y);
+          }
+          return pane;
+        }).toList();
+        return window.copyWith(panes: panes);
+      }).toList();
+      return session.copyWith(windows: windows);
+    }).toList();
+
+    state = state.copyWith(sessions: sessions);
+  }
+
   /// アクティブなセッション/ウィンドウ/ペインを一括設定
   void setActive({
     String? sessionName,
