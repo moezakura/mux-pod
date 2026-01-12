@@ -67,6 +67,7 @@ class TerminalFontStyles {
     // バンドルフォント（日本語対応）の場合
     if (_bundledFontFamilies.contains(fontFamily)) {
       return TextStyle(
+        inherit: false, // スタイル継承を無効化してメトリクスを安定させる
         fontFamily: _bundledFontMap[fontFamily],
         fontFamilyFallback: _fontFamilyFallback,
         fontSize: fontSize,
@@ -84,6 +85,9 @@ class TerminalFontStyles {
     switch (fontFamily) {
       case 'JetBrains Mono':
         baseStyle = GoogleFonts.jetBrainsMono(
+          // GoogleFontsはinherit引数を直接持たない場合があるため、copyWithで適用するか、
+          // textStyleを受け取るパラメータを確認する必要があるが、
+          // GoogleFonts.x()はTextStyleを返すので、後でcopyWith(inherit: false)する
           fontSize: fontSize,
           height: height,
           color: color,
@@ -161,7 +165,10 @@ class TerminalFontStyles {
         );
     }
 
-    // フォントフォールバックを追加（特殊記号・絵文字対応）
-    return baseStyle.copyWith(fontFamilyFallback: _fontFamilyFallback);
+    // フォントフォールバックを追加し、継承を無効化
+    return baseStyle.copyWith(
+      fontFamilyFallback: _fontFamilyFallback,
+      inherit: false,
+    );
   }
 }
