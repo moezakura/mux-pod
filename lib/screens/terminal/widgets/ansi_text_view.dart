@@ -357,71 +357,51 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
             // 現在の行がカーソル位置と一致する場合、Stackでカーソルを重ねる
             if (index == cursorLineIndex && widget.mode == TerminalMode.normal) {
-              final lineText = line.segments.map((s) => s.text).join();
-              
+              // TextPainter.getOffsetForCaretを使用して、レンダリングエンジンが計算した正確なカーソル位置を取得
               double cursorLeft;
               double charWidth;
 
-              if (lineText.isNotEmpty && widget.cursorX <= lineText.length) {
-                 // cursorXまでのセグメントを抽出してTextSpanを構築
-                 // スタイル（太字など）を含めた正確な幅を測定する
-                 final segmentsToCursor = <AnsiSegment>[];
-                 int currentLen = 0;
-                 for (final segment in line.segments) {
-                   if (currentLen + segment.text.length <= widget.cursorX) {
-                     segmentsToCursor.add(segment);
-                     currentLen += segment.text.length;
-                   } else {
-                     final take = widget.cursorX - currentLen;
-                     if (take > 0) {
-                       segmentsToCursor.add(AnsiSegment(
-                         segment.text.substring(0, take),
-                         segment.style,
-                       ));
-                     }
-                     break;
-                   }
-                 }
+              // 行全体のテキストとスタイルを使用してTextPainterを作成
+              final textSpanFull = _parser.lineToTextSpan(
+                line,
+                fontSize: fontSize,
+                fontFamily: settings.fontFamily,
+              );
+              
+              final painter = TextPainter(
+                text: textSpanFull,
+                textDirection: TextDirection.ltr,
+                textScaler: TextScaler.noScaling,
+              )..layout();
 
-                 final textSpanToCursor = _parser.toTextSpan(
-                   segmentsToCursor,
-                   fontSize: fontSize,
-                   fontFamily: settings.fontFamily,
+              // 行のテキスト長
+              final lineTextLength = line.segments.map((s) => s.text).join().length;
+
+              if (widget.cursorX <= lineTextLength) {
+                 // カーソルが行内にある場合、getOffsetForCaretで位置を取得
+                 final offset = painter.getOffsetForCaret(
+                   TextPosition(offset: widget.cursorX),
+                   Rect.zero,
                  );
-
-                 final painter = TextPainter(
-                    text: textSpanToCursor,
-                    textDirection: TextDirection.ltr,
-                    textScaler: TextScaler.noScaling,
-                 )..layout();
-                 cursorLeft = painter.width;
-
-                 charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
-              } else {
-                 // 行末以降、または空行の場合
-                 if (lineText.isNotEmpty) {
-                    // 行全体の幅を測定（スタイル込み）
-                    final textSpanFull = _parser.lineToTextSpan(
-                      line,
-                      fontSize: fontSize,
-                      fontFamily: settings.fontFamily,
+                 cursorLeft = offset.dx;
+                 
+                 // カーソル幅も現在の文字の位置から取得（次の文字までの幅）
+                 // 行末の場合は標準幅を使用
+                 if (widget.cursorX < lineTextLength) {
+                    final nextOffset = painter.getOffsetForCaret(
+                      TextPosition(offset: widget.cursorX + 1),
+                      Rect.zero,
                     );
-                    
-                    final painter = TextPainter(
-                      text: textSpanFull,
-                      textDirection: TextDirection.ltr,
-                      textScaler: TextScaler.noScaling,
-                    )..layout();
-                    cursorLeft = painter.width;
-                    
-                    // 行末からの超過分を加算
-                    charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
-                    cursorLeft += (widget.cursorX - lineText.length) * charWidth;
+                    charWidth = nextOffset.dx - offset.dx;
                  } else {
-                    // 完全な空行
                     charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
-                    cursorLeft = widget.cursorX * charWidth;
                  }
+              } else {
+                 // カーソルが行末より先にある場合（空行や行末以降のスペース）
+                 // 行末の位置を取得し、超過分を加算
+                 cursorLeft = painter.width;
+                 charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
+                 cursorLeft += (widget.cursorX - lineTextLength) * charWidth;
               }
 
               lineWidget = Stack(
