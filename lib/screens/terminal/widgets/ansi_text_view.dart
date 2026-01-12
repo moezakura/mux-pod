@@ -358,7 +358,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> with SingleTickerPro
             }
 
             // 現在の行がカーソル位置と一致する場合、Stackでカーソルを重ねる
-            if (index == cursorLineIndex && widget.mode == TerminalMode.normal) {
+            if (index == cursorLineIndex && 
+                widget.mode == TerminalMode.normal && 
+                settings.showTerminalCursor) {
               // TextPainter.getOffsetForCaretを使用して、レンダリングエンジンが計算した正確なカーソル位置を取得
               double cursorLeft;
               double charWidth;

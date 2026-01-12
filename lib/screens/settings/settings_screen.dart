@@ -29,6 +29,15 @@ class SettingsScreen extends ConsumerWidget {
               delegate: SliverChildListDelegate([
                 const _SectionHeader(title: 'Terminal'),
                 SwitchListTile(
+                  secondary: const Icon(Icons.abc),
+                  title: const Text('Show Cursor'),
+                  subtitle: const Text('Show terminal cursor indicator'),
+                  value: settings.showTerminalCursor,
+                  onChanged: (value) {
+                    ref.read(settingsProvider.notifier).setShowTerminalCursor(value);
+                  },
+                ),
+                SwitchListTile(
                   secondary: const Icon(Icons.fit_screen),
                   title: const Text('Auto Fit'),
                   subtitle: const Text('Fit terminal width to screen'),
