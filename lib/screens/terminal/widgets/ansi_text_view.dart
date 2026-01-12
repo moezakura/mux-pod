@@ -71,6 +71,12 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// 外部から渡される垂直スクロールコントローラー（オプション）
   final ScrollController? verticalScrollController;
 
+  /// カーソルX位置（0-based）
+  final int cursorX;
+
+  /// カーソルY位置（0-based, ペイン上部基準）
+  final int cursorY;
+
   const AnsiTextView({
     super.key,
     required this.text,
@@ -83,6 +89,8 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.zoomEnabled = true,
     this.onZoomChanged,
     this.verticalScrollController,
+    this.cursorX = 0,
+    this.cursorY = 0,
   });
 
   @override
@@ -323,6 +331,40 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               softWrap: false,
               overflow: TextOverflow.visible,
             );
+
+            // カーソルの描画処理
+            // カーソル位置の行インデックスを計算
+            // parsedLinesには履歴+可視領域が含まれる。
+            // 末尾のpaneHeight分が可視領域となる。
+            final int cursorLineIndex;
+            if (parsedLines.length >= widget.paneHeight) {
+              cursorLineIndex = parsedLines.length - widget.paneHeight + widget.cursorY;
+            } else {
+              // 行数がpaneHeight未満の場合は、単純にcursorYを使用（初期状態など）
+              cursorLineIndex = widget.cursorY;
+            }
+
+            // 現在の行がカーソル位置と一致する場合、Stackでカーソルを重ねる
+            if (index == cursorLineIndex && widget.mode == TerminalMode.normal) {
+              final charWidthRatio = FontCalculator.measureCharWidthRatio(settings.fontFamily);
+              final charWidth = fontSize * charWidthRatio;
+              final cursorLeft = widget.cursorX * charWidth;
+
+              lineWidget = Stack(
+                children: [
+                  lineWidget,
+                  Positioned(
+                    left: cursorLeft,
+                    top: 0,
+                    width: charWidth,
+                    height: _lineHeight,
+                    child: Container(
+                      color: widget.foregroundColor.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              );
+            }
 
             // 固定幅コンテナ（水平スクロール用）
             if (needsHorizontalScroll) {

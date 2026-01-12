@@ -208,8 +208,8 @@ class TmuxParser {
   static TmuxPaneContent parsePaneContent(String output, {int? width, int? height}) {
     final lines = output.split('\n');
 
-    // 末尾の空行を削除
-    while (lines.isNotEmpty && lines.last.trim().isEmpty) {
+    // 末尾の空行を削除（splitによるアーティファクトのみを除去）
+    if (lines.isNotEmpty && lines.last.isEmpty) {
       lines.removeLast();
     }
 
