@@ -1,12 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
+import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_parser.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
+
+  // Pre-populate cache to avoid google_fonts async errors in tests
+  FontCalculator.setCachedRatio('JetBrains Mono', 0.6);
 
   group('TerminalDisplayState', () {
     test('has correct default values', () {

@@ -1,8 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
+
+  // Pre-populate cache to avoid google_fonts async errors in tests
+  FontCalculator.setCachedRatio('JetBrains Mono', 0.6);
 
   group('FontCalculator', () {
     group('calculate', () {

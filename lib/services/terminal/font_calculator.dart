@@ -1,6 +1,7 @@
 import 'dart:developer' as developer;
 
 import 'package:flutter/painting.dart';
+import 'package:meta/meta.dart';
 import 'terminal_font_styles.dart';
 
 /// フォントサイズ計算結果
@@ -134,6 +135,12 @@ class FontCalculator {
   /// キャッシュをクリア（テスト用またはフォント変更時）
   static void clearCache() {
     _charWidthRatioCache.clear();
+  }
+
+  /// テスト用: キャッシュに比率を設定（google_fontsの非同期フォント取得を回避）
+  @visibleForTesting
+  static void setCachedRatio(String fontFamily, double ratio) {
+    _charWidthRatioCache[fontFamily] = ratio;
   }
 
   /// ターミナルの表示幅（ピクセル）を計算

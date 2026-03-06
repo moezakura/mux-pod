@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('SettingsScreen', () {
     testWidgets('displays settings sections', (tester) async {
       await tester.pumpWidget(
@@ -17,14 +22,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('Terminal'), findsOneWidget);
-      expect(find.text('Behavior'), findsOneWidget);
-      expect(find.text('Notifications'), findsOneWidget);
-      expect(find.text('Appearance'), findsOneWidget);
+      // _SectionHeader renders titles in uppercase
+      expect(find.text('TERMINAL'), findsOneWidget);
+      expect(find.text('BEHAVIOR'), findsOneWidget);
 
-      // Scroll down to see About section
-      await tester.scrollUntilVisible(find.text('About'), 100);
-      expect(find.text('About'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('APPEARANCE'), 100);
+      expect(find.text('APPEARANCE'), findsOneWidget);
+
+      await tester.scrollUntilVisible(find.text('ABOUT'), 100);
+      expect(find.text('ABOUT'), findsOneWidget);
     });
 
     testWidgets('displays Haptic Feedback toggle', (tester) async {
@@ -54,6 +60,7 @@ void main() {
 
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(find.text('Keep Screen On'), 100);
       expect(find.text('Keep Screen On'), findsOneWidget);
       expect(find.text('Prevent screen from sleeping'), findsOneWidget);
     });
@@ -70,6 +77,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Find the Haptic Feedback switch
+      await tester.scrollUntilVisible(find.text('Haptic Feedback'), 100);
       final hapticSwitch = find.ancestor(
         of: find.text('Haptic Feedback'),
         matching: find.byType(SwitchListTile),
@@ -77,6 +85,7 @@ void main() {
       expect(hapticSwitch, findsOneWidget);
 
       // Find the Keep Screen On switch
+      await tester.scrollUntilVisible(find.text('Keep Screen On'), 100);
       final keepScreenSwitch = find.ancestor(
         of: find.text('Keep Screen On'),
         matching: find.byType(SwitchListTile),
@@ -98,7 +107,7 @@ void main() {
       // Scroll down to see Source Code link in About section
       await tester.scrollUntilVisible(find.text('Source Code'), 100);
       expect(find.text('Source Code'), findsOneWidget);
-      expect(find.text('github.com/muxpod'), findsOneWidget);
+      expect(find.text('github.com/moezakura/mux-pod'), findsOneWidget);
     });
   });
 }
