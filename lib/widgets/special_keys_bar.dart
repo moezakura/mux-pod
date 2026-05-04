@@ -233,15 +233,23 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
   /// DirectInput: sentinelにリセット（Backspace検出用）
   ///
-  /// _isResettingControllerの解除を次フレームまで遅延することで、
-  /// iOSプラットフォームがIME確定時に送る遅延テキスト更新を吸収する。
-  /// PostFrameCallbackでcontrollerが上書きされていれば再度sentinelにリセットする。
-  void _resetToSentinel() {
+  /// When [fastPath] is true (hardware-key origin), _isResettingController is
+  /// cleared immediately without waiting for the next frame. This prevents the
+  /// post-frame wait from blocking rapid key repeats on hardware keyboards.
+  ///
+  /// When [fastPath] is false (IME-driven path), _isResettingController is
+  /// held until the next frame so that iOS delayed text-delta updates that
+  /// arrive after composing commits are absorbed correctly.
+  void _resetToSentinel({bool fastPath = false}) {
     _isResettingController = true;
     _directInputController.value = TextEditingValue(
       text: _sentinel,
       selection: TextSelection.collapsed(offset: _sentinel.length),
     );
+    if (fastPath) {
+      _isResettingController = false;
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final currentValue = _directInputController.value;
@@ -332,6 +340,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     widget.onSpecialKeyPressed(_applyHardwareModifiers(baseKey));
     // 外付けキーボード使用時はソフトウェア修飾子トグルをリセット
     _resetSoftwareModifiers();
+    // Hardware-key path: use fastPath so rapid repeats are not blocked for
+    // an extra frame by _isResettingController=true.
+    _resetToSentinel(fastPath: true);
   }
 
   /// ソフトウェア修飾子ボタンの状態をリセット
@@ -404,7 +415,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       HapticFeedback.lightImpact();
     }
     widget.onSpecialKeyPressed('Enter');
-    _resetToSentinel();
+    // Hardware-key path: skip post-frame wait so rapid Enter repeats are not
+    // held in _isResettingController=true for an entire frame each time.
+    _resetToSentinel(fastPath: true);
   }
 
   @override
