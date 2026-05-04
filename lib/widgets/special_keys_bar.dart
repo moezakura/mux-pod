@@ -65,10 +65,11 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// sentinel リセット中の再入防止フラグ
   bool _isResettingController = false;
 
-  /// 二重入力防止: _handleKeyEventで処理した最終時刻
-  /// iPad外付けキーボードではFlutter KeyEventとiOSテキスト入力が
-  /// 同一キーを二重に処理するため、タイムスタンプで抑制する
-  DateTime? _lastKeyEventHandledAt;
+  /// Set to true by _markKeyEventHandled() after a hardware-key path consumes
+  /// an event. Cleared either on next frame (postFrame) or on first read
+  /// (consume). The purpose is to swallow exactly the next iOS UITextInput
+  /// duplicate text-delta that follows the same hardware keystroke.
+  bool _expectIosTextEcho = false;
 
   @override
   void initState() {
@@ -164,8 +165,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
     // 実際のテキストがあれば送信
     if (actualText.isNotEmpty) {
-      // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-      if (_isRecentKeyEventHandled()) {
+      // Suppress the iOS UITextInput echo that follows the same hardware keystroke.
+      if (consumeRecentKeyEventFlag()) {
         _lastComposingText = null;
         _resetToSentinel();
         return;
@@ -212,8 +213,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
   /// DirectInput: ソフトウェアキーボードのEnter（送信）で呼ばれる
   void _onDirectInputSubmitted(String value) {
-    // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-    if (_isRecentKeyEventHandled()) return;
+    // Suppress the iOS UITextInput submitted callback that echoes a HW Enter.
+    if (consumeRecentKeyEventFlag()) return;
 
     if (widget.hapticFeedback) {
       HapticFeedback.lightImpact();
@@ -257,16 +258,24 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     });
   }
 
-  /// 二重入力防止: _handleKeyEventで処理したことをマーク
+  /// Mark that a hardware-key event was just handled. The next iOS UITextInput
+  /// text-delta for the same keystroke should be suppressed.
   void _markKeyEventHandled() {
-    _lastKeyEventHandledAt = DateTime.now();
+    _expectIosTextEcho = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _expectIosTextEcho = false;
+    });
   }
 
-  /// 二重入力防止: 直近100ms以内に_handleKeyEventで処理されたか
-  bool _isRecentKeyEventHandled() {
-    if (_lastKeyEventHandledAt == null) return false;
-    return DateTime.now().difference(_lastKeyEventHandledAt!) <
-        const Duration(milliseconds: 100);
+  /// Consume the iOS echo flag. Returns true and clears the flag if set,
+  /// otherwise returns false. Only the first downstream listener after a
+  /// hardware key fires gets blocked.
+  @visibleForTesting
+  bool consumeRecentKeyEventFlag() {
+    if (!_expectIosTextEcho) return false;
+    _expectIosTextEcho = false;
+    return true;
   }
 
   /// 外付けキーボードの修飾子を検出してtmux形式キー名に変換
