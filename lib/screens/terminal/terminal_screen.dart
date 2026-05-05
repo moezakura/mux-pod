@@ -3129,26 +3129,52 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     });
   }
 
-  /// 複数行テキストを送信（行ごとにテキスト+Enterを送信）
+  /// Send multi-line text in a single SSH round-trip by batching all
+  /// tmux send-keys commands into one shell invocation joined with `;`.
   ///
-  /// 注: _sendKey/_sendSpecialKeyを直接呼び出す。
-  /// オーバーレイラッパーを経由しないため、複数行送信時にオーバーレイは表示されない。
-  /// これは意図的な動作。
+  /// Enter-emission rules are identical to the previous per-line
+  /// implementation; only the round-trip count changes.
   Future<void> _sendMultilineText(String text) async {
     final lines = text.split('\n');
+    final target = ref.read(tmuxProvider.notifier).currentTarget;
+    if (target == null) return;
+
+    final commands = <String>[];
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       if (line.isNotEmpty) {
-        await _sendKey(line);
+        commands.add(TmuxCommands.sendKeys(target, line, literal: true));
       }
-      // 最後の行以外はEnterを送信、または空行でもEnterを送信
+      // Send Enter after every line except the last non-empty line,
+      // and also for empty lines that are not the last element.
       if (i < lines.length - 1 || line.isEmpty) {
-        await _sendSpecialKey('Enter');
+        commands.add(TmuxCommands.sendKeys(target, 'Enter', literal: false));
       }
     }
-    // 最後の行が空でなければEnterを送信
+    // Closing Enter for the last non-empty line.
     if (lines.isNotEmpty && lines.last.isNotEmpty) {
-      await _sendSpecialKey('Enter');
+      commands.add(TmuxCommands.sendKeys(target, 'Enter', literal: false));
+    }
+
+    if (commands.isEmpty) return;
+
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) {
+      // Offline: enqueue literal-key commands only (preserves existing behaviour).
+      for (final line in lines) {
+        if (line.isNotEmpty) {
+          _inputQueue.enqueue(line);
+        }
+      }
+      if (mounted) setState(() {});
+      return;
+    }
+
+    try {
+      await sshClient.exec(commands.join(' ; '));
+      _boostPolling();
+    } catch (_) {
+      // Silently ignore send errors; polling will reflect actual state.
     }
   }
 
