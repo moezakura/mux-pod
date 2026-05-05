@@ -243,6 +243,23 @@ Contributions welcome! Feel free to:
 
 ---
 
+## Building on macOS
+
+The macOS target uses `flutter_secure_storage`, which requires a signed
+Keychain Sharing entitlement on macOS / Apple Silicon. Open the Xcode
+workspace and select a signing Team for the Runner target before building:
+
+```bash
+open macos/Runner.xcworkspace
+```
+
+In Xcode → Runner target → Signing & Capabilities:
+
+- Enable **Automatically manage signing**.
+- Pick a **Team**. A free Personal Team (added via Xcode → Settings → Accounts) is sufficient for local builds. Without a Team selected, the build fails with `-34018 errSecMissingEntitlement` at runtime.
+
+---
+
 ## License
 
 [Apache License 2.0](LICENSE) © 2025 mox
