@@ -109,9 +109,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     _isComposing = value.composing.isValid && !value.composing.isCollapsed;
 
     if (_isComposing) {
-      // Record composing text for iOS duplicate detection
-      _lastComposingText = text.replaceAll(_sentinel, '');
-
       // Samsung IME composing workaround:
       // Samsung (and some Android IMEs) treat English letters as composing,
       // so composing=false may NEVER arrive while the user keeps typing.
@@ -120,8 +117,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       // Guards:
       //   - length == 1: only the first composing char (avoids accumulated repeats)
       //   - ASCII letter regex: don't intercept Korean (ㅊ) or other non-ASCII composing
-      if ((_ctrlPressed || _altPressed) && _lastComposingText!.length == 1) {
-        final char = _lastComposingText!;
+      final composingText = text.replaceAll(_sentinel, '');
+      if ((_ctrlPressed || _altPressed) && composingText.length == 1) {
+        final char = composingText;
         if (RegExp(r'^[A-Za-z]$').hasMatch(char)) {
           if (widget.hapticFeedback) {
             HapticFeedback.lightImpact();
@@ -137,18 +135,18 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           }
           final prefix = modifiers.join('-');
           widget.onSpecialKeyPressed('$prefix-${char.toLowerCase()}');
-          _lastComposingText = null;
           _resetToSentinel();
           return;
         }
       }
 
+      // While composing: do nothing. Let Flutter manage the IME preview.
+      // Do not record snapshots, do not call onKeyPressed, do not reset sentinel.
       return;
     }
 
     // Sentinelが削除された = Backspaceが押された（iOS/iPadOS対応）
     if (text.isEmpty) {
-      _lastComposingText = null;
       _sendDirectBackspace();
       _resetToSentinel();
       return;
@@ -161,27 +159,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     if (actualText.isNotEmpty) {
       // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
       if (_isRecentKeyEventHandled()) {
-        _lastComposingText = null;
         _resetToSentinel();
         return;
       }
-
-      // iOS重複検出: 確定テキストがcomposingテキストより長く、
-      // composingテキストで始まる場合、iOSの重複挿入とみなしcomposingテキストを使用
-      String textToSend = actualText;
-      if (_lastComposingText != null &&
-          actualText.length > _lastComposingText!.length &&
-          actualText.startsWith(_lastComposingText!)) {
-        textToSend = _lastComposingText!;
-      }
-      _lastComposingText = null;
 
       // Send modifier+key when CTRL/ALT is active (non-composing path)
       // This handles IMEs that commit without composing (e.g. Gboard English)
       // tmux format: C-c (Ctrl+C), M-a (Alt+A), C-M-x (Ctrl+Alt+X)
       if ((_ctrlPressed || _altPressed) &&
-          textToSend.length == 1 &&
-          RegExp(r'^[A-Za-z]$').hasMatch(textToSend)) {
+          actualText.length == 1 &&
+          RegExp(r'^[A-Za-z]$').hasMatch(actualText)) {
         if (widget.hapticFeedback) {
           HapticFeedback.lightImpact();
         }
@@ -195,9 +182,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           setState(() => _altPressed = false);
         }
         final prefix = modifiers.join('-');
-        widget.onSpecialKeyPressed('$prefix-${textToSend.toLowerCase()}');
+        widget.onSpecialKeyPressed('$prefix-${actualText.toLowerCase()}');
       } else {
-        widget.onKeyPressed(textToSend);
+        widget.onKeyPressed(actualText);
       }
 
       // 送信後にsentinelにリセット
