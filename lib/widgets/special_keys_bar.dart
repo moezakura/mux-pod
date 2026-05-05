@@ -52,11 +52,6 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// 現在IME変換中かどうか
   bool _isComposing = false;
 
-  /// IME composing中の最新テキスト（iOS重複検出用）
-  /// iOSが自動確定時にcomposingテキストより長い確定テキストを返す場合、
-  /// composingテキストを正とし余分な重複を除去する
-  String? _lastComposingText;
-
   /// DirectInputモードでBackspace検出のためのsentinel文字（ゼロ幅スペース）
   /// iOS/iPadOSではTextField空の状態でBackspace押下時にKeyDownEventが
   /// 生成されないため、常にsentinelを保持して削除検出でBackspaceを検知する
