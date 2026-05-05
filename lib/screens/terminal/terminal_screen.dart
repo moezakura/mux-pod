@@ -3125,6 +3125,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         },
       ),
     ).then((_) {
+      _savedCommandInput = '';
       _scrollToBottomKey.currentState?.show();
     });
   }
