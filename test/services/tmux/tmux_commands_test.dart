@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_commands.dart';
 
@@ -196,6 +198,85 @@ void main() {
           TmuxCommands.chain(['tmux kill-pane -t %0', 'tmux list-panes']),
           'tmux kill-pane -t %0 && tmux list-panes',
         );
+      });
+    });
+
+    group('loadBufferAndPaste', () {
+      test('single ASCII line embeds correct base64 and command structure', () {
+        const text = 'hello';
+        final expected = base64.encode(utf8.encode(text));
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
+
+        expect(cmd, contains("echo -n '$expected'"));
+        expect(cmd, contains('| base64 -d'));
+        expect(cmd, contains('| tmux load-buffer -b '));
+        expect(cmd, contains('- &&'));
+        expect(cmd, contains('tmux paste-buffer -d -p -b '));
+        expect(cmd, contains('-t %0'));
+      });
+
+      test('multi-line payload round-trips through base64 correctly', () {
+        const text = 'line1\nline2\nline3';
+        final cmd = TmuxCommands.loadBufferAndPaste('%1', text);
+
+        // Extract the base64 token between echo -n ' and '
+        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        expect(match, isNotNull);
+        final decoded = utf8.decode(base64.decode(match!.group(1)!));
+        expect(decoded, equals(text));
+      });
+
+      test('special chars are safe: payload base64 contains no shell metachars from input', () {
+        const text = "echo 'hi'; rm -rf \$HOME";
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
+
+        // The base64 alphabet contains only [A-Za-z0-9+/=] — no quotes or dollars.
+        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        expect(match, isNotNull);
+        final encodedToken = match!.group(1)!;
+        expect(encodedToken, isNot(contains("'")));
+        expect(encodedToken, isNot(contains(r'$')));
+
+        // Round-trip must restore the original.
+        final decoded = utf8.decode(base64.decode(encodedToken));
+        expect(decoded, equals(text));
+      });
+
+      test('UTF-8 multibyte payload round-trips correctly', () {
+        const text = 'あいうえお\nテスト';
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
+
+        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        expect(match, isNotNull);
+        final decoded = utf8.decode(base64.decode(match!.group(1)!));
+        expect(decoded, equals(text));
+      });
+
+      test('target with space is escaped by _escapeArg (double-quoted)', () {
+        final cmd = TmuxCommands.loadBufferAndPaste('my session:0.0', 'hi');
+        // _escapeArg wraps targets containing spaces in double quotes.
+        expect(cmd, contains('"my session:0.0"'));
+      });
+
+      test('buffer name matches muxpod-<digits> pattern', () {
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', 'test');
+        final bufPattern = RegExp(r"muxpod-\d+");
+        expect(bufPattern.hasMatch(cmd), isTrue);
+      });
+
+      test('two calls produce buffer names that match the expected pattern', () {
+        final cmd1 = TmuxCommands.loadBufferAndPaste('%0', 'a');
+        final cmd2 = TmuxCommands.loadBufferAndPaste('%0', 'b');
+
+        final pattern = RegExp(r"muxpod-\d+");
+        // Both commands embed a valid buffer name.
+        expect(pattern.hasMatch(cmd1), isTrue);
+        expect(pattern.hasMatch(cmd2), isTrue);
+        // The buffer is deleted immediately after paste (-d flag) so even if
+        // microsecond timestamps collide the lifetime overlap is negligible.
+        // We assert the -d flag is present in both commands.
+        expect(cmd1, contains('paste-buffer -d'));
+        expect(cmd2, contains('paste-buffer -d'));
       });
     });
   });
