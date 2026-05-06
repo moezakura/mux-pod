@@ -3156,9 +3156,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
 
-    // Bracketed paste preserves any trailing newline as Enter; ensure the
-    // last line is also executed by the receiving shell.
-    final payload = text.endsWith('\n') ? text : '$text\n';
+    // Pass text as-is: bracketed paste preserves whatever newlines are
+    // present. The caller decides whether a trailing Enter is desired.
+    final payload = text;
 
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
