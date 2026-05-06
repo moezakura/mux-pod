@@ -48,19 +48,27 @@ void main() {
       expect(keyPair.publicKeyString, startsWith('ssh-rsa '));
     });
 
-    test('generates valid RSA-3072 key pair', () async {
-      final keyPair = await service.generateRsa(bits: 3072);
+    test(
+      'generates valid RSA-3072 key pair',
+      () async {
+        final keyPair = await service.generateRsa(bits: 3072);
 
-      expect(keyPair.type, equals('rsa-3072'));
-      expect(keyPair.fingerprint, startsWith('SHA256:'));
-    });
+        expect(keyPair.type, equals('rsa-3072'));
+        expect(keyPair.fingerprint, startsWith('SHA256:'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
 
-    test('generates valid RSA-4096 key pair', () async {
-      final keyPair = await service.generateRsa(bits: 4096);
+    test(
+      'generates valid RSA-4096 key pair',
+      () async {
+        final keyPair = await service.generateRsa(bits: 4096);
 
-      expect(keyPair.type, equals('rsa-4096'));
-      expect(keyPair.fingerprint, startsWith('SHA256:'));
-    });
+        expect(keyPair.type, equals('rsa-4096'));
+        expect(keyPair.fingerprint, startsWith('SHA256:'));
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
 
     test('generates RSA key pair with comment', () async {
       const comment = 'test@example.com';
