@@ -258,6 +258,25 @@ In Xcode → Runner target → Signing & Capabilities:
 - Enable **Automatically manage signing**.
 - Pick a **Team**. A free Personal Team (added via Xcode → Settings → Accounts) is sufficient for local builds. Without a Team selected, the build fails with `-34018 errSecMissingEntitlement` at runtime.
 
+### Keychain Sharing capability
+
+The Xcode project (`macos/Runner.xcodeproj/project.pbxproj`) has `Keychain Sharing` enabled for the Runner target. This matches the `keychain-access-groups` entitlement present in both `DebugProfile.entitlements` and `Release.entitlements`, which is required by `flutter_secure_storage` on macOS.
+
+### If you change the Bundle Identifier
+
+The `keychain-access-groups` array in both entitlement files contains the application identifier:
+
+```
+$(AppIdentifierPrefix)dev.muxpod.flutterMuxpod
+```
+
+If you change the Bundle Identifier (e.g., to `com.example.myapp`), you **must** update the `keychain-access-groups` value in **both** of the following files to match:
+
+- `macos/Runner/DebugProfile.entitlements`
+- `macos/Runner/Release.entitlements`
+
+Failing to do so will cause `-34018 errSecMissingEntitlement` errors at runtime when the app tries to access the keychain.
+
 ---
 
 ## License
