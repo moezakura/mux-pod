@@ -3129,26 +3129,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     });
   }
 
-  /// 複数行テキストを送信（行ごとにテキスト+Enterを送信）
-  ///
-  /// 注: _sendKey/_sendSpecialKeyを直接呼び出す。
-  /// オーバーレイラッパーを経由しないため、複数行送信時にオーバーレイは表示されない。
-  /// これは意図的な動作。
+  /// Sends multi-line text to the active pane using tmux load-buffer +
+  /// paste-buffer so the entire payload is delivered atomically in one
+  /// SSH round-trip.  Bracketed paste mode (`-p`) tells the receiving
+  /// shell to treat the block as literal data, preventing `\`-continuation
+  /// and prompt-redraw races that plagued the previous per-line approach.
   Future<void> _sendMultilineText(String text) async {
-    final lines = text.split('\n');
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      if (line.isNotEmpty) {
-        await _sendKey(line);
-      }
-      // 最後の行以外はEnterを送信、または空行でもEnterを送信
-      if (i < lines.length - 1 || line.isEmpty) {
-        await _sendSpecialKey('Enter');
-      }
+    if (text.isEmpty) return;
+
+    final target = ref.read(tmuxProvider.notifier).currentTarget;
+    if (target == null) return;
+
+    // Bracketed paste preserves any trailing newline as Enter; ensure the
+    // last line is also executed by the receiving shell.
+    final payload = text.endsWith('\n') ? text : '$text\n';
+
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) {
+      // Offline fallback: enqueue the original payload as before so it is
+      // flushed once the connection comes back.
+      _inputQueue.enqueue(text);
+      if (mounted) setState(() {});
+      return;
     }
-    // 最後の行が空でなければEnterを送信
-    if (lines.isNotEmpty && lines.last.isNotEmpty) {
-      await _sendSpecialKey('Enter');
+
+    try {
+      await sshClient.exec(
+        TmuxCommands.loadBufferAndPaste(target, payload),
+      );
+      _boostPolling();
+    } catch (_) {
+      // Polling will reflect actual state; swallow transient send errors.
     }
   }
 
