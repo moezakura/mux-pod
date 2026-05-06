@@ -271,6 +271,20 @@ class TmuxCommands {
         "&& tmux paste-buffer -d -p -b '$bufName' -t ${_escapeArg(target)}";
   }
 
+  /// Fallback variant of [loadBufferAndPaste] for tmux < 2.6, which does
+  /// not support the `-p` (bracketed paste) flag on `paste-buffer`.
+  ///
+  /// Prefer [loadBufferAndPaste] when the remote tmux version is >= 2.6.
+  static String loadBufferAndPasteNoBracketed(String target, String text) {
+    final encoded = base64.encode(utf8.encode(text));
+    final rand = Random().nextInt(0xffffff).toRadixString(16).padLeft(6, '0');
+    // bufName is safe: numeric + lowercase hex only — no escaping needed.
+    final bufName = 'muxpod-${DateTime.now().microsecondsSinceEpoch}-$rand';
+    return "printf '%s' '$encoded' | base64 -d "
+        "| tmux load-buffer -b '$bufName' - "
+        "&& tmux paste-buffer -d -b '$bufName' -t ${_escapeArg(target)}";
+  }
+
   /// Ctrl+Cを送信
   static String sendInterrupt(String paneId) {
     return 'tmux send-keys -t ${_escapeArg(paneId)} C-c';
