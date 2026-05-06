@@ -3162,10 +3162,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
-      // Offline fallback: enqueue the original payload as before so it is
-      // flushed once the connection comes back.
-      _inputQueue.enqueue(text);
-      if (mounted) setState(() {});
+      // Multi-line paste via send-keys would re-introduce the race condition
+      // fixed by PR #51. Reject the operation and ask the user to retry
+      // once connected rather than silently queuing via the legacy path.
+      if (text.contains('\n') && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Multi-line send requires a live connection; please retry.',
+            ),
+          ),
+        );
+      } else {
+        _inputQueue.enqueue(text);
+        if (mounted) setState(() {});
+      }
       return;
     }
 
