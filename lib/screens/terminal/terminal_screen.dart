@@ -1185,7 +1185,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     // 接続が切れている場合はキューに追加
     if (sshClient == null || !sshClient.isConnected) {
+      final wasOverflow = _inputQueue.isOverflow;
       _inputQueue.enqueue(data);
+      if (!wasOverflow && _inputQueue.isOverflow && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Input queue is full; some keystrokes may be lost.'),
+          ),
+        );
+      }
       if (mounted) setState(() {}); // キューイング状態を更新
       return;
     }
@@ -2906,7 +2914,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 接続が切れている場合はキューに追加（リテラルの場合のみ）
     if (sshClient == null || !sshClient.isConnected) {
       if (literal) {
+        final wasOverflow = _inputQueue.isOverflow;
         _inputQueue.enqueue(key);
+        if (!wasOverflow && _inputQueue.isOverflow && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Input queue is full; some keystrokes may be lost.'),
+            ),
+          );
+        }
         if (mounted) setState(() {}); // キューイング状態を更新
       }
       return;
