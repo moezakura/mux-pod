@@ -75,6 +75,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       );
     }
     _directInputController.addListener(_onDirectInputChanged);
+    // Reset composing state when the field loses focus so that IME teardown
+    // (e.g. app backgrounded, keyboard dismissed) cannot leave _isComposing
+    // stuck at true and permanently block hardware-key handling.
+    _directInputFocusNode.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_directInputFocusNode.hasFocus) {
+      _isComposing = false;
+    }
   }
 
   @override
@@ -83,6 +93,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     if (widget.directInputEnabled && !oldWidget.directInputEnabled) {
       _resetToSentinel();
     } else if (!widget.directInputEnabled && oldWidget.directInputEnabled) {
+      // DirectInput turned off: clear any stuck composing state.
+      _isComposing = false;
       _isResettingController = true;
       _directInputController.clear();
       _isResettingController = false;
@@ -91,6 +103,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
   @override
   void dispose() {
+    _isComposing = false;
+    _directInputFocusNode.removeListener(_onFocusChange);
     _directInputController.removeListener(_onDirectInputChanged);
     _directInputController.dispose();
     _directInputFocusNode.dispose();
