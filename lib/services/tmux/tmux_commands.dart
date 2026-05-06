@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 /// tmuxコマンド生成サービス
 ///
@@ -243,17 +244,29 @@ class TmuxCommands {
   /// buffer and pastes it into the given [target] pane using bracketed
   /// paste mode (`paste-buffer -p`).
   ///
+  /// Intended for multi-line text only; single-key / control-key paths
+  /// use [sendKeys] directly.
+  ///
   /// The payload is base64-encoded in transit so any shell-special
   /// characters in [text] do not need extra escaping. The receiving
   /// remote is expected to have a POSIX `base64` binary on PATH.
   ///
-  /// The buffer is named with a microsecond timestamp to avoid collisions
-  /// when multiple paste operations run concurrently, and `-d` deletes
-  /// the buffer immediately after pasting.
+  /// The buffer is named with a microsecond timestamp plus a random hex
+  /// suffix to avoid collisions when multiple paste operations run
+  /// concurrently. `-d` deletes the buffer immediately after pasting.
+  ///
+  /// Practical upper bound: tested up to ~100 KB; very large pastes may
+  /// exceed ARG_MAX (~256 KB on macOS, ~2 MB on Linux). True stdin-piping
+  /// via dartssh2 would remove this limit but is deferred.
+  ///
+  /// Note: requires tmux >= 2.6 for `-p` (bracketed paste). Use
+  /// [loadBufferAndPasteNoBracketed] as a fallback for older tmux.
   static String loadBufferAndPaste(String target, String text) {
     final encoded = base64.encode(utf8.encode(text));
-    final bufName = 'muxpod-${DateTime.now().microsecondsSinceEpoch}';
-    return "echo -n '$encoded' | base64 -d "
+    final rand = Random().nextInt(0xffffff).toRadixString(16).padLeft(6, '0');
+    // bufName is safe: numeric + lowercase hex only — no escaping needed.
+    final bufName = 'muxpod-${DateTime.now().microsecondsSinceEpoch}-$rand';
+    return "printf '%s' '$encoded' | base64 -d "
         "| tmux load-buffer -b '$bufName' - "
         "&& tmux paste-buffer -d -p -b '$bufName' -t ${_escapeArg(target)}";
   }
