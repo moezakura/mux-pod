@@ -142,8 +142,12 @@ void main() {
         (tester) async {
       // Round-trip test:
       //   1. Open dialog with some pre-saved text (initialValue: 'draft').
-      //   2. Simulate host clearing _savedCommandInput (initialValue: '').
-      //   3. Open dialog again — field must be empty.
+      //   2. Dismiss (simulate cancel — host resets _savedCommandInput to '').
+      //   3. Open dialog again with initialValue: '' — field must be empty.
+      //
+      // In production the bottom sheet is torn down and recreated, which gives
+      // _InputDialogContent a fresh State. We replicate that by pumping a
+      // blank widget between the two opens so Flutter disposes the old State.
 
       // First open: pre-populated.
       await tester.pumpWidget(
@@ -160,7 +164,11 @@ void main() {
         'draft',
       );
 
-      // Host resets _savedCommandInput (simulated by pumping with '').
+      // Tear down (simulate dialog dismiss — State is destroyed).
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      // Host has reset _savedCommandInput = ''. Reopen with empty initialValue.
       await tester.pumpWidget(
         _buildHarness(
           initialValue: '',
@@ -202,7 +210,11 @@ void main() {
 
       expect(sendCalled, isTrue);
 
-      // Host clears _savedCommandInput then reopens dialog with ''.
+      // Tear down (simulate bottom sheet dismissal — State is destroyed).
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+
+      // Host has cleared _savedCommandInput = ''. Reopen with empty initialValue.
       await tester.pumpWidget(
         _buildHarness(
           initialValue: '',
