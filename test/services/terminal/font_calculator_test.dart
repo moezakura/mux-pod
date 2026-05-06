@@ -1,8 +1,29 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Warm the FontCalculator char-width cache once before all tests run.
+  //
+  // Calling measureCharWidthRatio triggers google_fonts to enqueue a background
+  // HTTP fetch (loadFontIfNecessary). Under TestWidgetsFlutterBinding all HTTP
+  // requests return 400, so that task always fails. By warming the cache here
+  // inside a guarded zone we swallow the expected font-load error before it
+  // bleeds across test boundaries. All subsequent calls in individual tests hit
+  // the cache and never enqueue another request.
+  setUpAll(() {
+    runZonedGuarded(
+      () {
+        FontCalculator.measureCharWidthRatio('JetBrains Mono');
+      },
+      (error, _) {
+        // Suppress the expected "Failed to load font" error from google_fonts.
+      },
+    );
+  });
 
   group('FontCalculator', () {
     group('calculate', () {
