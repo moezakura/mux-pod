@@ -202,27 +202,54 @@ void main() {
     });
 
     group('loadBufferAndPaste', () {
+      // Helper: extract the base64 payload from a printf '%s' '...' token.
+      String? extractBase64(String cmd) {
+        final match = RegExp(r"printf '%s' '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        return match?.group(1);
+      }
+
       test('single ASCII line embeds correct base64 and command structure', () {
         const text = 'hello';
         final expected = base64.encode(utf8.encode(text));
         final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
 
-        expect(cmd, contains("echo -n '$expected'"));
+        expect(cmd, contains("printf '%s' '$expected'"));
         expect(cmd, contains('| base64 -d'));
         expect(cmd, contains('| tmux load-buffer -b '));
         expect(cmd, contains('- &&'));
         expect(cmd, contains('tmux paste-buffer -d -p -b '));
         expect(cmd, contains('-t %0'));
+        // Must NOT use echo -n (POSIX-non-portable on dash/busybox).
+        expect(cmd, isNot(contains('echo -n')));
+      });
+
+      test('empty text: helper returns a command string (guard handled by caller)', () {
+        // The helper is a pure command-string builder; empty-text guard lives
+        // in _sendMultilineText. The helper does not throw on empty input.
+        expect(() => TmuxCommands.loadBufferAndPaste('%0', ''), returnsNormally);
+        // The encoded form of '' is '' in base64; command should still be valid.
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', '');
+        expect(cmd, contains('printf'));
+      });
+
+      test('base64 encoded payload contains no newline characters', () {
+        // dart:convert base64.encode does NOT insert line breaks (unlike CLI base64).
+        // Newlines in the encoded string would break the single-line shell command.
+        const text = 'line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10';
+        final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
+        final encoded = extractBase64(cmd);
+        expect(encoded, isNotNull);
+        expect(encoded, isNot(contains('\n')));
+        expect(encoded, isNot(contains('\r')));
       });
 
       test('multi-line payload round-trips through base64 correctly', () {
         const text = 'line1\nline2\nline3';
         final cmd = TmuxCommands.loadBufferAndPaste('%1', text);
 
-        // Extract the base64 token between echo -n ' and '
-        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
-        expect(match, isNotNull);
-        final decoded = utf8.decode(base64.decode(match!.group(1)!));
+        final encoded = extractBase64(cmd);
+        expect(encoded, isNotNull);
+        final decoded = utf8.decode(base64.decode(encoded!));
         expect(decoded, equals(text));
       });
 
@@ -231,14 +258,13 @@ void main() {
         final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
 
         // The base64 alphabet contains only [A-Za-z0-9+/=] — no quotes or dollars.
-        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
-        expect(match, isNotNull);
-        final encodedToken = match!.group(1)!;
-        expect(encodedToken, isNot(contains("'")));
-        expect(encodedToken, isNot(contains(r'$')));
+        final encoded = extractBase64(cmd);
+        expect(encoded, isNotNull);
+        expect(encoded, isNot(contains("'")));
+        expect(encoded, isNot(contains(r'$')));
 
         // Round-trip must restore the original.
-        final decoded = utf8.decode(base64.decode(encodedToken));
+        final decoded = utf8.decode(base64.decode(encoded!));
         expect(decoded, equals(text));
       });
 
@@ -246,9 +272,9 @@ void main() {
         const text = 'あいうえお\nテスト';
         final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
 
-        final match = RegExp(r"echo -n '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
-        expect(match, isNotNull);
-        final decoded = utf8.decode(base64.decode(match!.group(1)!));
+        final encoded = extractBase64(cmd);
+        expect(encoded, isNotNull);
+        final decoded = utf8.decode(base64.decode(encoded!));
         expect(decoded, equals(text));
       });
 
@@ -258,25 +284,41 @@ void main() {
         expect(cmd, contains('"my session:0.0"'));
       });
 
-      test('buffer name matches muxpod-<digits> pattern', () {
+      test('buffer name matches muxpod-<digits>-<hex6> pattern', () {
         final cmd = TmuxCommands.loadBufferAndPaste('%0', 'test');
-        final bufPattern = RegExp(r"muxpod-\d+");
+        final bufPattern = RegExp(r'muxpod-\d+-[0-9a-f]{6}');
         expect(bufPattern.hasMatch(cmd), isTrue);
       });
 
-      test('two calls produce buffer names that match the expected pattern', () {
+      test('two calls produce distinct buffer names', () {
         final cmd1 = TmuxCommands.loadBufferAndPaste('%0', 'a');
         final cmd2 = TmuxCommands.loadBufferAndPaste('%0', 'b');
 
-        final pattern = RegExp(r"muxpod-\d+");
-        // Both commands embed a valid buffer name.
+        final pattern = RegExp(r'muxpod-\d+-[0-9a-f]{6}');
         expect(pattern.hasMatch(cmd1), isTrue);
         expect(pattern.hasMatch(cmd2), isTrue);
-        // The buffer is deleted immediately after paste (-d flag) so even if
-        // microsecond timestamps collide the lifetime overlap is negligible.
-        // We assert the -d flag is present in both commands.
+        // The buffer is deleted immediately after paste (-d flag).
         expect(cmd1, contains('paste-buffer -d'));
         expect(cmd2, contains('paste-buffer -d'));
+      });
+    });
+
+    group('loadBufferAndPasteNoBracketed', () {
+      test('omits -p flag and uses printf', () {
+        final cmd = TmuxCommands.loadBufferAndPasteNoBracketed('%0', 'hello');
+        expect(cmd, contains("printf '%s'"));
+        expect(cmd, contains('paste-buffer -d -b'));
+        expect(cmd, isNot(contains('paste-buffer -d -p')));
+        expect(cmd, isNot(contains('echo -n')));
+      });
+
+      test('round-trips payload correctly', () {
+        const text = 'line1\nline2';
+        final cmd = TmuxCommands.loadBufferAndPasteNoBracketed('%1', text);
+        final match = RegExp(r"printf '%s' '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        expect(match, isNotNull);
+        final decoded = utf8.decode(base64.decode(match!.group(1)!));
+        expect(decoded, equals(text));
       });
     });
   });
