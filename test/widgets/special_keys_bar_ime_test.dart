@@ -166,6 +166,54 @@ void main() {
       expect(result.specialKeys, isEmpty);
     });
 
+    // Regression: the old iOS-style duplicate-detection branch would compare the
+    // committed text against a stored composing snapshot and, when the committed
+    // text was longer and started with the snapshot, silently substitute the
+    // snapshot instead.  That branch was removed; this test pins the new
+    // behaviour: the full committed text must be forwarded as-is.
+    testWidgets(
+        'iOS-style commit longer than composing sends committed text once',
+        (tester) async {
+      final result = await _buildBar(tester);
+
+      final textField = find.byType(TextField);
+      expect(textField, findsOneWidget);
+      await tester.tap(textField);
+      await tester.pump();
+
+      // Step 1: composing 'a' (single ASCII letter, Samsung-style composing).
+      _updateEditingValue(
+        tester,
+        TextEditingValue(
+          text: '${_sentinel}a',
+          selection: const TextSelection.collapsed(offset: 2),
+          composing: const TextRange(start: 1, end: 2),
+        ),
+      );
+      await tester.pump();
+
+      // Nothing emitted while composing.
+      expect(result.keys, isEmpty);
+      expect(result.specialKeys, isEmpty);
+
+      // Step 2: IME commits '亜亜' — text is longer than the composing snapshot.
+      // Previously this would have been truncated to 'a'; now '亜亜' must be sent.
+      _updateEditingValue(
+        tester,
+        TextEditingValue(
+          text: '${_sentinel}亜亜',
+          selection: const TextSelection.collapsed(offset: 3),
+          composing: TextRange.empty,
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(result.keys, hasLength(1));
+      expect(result.keys.first, '亜亜');
+      expect(result.specialKeys, isEmpty);
+    });
+
     testWidgets('hardware Enter while composing: KeyEventResult.ignored',
         (tester) async {
       final result = await _buildBar(tester);
