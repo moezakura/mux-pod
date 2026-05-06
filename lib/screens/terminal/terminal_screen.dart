@@ -3185,8 +3185,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         TmuxCommands.loadBufferAndPaste(target, payload),
       );
       _boostPolling();
-    } catch (_) {
-      // Polling will reflect actual state; swallow transient send errors.
+    } catch (e) {
+      debugPrint('[Terminal] paste-buffer send failed: $e');
+      // Retry without bracketed paste for tmux < 2.6 which does not
+      // support the -p flag.
+      try {
+        await sshClient.exec(
+          TmuxCommands.loadBufferAndPasteNoBracketed(target, payload),
+        );
+        _boostPolling();
+      } catch (e2) {
+        debugPrint('[Terminal] paste-buffer (no-bracketed) send failed: $e2');
+        // TODO: surface a SnackBar after repeated failures.
+      }
     }
   }
 
