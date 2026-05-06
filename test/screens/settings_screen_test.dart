@@ -9,6 +9,12 @@ Widget _buildApp() {
   );
 }
 
+/// Scrolls until [finder] is visible in the first Scrollable of the tree.
+Future<void> scrollUntilFound(WidgetTester tester, Finder finder) async {
+  final scrollable = find.byType(Scrollable).first;
+  await tester.scrollUntilVisible(finder, 200, scrollable: scrollable);
+}
+
 void main() {
   group('SettingsScreen', () {
     testWidgets('displays Settings title', (tester) async {
@@ -30,8 +36,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Haptic Feedback is in the Behavior section - may need scroll
-      final scrollable = find.byType(Scrollable).first;
-      await tester.scrollUntilVisible(find.text('Haptic Feedback'), 200, scrollable: scrollable);
+      await scrollUntilFound(tester, find.text('Haptic Feedback'));
       expect(find.text('Haptic Feedback'), findsOneWidget);
     });
 
@@ -39,23 +44,22 @@ void main() {
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 
-      final finder = find.text('Keep Screen On');
-      await tester.ensureVisible(finder);
-      expect(finder, findsOneWidget);
+      await scrollUntilFound(tester, find.text('Keep Screen On'));
+      expect(find.text('Keep Screen On'), findsOneWidget);
     });
 
     testWidgets('behavior toggles are interactive', (tester) async {
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Haptic Feedback'));
+      await scrollUntilFound(tester, find.text('Haptic Feedback'));
       final hapticSwitch = find.ancestor(
         of: find.text('Haptic Feedback'),
         matching: find.byType(SwitchListTile),
       );
       expect(hapticSwitch, findsOneWidget);
 
-      await tester.ensureVisible(find.text('Keep Screen On'));
+      await scrollUntilFound(tester, find.text('Keep Screen On'));
       final keepScreenSwitch = find.ancestor(
         of: find.text('Keep Screen On'),
         matching: find.byType(SwitchListTile),
@@ -67,7 +71,7 @@ void main() {
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('Source Code'));
+      await scrollUntilFound(tester, find.text('Source Code'));
       expect(find.text('Source Code'), findsOneWidget);
       expect(find.text('github.com/moezakura/mux-pod'), findsOneWidget);
     });
@@ -76,24 +80,24 @@ void main() {
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 
-      // Image Transfer section header
-      await tester.ensureVisible(find.text('Image Transfer'));
-      expect(find.text('Image Transfer'), findsOneWidget);
+      // Image Transfer section header (rendered in uppercase by _SectionHeader)
+      await scrollUntilFound(tester, find.text('IMAGE TRANSFER'));
+      expect(find.text('IMAGE TRANSFER'), findsOneWidget);
 
       // Individual settings
-      await tester.ensureVisible(find.text('Remote Path'));
+      await scrollUntilFound(tester, find.text('Remote Path'));
       expect(find.text('Remote Path'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Output Format'));
+      await scrollUntilFound(tester, find.text('Output Format'));
       expect(find.text('Output Format'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Path Format'));
+      await scrollUntilFound(tester, find.text('Path Format'));
       expect(find.text('Path Format'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Auto Enter'));
+      await scrollUntilFound(tester, find.text('Auto Enter'));
       expect(find.text('Auto Enter'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('Bracketed Paste'));
+      await scrollUntilFound(tester, find.text('Bracketed Paste'));
       expect(find.text('Bracketed Paste'), findsOneWidget);
     });
   });
