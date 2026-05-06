@@ -131,6 +131,11 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       // Guards:
       //   - length == 1: only the first composing char (avoids accumulated repeats)
       //   - ASCII letter regex: don't intercept Korean (ㅊ) or other non-ASCII composing
+      //
+      // Calling _resetToSentinel() here does NOT cause an infinite listener
+      // loop: the sentinel value we write has a collapsed (empty) composing
+      // range, so the very next _onDirectInputChanged invocation sets
+      // _isComposing = false and exits this branch immediately.
       final composingText = text.replaceAll(_sentinel, '');
       if ((_ctrlPressed || _altPressed) && composingText.length == 1) {
         final char = composingText;
