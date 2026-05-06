@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// tmuxコマンド生成サービス
 ///
 /// tmuxコマンドを生成するユーティリティクラス。
@@ -235,6 +237,25 @@ class TmuxCommands {
   /// Enterキーを送信
   static String sendEnter(String paneId) {
     return 'tmux send-keys -t ${_escapeArg(paneId)} Enter';
+  }
+
+  /// Build a single shell command that loads [text] into a named tmux
+  /// buffer and pastes it into the given [target] pane using bracketed
+  /// paste mode (`paste-buffer -p`).
+  ///
+  /// The payload is base64-encoded in transit so any shell-special
+  /// characters in [text] do not need extra escaping. The receiving
+  /// remote is expected to have a POSIX `base64` binary on PATH.
+  ///
+  /// The buffer is named with a microsecond timestamp to avoid collisions
+  /// when multiple paste operations run concurrently, and `-d` deletes
+  /// the buffer immediately after pasting.
+  static String loadBufferAndPaste(String target, String text) {
+    final encoded = base64.encode(utf8.encode(text));
+    final bufName = 'muxpod-${DateTime.now().microsecondsSinceEpoch}';
+    return "echo -n '$encoded' | base64 -d "
+        "| tmux load-buffer -b '$bufName' - "
+        "&& tmux paste-buffer -d -p -b '$bufName' -t ${_escapeArg(target)}";
   }
 
   /// Ctrl+Cを送信
