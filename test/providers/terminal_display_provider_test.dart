@@ -1,12 +1,43 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
+import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_parser.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  // Warm the FontCalculator char-width cache once before all tests run.
+  //
+  // The first call to FontCalculator.measureCharWidthRatio triggers a
+  // google_fonts background HTTP task (loadFontIfNecessary). In the test
+  // environment all HTTP requests return 400, so that task always fails.
+  // By warming the cache here — and draining the error via a separate Zone —
+  // all subsequent calls in individual tests hit the cache and never launch
+  // another HTTP request. This prevents the async error from bleeding across
+  // test boundaries and hitting "Ref used after disposed".
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    // Populate the cache synchronously; the async HTTP part will fail but
+    // we swallow it so it does not propagate into setUpAll.
+    bool fontErrorSeen = false;
+    await runZonedGuarded(
+      () async {
+        FontCalculator.measureCharWidthRatio('JetBrains Mono');
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      },
+      (error, stack) {
+        // Suppress the expected "Failed to load font" error from google_fonts.
+        if (!fontErrorSeen) {
+          fontErrorSeen = true;
+        }
+      },
+    );
+  });
 
   group('TerminalDisplayState', () {
     test('has correct default values', () {
@@ -99,13 +130,24 @@ void main() {
   group('TerminalDisplayNotifier', () {
     late ProviderContainer container;
 
-    setUp(() {
-      // Mock SharedPreferences
+    setUp(() async {
+      // Provide an empty SharedPreferences so _loadSettings completes fast
+      // and deterministically without hitting real platform channels.
       SharedPreferences.setMockInitialValues({});
       container = ProviderContainer();
+      // Eagerly initialize settingsProvider and drain the async _loadSettings
+      // call so it finishes before any test body runs. Without this, the
+      // in-flight Future can outlive the container and hit
+      // "Cannot use Ref after disposed".
+      container.read(settingsProvider);
+      await Future<void>.delayed(Duration.zero);
     });
 
-    tearDown(() {
+    tearDown(() async {
+      // Drain any remaining microtasks before disposing so that any still-
+      // running async work in the providers can observe ref.mounted == false
+      // and bail out cleanly instead of throwing after disposal.
+      await Future<void>.delayed(Duration.zero);
       container.dispose();
     });
 
