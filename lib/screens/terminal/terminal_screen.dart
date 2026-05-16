@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -3708,6 +3709,12 @@ class _InputDialogContentState extends State<_InputDialogContent> {
     widget.onValueChanged(_controller.text);
   }
 
+  /// Returns true when an IME composition range is open.
+  bool get _isImeActive {
+    final composing = _controller.value.composing;
+    return composing.isValid && !composing.isCollapsed;
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onTextChanged);
@@ -3721,6 +3728,9 @@ class _InputDialogContentState extends State<_InputDialogContent> {
   /// キーイベントをハンドル（Shift+Enterで改行、Enterで送信）
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+      if (_isImeActive) {
+        return KeyEventResult.ignored;
+      }
       final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
       if (isShiftPressed) {
         // Shift+Enter: 改行を挿入
@@ -4408,4 +4418,20 @@ class _ResizeWindowChooserDialogState
       },
     );
   }
+}
+
+/// Factory that exposes [_InputDialogContent] for widget tests.
+///
+/// Production code must never call this function.
+@visibleForTesting
+Widget buildInputDialogContentForTesting({
+  String initialValue = '',
+  required void Function(String value) onValueChanged,
+  required Future<void> Function(String value) onSend,
+}) {
+  return _InputDialogContent(
+    initialValue: initialValue,
+    onValueChanged: onValueChanged,
+    onSend: onSend,
+  );
 }

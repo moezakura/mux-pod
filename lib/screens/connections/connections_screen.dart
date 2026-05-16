@@ -411,28 +411,24 @@ class ConnectionsScreen extends ConsumerWidget {
 
   void _addConnection(BuildContext context, WidgetRef ref) async {
     developer.log('_addConnection() - navigating to ConnectionFormScreen', name: 'ConnectionsScreen');
-    final result = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const ConnectionFormScreen()),
     );
-    developer.log('_addConnection() - returned with result: $result', name: 'ConnectionsScreen');
-    if (result == true) {
-      developer.log('_addConnection() - invalidating connectionsProvider', name: 'ConnectionsScreen');
-      ref.invalidate(connectionsProvider);
-    }
+    developer.log('_addConnection() - returned', name: 'ConnectionsScreen');
+    // No invalidate: ConnectionsNotifier.add() already updates state directly,
+    // so the list reflects the new entry immediately via ref.watch.
   }
 
   void _editConnection(BuildContext context, WidgetRef ref, Connection connection) async {
     developer.log('_editConnection() - navigating to ConnectionFormScreen for ${connection.id}', name: 'ConnectionsScreen');
-    final result = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ConnectionFormScreen(connectionId: connection.id),
       ),
     );
-    developer.log('_editConnection() - returned with result: $result', name: 'ConnectionsScreen');
-    if (result == true) {
-      developer.log('_editConnection() - invalidating connectionsProvider', name: 'ConnectionsScreen');
-      ref.invalidate(connectionsProvider);
-    }
+    developer.log('_editConnection() - returned', name: 'ConnectionsScreen');
+    // No invalidate: ConnectionsNotifier.update() already updates state directly,
+    // so the list reflects the change immediately via ref.watch.
   }
 
   Future<void> _deleteConnection(
