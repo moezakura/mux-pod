@@ -320,6 +320,14 @@ class SshClient {
       if (keyPairs.isEmpty) {
         throw SshAuthenticationError('No valid key found in PEM data');
       }
+      // MuxPod は Ed25519 のみをサポート (#58 で RSA を廃止)
+      final unsupported = keyPairs.where((k) => k.type != 'ssh-ed25519').toList();
+      if (unsupported.isNotEmpty) {
+        throw SshAuthenticationError(
+          'Unsupported key type: ${unsupported.first.type}. '
+          'MuxPod only supports Ed25519 keys. Please generate a new Ed25519 key.',
+        );
+      }
       return keyPairs;
     } on FormatException catch (e) {
       throw SshAuthenticationError('Invalid private key format: ${e.message}');

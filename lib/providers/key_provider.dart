@@ -16,7 +16,7 @@ enum KeySource {
 class SshKeyMeta {
   final String id;
   final String name;
-  final String type; // 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'
+  final String type; // 'ed25519' (新規). 'rsa-*' は #58 で廃止された既存鍵のみ残存
   final String? publicKey;
   final String? fingerprint; // SHA256フィンガープリント
   final bool hasPassphrase;

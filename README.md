@@ -70,7 +70,7 @@ Monitor tmux window flags across all connections in real-time.
 
 ### 🔑 Keys
 
-Generate **Ed25519** (recommended) or **RSA** (2048/3072/4096-bit) keys on-device. Import existing keys. All stored securely with optional passphrase protection. **One-tap copy** public key to clipboard.
+Generate **Ed25519** keys on-device. Import existing Ed25519 keys. All stored securely with optional passphrase protection. **One-tap copy** public key to clipboard. RSA is no longer supported.
 
 ### ⚙️ Settings
 
@@ -206,7 +206,7 @@ flutter build apk --release
 <details>
 <summary>Full dependency list</summary>
 
-- `cryptography`, `pointycastle` — Key generation
+- `cryptography` — Ed25519 key generation
 - `flutter_local_notifications` — Alert system
 - `flutter_foreground_task` — Background connection
 - `wakelock_plus` — Keep screen on

@@ -156,10 +156,18 @@ class KeysScreen extends ConsumerWidget {
     }
 
     // 鍵一覧
+    final hasLegacyRsa = state.keys.any((k) => k.type.startsWith('rsa'));
+
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
-          final keyMeta = state.keys[index];
+          if (hasLegacyRsa && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildRsaMigrationBanner(context),
+            );
+          }
+          final keyMeta = state.keys[hasLegacyRsa ? index - 1 : index];
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: KeyTile(
@@ -173,7 +181,47 @@ class KeysScreen extends ConsumerWidget {
             ),
           );
         },
-        childCount: state.keys.length,
+        childCount: state.keys.length + (hasLegacyRsa ? 1 : 0),
+      ),
+    );
+  }
+
+  Widget _buildRsaMigrationBanner(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Card(
+      color: colorScheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded, color: colorScheme.onErrorContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'RSA keys are no longer supported',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: colorScheme.onErrorContainer,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Please generate a new Ed25519 key and re-register the '
+                    'public key on your servers. Existing RSA keys can no '
+                    'longer authenticate.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onErrorContainer,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -261,7 +309,7 @@ class KeysScreen extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.add_circle),
               title: const Text('Generate New Key'),
-              subtitle: const Text('Create a new RSA or Ed25519 key'),
+              subtitle: const Text('Create a new Ed25519 key'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(

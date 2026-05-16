@@ -191,8 +191,8 @@ interface ConnectionState {
 interface SSHKey {
   id: string;                    // UUID
   name: string;                  // 表示名
-  type: 'rsa' | 'ed25519' | 'ecdsa';
-  bits?: number;                 // RSAの場合: 2048, 4096等
+  type: 'ed25519';               // Ed25519 のみサポート (#58)
+  bits?: number;                 // 未使用 (legacy RSA 鍵のためのフィールド)
   fingerprint: string;           // SHA256フィンガープリント
   publicKey: string;             // 公開鍵（表示・エクスポート用）
   encrypted: boolean;            // パスフレーズ保護

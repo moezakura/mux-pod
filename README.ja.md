@@ -70,7 +70,7 @@ SSH接続を管理。**タップして展開**するとアクティブなtmuxセ
 
 ### 🔑 Keys
 
-**Ed25519**（推奨）または **RSA**（2048/3072/4096ビット）鍵をデバイス上で生成。既存の鍵をインポートも可能。パスフレーズ保護対応でセキュアに保存。**ワンタップで公開鍵をコピー**。
+**Ed25519** 鍵をデバイス上で生成。既存の Ed25519 鍵をインポートも可能。パスフレーズ保護対応でセキュアに保存。**ワンタップで公開鍵をコピー**。RSA はサポートしません。
 
 ### ⚙️ Settings
 
@@ -206,7 +206,7 @@ flutter build apk --release
 <details>
 <summary>全依存関係</summary>
 
-- `cryptography`, `pointycastle` — 鍵生成
+- `cryptography` — Ed25519 鍵生成
 - `flutter_local_notifications` — アラートシステム
 - `flutter_foreground_task` — バックグラウンド接続
 - `wakelock_plus` — 画面オン維持

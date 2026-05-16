@@ -4,11 +4,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:dartssh2/dartssh2.dart';
-import 'package:pointycastle/export.dart' as pc;
 
 /// SSH鍵ペアのデータクラス
 class SshKeyPair {
-  final String type; // 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'
+  final String type; // 'ed25519' のみサポート
   final Uint8List privateKeyBytes;
   final Uint8List publicKeyBytes;
   final String fingerprint;
@@ -25,7 +24,21 @@ class SshKeyPair {
   });
 }
 
+/// RSA鍵が指定された場合に投げられる例外。
+/// MuxPod は Ed25519 のみをサポートする。
+class UnsupportedKeyTypeException implements Exception {
+  final String keyType;
+  final String message;
+
+  const UnsupportedKeyTypeException(this.keyType, this.message);
+
+  @override
+  String toString() => message;
+}
+
 /// SSH鍵サービス
+///
+/// MuxPod は Ed25519 鍵のみをサポートする。RSA は #58 で廃止された。
 class SshKeyService {
   /// Ed25519鍵ペアを生成
   Future<SshKeyPair> generateEd25519({String? comment}) async {
@@ -53,44 +66,9 @@ class SshKeyService {
     );
   }
 
-  /// RSA鍵ペアを生成
-  Future<SshKeyPair> generateRsa({
-    required int bits,
-    String? comment,
-  }) async {
-    assert(bits == 2048 || bits == 3072 || bits == 4096);
-
-    final secureRandom = pc.FortunaRandom();
-    final seedSource = List<int>.generate(32, (i) => DateTime.now().millisecondsSinceEpoch % 256);
-    secureRandom.seed(pc.KeyParameter(Uint8List.fromList(seedSource)));
-
-    final keyGen = pc.RSAKeyGenerator()
-      ..init(pc.ParametersWithRandom(
-        pc.RSAKeyGeneratorParameters(BigInt.parse('65537'), bits, 64),
-        secureRandom,
-      ));
-
-    final pair = keyGen.generateKeyPair();
-    final publicKey = pair.publicKey as pc.RSAPublicKey;
-    final privateKey = pair.privateKey as pc.RSAPrivateKey;
-
-    final publicKeyBlob = _buildRsaPublicKeyBlob(publicKey);
-    final fingerprint = calculateFingerprint('ssh-rsa', publicKeyBlob);
-    final privatePem = _buildRsaPem(privateKey, publicKey, comment ?? '');
-    final publicKeyString =
-        toAuthorizedKeys('ssh-rsa', publicKeyBlob, comment ?? '');
-
-    return SshKeyPair(
-      type: 'rsa-$bits',
-      privateKeyBytes: _rsaPrivateKeyToBytes(privateKey),
-      publicKeyBytes: publicKeyBlob,
-      fingerprint: fingerprint,
-      privatePem: privatePem,
-      publicKeyString: publicKeyString,
-    );
-  }
-
   /// PEM文字列から鍵をパース
+  ///
+  /// RSA 鍵は [UnsupportedKeyTypeException] を投げる。
   Future<SshKeyPair> parseFromPem(
     String pemContent, {
     String? passphrase,
@@ -103,23 +81,21 @@ class SshKeyService {
     final keyPair = keyPairs.first;
     final type = keyPair.type;
 
+    if (type != 'ssh-ed25519') {
+      throw UnsupportedKeyTypeException(
+        type,
+        'Unsupported key type: $type. MuxPod only supports Ed25519 keys. '
+        'Please generate a new Ed25519 key.',
+      );
+    }
+
     // 公開鍵のBlobを取得（dartssh2のencodeは完全なSSH公開鍵Blobを返す）
     final publicKeyBlob = keyPair.toPublicKey().encode();
     // Blobから直接フィンガープリントを計算（再ラップしない）
     final fingerprint = calculateFingerprintFromBlob(publicKeyBlob);
 
-    String keyType;
-    if (type == 'ssh-ed25519') {
-      keyType = 'ed25519';
-    } else if (type == 'ssh-rsa') {
-      // RSAのビット数は公開鍵から推測
-      keyType = 'rsa-4096'; // デフォルト
-    } else {
-      keyType = type;
-    }
-
     return SshKeyPair(
-      type: keyType,
+      type: 'ed25519',
       privateKeyBytes: Uint8List(0), // パース時は秘密鍵バイトは不要
       publicKeyBytes: publicKeyBlob,
       fingerprint: fingerprint,
@@ -167,52 +143,8 @@ class SshKeyService {
       buffer.add(_encodeUint32(publicKeyBytes.length));
       buffer.add(publicKeyBytes);
       return buffer.toBytes();
-    } else if (keyType == 'ssh-rsa') {
-      // RSAの場合、publicKeyBytesは既にBlobフォーマット
-      return publicKeyBytes;
     }
     return publicKeyBytes;
-  }
-
-  Uint8List _buildRsaPublicKeyBlob(pc.RSAPublicKey publicKey) {
-    final buffer = BytesBuilder();
-    final typeBytes = utf8.encode('ssh-rsa');
-    buffer.add(_encodeUint32(typeBytes.length));
-    buffer.add(typeBytes);
-
-    // e (public exponent)
-    final eBytes = _encodeMpInt(publicKey.publicExponent!);
-    buffer.add(eBytes);
-
-    // n (modulus)
-    final nBytes = _encodeMpInt(publicKey.modulus!);
-    buffer.add(nBytes);
-
-    return buffer.toBytes();
-  }
-
-  Uint8List _encodeMpInt(BigInt value) {
-    var bytes = _bigIntToBytes(value);
-    // 先頭ビットが1の場合、0x00を追加
-    if (bytes.isNotEmpty && (bytes[0] & 0x80) != 0) {
-      bytes = Uint8List.fromList([0, ...bytes]);
-    }
-    final buffer = BytesBuilder();
-    buffer.add(_encodeUint32(bytes.length));
-    buffer.add(bytes);
-    return buffer.toBytes();
-  }
-
-  Uint8List _bigIntToBytes(BigInt value) {
-    var hex = value.toRadixString(16);
-    if (hex.length % 2 != 0) {
-      hex = '0$hex';
-    }
-    final bytes = <int>[];
-    for (var i = 0; i < hex.length; i += 2) {
-      bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
-    }
-    return Uint8List.fromList(bytes);
   }
 
   Uint8List _encodeUint32(int value) {
@@ -222,11 +154,6 @@ class SshKeyService {
       (value >> 8) & 0xff,
       value & 0xff,
     ]);
-  }
-
-  Uint8List _rsaPrivateKeyToBytes(pc.RSAPrivateKey privateKey) {
-    // 簡略化のため、modulusのバイト表現を返す
-    return _bigIntToBytes(privateKey.modulus!);
   }
 
   String _buildEd25519Pem(
@@ -287,100 +214,6 @@ class SshKeyService {
     }
 
     return '-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join('\n')}\n-----END OPENSSH PRIVATE KEY-----\n';
-  }
-
-  String _buildRsaPem(
-      pc.RSAPrivateKey privateKey, pc.RSAPublicKey publicKey, String comment) {
-    // RSA秘密鍵をPKCS#1形式で出力 (ASN.1 DER手動エンコード)
-    final derBytes = _encodeRsaPrivateKeyDer(privateKey, publicKey);
-
-    final encoded = base64Encode(derBytes);
-    final lines = <String>[];
-    for (var i = 0; i < encoded.length; i += 64) {
-      lines.add(encoded.substring(i, i + 64 > encoded.length ? encoded.length : i + 64));
-    }
-
-    return '-----BEGIN RSA PRIVATE KEY-----\n${lines.join('\n')}\n-----END RSA PRIVATE KEY-----\n';
-  }
-
-  Uint8List _encodeRsaPrivateKeyDer(
-      pc.RSAPrivateKey privateKey, pc.RSAPublicKey publicKey) {
-    // PKCS#1 RSAPrivateKey structure:
-    // RSAPrivateKey ::= SEQUENCE {
-    //   version           Version,
-    //   modulus           INTEGER,  -- n
-    //   publicExponent    INTEGER,  -- e
-    //   privateExponent   INTEGER,  -- d
-    //   prime1            INTEGER,  -- p
-    //   prime2            INTEGER,  -- q
-    //   exponent1         INTEGER,  -- d mod (p-1)
-    //   exponent2         INTEGER,  -- d mod (q-1)
-    //   coefficient       INTEGER,  -- (inverse of q) mod p
-    // }
-    final integers = [
-      BigInt.zero, // version
-      privateKey.modulus!,
-      publicKey.publicExponent!,
-      privateKey.privateExponent!,
-      privateKey.p!,
-      privateKey.q!,
-      privateKey.privateExponent! % (privateKey.p! - BigInt.one),
-      privateKey.privateExponent! % (privateKey.q! - BigInt.one),
-      privateKey.q!.modInverse(privateKey.p!),
-    ];
-
-    final encodedIntegers = integers.map(_encodeAsn1Integer).toList();
-    final contentLength = encodedIntegers.fold<int>(0, (sum, e) => sum + e.length);
-
-    final buffer = BytesBuilder();
-    // SEQUENCE tag
-    buffer.addByte(0x30);
-    // Length
-    buffer.add(_encodeAsn1Length(contentLength));
-    // Contents
-    for (final encoded in encodedIntegers) {
-      buffer.add(encoded);
-    }
-
-    return buffer.toBytes();
-  }
-
-  Uint8List _encodeAsn1Integer(BigInt value) {
-    final buffer = BytesBuilder();
-    // INTEGER tag
-    buffer.addByte(0x02);
-
-    var bytes = _bigIntToBytes(value);
-    // 先頭ビットが1の場合、符号ビット用に0x00を追加
-    if (bytes.isNotEmpty && (bytes[0] & 0x80) != 0) {
-      bytes = Uint8List.fromList([0, ...bytes]);
-    }
-    // 0の場合は1バイトの0
-    if (bytes.isEmpty) {
-      bytes = Uint8List.fromList([0]);
-    }
-
-    buffer.add(_encodeAsn1Length(bytes.length));
-    buffer.add(bytes);
-
-    return buffer.toBytes();
-  }
-
-  Uint8List _encodeAsn1Length(int length) {
-    if (length < 128) {
-      return Uint8List.fromList([length]);
-    } else if (length < 256) {
-      return Uint8List.fromList([0x81, length]);
-    } else if (length < 65536) {
-      return Uint8List.fromList([0x82, (length >> 8) & 0xff, length & 0xff]);
-    } else {
-      return Uint8List.fromList([
-        0x83,
-        (length >> 16) & 0xff,
-        (length >> 8) & 0xff,
-        length & 0xff,
-      ]);
-    }
   }
 
   Uint8List _encodeString(String value) {

@@ -44,7 +44,6 @@ dependencies:
   # SSH key management dependencies
   file_picker: ^8.0.3
   cryptography: ^2.7.0
-  pointycastle: ^3.9.1
   crypto: ^3.0.3
   # Image transfer
   image_picker: ^1.1.2

@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../providers/key_provider.dart';
-import '../../services/keychain/ssh_key_service.dart';
 
-/// SSH鍵生成画面
+/// SSH鍵生成画面 (Ed25519 のみ)
 class KeyGenerateScreen extends ConsumerStatefulWidget {
   const KeyGenerateScreen({super.key});
 
@@ -16,8 +15,6 @@ class KeyGenerateScreen extends ConsumerStatefulWidget {
 class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  String _keyType = 'ed25519';
-  int _rsaBits = 4096;
   bool _isGenerating = false;
   String? _statusMessage;
 
@@ -54,41 +51,15 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
             const SizedBox(height: 24),
             const Text('Key Type'),
             const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                  value: 'ed25519',
-                  label: Text('Ed25519'),
+            const Card(
+              child: ListTile(
+                leading: Icon(Icons.vpn_key),
+                title: Text('Ed25519'),
+                subtitle: Text(
+                  'Modern, fast and secure. The only supported key type.',
                 ),
-                ButtonSegment(
-                  value: 'rsa',
-                  label: Text('RSA'),
-                ),
-              ],
-              selected: {_keyType},
-              onSelectionChanged: (selected) {
-                setState(() {
-                  _keyType = selected.first;
-                });
-              },
-            ),
-            if (_keyType == 'rsa') ...[
-              const SizedBox(height: 16),
-              const Text('RSA Key Size'),
-              Slider(
-                value: _rsaBits.toDouble(),
-                min: 2048,
-                max: 4096,
-                divisions: 2,
-                label: '$_rsaBits bits',
-                onChanged: (value) {
-                  setState(() {
-                    _rsaBits = value.toInt();
-                  });
-                },
               ),
-              Center(child: Text('$_rsaBits bits')),
-            ],
+            ),
             const SizedBox(height: 32),
             FilledButton(
               onPressed: _isGenerating ? null : _generate,
@@ -109,14 +80,6 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
                     )
                   : const Text('Generate'),
             ),
-            if (_keyType == 'rsa') ...[
-              const SizedBox(height: 8),
-              Text(
-                'RSA key generation may take a few seconds',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-            ],
           ],
         ),
       ),
@@ -139,19 +102,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
       final keyId = const Uuid().v4();
       final name = _nameController.text.trim();
 
-      // 鍵を生成
-      SshKeyPair keyPair;
-      if (_keyType == 'ed25519') {
-        keyPair = await keyService.generateEd25519(comment: name);
-      } else {
-        // RSA生成は時間がかかる（UIをブロックするが許容範囲）
-        setState(() {
-          _statusMessage = 'Generating RSA key...';
-        });
-        // 一瞬UIを更新させるためにmicrotaskで実行
-        await Future.delayed(const Duration(milliseconds: 50));
-        keyPair = await keyService.generateRsa(bits: _rsaBits, comment: name);
-      }
+      final keyPair = await keyService.generateEd25519(comment: name);
 
       setState(() {
         _statusMessage = 'Saving key...';

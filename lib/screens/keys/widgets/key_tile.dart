@@ -111,7 +111,7 @@ class KeyTile extends StatelessWidget {
       return 'Ed25519';
     } else if (keyMeta.type.startsWith('rsa-')) {
       final bits = keyMeta.type.split('-').last;
-      return 'RSA $bits';
+      return 'RSA $bits (legacy)';
     }
     return keyMeta.type.toUpperCase();
   }
