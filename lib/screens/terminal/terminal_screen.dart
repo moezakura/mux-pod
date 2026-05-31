@@ -3153,7 +3153,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         },
       ),
     ).then((_) {
-      if (mounted) _savedCommandInput = '';
       _scrollToBottomKey.currentState?.show();
     });
   }
@@ -3712,6 +3711,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
   late final FocusNode _focusNode;
   late final ScrollController _scrollController;
   bool _isSending = false;
+  bool _sent = false;
 
   @override
   void initState() {
@@ -3734,6 +3734,8 @@ class _InputDialogContentState extends State<_InputDialogContent> {
   }
 
   void _onTextChanged() {
+    // 送信後の後片付け通知（IMEのcomposing確定など）でバッファを上書きしない
+    if (_sent) return;
     widget.onValueChanged(_controller.text);
   }
 
@@ -3779,7 +3781,14 @@ class _InputDialogContentState extends State<_InputDialogContent> {
     if (_isSending) return;
     setState(() => _isSending = true);
     try {
+      // 送信開始と同時にラッチ。teardown時の再通知（pop→フォーカス喪失→IME確定）が
+      // 同期・非同期どちらで来てもバッファ書き戻しを抑制する。
+      _sent = true;
       await widget.onSend(_controller.text);
+    } catch (_) {
+      // 送信失敗。ドラフトを保持しトラッキングを継続する。
+      _sent = false;
+      rethrow;
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
