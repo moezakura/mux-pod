@@ -1,34 +1,29 @@
-// Widget tests verifying that the input dialog controller starts empty
-// whenever the dialog is opened after a previous session.
+// Widget tests for the command-input dialog (_InputDialogContent).
 //
-// Strategy: pump _InputDialogContent via the @visibleForTesting seam
-// TerminalScreen.buildInputDialogContentForTesting().  This avoids standing
-// up the full TerminalScreen with its SSH/tmux provider dependencies while
-// still exercising the real widget tree.
+// Semantics under test (PR #50, revised):
+//   - SEND path  : the input buffer is cleared. After a successful send the
+//                  host's saved draft becomes '' and stays '' — even if the
+//                  controller fires a late change notification during teardown
+//                  (IME composing-confirm on focus loss). The _sent latch
+//                  suppresses that re-notification.
+//   - CANCEL path: the draft is PRESERVED. Dismissing via cancel / swipe /
+//                  back keeps whatever the user typed, so reopening restores it.
 //
-// The tests mirror the dismissal paths added by PR #50:
-//   - cancel (Navigator.pop without sending)
-//   - send  (onSend callback fires, then Navigator.pop)
+// We model the host's _savedCommandInput with a local `saved` variable that
+// onValueChanged writes to (mirroring _showInputDialog) and that the send
+// callback clears (mirroring onSend's `_savedCommandInput = ''`). The dialog is
+// pumped in isolation through the @visibleForTesting seam
+// TerminalScreen.buildInputDialogContentForTesting(), avoiding the full
+// SSH/tmux provider stack.
 //
-// In both cases the host state resets _savedCommandInput to '' in the
-// .then((_) { if (mounted) _savedCommandInput = ''; }) callback, so the
-// *next* open receives initialValue: ''.  We verify that invariant by
-// reopening the dialog with initialValue: '' and asserting the TextField
-// starts empty.
+// NOTE: tester.enterText() fires the controller listener synchronously and does
+// NOT reproduce the real async focus-loss -> IME-confirm race. These tests
+// therefore verify the _sent latch *logic*, not the underlying platform race.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// Pumps [_InputDialogContent] inside a minimal navigator scaffold so that
-/// Cancel's Navigator.pop(context) resolves correctly.
-///
-/// [initialValue] simulates _savedCommandInput at open time.
-/// [onValueChanged] / [onSend] are forwarded verbatim.
 Widget _buildHarness({
   String initialValue = '',
   required void Function(String) onValueChanged,
@@ -45,12 +40,8 @@ Widget _buildHarness({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 void main() {
-  group('_InputDialogContent — controller starts empty on reopen', () {
+  group('_InputDialogContent — clear on send / keep on cancel', () {
     testWidgets('text field is pre-populated with initialValue', (tester) async {
       await tester.pumpWidget(
         _buildHarness(
@@ -64,7 +55,7 @@ void main() {
       final textField = find.byType(TextField);
       expect(textField, findsOneWidget);
       expect(
-        (tester.widget<TextField>(textField).controller)?.text,
+        tester.widget<TextField>(textField).controller?.text,
         'hello world',
         reason: 'initialValue must be reflected in the text field on open',
       );
@@ -72,7 +63,6 @@ void main() {
 
     testWidgets('text field is empty when initialValue is empty string',
         (tester) async {
-      // Simulates reopening after the host has reset _savedCommandInput = ''.
       await tester.pumpWidget(
         _buildHarness(
           initialValue: '',
@@ -82,10 +72,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final textField = find.byType(TextField);
-      expect(textField, findsOneWidget);
       expect(
-        (tester.widget<TextField>(textField).controller)?.text,
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
         '',
         reason: 'text field must start empty when initialValue is empty',
       );
@@ -108,10 +96,10 @@ void main() {
 
       expect(captured, 'ls -la',
           reason: 'onValueChanged must track every keystroke so the host can '
-              'persist _savedCommandInput in real time');
+              'persist the draft in real time');
     });
 
-    testWidgets('onSend is called with the current text when Send is tapped',
+    testWidgets('onSend receives the current text when Execute is tapped',
         (tester) async {
       String? sentValue;
 
@@ -129,7 +117,6 @@ void main() {
       await tester.enterText(find.byType(TextField), 'echo hi');
       await tester.pump();
 
-      // Tap the Execute button (ElevatedButton labelled 'Execute').
       await tester.tap(find.widgetWithText(ElevatedButton, 'Execute'));
       await tester.pumpAndSettle();
 
@@ -137,66 +124,59 @@ void main() {
           reason: 'onSend must receive the full text the user typed');
     });
 
-    testWidgets(
-        'reopening with initialValue empty after cancel yields empty field',
+    // ---- CANCEL: draft is preserved -------------------------------------
+    testWidgets('cancel preserves the draft — reopen restores typed text',
         (tester) async {
-      // Round-trip test:
-      //   1. Open dialog with some pre-saved text (initialValue: 'draft').
-      //   2. Dismiss (simulate cancel — host resets _savedCommandInput to '').
-      //   3. Open dialog again with initialValue: '' — field must be empty.
-      //
-      // In production the bottom sheet is torn down and recreated, which gives
-      // _InputDialogContent a fresh State. We replicate that by pumping a
-      // blank widget between the two opens so Flutter disposes the old State.
+      // Model the host's _savedCommandInput.
+      var saved = '';
 
-      // First open: pre-populated.
       await tester.pumpWidget(
         _buildHarness(
-          initialValue: 'draft',
-          onValueChanged: (_) {},
+          initialValue: saved,
+          onValueChanged: (v) => saved = v,
           onSend: (_) async {},
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(
-        (tester.widget<TextField>(find.byType(TextField)).controller)?.text,
-        'draft',
-      );
+      await tester.enterText(find.byType(TextField), 'draft me');
+      await tester.pump();
+      expect(saved, 'draft me');
 
-      // Tear down (simulate dialog dismiss — State is destroyed).
+      // Dismiss WITHOUT sending (cancel / swipe / back). State is destroyed,
+      // but the host keeps `saved` (the .then() no longer clears it).
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
 
-      // Host has reset _savedCommandInput = ''. Reopen with empty initialValue.
+      // Reopen with the preserved draft.
       await tester.pumpWidget(
         _buildHarness(
-          initialValue: '',
-          onValueChanged: (_) {},
+          initialValue: saved,
+          onValueChanged: (v) => saved = v,
           onSend: (_) async {},
         ),
       );
       await tester.pumpAndSettle();
 
       expect(
-        (tester.widget<TextField>(find.byType(TextField)).controller)?.text,
-        '',
-        reason: 'after the host resets _savedCommandInput the next open must '
-            'show an empty field',
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
+        'draft me',
+        reason: 'cancel must preserve the draft so the next open restores it',
       );
     });
 
-    testWidgets('reopening with initialValue empty after send yields empty field',
+    // ---- SEND: buffer is cleared ----------------------------------------
+    testWidgets('send clears the draft — reopen yields empty field',
         (tester) async {
-      bool sendCalled = false;
+      var saved = '';
 
-      // First open: user types and sends.
       await tester.pumpWidget(
         _buildHarness(
-          initialValue: '',
-          onValueChanged: (_) {},
+          initialValue: saved,
+          onValueChanged: (v) => saved = v,
+          // Mirror host onSend: clear the draft. (No Navigator.pop here.)
           onSend: (_) async {
-            sendCalled = true;
+            saved = '';
           },
         ),
       );
@@ -204,30 +184,68 @@ void main() {
 
       await tester.enterText(find.byType(TextField), 'rm -rf /tmp/test');
       await tester.pump();
+      expect(saved, 'rm -rf /tmp/test');
 
       await tester.tap(find.widgetWithText(ElevatedButton, 'Execute'));
       await tester.pumpAndSettle();
+      expect(saved, '', reason: 'send must clear the host draft');
 
-      expect(sendCalled, isTrue);
-
-      // Tear down (simulate bottom sheet dismissal — State is destroyed).
+      // Tear down and reopen with the cleared draft.
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
 
-      // Host has cleared _savedCommandInput = ''. Reopen with empty initialValue.
       await tester.pumpWidget(
         _buildHarness(
-          initialValue: '',
-          onValueChanged: (_) {},
+          initialValue: saved,
+          onValueChanged: (v) => saved = v,
           onSend: (_) async {},
         ),
       );
       await tester.pumpAndSettle();
 
       expect(
-        (tester.widget<TextField>(find.byType(TextField)).controller)?.text,
+        tester.widget<TextField>(find.byType(TextField)).controller?.text,
         '',
-        reason: 'text field must be empty on reopen after send + host reset',
+        reason: 'text field must be empty on reopen after send',
+      );
+    });
+
+    // ---- SEND latch: teardown re-notification must NOT resurrect draft ----
+    testWidgets(
+        'after send, a late controller notification does not resurrect the draft',
+        (tester) async {
+      var saved = '';
+
+      await tester.pumpWidget(
+        _buildHarness(
+          initialValue: saved,
+          onValueChanged: (v) => saved = v,
+          onSend: (_) async {
+            saved = '';
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'sent command');
+      await tester.pump();
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Execute'));
+      await tester.pumpAndSettle();
+      expect(saved, '', reason: 'send cleared the draft');
+
+      // Simulate the teardown re-notification: the controller fires another
+      // change carrying the still-present sent text (as IME composing-confirm
+      // would on focus loss). The _sent latch must suppress onValueChanged so
+      // `saved` is NOT overwritten back to the sent command.
+      await tester.enterText(find.byType(TextField), 'sent command');
+      await tester.pump();
+
+      expect(
+        saved,
+        '',
+        reason: 'the _sent latch must ignore post-send notifications so the '
+            'cleared draft is not resurrected',
       );
     });
   });
