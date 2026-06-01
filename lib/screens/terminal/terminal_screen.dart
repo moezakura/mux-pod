@@ -110,34 +110,6 @@ class TerminalScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<TerminalScreen> createState() => _TerminalScreenState();
-
-  /// Returns the input dialog content widget for use in widget tests only.
-  ///
-  /// Provides a test seam so that [_InputDialogContent] — a private widget —
-  /// can be pumped in isolation without standing up the full [TerminalScreen]
-  /// and its SSH/tmux provider dependencies.
-  ///
-  /// Example usage in tests:
-  /// ```dart
-  /// final widget = TerminalScreen.buildInputDialogContentForTesting(
-  ///   initialValue: '',
-  ///   onValueChanged: (v) { ... },
-  ///   onSend: (v) async { ... },
-  /// );
-  /// await tester.pumpWidget(MaterialApp(home: Scaffold(body: widget)));
-  /// ```
-  @visibleForTesting
-  static Widget buildInputDialogContentForTesting({
-    String initialValue = '',
-    required void Function(String) onValueChanged,
-    required Future<void> Function(String) onSend,
-  }) {
-    return _InputDialogContent(
-      initialValue: initialValue,
-      onValueChanged: onValueChanged,
-      onSend: onSend,
-    );
-  }
 }
 
 class _TerminalScreenState extends ConsumerState<TerminalScreen>

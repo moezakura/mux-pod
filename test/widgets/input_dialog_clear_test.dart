@@ -13,7 +13,7 @@
 // onValueChanged writes to (mirroring _showInputDialog) and that the send
 // callback clears (mirroring onSend's `_savedCommandInput = ''`). The dialog is
 // pumped in isolation through the @visibleForTesting seam
-// TerminalScreen.buildInputDialogContentForTesting(), avoiding the full
+// buildInputDialogContentForTesting(), avoiding the full
 // SSH/tmux provider stack.
 //
 // NOTE: tester.enterText() fires the controller listener synchronously and does
@@ -31,7 +31,7 @@ Widget _buildHarness({
 }) {
   return MaterialApp(
     home: Scaffold(
-      body: TerminalScreen.buildInputDialogContentForTesting(
+      body: buildInputDialogContentForTesting(
         initialValue: initialValue,
         onValueChanged: onValueChanged,
         onSend: onSend,
