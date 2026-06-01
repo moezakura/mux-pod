@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -1213,7 +1214,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     // 接続が切れている場合はキューに追加
     if (sshClient == null || !sshClient.isConnected) {
+      final wasOverflow = _inputQueue.isOverflow;
       _inputQueue.enqueue(data);
+      if (!wasOverflow && _inputQueue.isOverflow && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Input queue is full; some keystrokes may be lost.'),
+          ),
+        );
+      }
       if (mounted) setState(() {}); // キューイング状態を更新
       return;
     }
@@ -2934,7 +2943,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 接続が切れている場合はキューに追加（リテラルの場合のみ）
     if (sshClient == null || !sshClient.isConnected) {
       if (literal) {
+        final wasOverflow = _inputQueue.isOverflow;
         _inputQueue.enqueue(key);
+        if (!wasOverflow && _inputQueue.isOverflow && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Input queue is full; some keystrokes may be lost.'),
+            ),
+          );
+        }
         if (mounted) setState(() {}); // キューイング状態を更新
       }
       return;
@@ -3157,26 +3174,59 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     });
   }
 
-  /// 複数行テキストを送信（行ごとにテキスト+Enterを送信）
-  ///
-  /// 注: _sendKey/_sendSpecialKeyを直接呼び出す。
-  /// オーバーレイラッパーを経由しないため、複数行送信時にオーバーレイは表示されない。
-  /// これは意図的な動作。
+  /// Sends multi-line text to the active pane using tmux load-buffer +
+  /// paste-buffer so the entire payload is delivered atomically in one
+  /// SSH round-trip.  Bracketed paste mode (`-p`) tells the receiving
+  /// shell to treat the block as literal data, preventing `\`-continuation
+  /// and prompt-redraw races that plagued the previous per-line approach.
   Future<void> _sendMultilineText(String text) async {
-    final lines = text.split('\n');
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
-      if (line.isNotEmpty) {
-        await _sendKey(line);
+    if (text.isEmpty) return;
+
+    final target = ref.read(tmuxProvider.notifier).currentTarget;
+    if (target == null) return;
+
+    // Pass text as-is: bracketed paste preserves whatever newlines are
+    // present. The caller decides whether a trailing Enter is desired.
+    final payload = text;
+
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) {
+      // Multi-line paste via send-keys would re-introduce the race condition
+      // fixed by PR #51. Reject the operation and ask the user to retry
+      // once connected rather than silently queuing via the legacy path.
+      if (text.contains('\n') && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Multi-line send requires a live connection; please retry.',
+            ),
+          ),
+        );
+      } else {
+        _inputQueue.enqueue(text);
+        if (mounted) setState(() {});
       }
-      // 最後の行以外はEnterを送信、または空行でもEnterを送信
-      if (i < lines.length - 1 || line.isEmpty) {
-        await _sendSpecialKey('Enter');
-      }
+      return;
     }
-    // 最後の行が空でなければEnterを送信
-    if (lines.isNotEmpty && lines.last.isNotEmpty) {
-      await _sendSpecialKey('Enter');
+
+    try {
+      await sshClient.exec(
+        TmuxCommands.loadBufferAndPaste(target, payload),
+      );
+      _boostPolling();
+    } catch (e) {
+      debugPrint('[Terminal] paste-buffer send failed: $e');
+      // Retry without bracketed paste for tmux < 2.6 which does not
+      // support the -p flag.
+      try {
+        await sshClient.exec(
+          TmuxCommands.loadBufferAndPasteNoBracketed(target, payload),
+        );
+        _boostPolling();
+      } catch (e2) {
+        debugPrint('[Terminal] paste-buffer (no-bracketed) send failed: $e2');
+        // TODO: surface a SnackBar after repeated failures.
+      }
     }
   }
 
@@ -3739,6 +3789,12 @@ class _InputDialogContentState extends State<_InputDialogContent> {
     widget.onValueChanged(_controller.text);
   }
 
+  /// Returns true when an IME composition range is open.
+  bool get _isImeActive {
+    final composing = _controller.value.composing;
+    return composing.isValid && !composing.isCollapsed;
+  }
+
   @override
   void dispose() {
     _controller.removeListener(_onTextChanged);
@@ -3752,6 +3808,9 @@ class _InputDialogContentState extends State<_InputDialogContent> {
   /// キーイベントをハンドル（Shift+Enterで改行、Enterで送信）
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+      if (_isImeActive) {
+        return KeyEventResult.ignored;
+      }
       final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
       if (isShiftPressed) {
         // Shift+Enter: 改行を挿入
@@ -4446,4 +4505,20 @@ class _ResizeWindowChooserDialogState
       },
     );
   }
+}
+
+/// Factory that exposes [_InputDialogContent] for widget tests.
+///
+/// Production code must never call this function.
+@visibleForTesting
+Widget buildInputDialogContentForTesting({
+  String initialValue = '',
+  required void Function(String value) onValueChanged,
+  required Future<void> Function(String value) onSend,
+}) {
+  return _InputDialogContent(
+    initialValue: initialValue,
+    onValueChanged: onValueChanged,
+    onSend: onSend,
+  );
 }
