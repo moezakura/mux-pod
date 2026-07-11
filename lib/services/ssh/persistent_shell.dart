@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
+
+import 'shell_marker_scanner.dart';
 
 /// 持続的シェルセッション
 ///
@@ -12,25 +15,32 @@ class PersistentShell {
   final SSHClient _sshClient;
   SSHSession? _session;
 
-  /// マーカーのコアテキスト
-  static const String _markerId = '7f3d8a2b';
+  /// マーカーのコアテキスト（インスタンスごとにランダム生成するnonce）
+  ///
+  /// 静的な定数にすると、ユーザーのtmuxペイン内で動作するプログラムが
+  /// ENDマーカーを正確に出力し、キャプチャ出力を偽装・切り詰めできてしまう。
+  /// セッションごとに予測不能なnonceを生成することでこの偽装を防ぐ。
+  final String _markerId = _generateMarkerId();
 
   /// コマンド開始検知用マーカー（\x01プレフィックス/サフィックス付き）
   ///
   /// \x01（SOH制御文字）を含めることで、シェルのエコーバックテキスト内の
   /// リテラル文字列（`\x01`=4文字）と区別する。
   /// printfの実出力のみがバイト0x01を含むため、エコーバック内では一致しない。
-  static const String _startMarker = '\x01###START_$_markerId###\x01';
+  late final String _startMarker = '\x01###START_$_markerId###\x01';
 
   /// コマンド終了検知用マーカー
-  static const String _endMarker = '\x01###END_$_markerId###\x01';
+  late final String _endMarker = '\x01###END_$_markerId###\x01';
 
   /// printf用のマーカー文字列（シェルコマンド内で使用）
-  static const String _printfStartMarker = r'\x01###START_' '$_markerId' r'###\x01';
-  static const String _printfEndMarker = r'\x01###END_' '$_markerId' r'###\x01';
+  late final String _printfStartMarker = r'\x01###START_' '$_markerId' r'###\x01';
+  late final String _printfEndMarker = r'\x01###END_' '$_markerId' r'###\x01';
 
-  /// 出力バッファ（バイト列として蓄積し、UTF-8マルチバイト境界分割を防ぐ）
-  final _rawBuffer = <int>[];
+  /// マーカー間出力を O(n) で抽出するインクリメンタルスキャナ
+  late final ShellMarkerScanner _scanner = ShellMarkerScanner(
+    startMarker: utf8.encode(_startMarker),
+    endMarker: utf8.encode(_endMarker),
+  );
 
   /// コマンド実行中のCompleter
   Completer<String>? _pendingCommand;
@@ -45,6 +55,16 @@ class PersistentShell {
   StreamSubscription<Uint8List>? _stdoutSubscription;
 
   PersistentShell(this._sshClient);
+
+  /// 予測不能なマーカーID（16進16文字 = 64bit）を生成する。
+  ///
+  /// Random.secureを使い、ユーザーのペイン内プログラムがマーカー文字列を
+  /// 推測してキャプチャ出力を偽装することを防ぐ。
+  static String _generateMarkerId() {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(8, (_) => rng.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
 
   /// シェルセッションを開始
   Future<void> start() async {
@@ -74,17 +94,20 @@ class PersistentShell {
 
     // ヒストリー記録を無効化（Bash/Zsh/fish対応）し、プロンプトを抑制
     // - export HISTFILE=... : Bash/Zsh用（スタートアップファイル後に上書き）
+    // - set +H : Bashのヒストリー展開を無効化（入力中のリテラル`!`が
+    //   展開されて入力行全体が中断されるのを防ぐ）
     // - set fish_history ... : fish用（exportはfishで構文エラーになるため別途）
     // - 2>/dev/null で未対応シェルのエラーを抑制
     _session!.write(utf8.encode(
       'export HISTFILE=/dev/null HISTSIZE=0 HISTFILESIZE=0 SAVEHIST=0 2>/dev/null;'
+      ' set +H 2>/dev/null;'
       ' set fish_history "" 2>/dev/null; true;'
       ' export PS1="" PS2="" 2>/dev/null; stty -echo\n',
     ));
     await Future.delayed(const Duration(milliseconds: 100));
 
     // バッファをクリア（初期化出力を破棄）
-    _rawBuffer.clear();
+    _scanner.reset();
   }
 
   /// コマンドを実行して結果を取得
@@ -106,7 +129,7 @@ class PersistentShell {
     }
 
     _pendingCommand = Completer<String>();
-    _rawBuffer.clear();
+    _scanner.reset();
 
     // printfでマーカーを出力（\x01バイトを含む）
     // echoではなくprintfを使用: シェルのエコーバック内ではリテラル'\x01'（4文字）が
@@ -124,6 +147,25 @@ class PersistentShell {
       _pendingCommand = null;
       throw PersistentShellError('Command execution timed out');
     }
+  }
+
+  /// コマンドを書き込むが出力は待たない（fire-and-forget）。
+  ///
+  /// tmux send-keys のような出力を持たない・待つ必要のないコマンド専用。
+  /// 効果はポーリングで観測されるため結果を待つ必要がなく、チャネル開閉・
+  /// execロック・往復待ちをすべて排除して高遅延回線でも即座に送信できる。
+  ///
+  /// マーカーを付与しないため、このシェルでは決して [exec] を併用しないこと
+  /// （併用すると入力バイトが混線する）。専用チャネルでのみ使用する。
+  void sendNoWait(String command) {
+    final session = _session;
+    if (session == null) {
+      throw PersistentShellError('Shell not started');
+    }
+    if (_isClosed) {
+      throw PersistentShellError('Shell session is closed');
+    }
+    session.write(utf8.encode('$command\n'));
   }
 
   /// stdout受信時の処理
@@ -150,38 +192,30 @@ class PersistentShell {
       return true;
     }());
 
-    // バイト列として蓄積（チャンク単位デコードによるUTF-8境界分割を防止）
-    _rawBuffer.addAll(data);
-
-    // 蓄積したバイト列全体を一度にデコード
-    final content = utf8.decode(_rawBuffer, allowMalformed: true);
-
-    // 開始マーカーと終了マーカーの両方が揃っているかチェック
-    final startIndex = content.indexOf(_startMarker);
-    final endIndex = content.indexOf(_endMarker);
-
-    if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
-      // 開始マーカーの次の行から終了マーカーの前までを抽出
-      final startPos = startIndex + _startMarker.length;
-      var result = content.substring(startPos, endIndex);
-
-      // PTYの出力変換で\r\nや\rが使われる場合があるため正規化
-      // 事実: macOS PTYではnewlines=0, CRs=19（\nが\rに変換されている）
-      result = result.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-
-      // 先頭と末尾の改行を削除
-      if (result.startsWith('\n')) {
-        result = result.substring(1);
-      }
-      if (result.endsWith('\n')) {
-        result = result.substring(0, result.length - 1);
-      }
-
-      // Completerを先にnullにしてから完了（再入防止）
-      _pendingCommand = null;
-      _rawBuffer.clear();
-      pending.complete(result);
+    // マーカー間の出力をインクリメンタルに抽出（O(n)スキャン）
+    final between = _scanner.feed(data);
+    if (between == null) {
+      return;
     }
+
+    // マーカー間バイト列をUTF-8デコード（マルチバイト境界分割を防止）
+    var result = utf8.decode(between, allowMalformed: true);
+
+    // PTYの出力変換で\r\nや\rが使われる場合があるため正規化
+    // 事実: macOS PTYではnewlines=0, CRs=19（\nが\rに変換されている）
+    result = result.replaceAll(RegExp(r'\r\n?'), '\n');
+
+    // 先頭と末尾の改行を削除
+    if (result.startsWith('\n')) {
+      result = result.substring(1);
+    }
+    if (result.endsWith('\n')) {
+      result = result.substring(0, result.length - 1);
+    }
+
+    // Completerを先にnullにしてから完了（再入防止）
+    _pendingCommand = null;
+    pending.complete(result);
   }
 
   /// セッション終了時の処理
@@ -223,7 +257,7 @@ class PersistentShell {
     _session?.close();
     _session = null;
 
-    _rawBuffer.clear();
+    _scanner.reset();
   }
 }
 

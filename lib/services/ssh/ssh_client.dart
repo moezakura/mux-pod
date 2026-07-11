@@ -131,6 +131,12 @@ class SshClient {
   /// 持続的シェルセッション（ポーリング用）
   PersistentShell? _persistentShell;
 
+  /// 入力専用の持続的シェル（キー送信の fire-and-forget 用）
+  ///
+  /// ポーリング用シェルとは別チャネルにすることで、キー入力がポーリングと
+  /// 競合せず、チャネル開閉・execロック・往復待ちなしで即座に送信できる。
+  PersistentShell? _inputShell;
+
   /// 検出されたtmuxバイナリの絶対パス
   String? _tmuxPath;
 
@@ -249,7 +255,7 @@ class SshClient {
       if (options.tmuxPath != null && options.tmuxPath!.isNotEmpty) {
         // ユーザー指定パスの存在確認
         final verifyExitCode = await _withExecLock(() async {
-          final session = await _client!.execute('test -x ${options.tmuxPath}');
+          final session = await _client!.execute('test -x ${_shSingleQuote(options.tmuxPath!)}');
           await session.stdout.drain();
           await session.stderr.drain();
           final code = session.exitCode;
@@ -364,6 +370,8 @@ class SshClient {
     // 持続的シェルを解放
     await _persistentShell?.dispose();
     _persistentShell = null;
+    await _inputShell?.dispose();
+    _inputShell = null;
 
     await _stdoutSubscription?.cancel();
     await _stderrSubscription?.cancel();
@@ -384,27 +392,72 @@ class SshClient {
   Future<void> _startPersistentShell() async {
     if (_client == null) return;
 
+    // ポーリング用と入力用の2チャネルを並列で起動（接続時間を増やさない）。
+    // どちらの起動失敗も接続自体は継続し、該当機能はexec()にフォールバックする。
+    final shells = await Future.wait([_tryStartShell(), _tryStartShell()]);
+    _persistentShell = shells[0];
+    _inputShell = shells[1];
+  }
+
+  /// 持続的シェルを1つ起動する。失敗時はnullを返す（例外を投げない）。
+  Future<PersistentShell?> _tryStartShell() async {
+    final client = _client;
+    if (client == null) return null;
     try {
-      _persistentShell = PersistentShell(_client!);
-      await _persistentShell!.start();
-    } catch (e) {
-      // 持続的シェルの開始に失敗しても接続自体は継続
-      // 従来のexec()メソッドにフォールバック
-      _persistentShell = null;
+      final shell = PersistentShell(client);
+      await shell.start();
+      return shell;
+    } catch (_) {
+      return null;
     }
   }
 
   /// 持続的シェルを再起動
   Future<void> restartPersistentShell() async {
     if (_client == null || !isConnected) return;
-
     try {
       await _persistentShell?.dispose();
-      _persistentShell = PersistentShell(_client!);
-      await _persistentShell!.start();
-    } catch (e) {
-      _persistentShell = null;
+    } catch (_) {
+      // dispose失敗は無視して再作成を試みる
     }
+    _persistentShell = await _tryStartShell();
+  }
+
+  /// 入力専用シェルを再起動する（送信失敗時の自己回復用）。
+  Future<void> _restartInputShell() async {
+    if (_client == null || !isConnected) return;
+    try {
+      await _inputShell?.dispose();
+    } catch (_) {
+      // dispose失敗は無視して再作成を試みる
+    }
+    _inputShell = await _tryStartShell();
+  }
+
+  /// キー送信などの出力不要コマンドを低遅延で送信する。
+  ///
+  /// 専用のfire-and-forgetチャネルに書き込むだけで完了する。[exec]と違い
+  /// チャネル開閉・execロック・往復待ちがないため、高pingの回線でも入力が
+  /// 詰まらない（結果はポーリングで反映される）。
+  /// 高速チャネルが使えない場合は信頼性優先で[exec]にフォールバックする。
+  Future<void> sendKeysCommand(String command) async {
+    if (!isConnected || _client == null) {
+      throw SshConnectionError('Not connected');
+    }
+
+    final input = _inputShell;
+    if (input != null && input.isStarted) {
+      try {
+        input.sendNoWait(_resolveTmuxCommand(command));
+        return;
+      } on PersistentShellError {
+        // 高速チャネルが切れた: 次回のために再起動し、今回はexecへフォールバック
+        unawaited(_restartInputShell());
+      }
+    }
+
+    // フォールバック: 従来のexec（内部で_resolveTmuxCommandを実行）
+    await exec(command);
   }
 
   /// execチャネルを排他的に使用する
@@ -481,19 +534,16 @@ class SshClient {
 
   /// コマンド内の `tmux` を検出済み絶対パスに置換
   String _resolveTmuxCommand(String command) {
-    if (_tmuxPath == null) {
-      debugPrint('_resolveTmuxCommand: _tmuxPath=null, command unchanged');
-      return command;
-    }
+    if (_tmuxPath == null) return command;
     final resolved = command.replaceAllMapped(
       RegExp(r'(^|;\s*)tmux\b'),
       (m) => '${m[1]}$_tmuxPath',
     );
-    if (resolved != command) {
-      debugPrint('_resolveTmuxCommand: "$command" => "$resolved"');
-    }
     return resolved;
   }
+
+  /// シェル引数を単一引用符で安全に囲む（ユーザー入力のtmuxパス等に使用）。
+  String _shSingleQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
   /// Keep-aliveを開始
   ///
@@ -709,12 +759,9 @@ class SshClient {
 
         // stderrがあればエラーとして扱う（オプション）
         if (stderr.isNotEmpty) {
-          // stderrも結果に含める（tmuxコマンドなどはstderrに出力することがある）
-          debugPrint('exec: stdout="${stdout.trim()}", stderr="${stderr.trim()}"');
           return stdout + stderr;
         }
 
-        debugPrint('exec: stdout="${stdout.trim()}"');
         return stdout;
       });
     } on TimeoutException {
