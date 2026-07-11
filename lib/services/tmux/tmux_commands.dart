@@ -229,10 +229,13 @@ class TmuxCommands {
   /// キーを送信
   static String sendKeys(String paneId, String keys, {bool literal = false}) {
     final escapedKeys = _escapeArg(keys);
+    // `--` で tmux 側のオプション解析を打ち切る。これがないと、ダッシュで
+    // 始まる入力（例: `-X`）が send-keys のオプションとして解釈され、
+    // 文字入力ではなくコピーモード操作等に化ける。
     if (literal) {
-      return 'tmux send-keys -t ${_escapeArg(paneId)} -l $escapedKeys';
+      return 'tmux send-keys -t ${_escapeArg(paneId)} -l -- $escapedKeys';
     }
-    return 'tmux send-keys -t ${_escapeArg(paneId)} $escapedKeys';
+    return 'tmux send-keys -t ${_escapeArg(paneId)} -- $escapedKeys';
   }
 
   /// Enterキーを送信
@@ -339,6 +342,14 @@ class TmuxCommands {
   /// ペインのスクロールバック全体をキャプチャ
   static String capturePaneAll(String paneId) {
     return capturePane(paneId, startLine: -32768, endLine: 32768);
+  }
+
+  /// 指定セッションの履歴（スクロールバック）保持行数を設定する。
+  /// グローバル(-g)ではなく対象セッションのみに適用し、ユーザーの
+  /// tmuxサーバ全体の設定を書き換えない。tmuxの仕様上、既存ペインには
+  /// 遡って適用されず、以後そのセッションに作成されるペインに効く。
+  static String setHistoryLimit(int lines, {required String target}) {
+    return 'tmux set-option -t ${_escapeArg(target)} history-limit $lines';
   }
 
   // ===== セッション/アタッチ =====

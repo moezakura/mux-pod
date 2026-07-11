@@ -7,7 +7,6 @@ import '../../../providers/settings_provider.dart';
 import '../../../providers/terminal_display_provider.dart';
 import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
-import '../../../services/terminal/terminal_diff.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
 import '../../../services/tmux/pane_navigator.dart';
 import '../../../theme/design_colors.dart';
@@ -133,9 +132,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   late AnsiParser _parser;
 
-  /// 差分計算サービス
-  final TerminalDiff _terminalDiff = TerminalDiff();
-
   /// 修飾キー状態
   bool _ctrlPressed = false;
   bool _altPressed = false;
@@ -175,9 +171,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   /// 行の高さ（仮想スクロールで固定高さを使用）
   double _lineHeight = 20.0;
-
-  /// 最後の差分結果（適応型ポーリング用）
-  DiffResult? _lastDiffResult;
 
   @override
   void initState() {
@@ -225,18 +218,17 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     required double fontSize,
     required String fontFamily,
   }) {
-    // 差分計算を実行
-    _lastDiffResult = _terminalDiff.calculateDiff(widget.text);
+    final textChanged = _cachedText != widget.text;
 
     // キャッシュが有効かチェック
     if (_cachedParsedLines != null &&
-        _cachedText == widget.text &&
+        !textChanged &&
         _cachedFontSize == fontSize &&
         _cachedFontFamily == fontFamily) {
       return _cachedParsedLines!;
     }
 
-    // 新しくパースしてキャッシュ
+    // 新しくパース（parseLinesは変更行のみ再パースするインクリメンタル方式）
     _cachedParsedLines = _parser.parseLines(widget.text);
     _cachedText = widget.text;
     _cachedFontSize = fontSize;
@@ -246,20 +238,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     _lineHeight = fontSize * 1.4;
 
     return _cachedParsedLines!;
-  }
-
-  /// 最後の差分結果を取得（親ウィジェットから参照用）
-  DiffResult? get lastDiffResult => _lastDiffResult;
-
-  /// 推奨ポーリング間隔を取得（適応型ポーリング用）
-  int get recommendedPollingInterval {
-    if (_lastDiffResult == null) {
-      return AdaptivePollingInterval.defaultInterval;
-    }
-    return AdaptivePollingInterval.calculateInterval(
-      _lastDiffResult!.unchangedFrames,
-      _lastDiffResult!.changeRatio,
-    );
   }
 
   @override
@@ -761,6 +739,15 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
           fontFamily: settings.fontFamily,
         );
 
+        // 行に依存しない基本スタイルは1回だけ計算
+        // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
+        final baseTextStyle = TerminalFontStyles.getTextStyle(
+          settings.fontFamily,
+          fontSize: fontSize,
+          height: 1.4,
+          color: widget.foregroundColor,
+        );
+
         // 仮想スクロール対応のListView.builder
         Widget listWidget = ListView.builder(
           controller: _verticalScrollController,
@@ -782,12 +769,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
             // 各行のテキストウィジェット
             Widget lineWidget = Text.rich(
               textSpan,
-              style: TerminalFontStyles.getTextStyle(
-                settings.fontFamily,
-                fontSize: fontSize,
-                height: 1.4,
-                color: widget.foregroundColor,
-              ),
+              style: baseTextStyle,
               textScaler: TextScaler.noScaling,
               maxLines: 1,
               softWrap: false,

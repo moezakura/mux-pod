@@ -19,6 +19,7 @@ import '../../services/ssh/input_queue.dart';
 import '../../services/ssh/ssh_client.dart' show SshConnectOptions;
 import '../../services/tmux/pane_navigator.dart';
 import '../../services/terminal/font_calculator.dart';
+import '../../services/terminal/adaptive_polling.dart';
 import '../../services/tmux/tmux_commands.dart';
 import '../../services/tmux/tmux_parser.dart';
 import '../../services/tmux/tmux_version.dart';
@@ -56,26 +57,22 @@ enum ScrollModeSource {
 /// isDismissible: trueでも安定して動作する。
 class _TerminalViewData {
   final String content;
-  final int latency;
   final int paneWidth;
   final int paneHeight;
 
   const _TerminalViewData({
     this.content = '',
-    this.latency = 0,
     this.paneWidth = 80,
     this.paneHeight = 24,
   });
 
   _TerminalViewData copyWith({
     String? content,
-    int? latency,
     int? paneWidth,
     int? paneHeight,
   }) =>
       _TerminalViewData(
         content: content ?? this.content,
-        latency: latency ?? this.latency,
         paneWidth: paneWidth ?? this.paneWidth,
         paneHeight: paneHeight ?? this.paneHeight,
       );
@@ -129,6 +126,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 親のsetState()を回避し、ValueListenableBuilderでサブツリーのみリビルドする
   final _viewNotifier = ValueNotifier<_TerminalViewData>(const _TerminalViewData());
 
+  // レイテンシ表示専用のNotifier（ping揺れで本文が再描画されないよう分離）
+  final _latencyNotifier = ValueNotifier<int>(0);
+
   // キーオーバーレイ
   final KeyOverlayState _keyOverlayState = KeyOverlayState();
   Timer? _keyOverlayTimer;
@@ -144,16 +144,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   DateTime _lastFrameTime = DateTime.now();
   bool _pendingUpdate = false;
   String _pendingContent = '';
-  int _pendingLatency = 0;
 
   // 適応型ポーリング用
   int _currentPollingInterval = 100;
   static const int _minPollingInterval = 50;
   static const int _maxPollingInterval = 2000;
 
+  // 変化頻度トラッキング（毎ポーリングで更新。アイドル時にポーリングをバックオフ）
+  int _unchangedPolls = 0;
+  String? _lastPolledContent;
+
   // 選択状態保持用（スクロールモード中の更新抑制）
   String _bufferedContent = '';
-  int _bufferedLatency = 0;
   bool _hasBufferedUpdate = false;
 
   // 初回スクロール完了フラグ
@@ -458,6 +460,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         if (!mounted || _isDisposed) return;
       }
 
+      // このセッションの履歴保持行数を設定する（グローバル -g ではなく対象
+      // セッションのみ。ユーザーのtmuxサーバ全体の設定は書き換えない）。tmux仕様で
+      // 既存ペインには遡らず、以後このセッションに作成されるペインに効く。
+      // 値はユーザー設定 scrollbackLines に合わせる。ベストエフォート。
+      try {
+        final historyLimit =
+            ref.read(settingsProvider).scrollbackLines.clamp(200, 20000).toInt();
+        await sshNotifier.client
+            ?.exec(TmuxCommands.setHistoryLimit(historyLimit, target: sessionName));
+      } catch (_) {}
+
       // 6. アクティブセッション/ウィンドウ/ペインを設定
       ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
 
@@ -603,6 +616,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// キー入力後にポーリングを即座にブースト（アイドル時の応答性改善）
   void _boostPolling() {
+    // 既に最小間隔なら Timer 再生成は不要（高速連打時の churn を回避）
+    if (_currentPollingInterval == _minPollingInterval) return;
     _currentPollingInterval = _minPollingInterval;
     _pollTimer?.cancel();
     _scheduleNextPoll();
@@ -610,17 +625,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// ポーリング間隔を更新
   void _updatePollingInterval() {
-    final ansiTextViewState = _ansiTextViewKey.currentState;
-    if (ansiTextViewState != null) {
-      final recommended = ansiTextViewState.recommendedPollingInterval;
-      // tmux copy-mode 検出中はポーリング間隔の上限を500msに制限
-      // copy-mode終了の検出遅延を最大0.5秒に改善
-      final maxInterval = _scrollModeSource == ScrollModeSource.tmux ? 500 : _maxPollingInterval;
-      _currentPollingInterval = recommended.clamp(
-        _minPollingInterval,
-        maxInterval,
-      );
-    }
+    final recommended =
+        AdaptivePollingInterval.calculateInterval(_unchangedPolls);
+    // tmux copy-mode 検出中はポーリング間隔の上限を500msに制限
+    final maxInterval =
+        _scrollModeSource == ScrollModeSource.tmux ? 500 : _maxPollingInterval;
+    _currentPollingInterval =
+        recommended.clamp(_minPollingInterval, maxInterval);
   }
 
   /// ペイン内容をポーリング取得
@@ -655,8 +666,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // 3つのコマンドを1つに統合して実行（持続的シェルは同時に1コマンドのみ）
       // capture-pane + カーソル位置情報 + ペインモード を1回で取得
       // 出力形式: [ペイン内容]\n[カーソル情報]\n[ペインモード]
+      // ライブ更新は直近120行のみ取得する。全スクロールバック（〜1000行）を
+      // 毎ポーリング（〜50ms）でデコード/split/比較/走査すると主スレッドが
+      // 詰まりフレームが遅延するため。深い履歴は tmux copy-mode で参照する。
       final combinedCommand =
-          '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: -1000)}; '
+          '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: -120)}; '
           '${TmuxCommands.getCursorPosition(target)}; '
           '${TmuxCommands.getPaneMode(target)}';
 
@@ -665,11 +679,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         timeout: const Duration(seconds: 2),
       );
 
-      // 出力を分割（最後の行がペインモード、その前がカーソル情報）
-      final lines = combinedOutput.split('\n');
-      final paneModeOutput = lines.isNotEmpty ? lines.removeLast() : '';
-      final cursorOutput = lines.isNotEmpty ? lines.removeLast() : '';
-      final output = lines.join('\n');
+      // 末尾2行（カーソル情報・ペインモード）を全文splitせずに切り出す
+      // （全行 split+join はアクティブ出力時の主スレッド負荷になるため回避）。
+      final modeCut = combinedOutput.lastIndexOf('\n');
+      final paneModeOutput =
+          modeCut >= 0 ? combinedOutput.substring(modeCut + 1) : '';
+      final beforeMode =
+          modeCut >= 0 ? combinedOutput.substring(0, modeCut) : '';
+      final curCut = beforeMode.lastIndexOf('\n');
+      final cursorOutput =
+          curCut >= 0 ? beforeMode.substring(curCut + 1) : '';
+      final output = curCut >= 0 ? beforeMode.substring(0, curCut) : '';
 
       // capture-paneの出力末尾にある改行を削除
       final processedOutput = output.endsWith('\n')
@@ -709,24 +729,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         }
       }
 
-      // レイテンシを更新
+      // レイテンシは専用ValueNotifierで更新（変化時のみインジケーターを再描画）。
+      // コンテンツ用_viewNotifierには含めないことで、ping揺れによる
+      // ターミナル本文（AnsiTextView）の無駄な再描画を排除する。
       final latency = endTime.difference(startTime).inMilliseconds;
+      if (mounted && !_isDisposed) {
+        _latencyNotifier.value = latency;
+      }
 
-      // 差分があれば更新（スロットリング適用）
+      // 適応型ポーリング: 内容変化の頻度を毎ポーリングで記録（アイドル時にバックオフ）
+      if (processedOutput == _lastPolledContent) {
+        _unchangedPolls++;
+      } else {
+        _unchangedPolls = 0;
+        _lastPolledContent = processedOutput;
+      }
+
+      // コンテンツ差分があれば更新（スロットリング適用）
       final currentView = _viewNotifier.value;
-      if (processedOutput != currentView.content || latency != currentView.latency) {
-        // 手動スクロールモード中のみ更新をバッファリングして選択状態を保持
+      if (processedOutput != currentView.content) {
+        // 手動スクロールモード中は更新をバッファリングして選択状態を保持
         // tmux copy-mode中はcapture-paneがスクロール位置の内容を返すためリアルタイム表示
         if (_terminalMode == TerminalMode.scroll && _scrollModeSource == ScrollModeSource.manual) {
           _bufferedContent = processedOutput;
-          _bufferedLatency = latency;
           _hasBufferedUpdate = true;
-          // レイテンシのみ更新（選択に影響しない）
-          if (mounted && !_isDisposed) {
-            _viewNotifier.value = currentView.copyWith(latency: latency);
-          }
         } else {
-          _scheduleUpdate(processedOutput, latency);
+          _scheduleUpdate(processedOutput);
         }
       }
 
@@ -769,10 +797,44 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// バッファリングされた更新を適用（スクロールモード終了時に呼び出し）
   void _applyBufferedUpdate() {
     if (_hasBufferedUpdate) {
-      _scheduleUpdate(_bufferedContent, _bufferedLatency);
+      _scheduleUpdate(_bufferedContent);
       _hasBufferedUpdate = false;
       _bufferedContent = '';
-      _bufferedLatency = 0;
+    }
+  }
+
+  /// スクロール＆選択モード開始時に履歴を一度だけ取得して表示する。
+  /// ライブポーリングは軽量な直近行のままなので性能は落ちない。深い履歴は
+  /// ポーリングとは別のexecチャネルで取得し、ホットパスに影響しない。
+  Future<void> _loadHistoryForScroll() async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) return;
+    final target = ref.read(tmuxProvider.notifier).currentTarget;
+    if (target == null) return;
+    final int historyLines =
+        ref.read(settingsProvider).scrollbackLines.clamp(200, 20000).toInt();
+    try {
+      final out = await sshClient.exec(
+        TmuxCommands.capturePane(
+          target,
+          escapeSequences: true,
+          startLine: -historyLines,
+        ),
+      );
+      if (!mounted || _isDisposed) return;
+      // まだスクロールモードに居るときだけ反映（即戻り・連打対策）
+      if (_terminalMode != TerminalMode.scroll) return;
+      final content =
+          out.endsWith('\n') ? out.substring(0, out.length - 1) : out;
+      _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+      // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDisposed) {
+          _ansiTextViewKey.currentState?.scrollToBottom();
+        }
+      });
+    } catch (_) {
+      // 取得失敗時は直近行のライブ表示のまま
     }
   }
 
@@ -780,9 +842,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 高頻度更新時（htop等）に毎フレーム更新しないようスロットリングを行う。
   /// 16ms（約60fps）以内の連続更新は次フレームに延期される。
-  void _scheduleUpdate(String content, int latency) {
+  void _scheduleUpdate(String content) {
     _pendingContent = content;
-    _pendingLatency = latency;
 
     // すでに更新がスケジュール済みなら何もしない
     if (_pendingUpdate) return;
@@ -811,7 +872,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ValueNotifier更新（親のsetState()を回避し、ValueListenableBuilderのみリビルド）
     _viewNotifier.value = _viewNotifier.value.copyWith(
       content: _pendingContent,
-      latency: _pendingLatency,
     );
 
     // 初回コンテンツ受信時に一番下へスクロール
@@ -917,6 +977,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _autoResizeDebounceTimer = null;
     // ValueNotifierを破棄
     _viewNotifier.dispose();
+    _latencyNotifier.dispose();
     // スクロールコントローラーのリスナーを削除して破棄
     _terminalScrollController.removeListener(_onTerminalScroll);
     _terminalScrollController.dispose();
@@ -1204,7 +1265,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     try {
       // エスケープシーケンスや特殊キーはリテラルで送信
-      await sshClient.exec(TmuxCommands.sendKeys(target, data, literal: true));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, data, literal: true));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視
@@ -1537,9 +1598,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
               ),
             // Latency / Reconnect indicator（ValueListenableBuilderでポーリング更新をスコープ）
-            ValueListenableBuilder<_TerminalViewData>(
-              valueListenable: _viewNotifier,
-              builder: (context, viewData, _) => _buildConnectionIndicator(viewData.latency),
+            ValueListenableBuilder<int>(
+              valueListenable: _latencyNotifier,
+              builder: (context, latency, _) => _buildConnectionIndicator(latency),
             ),
             // File browser button
             IconButton(
@@ -2474,6 +2535,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     });
                     if (newMode == TerminalMode.scroll) {
                       _enterTmuxCopyMode();
+                      _loadHistoryForScroll();
                     } else {
                       _cancelTmuxCopyMode();
                       _applyBufferedUpdate();
@@ -2493,6 +2555,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   });
                   if (newMode == TerminalMode.scroll) {
                     _enterTmuxCopyMode();
+                    _loadHistoryForScroll();
                   } else {
                     _cancelTmuxCopyMode();
                     _applyBufferedUpdate();
@@ -2933,7 +2996,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (target == null) return;
 
     try {
-      await sshClient.exec(TmuxCommands.sendKeys(target, key, literal: literal));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, key, literal: literal));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
@@ -2947,7 +3010,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
     try {
-      await sshClient.exec(TmuxCommands.enterCopyMode(target));
+      await sshClient.sendKeysCommand(TmuxCommands.enterCopyMode(target));
       _boostPolling();
     } catch (_) {}
   }
@@ -2959,7 +3022,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
     try {
-      await sshClient.exec(TmuxCommands.cancelCopyMode(target));
+      await sshClient.sendKeysCommand(TmuxCommands.cancelCopyMode(target));
       _boostPolling();
     } catch (_) {}
   }
@@ -2976,7 +3039,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     try {
       // 特殊キーはリテラルではなくtmux形式で送信
-      await sshClient.exec(TmuxCommands.sendKeys(target, tmuxKey, literal: false));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, tmuxKey, literal: false));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）

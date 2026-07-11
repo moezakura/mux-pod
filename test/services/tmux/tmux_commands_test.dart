@@ -23,6 +23,15 @@ void main() {
       });
     });
 
+    group('setHistoryLimit', () {
+      test('generates session-scoped history-limit set-option command', () {
+        expect(
+          TmuxCommands.setHistoryLimit(10000, target: 'main'),
+          'tmux set-option -t main history-limit 10000',
+        );
+      });
+    });
+
     group('selectPane', () {
       test('generates correct select-pane command', () {
         expect(TmuxCommands.selectPane('%0'), 'tmux select-pane -t %0');
@@ -180,14 +189,21 @@ void main() {
         // _escapeArg escapes backslashes, so \\ becomes \\\\
         expect(
           TmuxCommands.sendKeys('%0', '\\x1b[I', literal: true),
-          'tmux send-keys -t %0 -l "\\\\x1b[I"',
+          'tmux send-keys -t %0 -l -- "\\\\x1b[I"',
         );
       });
 
       test('generates non-literal send-keys command', () {
         expect(
           TmuxCommands.sendKeys('%0', 'Enter'),
-          'tmux send-keys -t %0 Enter',
+          'tmux send-keys -t %0 -- Enter',
+        );
+      });
+
+      test('guards dash-prefixed keys with -- (no tmux option injection)', () {
+        expect(
+          TmuxCommands.sendKeys('%0', '-X cancel', literal: true),
+          'tmux send-keys -t %0 -l -- "-X cancel"',
         );
       });
     });
