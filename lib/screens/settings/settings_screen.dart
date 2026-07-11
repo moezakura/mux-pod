@@ -202,6 +202,16 @@ class SettingsScreen extends ConsumerWidget {
                     ref.read(settingsProvider.notifier).setKeepScreenOn(value);
                   },
                 ),
+                ListTile(
+                  leading: const Icon(Icons.screen_rotation),
+                  title: const Text('Screen Orientation'),
+                  subtitle: Text(_orientationLabel(settings.screenOrientation)),
+                  onTap: () => _showOrientationPicker(
+                    context,
+                    ref,
+                    settings.screenOrientation,
+                  ),
+                ),
                 SwitchListTile(
                   secondary: const Icon(Icons.swipe),
                   title: const Text('Invert Pane Navigation'),
@@ -509,6 +519,45 @@ class SettingsScreen extends ConsumerWidget {
               groupValue: current,
               onChanged: (v) {
                 if (v != null) ref.read(settingsProvider.notifier).setAdjustMode(v);
+                Navigator.pop(ctx);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _orientationLabel(String value) {
+    switch (value) {
+      case 'portrait':
+        return 'Portrait';
+      case 'landscape':
+        return 'Landscape';
+      default:
+        return 'Auto (follow device)';
+    }
+  }
+
+  void _showOrientationPicker(BuildContext context, WidgetRef ref, String current) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Screen Orientation'),
+        children: [
+          for (final entry in [
+            ('auto', 'Auto', 'Follow device rotation'),
+            ('portrait', 'Portrait', 'Lock to portrait'),
+            ('landscape', 'Landscape', 'Lock to landscape'),
+          ])
+            RadioListTile<String>(
+              title: Text(entry.$2),
+              subtitle: Text(entry.$3),
+              value: entry.$1,
+              groupValue: current,
+              onChanged: (v) {
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setScreenOrientation(v);
+                }
                 Navigator.pop(ctx);
               },
             ),

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 
 import '../services/settings_migration.dart';
 
@@ -12,6 +13,9 @@ class AppSettings {
   final bool enableNotifications;
   final bool enableVibration;
   final bool keepScreenOn;
+
+  /// 画面の向き: 'auto'（デバイスに追従）/ 'portrait' / 'landscape'
+  final String screenOrientation;
   final int scrollbackLines;
   final double minFontSize;
 
@@ -65,6 +69,7 @@ class AppSettings {
     this.enableNotifications = true,
     this.enableVibration = true,
     this.keepScreenOn = true,
+    this.screenOrientation = 'portrait',
     this.scrollbackLines = 10000,
     this.minFontSize = 8.0,
     this.adjustMode = 'autoFit',
@@ -99,6 +104,7 @@ class AppSettings {
     bool? enableNotifications,
     bool? enableVibration,
     bool? keepScreenOn,
+    String? screenOrientation,
     int? scrollbackLines,
     double? minFontSize,
     String? adjustMode,
@@ -129,6 +135,7 @@ class AppSettings {
       enableNotifications: enableNotifications ?? this.enableNotifications,
       enableVibration: enableVibration ?? this.enableVibration,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+      screenOrientation: screenOrientation ?? this.screenOrientation,
       scrollbackLines: scrollbackLines ?? this.scrollbackLines,
       minFontSize: minFontSize ?? this.minFontSize,
       adjustMode: adjustMode ?? this.adjustMode,
@@ -163,6 +170,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _notificationsKey = 'settings_notifications';
   static const String _vibrationKey = 'settings_vibration';
   static const String _keepScreenOnKey = 'settings_keep_screen_on';
+  static const String _screenOrientationKey = 'settings_screen_orientation';
   static const String _scrollbackKey = 'settings_scrollback';
   static const String _minFontSizeKey = 'settings_min_font_size';
   static const String _adjustModeKey = 'settings_adjust_mode';
@@ -203,6 +211,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       enableNotifications: prefs.getBool(_notificationsKey) ?? true,
       enableVibration: prefs.getBool(_vibrationKey) ?? true,
       keepScreenOn: prefs.getBool(_keepScreenOnKey) ?? true,
+      screenOrientation: prefs.getString(_screenOrientationKey) ?? 'portrait',
       scrollbackLines: prefs.getInt(_scrollbackKey) ?? 10000,
       minFontSize: prefs.getDouble(_minFontSizeKey) ?? 8.0,
       adjustMode: prefs.getString(_adjustModeKey) ?? 'autoFit',
@@ -225,6 +234,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
     );
+
+    await _applyScreenOrientation(state.screenOrientation);
   }
 
   Future<void> _saveSetting(String key, dynamic value) async {
@@ -280,6 +291,34 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setKeepScreenOn(bool value) async {
     state = state.copyWith(keepScreenOn: value);
     await _saveSetting(_keepScreenOnKey, value);
+  }
+
+  /// 画面の向きを設定（即座に適用）
+  Future<void> setScreenOrientation(String value) async {
+    state = state.copyWith(screenOrientation: value);
+    await _saveSetting(_screenOrientationKey, value);
+    await _applyScreenOrientation(value);
+  }
+
+  /// 画面の向き設定をプラットフォームへ適用
+  Future<void> _applyScreenOrientation(String value) async {
+    const portrait = [DeviceOrientation.portraitUp];
+    const landscape = [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ];
+    final List<DeviceOrientation> orientations;
+    switch (value) {
+      case 'portrait':
+        // portraitUp のみ: 上下逆さま表示を防ぐ（端末アプリでは逆さUIは望ましくない）。
+        // landscape は左右両方の握りを許可するのに対し、この非対称は意図的。
+        orientations = portrait;
+      case 'landscape':
+        orientations = landscape;
+      default:
+        orientations = const <DeviceOrientation>[]; // すべて許可
+    }
+    await SystemChrome.setPreferredOrientations(orientations);
   }
 
   /// スクロールバック行数を設定
