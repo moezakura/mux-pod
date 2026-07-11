@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
@@ -13,6 +14,11 @@ import 'package:flutter_muxpod/theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // リリースビルドでは debugPrint を無効化（ログI/Oとスロットルの主スレッド負荷を排除）
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
 
   // フォントライセンスを登録
   LicenseService.registerLicenses();
