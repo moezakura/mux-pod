@@ -212,6 +212,16 @@ class SettingsScreen extends ConsumerWidget {
                     settings.screenOrientation,
                   ),
                 ),
+                ListTile(
+                  leading: const Icon(Icons.speed),
+                  title: const Text('Max Refresh Rate'),
+                  subtitle: Text(_refreshRateLabel(settings.refreshRate)),
+                  onTap: () => _showRefreshRatePicker(
+                    context,
+                    ref,
+                    settings.refreshRate,
+                  ),
+                ),
                 SwitchListTile(
                   secondary: const Icon(Icons.swipe),
                   title: const Text('Invert Pane Navigation'),
@@ -557,6 +567,48 @@ class SettingsScreen extends ConsumerWidget {
               onChanged: (v) {
                 if (v != null) {
                   ref.read(settingsProvider.notifier).setScreenOrientation(v);
+                }
+                Navigator.pop(ctx);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _refreshRateLabel(String value) {
+    switch (value) {
+      case '120':
+        return '120 Hz';
+      case '90':
+        return '90 Hz';
+      case '60':
+        return '60 Hz';
+      default:
+        return 'Auto (highest)';
+    }
+  }
+
+  void _showRefreshRatePicker(BuildContext context, WidgetRef ref, String current) {
+    showDialog(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Max Refresh Rate'),
+        children: [
+          for (final entry in [
+            ('auto', 'Auto', 'Use the highest available'),
+            ('120', '120 Hz', 'Cap at 120 Hz'),
+            ('90', '90 Hz', 'Cap at 90 Hz'),
+            ('60', '60 Hz', 'Cap at 60 Hz'),
+          ])
+            RadioListTile<String>(
+              title: Text(entry.$2),
+              subtitle: Text(entry.$3),
+              value: entry.$1,
+              groupValue: current,
+              onChanged: (v) {
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setRefreshRate(v);
                 }
                 Navigator.pop(ctx);
               },

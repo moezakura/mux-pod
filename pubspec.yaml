@@ -56,6 +56,8 @@ dependencies:
   flutter_foreground_task: ^8.11.0
   # Keep screen on
   wakelock_plus: ^1.2.10
+  # Display refresh-rate control (max FPS setting)
+  flutter_displaymode: ^0.6.0
   # Network connectivity monitoring
   connectivity_plus: ^6.0.0
   path: ^1.9.1

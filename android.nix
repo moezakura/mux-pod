@@ -17,8 +17,9 @@
 
 let
   android = pkgs.androidenv.composeAndroidPackages {
-    # 36 = app compileSdk; 34/35 = various plugins' compileSdk (e.g. connectivity_plus).
-    platformVersions = [ "34" "35" "36" ];
+    # 36 = app compileSdk; 33/34/35 = various plugins' compileSdk
+    # (flutter_displaymode = 33, connectivity_plus = 34/35).
+    platformVersions = [ "33" "34" "35" "36" ];
     buildToolsVersions = [ "35.0.0" ];
     # Required: AGP resolves flutter.ndkVersion at configuration time and uses
     # the NDK's llvm-strip on the bundled .so files. Must be the nix-patched NDK
