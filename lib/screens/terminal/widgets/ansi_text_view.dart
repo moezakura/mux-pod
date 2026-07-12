@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -117,14 +118,15 @@ class AnsiTextView extends ConsumerStatefulWidget {
   ConsumerState<AnsiTextView> createState() => AnsiTextViewState();
 }
 
-class AnsiTextViewState extends ConsumerState<AnsiTextView>
-    with SingleTickerProviderStateMixin {
+class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   ScrollController? _internalVerticalScrollController;
 
-  /// キャレット点滅用コントローラー
-  late final AnimationController _caretBlinkController;
+  /// キャレット点滅用（離散トグル）。連続アニメだと毎 vsync 再描画され、
+  /// 待機中も 60-120fps を消費するため、500ms ごとに ON/OFF を切り替える。
+  Timer? _caretBlinkTimer;
+  final ValueNotifier<bool> _caretVisible = ValueNotifier<bool>(true);
 
   /// 使用する垂直スクロールコントローラー
   ScrollController get _verticalScrollController =>
@@ -184,11 +186,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
       defaultBackground: widget.backgroundColor,
     );
 
-    // 500ms周期で点滅（1秒で1サイクル）
-    _caretBlinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..repeat(reverse: true);
+    // 500ms ごとにキャレット表示を反転（離散点滅）。ValueNotifier のみ更新するため、
+    // 連続アニメと違い待機中は再描画されない（idle 時 0fps を維持）。
+    _caretBlinkTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _caretVisible.value = !_caretVisible.value,
+    );
   }
 
   @override
@@ -242,7 +245,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   @override
   void dispose() {
-    _caretBlinkController.dispose();
+    _caretBlinkTimer?.cancel();
+    _caretVisible.dispose();
     _focusNode.dispose();
     _horizontalScrollController.dispose();
     // 内部で作成した場合のみ破棄
@@ -850,24 +854,23 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
                 clipBehavior: Clip.none,
                 children: [
                   lineWidget,
-                  AnimatedBuilder(
-                    animation: _caretBlinkController,
-                    builder: (context, child) {
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _caretVisible,
+                    builder: (context, visible, child) {
+                      if (!visible) {
+                        return const SizedBox.shrink();
+                      }
                       // キャレットの高さを文字サイズに合わせる（行間を含めない）
                       final caretHeight = fontSize;
                       // 行内で垂直方向に中央寄せ
                       final caretTop = (_lineHeight - caretHeight) / 2;
-
                       return Positioned(
                         left: cursorLeft,
                         top: caretTop,
                         width: 2,
                         height: caretHeight,
-                        child: Opacity(
-                          opacity: _caretBlinkController.value, // フェードイン・アウト
-                          child: Container(
-                            color: DesignColors.primary,
-                          ),
+                        child: Container(
+                          color: DesignColors.primary,
                         ),
                       );
                     },
