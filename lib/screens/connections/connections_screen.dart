@@ -276,12 +276,14 @@ class ConnectionsScreen extends ConsumerWidget {
           final connection = filteredConnections[index];
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _ConnectionCard(
-              connection: connection,
-              onConnect: (sessionName) =>
-                  _connectToServer(context, ref, connection, sessionName),
-              onEdit: () => _editConnection(context, ref, connection),
-              onDelete: () => _deleteConnection(context, ref, connection),
+            child: RepaintBoundary(
+              child: _ConnectionCard(
+                connection: connection,
+                onConnect: (sessionName) =>
+                    _connectToServer(context, ref, connection, sessionName),
+                onEdit: () => _editConnection(context, ref, connection),
+                onDelete: () => _deleteConnection(context, ref, connection),
+              ),
             ),
           );
         },
@@ -659,71 +661,141 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
+  /// 認証情報を取得してSSH接続し、接続済みクライアントを返す。
+  Future<SshClient> _connectSsh() async {
+    final connection = widget.connection;
+    final storage = SecureStorageService();
+    SshConnectOptions options;
+    if (connection.authMethod == 'key' && connection.keyId != null) {
+      final privateKey = await storage.getPrivateKey(connection.keyId!);
+      final passphrase = await storage.getPassphrase(connection.keyId!);
+      options = SshConnectOptions(
+        privateKey: privateKey,
+        passphrase: passphrase,
+        tmuxPath: connection.tmuxPath,
+      );
+    } else {
+      final password = await storage.getPassword(connection.id);
+      options = SshConnectOptions(
+        password: password,
+        tmuxPath: connection.tmuxPath,
+      );
+    }
+    final sshClient = SshClient();
+    await sshClient.connect(
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      options: options,
+      lightweight: true,
+    );
+    return sshClient;
+  }
+
   Future<void> _fetchSessions() async {
     setState(() {
       _isLoadingSessions = true;
       _sessionError = null;
     });
 
+    SshClient? client;
     try {
-      final connection = widget.connection;
-      final storage = SecureStorageService();
-
-      // 認証オプションを取得
-      SshConnectOptions options;
-      if (connection.authMethod == 'key' && connection.keyId != null) {
-        final privateKey = await storage.getPrivateKey(connection.keyId!);
-        final passphrase = await storage.getPassphrase(connection.keyId!);
-        options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, tmuxPath: connection.tmuxPath);
-      } else {
-        final password = await storage.getPassword(connection.id);
-        options = SshConnectOptions(password: password, tmuxPath: connection.tmuxPath);
-      }
-
-      // SSH接続してセッション一覧を取得
-      final sshClient = SshClient();
-      await sshClient.connect(
-        host: connection.host,
-        port: connection.port,
-        username: connection.username,
-        options: options,
-      );
-
-      final cmd = TmuxCommands.listSessions();
-      debugPrint('_fetchSessions: tmuxPath=${sshClient.tmuxPath}, cmd="$cmd"');
-      final result = await sshClient.execWithExitCode(cmd);
-      debugPrint('_fetchSessions: stdout="${result.stdout.trim()}", stderr="${result.stderr.trim()}", exitCode=${result.exitCode}');
-      if (result.exitCode != null && result.exitCode != 0) {
-        throw SshConnectionError(
-          result.stderr.isNotEmpty ? result.stderr.trim() : 'tmux command failed (exit code: ${result.exitCode})',
-        );
-      }
-      final sessions = TmuxParser.parseSessions(result.stdout);
-      debugPrint('_fetchSessions: parsed ${sessions.length} sessions');
-
-      // 切断
-      await sshClient.disconnect();
-
-      if (!mounted) return;
-
-      setState(() {
-        _sessions = sessions;
-        _isLoadingSessions = false;
-      });
-
-      // ActiveSessionsProviderを更新
-      ref.read(activeSessionsProvider.notifier).updateSessionsForConnection(
-            connectionId: connection.id,
-            connectionName: connection.name,
-            host: connection.host,
-            tmuxSessions: sessions,
-          );
+      client = await _connectSsh();
+      await _reloadSessions(client);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoadingSessions = false;
         _sessionError = e.toString();
       });
+    } finally {
+      await client?.disconnect();
+    }
+  }
+
+  /// 接続済みクライアントでセッション一覧を取得し、状態とproviderへ反映する。
+  Future<void> _reloadSessions(SshClient client) async {
+    final result = await client.execWithExitCode(TmuxCommands.listSessions());
+    if (result.exitCode != null && result.exitCode != 0) {
+      throw SshConnectionError(
+        result.stderr.isNotEmpty
+            ? result.stderr.trim()
+            : 'tmux command failed (exit code: ${result.exitCode})',
+      );
+    }
+    final sessions = TmuxParser.parseSessions(result.stdout);
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+      _isLoadingSessions = false;
+    });
+    ref.read(activeSessionsProvider.notifier).updateSessionsForConnection(
+          connectionId: widget.connection.id,
+          connectionName: widget.connection.name,
+          host: widget.connection.host,
+          tmuxSessions: sessions,
+        );
+  }
+
+  /// tmuxセッションをkillする（確認ダイアログ付き）。
+  /// kill と一覧再取得を同一接続で行い、SSH往復を1回に抑える。
+  Future<void> _killSession(TmuxSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Kill Session'),
+        content: Text(
+          'Kill tmux session "${session.name}"? '
+          'Its windows and processes will be terminated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+            child: const Text('Kill'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isLoadingSessions = true;
+      _sessionError = null;
+    });
+
+    SshClient? client;
+    try {
+      client = await _connectSsh();
+      final result =
+          await client.execWithExitCode(TmuxCommands.killSession(session.name));
+      if (result.exitCode != null && result.exitCode != 0) {
+        throw SshConnectionError(
+          result.stderr.isNotEmpty
+              ? result.stderr.trim()
+              : 'kill-session failed (exit code: ${result.exitCode})',
+        );
+      }
+      // 同一接続でそのまま一覧を再取得
+      await _reloadSessions(client);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Session ${session.name} killed')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSessions = false;
+        _sessionError = e.toString();
+      });
+    } finally {
+      await client?.disconnect();
     }
   }
 
@@ -935,6 +1007,19 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                         ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
                         : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
                   ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  icon: const Icon(Icons.delete, color: DesignColors.error),
+                  onPressed:
+                      _isLoadingSessions ? null : () => _killSession(session),
+                  tooltip: 'Kill session',
                 ),
               ),
             ],

@@ -209,6 +209,7 @@ class SshClient {
     required int port,
     required String username,
     required SshConnectOptions options,
+    bool lightweight = false,
   }) async {
     // バリデーション
     _validateConnectionParams(host, port, username, options);
@@ -272,11 +273,14 @@ class SshClient {
         await _detectTmuxPath();
       }
 
-      // 持続的シェルを開始（ポーリング用）
-      await _startPersistentShell();
-
-      // Keep-aliveを開始
-      _startKeepAlive();
+      // 一括コマンド実行用の軽量接続では、ポーリング用シェルとkeep-aliveをスキップ。
+      // execWithExitCode は専用チャネルを使うため持続的シェルは不要。
+      if (!lightweight) {
+        // 持続的シェルを開始（ポーリング用）
+        await _startPersistentShell();
+        // Keep-aliveを開始
+        _startKeepAlive();
+      }
     } on SocketException catch (e) {
       _state = SshConnectionState.error;
       _lastError = 'Connection failed: ${e.message}';
