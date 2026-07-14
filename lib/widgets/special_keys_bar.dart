@@ -522,24 +522,27 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             ],
           ),
           child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.keyboard_return,
-                  size: 12,
-                  color: DesignColors.primary,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  'RET',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.keyboard_return,
+                    size: 12,
                     color: DesignColors.primary,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 2),
+                  Text(
+                    'RET',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: DesignColors.primary,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -549,49 +552,60 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
   /// 下部の矢印キー + Inputボタン行
   Widget _buildArrowKeysRow() {
+    if (widget.directInputEnabled) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              ..._buildNavigationControls(),
+              const SizedBox(width: 8),
+              _buildNumberKeyButton('1'),
+              const SizedBox(width: 2),
+              _buildNumberKeyButton('2'),
+              const SizedBox(width: 2),
+              _buildNumberKeyButton('3'),
+              const SizedBox(width: 2),
+              _buildNumberKeyButton('4'),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         children: [
-          _buildNavigationKeyButton('PgUp', 'PPage'),
-          const SizedBox(width: 2),
-          _buildNavigationKeyButton('PgDn', 'NPage'),
-          const SizedBox(width: 2),
-          // 矢印キー横並び: 左・上・下・右
-          _buildArrowButton(Icons.arrow_left, 'Left'),
-          const SizedBox(width: 2),
-          _buildArrowButton(Icons.arrow_drop_up, 'Up'),
-          const SizedBox(width: 2),
-          _buildArrowButton(Icons.arrow_drop_down, 'Down'),
-          const SizedBox(width: 2),
-          _buildArrowButton(Icons.arrow_right, 'Right'),
-          const SizedBox(width: 8),
-          // 画像転送ボタン
-          if (widget.onImagePickRequested != null) ...[
-            _buildImageTransferButton(),
-            const SizedBox(width: 2),
-          ],
-          // DirectInputモードトグルボタン
-          _buildDirectInputToggle(),
-          // DirectInput有効時: 数字キー(1-4)を右寄せで表示
-          if (widget.directInputEnabled) ...[
-            const Spacer(),
-            _buildNumberKeyButton('1'),
-            const SizedBox(width: 2),
-            _buildNumberKeyButton('2'),
-            const SizedBox(width: 2),
-            _buildNumberKeyButton('3'),
-            const SizedBox(width: 2),
-            _buildNumberKeyButton('4'),
-          ],
-          // DirectInput無効時: Inputボタンを表示
-          if (!widget.directInputEnabled) ...[
-            const SizedBox(width: 4),
-            Expanded(child: _buildInputButton()),
-          ],
+          ..._buildNavigationControls(),
+          const SizedBox(width: 4),
+          Expanded(child: _buildInputButton()),
         ],
       ),
     );
+  }
+
+  List<Widget> _buildNavigationControls() {
+    return [
+      _buildNavigationKeyButton('PgUp', 'PPage'),
+      const SizedBox(width: 2),
+      _buildNavigationKeyButton('PgDn', 'NPage'),
+      const SizedBox(width: 2),
+      _buildArrowButton(Icons.arrow_left, 'Left'),
+      const SizedBox(width: 2),
+      _buildArrowButton(Icons.arrow_drop_up, 'Up'),
+      const SizedBox(width: 2),
+      _buildArrowButton(Icons.arrow_drop_down, 'Down'),
+      const SizedBox(width: 2),
+      _buildArrowButton(Icons.arrow_right, 'Right'),
+      const SizedBox(width: 8),
+      if (widget.onImagePickRequested != null) ...[
+        _buildImageTransferButton(),
+        const SizedBox(width: 2),
+      ],
+      _buildDirectInputToggle(),
+    ];
   }
 
   /// DirectInput専用行（入力フィールドのみ）
@@ -985,25 +999,29 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           border: Border.all(color: DesignColors.primary.withValues(alpha: 0.2)),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            Icon(
-              Icons.keyboard,
-              size: 15,
-              color: DesignColors.primary.withValues(alpha: 0.7),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Cmd',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 12,
-                  color: DesignColors.primary.withValues(alpha: 0.5),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.keyboard,
+                  size: 15,
+                  color: DesignColors.primary.withValues(alpha: 0.7),
                 ),
-                overflow: TextOverflow.ellipsis,
-              ),
+                const SizedBox(width: 6),
+                Text(
+                  // "Cmd" keeps the non-direct toolbar compact enough for fixed nav keys.
+                  'Cmd',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 12,
+                    color: DesignColors.primary.withValues(alpha: 0.5),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
