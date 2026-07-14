@@ -346,25 +346,16 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     setState(() {});
   }
 
-  /// ピンチ確定。
-  /// - AutoResize: フォントサイズ自体を変更し、tmuxウィンドウを再フィット（リフロー）させる。
-  /// - それ以外: 描画倍率 zoomFactor を焼き込む（サーバは変更しない）。
+  /// ピンチ確定。永続ズーム倍率 zoomFactor に焼き込む（全モード共通）。
+  /// AutoResize時は terminal_screen が zoomFactor 変更を監視し、実効フォントサイズで
+  /// tmux ペインを再フィット（リフロー）させる。それ以外は描画倍率のみ変更。
   void _commitZoom() {
     final settings = ref.read(settingsProvider);
     final scale = _currentScale;
     _currentScale = 1.0;
     _baseScale = 1.0;
-    if (settings.isAutoResize) {
-      // ピンチ = フォントサイズ変更。terminal_screen が fontSize 変更を監視して
-      // tmuxペインを再フィットする（→ tmux がリフローする）。
-      final newFontSize = (settings.fontSize * scale)
-          .clamp(settings.minFontSize, kMaxTerminalFontSize)
-          .toDouble();
-      ref.read(settingsProvider.notifier).setFontSize(newFontSize);
-    } else {
-      final committed = clampZoomFactor(settings.zoomFactor * scale);
-      ref.read(settingsProvider.notifier).setZoomFactor(committed);
-    }
+    final committed = clampZoomFactor(settings.zoomFactor * scale);
+    ref.read(settingsProvider.notifier).setZoomFactor(committed);
     widget.onZoomChanged?.call(1.0);
     if (mounted) setState(() {});
   }

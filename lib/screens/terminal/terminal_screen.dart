@@ -37,6 +37,7 @@ import '../file_browser/file_browser_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
+import 'widgets/terminal_zoom.dart';
 
 /// スクロールモードのソース
 enum ScrollModeSource {
@@ -330,8 +331,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             _directInputEnabled = next.directInputEnabled;
           });
         }
-        // AutoResize時: フォントサイズ変更（ピンチ or 設定）で tmux ペインを再フィット
-        if (next.isAutoResize && previous?.fontSize != next.fontSize) {
+        // AutoResize時: フォント/ズーム変更（ピンチや設定）で tmux ペインを再フィット
+        if (next.isAutoResize &&
+            (previous?.fontSize != next.fontSize ||
+                previous?.zoomFactor != next.zoomFactor)) {
           final pane = ref.read(tmuxProvider).activePane;
           if (pane != null) _executeAutoResize(pane);
         }
@@ -2042,7 +2045,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
 
-    final fontSize = settings.fontSize;
+    final fontSize = zoomedFontSize(
+      baseFontSize: settings.fontSize,
+      zoomFactor: settings.zoomFactor,
+      minFontSize: settings.minFontSize,
+    );
     final targetCols = FontCalculator.calculateMaxCols(
       screenWidth: displayState.screenWidth,
       fontSize: fontSize,
