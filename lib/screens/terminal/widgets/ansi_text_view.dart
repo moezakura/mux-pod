@@ -11,6 +11,7 @@ import '../../../services/terminal/font_calculator.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
 import '../../../services/tmux/pane_navigator.dart';
 import '../../../theme/design_colors.dart';
+import 'terminal_zoom.dart';
 
 /// キー入力イベント
 class KeyInputEvent {
@@ -146,7 +147,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   static const double _swipeThreshold = 30.0;
 
   /// 2本指ジェスチャーのモード（指の移動方向で判定し、終了までロック）
-  _TwoFingerMode _twoFingerMode = _TwoFingerMode.undetermined;
+  TwoFingerGesture _twoFingerMode = TwoFingerGesture.undetermined;
   Offset _twoFingerPanStart = Offset.zero;
   Offset _twoFingerPanDelta = Offset.zero;
   bool _isTwoFingerPanning = false;
@@ -154,10 +155,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   static const double _twoFingerSwipeThreshold = 50.0;
   static const double _panGlowThreshold = 20.0;
   static const Duration _edgeFlashDuration = Duration(milliseconds: 400);
-
-  /// 個別ポインタ追跡（指の移動方向ベクトルでズーム/パンを判定）
-  final Map<int, Offset> _pointerStartPositions = {};
-  final Map<int, Offset> _pointerCurrentPositions = {};
 
   /// 現在のズームスケール
   double _currentScale = 1.0;
@@ -263,53 +260,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     widget.onZoomChanged?.call(1.0);
   }
 
-  // === ポインタ追跡（指の移動方向ベクトルでズーム/パンを判定） ===
-
-  void _onPointerDown(PointerDownEvent event) {
-    _pointerStartPositions[event.pointer] = event.position;
-    _pointerCurrentPositions[event.pointer] = event.position;
-  }
-
-  void _onPointerMove(PointerMoveEvent event) {
-    _pointerCurrentPositions[event.pointer] = event.position;
-  }
-
-  void _onPointerUpOrCancel(PointerEvent event) {
-    _pointerStartPositions.remove(event.pointer);
-    _pointerCurrentPositions.remove(event.pointer);
-  }
-
-  /// 2本の指の移動方向ベクトルの内積からモードを判定
-  ///
-  /// - 内積 > 0: 同方向（パン） → ペイン切り替え
-  /// - 内積 < 0: 逆方向（ピンチ） → ズーム
-  /// - 移動量不足: 判定不能
-  _TwoFingerMode _detectModeFromFingerDirections() {
-    if (_pointerCurrentPositions.length < 2) {
-      return _TwoFingerMode.undetermined;
-    }
-
-    final pointers = _pointerStartPositions.keys
-        .where((p) => _pointerCurrentPositions.containsKey(p))
-        .take(2)
-        .toList();
-    if (pointers.length < 2) return _TwoFingerMode.undetermined;
-
-    final v1 =
-        _pointerCurrentPositions[pointers[0]]! -
-        _pointerStartPositions[pointers[0]]!;
-    final v2 =
-        _pointerCurrentPositions[pointers[1]]! -
-        _pointerStartPositions[pointers[1]]!;
-
-    // 最低移動量に達していなければ判定不能
-    if (v1.distance < 15 || v2.distance < 15) {
-      return _TwoFingerMode.undetermined;
-    }
-
-    final dot = v1.dx * v2.dx + v1.dy * v2.dy;
-    return dot > 0 ? _TwoFingerMode.pan : _TwoFingerMode.zoom;
-  }
 
   // === ピンチズーム + 2本指スワイプ処理 ===
 
@@ -318,7 +268,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _twoFingerPanStart = details.focalPoint;
     _twoFingerPanDelta = Offset.zero;
     _isTwoFingerPanning = false;
-    _twoFingerMode = _TwoFingerMode.undetermined;
+    _twoFingerMode = TwoFingerGesture.undetermined;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -326,32 +276,32 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     if (details.pointerCount <= 1) return;
 
     // モード確定済み → そのまま処理
-    if (_twoFingerMode == _TwoFingerMode.zoom) {
-      _isTwoFingerPanning = false;
+    if (_twoFingerMode == TwoFingerGesture.zoom) {
       _applyZoom(details);
       return;
     }
-    if (_twoFingerMode == _TwoFingerMode.pan) {
-      _isTwoFingerPanning = true;
+    if (_twoFingerMode == TwoFingerGesture.pan) {
       _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
       setState(() {});
       return;
     }
 
-    // モード未確定 → 指の移動方向ベクトルで判定
-    _twoFingerMode = _detectModeFromFingerDirections();
-
+    // モード未確定 → details.scale と焦点移動量で判定
+    // （details.scale は片方の指が静止していても信頼できる合図）
+    _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
+    _twoFingerMode = classifyTwoFingerGesture(
+      scale: details.scale,
+      focalTravel: _twoFingerPanDelta.distance,
+    );
     switch (_twoFingerMode) {
-      case _TwoFingerMode.zoom:
+      case TwoFingerGesture.zoom:
         _isTwoFingerPanning = false;
         _applyZoom(details);
-      case _TwoFingerMode.pan:
+      case TwoFingerGesture.pan:
         _isTwoFingerPanning = true;
-        _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
         setState(() {});
-      case _TwoFingerMode.undetermined:
-        // まだ判定できない → 暫定的にパンデルタだけ追跡
-        _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
+      case TwoFingerGesture.undetermined:
+        break;
     }
   }
 
@@ -367,8 +317,15 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   void _onScaleEnd(ScaleEndDetails details) {
     final wasPanning = _isTwoFingerPanning;
+    final wasZooming = _twoFingerMode == TwoFingerGesture.zoom;
     _isTwoFingerPanning = false;
-    _twoFingerMode = _TwoFingerMode.undetermined;
+    _twoFingerMode = TwoFingerGesture.undetermined;
+
+    // ズーム確定: プレビュー倍率を永続 zoomFactor に焼き込み、変形をリセット
+    if (wasZooming) {
+      _commitZoom();
+      return;
+    }
     if (!wasPanning) return;
 
     final direction = PaneNavigator.detectSwipeDirection(
@@ -387,6 +344,29 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     }
     _twoFingerPanDelta = Offset.zero;
     setState(() {});
+  }
+
+  /// ピンチ確定。
+  /// - AutoResize: フォントサイズ自体を変更し、tmuxウィンドウを再フィット（リフロー）させる。
+  /// - それ以外: 描画倍率 zoomFactor を焼き込む（サーバは変更しない）。
+  void _commitZoom() {
+    final settings = ref.read(settingsProvider);
+    final scale = _currentScale;
+    _currentScale = 1.0;
+    _baseScale = 1.0;
+    if (settings.isAutoResize) {
+      // ピンチ = フォントサイズ変更。terminal_screen が fontSize 変更を監視して
+      // tmuxペインを再フィットする（→ tmux がリフローする）。
+      final newFontSize = (settings.fontSize * scale)
+          .clamp(settings.minFontSize, kMaxTerminalFontSize)
+          .toDouble();
+      ref.read(settingsProvider.notifier).setFontSize(newFontSize);
+    } else {
+      final committed = clampZoomFactor(settings.zoomFactor * scale);
+      ref.read(settingsProvider.notifier).setZoomFactor(committed);
+    }
+    widget.onZoomChanged?.call(1.0);
+    if (mounted) setState(() {});
   }
 
   void _showEdgeFlash(SwipeDirection direction) {
@@ -704,10 +684,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           });
         }
 
-        // フォントサイズを決定
-        late final double fontSize;
-        late final bool needsHorizontalScroll;
-
+        // 基本フォントサイズを決定
+        late final double baseFontSize;
         if (settings.isAutoFit) {
           // 自動フィット: 画面幅に合わせて計算
           final calcResult = FontCalculator.calculate(
@@ -716,26 +694,28 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             fontFamily: settings.fontFamily,
             minFontSize: settings.minFontSize,
           );
-          fontSize = calcResult.fontSize;
-          needsHorizontalScroll = calcResult.needsScroll;
+          baseFontSize = calcResult.fontSize;
         } else {
           // 手動設定: settings.fontSizeを使用
-          fontSize = settings.fontSize;
-          // 水平スクロールの必要性を判定
-          final terminalWidth = FontCalculator.calculateTerminalWidth(
-            paneCharWidth: widget.paneWidth,
-            fontSize: fontSize,
-            fontFamily: settings.fontFamily,
-          );
-          needsHorizontalScroll = terminalWidth > constraints.maxWidth;
+          baseFontSize = settings.fontSize;
         }
 
-        // ターミナル幅を計算
+        // ピンチズーム倍率を適用（永続 zoomFactor × 基本サイズ、クランプ）
+        final fontSize = zoomedFontSize(
+          baseFontSize: baseFontSize,
+          zoomFactor: settings.zoomFactor,
+          minFontSize: settings.minFontSize,
+        );
+
+        // ターミナル幅を計算（ズーム後の実サイズ基準）
         final terminalWidth = FontCalculator.calculateTerminalWidth(
           paneCharWidth: widget.paneWidth,
           fontSize: fontSize,
           fontFamily: settings.fontFamily,
         );
+
+        // 幅が画面を超える場合は水平スクロール（ズーム時のはみ出しをパン可能に）
+        final needsHorizontalScroll = terminalWidth > constraints.maxWidth;
 
         // 行データを取得（キャッシュ使用・仮想スクロール用）
         final parsedLines = _getParsedLines(
@@ -928,15 +908,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               alignment: Alignment.topLeft,
               child: listWidget,
             ),
-          );
-          // Listenerで個別ポインタを追跡（gesture arenaに参加しない）
-          // 指の移動方向ベクトルの内積でズーム/パンを判定するために使用
-          listWidget = Listener(
-            onPointerDown: _onPointerDown,
-            onPointerMove: _onPointerMove,
-            onPointerUp: _onPointerUpOrCancel,
-            onPointerCancel: _onPointerUpOrCancel,
-            child: listWidget,
           );
         }
 
@@ -1340,8 +1311,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   }
 }
 
-/// 2本指ジェスチャーのモード（ジェスチャー開始時に判定し、終了までロック）
-enum _TwoFingerMode { undetermined, pan, zoom }
 
 /// 2本指以上を検出した場合、gesture arenaを強制的に勝ち取るScaleGestureRecognizer。
 ///

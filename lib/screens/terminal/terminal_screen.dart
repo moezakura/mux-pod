@@ -170,6 +170,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // ズームスケール
   double _zoomScale = 1.0;
 
+  /// 表示中の実効ズーム倍率（永続 zoomFactor × ピンチ中のプレビュー _zoomScale）。
+  double get _effectiveZoom =>
+      ref.read(settingsProvider).zoomFactor * _zoomScale;
+
+  /// 実効ズームが等倍でない（インジケータ/リセットの活性判定）。
+  bool get _isZoomed => (_effectiveZoom - 1.0).abs() > 0.005;
+
   // EnterCommand入力内容保持（ボトムシートを閉じても保持）
   String _savedCommandInput = '';
 
@@ -187,6 +194,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // リサイズ中フラグ（排他制御）
   bool _isResizing = false;
+
+  // AutoResizeで縮めたtmuxウィンドウ（切断時に自動サイズへ戻す）
+  final Set<String> _resizedWindowTargets = <String>{};
 
   // 自動リサイズのdebounceタイマー（画面サイズ変更時）
   Timer? _autoResizeDebounceTimer;
@@ -319,6 +329,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           setState(() {
             _directInputEnabled = next.directInputEnabled;
           });
+        }
+        // AutoResize時: フォントサイズ変更（ピンチ or 設定）で tmux ペインを再フィット
+        if (next.isAutoResize && previous?.fontSize != next.fontSize) {
+          final pane = ref.read(tmuxProvider).activePane;
+          if (pane != null) _executeAutoResize(pane);
         }
       },
       fireImmediately: false,
@@ -546,6 +561,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       setState(() {
         _isConnecting = false;
       });
+
+      // 10. 自動リサイズ: 接続直後、レイアウト確定後にtmuxウィンドウを画面幅へ合わせる
+      if (ref.read(settingsProvider).isAutoResize) {
+        _scheduleInitialAutoResize();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -940,6 +960,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     sshNotifier.onDisconnectDetected = null;
 
     // popUntil等で_disconnect()を経由せずにpopされた場合もSSHを切断
+    // 切断前にリサイズしたウィンドウを自動サイズへ戻す（best-effort）
+    _restoreResizedWindows();
     if (sshNotifier.checkConnection()) {
       sshNotifier.disconnect();
     }
@@ -1581,7 +1603,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
               ),
             // Zoom indicator
-            if (_zoomScale != 1.0)
+            if (_isZoomed)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 margin: const EdgeInsets.only(right: 8),
@@ -1590,7 +1612,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '${(_zoomScale * 100).toStringAsFixed(0)}%',
+                  '${(_effectiveZoom * 100).round()}%',
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     color: DesignColors.warning,
@@ -2015,7 +2037,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 自動リサイズ: 画面サイズに合わせてtmuxペインをリサイズ
   Future<void> _executeAutoResize(TmuxPane pane) async {
     if (_isResizing) return;
-    if (_tmuxVersion != null && !_tmuxVersion!.supportsResizePaneToSize) return;
+    if (_tmuxVersion != null && !_tmuxVersion!.supportsResizeWindow) return;
 
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
@@ -2048,8 +2070,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       final sshClient = ref.read(sshProvider.notifier).client;
       if (sshClient == null || !sshClient.isConnected) return;
       await sshClient.exec(
-        TmuxCommands.resizePaneToSize(pane.id, cols: targetCols, rows: targetRows),
+        TmuxCommands.resizeWindow(pane.id, cols: targetCols, rows: targetRows),
       );
+      _resizedWindowTargets.add(pane.id);
       await _refreshSessionTree();
       final updatedPane = ref.read(tmuxProvider).activePane;
       if (updatedPane != null) {
@@ -2060,6 +2083,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } finally {
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
+    }
+  }
+
+  /// AutoResizeで縮めたウィンドウを自動サイズへ戻す（デスクトップ等の他クライアントが
+  /// 幅を取り戻せるように）。SSHがまだ生きているうちに呼ぶこと。
+  Future<void> _restoreResizedWindows() async {
+    if (_resizedWindowTargets.isEmpty) return;
+    final targets = _resizedWindowTargets.toList();
+    _resizedWindowTargets.clear();
+    final client = ref.read(sshProvider.notifier).client;
+    if (client == null || !client.isConnected) return;
+    for (final t in targets) {
+      try {
+        await client.exec(TmuxCommands.resizeWindowAuto(t));
+      } catch (_) {}
+    }
+  }
+
+  /// 接続直後の自動リサイズ。screenWidth が確定（>0）してから実行する。
+  /// 初回はレイアウト未確定で screenWidth=0 のため、確定まで数フレーム待つ。
+  void _scheduleInitialAutoResize([int attempt = 0]) {
+    if (!mounted || _isDisposed) return;
+    final screenWidth = ref.read(terminalDisplayProvider).screenWidth;
+    final activePane = ref.read(tmuxProvider).activePane;
+    if (activePane != null && screenWidth > 0) {
+      _executeAutoResize(activePane);
+    } else if (attempt < 15) {
+      Future.delayed(
+        const Duration(milliseconds: 120),
+        () => _scheduleInitialAutoResize(attempt + 1),
+      );
     }
   }
 
@@ -2567,23 +2621,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ListTile(
                 leading: Icon(
                   Icons.zoom_out_map,
-                  color: _zoomScale != 1.0 ? DesignColors.warning : inactiveIconColor,
+                  color: _isZoomed ? DesignColors.warning : inactiveIconColor,
                 ),
                 title: Text(
                   'Reset Zoom',
                   style: TextStyle(
-                    color: _zoomScale != 1.0 ? textColor : mutedTextColor,
+                    color: _isZoomed ? textColor : mutedTextColor,
                   ),
                 ),
                 subtitle: Text(
-                  _zoomScale != 1.0
-                      ? 'Current: ${(_zoomScale * 100).toStringAsFixed(0)}%'
+                  _isZoomed
+                      ? 'Current: ${(_effectiveZoom * 100).round()}%'
                       : 'Pinch to zoom in/out',
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
-                enabled: _zoomScale != 1.0,
-                onTap: _zoomScale != 1.0
+                enabled: _isZoomed,
+                onTap: _isZoomed
                     ? () {
+                        ref.read(settingsProvider.notifier).setZoomFactor(1.0);
                         _ansiTextViewKey.currentState?.resetZoom();
                         setState(() {
                           _zoomScale = 1.0;
@@ -2802,6 +2857,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ポーリングを停止
     _pollTimer?.cancel();
     _treeRefreshTimer?.cancel();
+
+    // 切断前にリサイズしたウィンドウを自動サイズへ戻す
+    await _restoreResizedWindows();
 
     // SSH切断
     await ref.read(sshProvider.notifier).disconnect();

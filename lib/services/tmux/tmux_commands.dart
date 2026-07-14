@@ -224,6 +224,13 @@ class TmuxCommands {
     return 'tmux resize-window ${args.join(' ')}';
   }
 
+  /// ウィンドウを自動サイズ（クライアント追従）に戻す。
+  /// -A で最大クライアントサイズへ即リサイズし、window-size の manual を解除する。
+  static String resizeWindowAuto(String target) {
+    final t = _escapeArg(target);
+    return 'tmux resize-window -t $t -A ; tmux set -uw -t $t window-size';
+  }
+
   // ===== 入力・キー送信 =====
 
   /// キーを送信

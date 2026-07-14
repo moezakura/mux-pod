@@ -24,6 +24,9 @@ class AppSettings {
   final int scrollbackLines;
   final double minFontSize;
 
+  /// ピンチズーム倍率（1.0 = 等倍、永続）
+  final double zoomFactor;
+
   /// 表示調整モード: 'none', 'autoFit', 'autoResize'
   final String adjustMode;
 
@@ -78,7 +81,8 @@ class AppSettings {
     this.refreshRate = 'auto',
     this.scrollbackLines = 10000,
     this.minFontSize = 8.0,
-    this.adjustMode = 'autoFit',
+    this.zoomFactor = 1.0,
+    this.adjustMode = 'autoResize',
     this.directInputEnabled = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
@@ -114,6 +118,7 @@ class AppSettings {
     String? refreshRate,
     int? scrollbackLines,
     double? minFontSize,
+    double? zoomFactor,
     String? adjustMode,
     bool? directInputEnabled,
     bool? showTerminalCursor,
@@ -146,6 +151,7 @@ class AppSettings {
       refreshRate: refreshRate ?? this.refreshRate,
       scrollbackLines: scrollbackLines ?? this.scrollbackLines,
       minFontSize: minFontSize ?? this.minFontSize,
+      zoomFactor: zoomFactor ?? this.zoomFactor,
       adjustMode: adjustMode ?? this.adjustMode,
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
@@ -182,6 +188,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _refreshRateKey = 'settings_refresh_rate';
   static const String _scrollbackKey = 'settings_scrollback';
   static const String _minFontSizeKey = 'settings_min_font_size';
+  static const String _zoomFactorKey = 'settings_zoom_factor';
   static const String _adjustModeKey = 'settings_adjust_mode';
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
@@ -224,7 +231,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       refreshRate: prefs.getString(_refreshRateKey) ?? 'auto',
       scrollbackLines: prefs.getInt(_scrollbackKey) ?? 10000,
       minFontSize: prefs.getDouble(_minFontSizeKey) ?? 8.0,
-      adjustMode: prefs.getString(_adjustModeKey) ?? 'autoFit',
+      zoomFactor: prefs.getDouble(_zoomFactorKey) ?? 1.0,
+      adjustMode: prefs.getString(_adjustModeKey) ?? 'autoResize',
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
@@ -272,6 +280,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setFontSize(double value) async {
     state = state.copyWith(fontSize: value);
     await _saveSetting(_fontSizeKey, value);
+  }
+
+  /// ピンチズーム倍率を設定（永続）
+  Future<void> setZoomFactor(double value) async {
+    state = state.copyWith(zoomFactor: value);
+    await _saveSetting(_zoomFactorKey, value);
   }
 
   /// フォントファミリーを設定

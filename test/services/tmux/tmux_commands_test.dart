@@ -184,6 +184,24 @@ void main() {
       });
     });
 
+    group('resizeWindowAuto', () {
+      test('generates resize -A then unset window-size (restore auto sizing)', () {
+        expect(
+          TmuxCommands.resizeWindowAuto('my-session:0'),
+          'tmux resize-window -t my-session:0 -A ; '
+          'tmux set -uw -t my-session:0 window-size',
+        );
+      });
+
+      test('escapes target with special characters in both commands', () {
+        expect(
+          TmuxCommands.resizeWindowAuto('my session:0'),
+          'tmux resize-window -t "my session:0" -A ; '
+          'tmux set -uw -t "my session:0" window-size',
+        );
+      });
+    });
+
     group('sendKeys', () {
       test('generates literal send-keys command', () {
         // _escapeArg escapes backslashes, so \\ becomes \\\\
