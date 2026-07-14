@@ -275,6 +275,7 @@ class ConnectionsScreen extends ConsumerWidget {
         (context, index) {
           final connection = filteredConnections[index];
           return Padding(
+            key: ValueKey(connection.id),
             padding: const EdgeInsets.only(bottom: 12),
             child: RepaintBoundary(
               child: _ConnectionCard(
