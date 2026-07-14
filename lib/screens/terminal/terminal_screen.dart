@@ -1581,28 +1581,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             ),
             // Scroll mode indicator
             if (_terminalMode == TerminalMode.scroll)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: DesignColors.warning.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.unfold_more, size: 12, color: DesignColors.warning),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Scroll',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        color: DesignColors.warning,
-                        fontWeight: FontWeight.w600,
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _terminalMode = TerminalMode.normal;
+                    _scrollModeSource = ScrollModeSource.none;
+                  });
+                  _cancelTmuxCopyMode();
+                  _applyBufferedUpdate();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: DesignColors.warning.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: DesignColors.warning.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.unfold_more, size: 12, color: DesignColors.warning),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Scroll',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 10,
+                          color: DesignColors.warning,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Icon(Icons.close, size: 12, color: DesignColors.warning),
+                    ],
+                  ),
                 ),
               ),
             // Zoom indicator
@@ -3279,7 +3291,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// SSH round-trip.  Bracketed paste mode (`-p`) tells the receiving
   /// shell to treat the block as literal data, preventing `\`-continuation
   /// and prompt-redraw races that plagued the previous per-line approach.
-  Future<void> _sendMultilineText(String text) async {
+  Future<void> _sendMultilineText(String text, {bool execute = true}) async {
     if (text.isEmpty) return;
 
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -3313,6 +3325,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       await sshClient.exec(
         TmuxCommands.loadBufferAndPaste(target, payload),
       );
+      if (execute) {
+        await sshClient.exec(TmuxCommands.sendKeys(target, 'Enter'));
+      }
       _boostPolling();
     } catch (e) {
       debugPrint('[Terminal] paste-buffer send failed: $e');
@@ -3322,6 +3337,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         await sshClient.exec(
           TmuxCommands.loadBufferAndPasteNoBracketed(target, payload),
         );
+        if (execute) {
+          await sshClient.exec(TmuxCommands.sendKeys(target, 'Enter'));
+        }
         _boostPolling();
       } catch (e2) {
         debugPrint('[Terminal] paste-buffer (no-bracketed) send failed: $e2');
