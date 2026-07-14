@@ -553,6 +553,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Row(
         children: [
+          _buildNavigationKeyButton('PgUp', 'PPage'),
+          const SizedBox(width: 2),
+          _buildNavigationKeyButton('PgDn', 'NPage'),
+          const SizedBox(width: 2),
           // 矢印キー横並び: 左・上・下・右
           _buildArrowButton(Icons.arrow_left, 'Left'),
           const SizedBox(width: 2),
@@ -877,6 +881,38 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
+  Widget _buildNavigationKeyButton(String label, String tmuxKey) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: () => _sendSpecialKey(tmuxKey),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 画像転送ボタン
   Widget _buildImageTransferButton() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -948,37 +984,23 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: DesignColors.primary.withValues(alpha: 0.2)),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           children: [
             Icon(
               Icons.keyboard,
-              size: 16,
+              size: 15,
               color: DesignColors.primary.withValues(alpha: 0.7),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(
-                'Input...',
+                'Cmd',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
                   color: DesignColors.primary.withValues(alpha: 0.5),
                 ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: DesignColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: DesignColors.primary.withValues(alpha: 0.1)),
-              ),
-              child: Text(
-                'cmd',
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 10,
-                  color: DesignColors.primary,
-                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
