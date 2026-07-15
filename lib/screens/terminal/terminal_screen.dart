@@ -159,6 +159,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   String _bufferedContent = '';
   bool _hasBufferedUpdate = false;
 
+  // 深い履歴（全スクロールバック）の自動ロード用
+  int _historyToken = 0;
+  bool _isLoadingDeepHistory = false;
+
   // 初回スクロール完了フラグ
   bool _hasInitialScrolled = false;
 
@@ -839,33 +843,38 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// スクロール＆選択モード開始時に履歴を一度だけ取得して表示する。
   /// ライブポーリングは軽量な直近行のままなので性能は落ちない。深い履歴は
   /// ポーリングとは別のexecチャネルで取得し、ホットパスに影響しない。
-  Future<void> _loadHistoryForScroll() async {
+  Future<void> _loadHistoryForScroll({bool preservePosition = false}) async {
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
-    final int historyLines =
-        ref.read(settingsProvider).scrollbackLines.clamp(200, 20000).toInt();
     try {
+      // スクロールバック全体を一括取得（-S に大きな負値でヒストリ全体をキャプチャ）。
+      // tmux は履歴上限までにクランプするため、深い履歴も末尾まで遡れる。
       final out = await sshClient.exec(
         TmuxCommands.capturePane(
           target,
           escapeSequences: true,
-          startLine: -historyLines,
+          startLine: -100000,
         ),
       );
       if (!mounted || _isDisposed) return;
-      // まだスクロールモードに居るときだけ反映（即戻り・連打対策）
       if (_terminalMode != TerminalMode.scroll) return;
       final content =
           out.endsWith('\n') ? out.substring(0, out.length - 1) : out;
-      _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
-      // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_isDisposed) {
-          _ansiTextViewKey.currentState?.scrollToBottom();
-        }
-      });
+      if (preservePosition) {
+        // スクロール上端からの自動ロード: 表示位置を保持（historyTokenで通知）
+        _historyToken++;
+        _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+      } else {
+        _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+        // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isDisposed) {
+            _ansiTextViewKey.currentState?.scrollToBottom();
+          }
+        });
+      }
     } catch (_) {
       // 取得失敗時は直近行のライブ表示のまま
     }
@@ -964,7 +973,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _scrollToBottomKey.currentState?.show();
   }
 
-  @override
+  /// 上端でのオーバースクロール（さらに上へ引っ張る操作）を検出して深い履歴を
+  /// ロードする。単に上端へ達しただけでは発火せず、明示的に引っ張ったときのみ
+  /// 発火する（誤爆を防ぎ、tmux のコピーモード相当の操作感にする）。
+  bool _onTerminalOverscroll(OverscrollNotification n) {
+    if (n.metrics.axis == Axis.vertical &&
+        n.overscroll < 0 &&
+        _terminalMode == TerminalMode.normal &&
+        !_isLoadingDeepHistory) {
+      _loadDeepHistoryOnScroll();
+    }
+    return false;
+  }
+
+  /// スクロール上端到達時に深い履歴を自動ロードする。スクロールモードに入って
+  /// ライブ更新をバッファし、履歴表示を保持する。
+  Future<void> _loadDeepHistoryOnScroll() async {
+    if (_isLoadingDeepHistory) return;
+    _isLoadingDeepHistory = true;
+    if (_terminalMode != TerminalMode.scroll) {
+      setState(() {
+        _terminalMode = TerminalMode.scroll;
+        _scrollModeSource = ScrollModeSource.manual;
+      });
+    }
+    try {
+      await _loadHistoryForScroll(preservePosition: true);
+    } finally {
+      _isLoadingDeepHistory = false;
+    }
+  }
+
   @override
   void deactivate() {
     // ref.readはdeactivateまでは安全（disposeでは_elementsから外れている）
@@ -1066,7 +1105,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   x: s.activePane?.cursorX ?? 0,
                                   y: s.activePane?.cursorY ?? 0,
                                 )));
-                                return AnsiTextView(
+                                return NotificationListener<OverscrollNotification>(
+                                  onNotification: _onTerminalOverscroll,
+                                  child: AnsiTextView(
                                   key: _ansiTextViewKey,
                                   text: viewData.content,
                                   paneWidth: viewData.paneWidth,
@@ -1090,6 +1131,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   onArrowSwipe: _sendSpecialKeyWithOverlay,
                                   onTwoFingerSwipe: _handleTwoFingerSwipe,
                                   navigableDirections: _getNavigableDirections(),
+                                  historyToken: _historyToken,
+                                  ),
                                 );
                               },
                             );

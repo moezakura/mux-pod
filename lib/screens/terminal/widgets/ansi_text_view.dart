@@ -95,6 +95,10 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// ターミナル領域タップ時のコールバック
   final VoidCallback? onTap;
 
+  /// 履歴プリペンド検出用トークン。値が変わると、テキスト更新を「上方向への
+  /// 履歴追加」とみなし、追加行数ぶんスクロール位置を補正して表示を保持する。
+  final int historyToken;
+
   const AnsiTextView({
     super.key,
     required this.text,
@@ -113,6 +117,7 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.onTwoFingerSwipe,
     this.navigableDirections,
     this.onTap,
+    this.historyToken = 0,
   });
 
   @override
@@ -171,6 +176,11 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 行の高さ（仮想スクロールで固定高さを使用）
   double _lineHeight = 20.0;
 
+  // 履歴プリペンド時のスクロール位置保持用
+  bool _preserveScrollOnRebuild = false;
+  double _preserveOldPixels = 0.0;
+  int _preserveOldLineCount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -202,6 +212,14 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       );
       // パーサーが変わったのでキャッシュを無効化
       _invalidateCache();
+    }
+    // 履歴の追加ロード（プリペンド）時は現在のスクロール位置と行数を記録し、
+    // 再ビルド後に追加行数ぶんオフセットをずらして表示位置を保持する。
+    if (widget.historyToken != oldWidget.historyToken &&
+        _verticalScrollController.hasClients) {
+      _preserveScrollOnRebuild = true;
+      _preserveOldPixels = _verticalScrollController.position.pixels;
+      _preserveOldLineCount = _cachedParsedLines?.length ?? 0;
     }
   }
 
@@ -713,6 +731,24 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           fontSize: fontSize,
           fontFamily: settings.fontFamily,
         );
+
+        // 履歴プリペンド時: 追加された行数ぶんスクロール位置を補正し、
+        // 表示中の行が動かないようにする（シームレスに過去へ遡れる）。
+        if (_preserveScrollOnRebuild) {
+          _preserveScrollOnRebuild = false;
+          final prepended = parsedLines.length - _preserveOldLineCount;
+          final basePixels = _preserveOldPixels;
+          if (prepended > 0) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_verticalScrollController.hasClients) return;
+              final pos = _verticalScrollController.position;
+              _verticalScrollController.jumpTo(
+                (basePixels + prepended * _lineHeight)
+                    .clamp(0.0, pos.maxScrollExtent),
+              );
+            });
+          }
+        }
 
         // 行に依存しない基本スタイルは1回だけ計算
         // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
