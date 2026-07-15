@@ -594,6 +594,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       final output = await sshClient.exec(cmd);
       if (!mounted || _isDisposed) return;
       ref.read(tmuxProvider.notifier).parseAndUpdateFullTree(output);
+      // アクティブセッションのウィンドウ数を provider に同期
+      // （ホーム画面と接続カードのウィンドウ数カウンタが作成/削除後も追従する）
+      final refreshedSession = ref.read(tmuxProvider).activeSession;
+      if (refreshedSession != null) {
+        ref.read(activeSessionsProvider.notifier).updateWindowCount(
+              widget.connectionId,
+              refreshedSession.name,
+              refreshedSession.windows.length,
+            );
+      }
     } catch (_) {
       // ツリー更新エラーは静かに無視（次回ポーリングで再試行）
     }

@@ -878,7 +878,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
             )
           else
             // セッションリスト（_sessionsまたはactiveSessionsを使用）
-            ..._buildSessionItems(isDark, colorScheme),
+            ..._buildSessionItems(activeSessions, isDark, colorScheme),
           // New Session Button
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -944,13 +944,20 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
-  List<Widget> _buildSessionItems(bool isDark, ColorScheme colorScheme) {
-    // _sessionsを使用（フェッチ結果）
+  List<Widget> _buildSessionItems(
+      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+    // _sessions（フェッチ結果）を表示。ウィンドウ数は provider の最新値を優先し、
+    // ターミナルでのウィンドウ作成/削除後もカウンタが追従するようにする。
     final sessions = _sessions;
     if (sessions.isEmpty) return [];
+    final liveWindowCounts = {
+      for (final a in activeSessions) a.sessionName: a.windowCount,
+    };
 
     return sessions.map((session) {
       final isAttached = session.attached;
+      final windowCount =
+          liveWindowCounts[session.name] ?? session.windowCount;
       return InkWell(
         onTap: () => widget.onConnect(session.name),
         child: Padding(
@@ -976,7 +983,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       ),
                     ),
                     Text(
-                      '${session.windowCount} windows',
+                      '$windowCount windows',
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 11,
                         color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
