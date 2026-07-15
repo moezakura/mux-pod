@@ -203,8 +203,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // AutoResizeで縮めたtmuxウィンドウ（切断時に自動サイズへ戻す）
   final Set<String> _resizedWindowTargets = <String>{};
 
+  // バックグラウンド移行時に自動サイズへ戻したか（復帰時の再フィット用）
+  bool _windowsRestoredForBackground = false;
+
   // 自動リサイズのdebounceタイマー（画面サイズ変更時）
   Timer? _autoResizeDebounceTimer;
+
+  // フォアグラウンドを離れてからウィンドウ復元までの猶予タイマー
+  Timer? _backgroundRestoreTimer;
 
   // tmuxバージョン情報（リサイズ機能判定用）
   TmuxVersionInfo? _tmuxVersion;
@@ -236,17 +242,52 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     switch (state) {
-      case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-      case AppLifecycleState.hidden:
+        // 一時的な非アクティブ（通知シェード等）: 猶予後に復元をスケジュール。
+        // 早期復帰すればキャンセルされ、無駄なリサイズ往復を避ける。
         _pausePolling();
+        _scheduleBackgroundRestore();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // 明確なバックグラウンド化。最近のアプリからスワイプ終了されても、SSHが
+        // 生きているこの時点で（猶予を待たず即座に）復元する。
+        _pausePolling();
+        _backgroundRestoreTimer?.cancel();
+        if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+        _restoreResizedWindows();
         break;
       case AppLifecycleState.resumed:
+        _backgroundRestoreTimer?.cancel();
         _resumePolling();
+        // バックグラウンドで戻していた場合は画面サイズに合わせて再リサイズ
+        if (_windowsRestoredForBackground) {
+          _windowsRestoredForBackground = false;
+          final pane = ref.read(tmuxProvider).activePane;
+          if (pane != null && ref.read(settingsProvider).isAutoResize) {
+            _executeAutoResize(pane, force: true);
+          }
+        }
         break;
       case AppLifecycleState.detached:
+        // フォールバック: 即時ベストエフォートで復元
+        _backgroundRestoreTimer?.cancel();
+        if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+        _restoreResizedWindows();
         break;
     }
+  }
+
+  /// フォアグラウンドを離れて一定時間経過したら、AutoResizeで縮めたtmuxウィンドウを
+  /// 自動サイズへ戻す。短時間で復帰した場合（通知シェード等の一時的な非アクティブ）は
+  /// resumedでキャンセルされ、無駄なリサイズ往復を避ける。
+  void _scheduleBackgroundRestore() {
+    _backgroundRestoreTimer?.cancel();
+    _backgroundRestoreTimer = Timer(const Duration(milliseconds: 600), () {
+      if (_isDisposed) return;
+      if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+      _restoreResizedWindows();
+    });
   }
 
   @override
@@ -1049,6 +1090,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _keyOverlayState.dispose();
     _autoResizeDebounceTimer?.cancel();
     _autoResizeDebounceTimer = null;
+    _backgroundRestoreTimer?.cancel();
+    _backgroundRestoreTimer = null;
     // ValueNotifierを破棄
     _viewNotifier.dispose();
     _latencyNotifier.dispose();
@@ -2103,7 +2146,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// 自動リサイズ: 画面サイズに合わせてtmuxペインをリサイズ
-  Future<void> _executeAutoResize(TmuxPane pane) async {
+  Future<void> _executeAutoResize(TmuxPane pane, {bool force = false}) async {
     if (_isResizing) return;
     if (_tmuxVersion != null && !_tmuxVersion!.supportsResizeWindow) return;
 
@@ -2134,7 +2177,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         'target=${targetCols}x$targetRows');
 
     // 既存サイズと同一ならスキップ
-    if (pane.width == targetCols && pane.height == targetRows) return;
+    if (!force && pane.width == targetCols && pane.height == targetRows) return;
 
     _isResizing = true;
     _pollTimer?.cancel();
