@@ -95,10 +95,6 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// ターミナル領域タップ時のコールバック
   final VoidCallback? onTap;
 
-  /// 履歴プリペンド検出用トークン。値が変わると、テキスト更新を「上方向への
-  /// 履歴追加」とみなし、追加行数ぶんスクロール位置を補正して表示を保持する。
-  final int historyToken;
-
   const AnsiTextView({
     super.key,
     required this.text,
@@ -117,7 +113,6 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.onTwoFingerSwipe,
     this.navigableDirections,
     this.onTap,
-    this.historyToken = 0,
   });
 
   @override
@@ -176,11 +171,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 行の高さ（仮想スクロールで固定高さを使用）
   double _lineHeight = 20.0;
 
-  // 履歴プリペンド時のスクロール位置保持用
-  bool _preserveScrollOnRebuild = false;
-  double _preserveOldPixels = 0.0;
-  int _preserveOldLineCount = 0;
-
   @override
   void initState() {
     super.initState();
@@ -212,14 +202,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       );
       // パーサーが変わったのでキャッシュを無効化
       _invalidateCache();
-    }
-    // 履歴の追加ロード（プリペンド）時は現在のスクロール位置と行数を記録し、
-    // 再ビルド後に追加行数ぶんオフセットをずらして表示位置を保持する。
-    if (widget.historyToken != oldWidget.historyToken &&
-        _verticalScrollController.hasClients) {
-      _preserveScrollOnRebuild = true;
-      _preserveOldPixels = _verticalScrollController.position.pixels;
-      _preserveOldLineCount = _cachedParsedLines?.length ?? 0;
     }
   }
 
@@ -732,23 +714,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           fontFamily: settings.fontFamily,
         );
 
-        // 履歴プリペンド時: 追加された行数ぶんスクロール位置を補正し、
-        // 表示中の行が動かないようにする（シームレスに過去へ遡れる）。
-        if (_preserveScrollOnRebuild) {
-          _preserveScrollOnRebuild = false;
-          final prepended = parsedLines.length - _preserveOldLineCount;
-          final basePixels = _preserveOldPixels;
-          if (prepended > 0) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted || !_verticalScrollController.hasClients) return;
-              final pos = _verticalScrollController.position;
-              _verticalScrollController.jumpTo(
-                (basePixels + prepended * _lineHeight)
-                    .clamp(0.0, pos.maxScrollExtent),
-              );
-            });
-          }
-        }
 
         // 行に依存しない基本スタイルは1回だけ計算
         // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
@@ -1271,6 +1236,26 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   }
 
   // === スクロール制御 ===
+
+  /// 指定した行インデックスがビューポート最上部に来るよう即座にスクロールする。
+  /// 履歴プリペンド後、「直前に最上部だった行」を同じ位置に留めるために使う
+  /// （追加行数ぶん絶対位置で移動するので、途中位置へ飛ばない）。
+  void jumpToLineFromTop(int lineIndex, [int attempt = 0]) {
+    if (!mounted || !_verticalScrollController.hasClients) return;
+    final pos = _verticalScrollController.position;
+    final target = lineIndex * _lineHeight;
+    // 巨大コンテンツでは Sliver が末尾までレイアウトされるまで maxScrollExtent が
+    // 小さいまま。現在の最大までジャンプして遅延ビルドを進め、ターゲットに届くまで
+    // 数フレーム繰り返す。
+    if (pos.maxScrollExtent + 1.0 < target && attempt < 60) {
+      _verticalScrollController.jumpTo(pos.maxScrollExtent);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => jumpToLineFromTop(lineIndex, attempt + 1),
+      );
+      return;
+    }
+    _verticalScrollController.jumpTo(target.clamp(0.0, pos.maxScrollExtent));
+  }
 
   /// 一番下までスクロール
   void scrollToBottom() {

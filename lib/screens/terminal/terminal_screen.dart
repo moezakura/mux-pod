@@ -160,7 +160,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   bool _hasBufferedUpdate = false;
 
   // 深い履歴（全スクロールバック）の自動ロード用
-  int _historyToken = 0;
   bool _isLoadingDeepHistory = false;
 
   // 初回スクロール完了フラグ
@@ -904,9 +903,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       final content =
           out.endsWith('\n') ? out.substring(0, out.length - 1) : out;
       if (preservePosition) {
-        // スクロール上端からの自動ロード: 表示位置を保持（historyTokenで通知）
-        _historyToken++;
+        // スクロール上端からの自動ロード: プリペンドされた行数ぶん位置を補正し、
+        // 直前に最上部だった行を同じ位置に留める（真ん中へ飛ばないように）。
+        // 行数は実際のコンテンツ文字列から算出（ウィジェット側キャッシュに依存しない）。
+        final oldContent = _viewNotifier.value.content;
+        final oldLines =
+            oldContent.isEmpty ? 0 : '\n'.allMatches(oldContent).length + 1;
+        final newLines =
+            content.isEmpty ? 0 : '\n'.allMatches(content).length + 1;
+        final prepended = newLines - oldLines;
         _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+        if (prepended > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isDisposed) {
+              _ansiTextViewKey.currentState?.jumpToLineFromTop(prepended);
+            }
+          });
+        }
       } else {
         _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
         // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする
@@ -1174,7 +1187,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   onArrowSwipe: _sendSpecialKeyWithOverlay,
                                   onTwoFingerSwipe: _handleTwoFingerSwipe,
                                   navigableDirections: _getNavigableDirections(),
-                                  historyToken: _historyToken,
                                   ),
                                 );
                               },
@@ -1675,6 +1687,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
               ),
             ),
+            // ブレッドクラムと右側インジケータ群の間に必ず余白を確保する。
+            // これがないとスクロールチップ等がブレッドクラムに密着し、重なって見える。
+            const SizedBox(width: 8),
             // Scroll mode indicator
             if (_terminalMode == TerminalMode.scroll)
               GestureDetector(
@@ -1698,15 +1713,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(Icons.unfold_more, size: 12, color: DesignColors.warning),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Scroll',
-                        style: GoogleFonts.jetBrainsMono(
-                          fontSize: 10,
-                          color: DesignColors.warning,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                       const SizedBox(width: 4),
                       Icon(Icons.close, size: 12, color: DesignColors.warning),
                     ],
@@ -1735,18 +1741,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               valueListenable: _latencyNotifier,
               builder: (context, latency, _) => _buildConnectionIndicator(latency),
             ),
-            // File browser button
-            IconButton(
-              onPressed: _handleFileBrowser,
-              icon: Icon(
-                Icons.folder_outlined,
-                size: 16,
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
+            // File browser button（スクロール中は場所を空けるため非表示）
+            if (_terminalMode != TerminalMode.scroll)
+              IconButton(
+                onPressed: _handleFileBrowser,
+                icon: Icon(
+                  Icons.folder_outlined,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(),
+                tooltip: 'File Browser',
               ),
-              padding: const EdgeInsets.all(8),
-              constraints: const BoxConstraints(),
-              tooltip: 'File Browser',
-            ),
             // Settings button
             IconButton(
               onPressed: _showTerminalMenu,
@@ -3454,7 +3461,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (panes.isEmpty) {
+    // 1ペイン（または0）ではミニマップは情報量ゼロ。右上に重なって内容
+    // （プロンプトやスクロール位置表示など）を隠すだけなので表示しない。
+    if (panes.length <= 1) {
       return const SizedBox.shrink();
     }
 
