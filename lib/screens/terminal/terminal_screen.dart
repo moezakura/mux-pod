@@ -2195,6 +2195,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         TmuxCommands.resizeWindow(pane.id, cols: targetCols, rows: targetRows),
       );
       _resizedWindowTargets.add(pane.id);
+      // 接続断時にサーバ側で自動復元するtrapを設定（スワイプ終了・強制終了対策）
+      sshClient.setWindowRestoreTrap(_resizedWindowTargets.toList());
       await _refreshSessionTree();
       final updatedPane = ref.read(tmuxProvider).activePane;
       if (updatedPane != null) {
@@ -2216,11 +2218,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _resizedWindowTargets.clear();
     final client = ref.read(sshProvider.notifier).client;
     if (client == null || !client.isConnected) return;
-    for (final t in targets) {
-      try {
-        await client.exec(TmuxCommands.resizeWindowAuto(t));
-      } catch (_) {}
-    }
+    // fire-and-forget（チャネル開閉なし）で送信。高遅延やバックグラウンド移行の短い
+    // 猶予でも詰まらず、届かず死んだ場合はサーバ側trapが復元する。
+    await client.restoreWindowsNoWait(targets);
   }
 
   /// 接続直後の自動リサイズ。screenWidth が確定（>0）してから実行する。

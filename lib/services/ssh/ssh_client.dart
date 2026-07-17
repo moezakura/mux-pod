@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 
 import 'persistent_shell.dart';
+import '../tmux/tmux_commands.dart';
 
 /// SSH接続エラー
 class SshConnectionError implements Exception {
@@ -142,6 +143,9 @@ class SshClient {
 
   /// execチャネル排他制御用ロック
   Completer<void>? _execLock;
+
+  /// AutoResize復元用trapの現在コマンド（入力シェル再起動・再接続時に再適用する）
+  String? _restoreTrapCmd;
 
   /// tmuxの絶対パス（未検出なら null）
   String? get tmuxPath => _tmuxPath;
@@ -401,6 +405,8 @@ class SshClient {
     final shells = await Future.wait([_tryStartShell(), _tryStartShell()]);
     _persistentShell = shells[0];
     _inputShell = shells[1];
+    // 入力シェルが復活したらAutoResize復元trapを再設定する（再接続時など）
+    _reapplyRestoreTrap();
   }
 
   /// 持続的シェルを1つ起動する。失敗時はnullを返す（例外を投げない）。
@@ -436,6 +442,17 @@ class SshClient {
       // dispose失敗は無視して再作成を試みる
     }
     _inputShell = await _tryStartShell();
+    _reapplyRestoreTrap();
+  }
+
+  /// 記録済みのAutoResize復元trapを（再起動した）入力シェルへ再設定する。
+  void _reapplyRestoreTrap() {
+    final cmd = _restoreTrapCmd;
+    final input = _inputShell;
+    if (cmd == null || input == null || !input.isStarted) return;
+    try {
+      input.sendNoWait(cmd);
+    } catch (_) {}
   }
 
   /// キー送信などの出力不要コマンドを低遅延で送信する。
@@ -462,6 +479,48 @@ class SshClient {
 
     // フォールバック: 従来のexec（内部で_resolveTmuxCommandを実行）
     await exec(command);
+  }
+
+  /// AutoResizeで縮めたウィンドウを、接続断時にサーバ側で復元するtrapを入力シェルに
+  /// 設定する。アプリがスワイプ終了・強制終了されても、SSHが切れて入力シェルが終了
+  /// する際にtmuxウィンドウが自動サイズへ戻る（クライアント側の復元が届かないケースの
+  /// フォールバック）。[windowTargets] が空ならtrapを解除する。
+  void setWindowRestoreTrap(List<String> windowTargets) {
+    final cmd = windowTargets.isEmpty
+        ? TmuxCommands.clearWindowRestoreTrap()
+        : TmuxCommands.windowRestoreTrap(windowTargets, tmuxBin: _tmuxPath ?? 'tmux');
+    _restoreTrapCmd = windowTargets.isEmpty ? null : cmd;
+    final input = _inputShell;
+    if (input == null || !input.isStarted) return;
+    try {
+      input.sendNoWait(cmd);
+    } on PersistentShellError {
+      unawaited(_restartInputShell());
+    }
+  }
+
+  /// AutoResizeで縮めたウィンドウを低遅延のfire-and-forgetで自動サイズへ戻す。
+  ///
+  /// [exec] と違いチャネル開閉・execロック・往復待ちがないため、バックグラウンド移行の
+  /// 短い猶予でも確実に送信できる。入力シェルが使えない場合はexecにフォールバックする
+  /// （結果は待たない）。
+  Future<void> restoreWindowsNoWait(List<String> targets) async {
+    if (targets.isEmpty) return;
+    final input = _inputShell;
+    for (final t in targets) {
+      final cmd = TmuxCommands.resizeWindowAuto(t);
+      if (input != null && input.isStarted) {
+        try {
+          input.sendNoWait(_resolveTmuxCommand(cmd));
+          continue;
+        } on PersistentShellError {
+          unawaited(_restartInputShell());
+        }
+      }
+      try {
+        await exec(cmd);
+      } catch (_) {}
+    }
   }
 
   /// execチャネルを排他的に使用する

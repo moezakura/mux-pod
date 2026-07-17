@@ -202,6 +202,40 @@ void main() {
       });
     });
 
+    group('windowRestoreTrap', () {
+      test('restores size and clears manual in one tmux call for a target', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['@1'], tmuxBin: '/usr/bin/tmux'),
+          "trap '/usr/bin/tmux resize-window -t @1 -A \\; "
+          "set -uw -t @1 window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('chains multiple targets in a single tmux invocation', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['@1', '%3'], tmuxBin: '/bin/tmux'),
+          "trap '/bin/tmux resize-window -t @1 -A \\; set -uw -t @1 window-size \\; "
+          "resize-window -t %3 -A \\; set -uw -t %3 window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('escapes targets with special characters', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['my session:0'], tmuxBin: '/usr/bin/tmux'),
+          "trap '/usr/bin/tmux resize-window -t \"my session:0\" -A \\; "
+          "set -uw -t \"my session:0\" window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('empty targets clears the trap', () {
+        expect(
+          TmuxCommands.windowRestoreTrap([], tmuxBin: '/usr/bin/tmux'),
+          'trap - EXIT HUP TERM',
+        );
+        expect(TmuxCommands.clearWindowRestoreTrap(), 'trap - EXIT HUP TERM');
+      });
+    });
+
     group('sendKeys', () {
       test('generates literal send-keys command', () {
         // _escapeArg escapes backslashes, so \\ becomes \\\\
