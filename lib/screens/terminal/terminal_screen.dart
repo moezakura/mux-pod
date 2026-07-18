@@ -24,6 +24,7 @@ import '../../services/tmux/tmux_commands.dart';
 import '../../services/tmux/tmux_parser.dart';
 import '../../services/tmux/tmux_version.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
+import '../../widgets/dialogs/rename_window_dialog.dart';
 import '../../theme/design_colors.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../widgets/key_overlay_widget.dart';
@@ -1913,6 +1914,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           Navigator.pop(context);
                           _selectWindow(session.name, window.index);
                         },
+                        onRename: () {
+                          Navigator.pop(context);
+                          _showRenameWindowDialog(session, window);
+                        },
                         onResize: () {
                           Navigator.pop(context);
                           _handleResizeWindow(window);
@@ -2928,6 +2933,61 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to close window: $e')),
+        );
+      }
+    }
+  }
+
+  /// ウィンドウ名変更ダイアログを表示
+  void _showRenameWindowDialog(TmuxSession session, TmuxWindow window) {
+    final otherNames = session.windows
+        .where((w) => w.index != window.index)
+        .map((w) => w.name)
+        .toList();
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => RenameWindowDialog(
+        currentName: window.name,
+        otherWindowNames: otherNames,
+      ),
+    ).then((newName) {
+      if (newName == null) return;
+      final trimmed = newName.trim();
+      if (trimmed.isEmpty || trimmed == window.name) return;
+      _renameWindow(
+        sessionName: session.name,
+        windowIndex: window.index,
+        newName: trimmed,
+      );
+    });
+  }
+
+  /// ウィンドウ名を変更
+  Future<void> _renameWindow({
+    required String sessionName,
+    required int windowIndex,
+    required String newName,
+  }) async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SSH connection is not available')),
+        );
+      }
+      return;
+    }
+    try {
+      debugPrint('[Terminal] Renaming window: $sessionName:$windowIndex -> $newName');
+      await sshClient.exec(
+        TmuxCommands.renameWindow(sessionName, windowIndex, newName),
+      );
+      await _refreshSessionTree();
+    } catch (e) {
+      debugPrint('[Terminal] Failed to rename window: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to rename window: $e')),
         );
       }
     }

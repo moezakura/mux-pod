@@ -108,6 +108,29 @@ void main() {
       });
     });
 
+    group('renameWindow', () {
+      test('generates correct rename-window command', () {
+        expect(
+          TmuxCommands.renameWindow('main', 2, 'build'),
+          'tmux rename-window -t main:2 build',
+        );
+      });
+
+      test('escapes session name and new name with spaces', () {
+        expect(
+          TmuxCommands.renameWindow('my session', 0, 'new name'),
+          'tmux rename-window -t "my session":0 "new name"',
+        );
+      });
+
+      test('allows underscores and hyphens without escaping', () {
+        expect(
+          TmuxCommands.renameWindow('dev', 10, 'a_b-c'),
+          'tmux rename-window -t dev:10 a_b-c',
+        );
+      });
+    });
+
     group('resizePane', () {
       test('generates zoom command', () {
         expect(
