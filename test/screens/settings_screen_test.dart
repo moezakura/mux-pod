@@ -28,7 +28,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Adjust Mode'), findsOneWidget);
-      expect(find.text('Auto Resize'), findsOneWidget);
+      expect(find.text('Auto Fit'), findsOneWidget);
     });
 
     testWidgets('displays Haptic Feedback toggle', (tester) async {
