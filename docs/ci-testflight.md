@@ -94,6 +94,20 @@ CI では実行ごとに使い捨ての keychain を作り、そこへ証明書�
 `ios/Runner.xcodeproj` は自動署名のままにしてあり、手動署名の設定は
 ビルド時に `xcargs` で上書きしている。
 
+`CODE_SIGN_IDENTITY` は素の形と sdk 条件付きの形の両方を渡す必要がある。
+プロジェクトが `"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"` を
+持っており、素の形だけではこの条件付き指定に負けて開発用証明書を探しに行き、
+次のエラーになる。
+
+```
+error: No signing certificate "iOS Development" found:
+No "iOS Development" signing certificate matching team ID "MUBKJR7U7A"
+with a private key was found. (in target 'Runner' from project 'Runner')
+```
+
+証明書名は match が `sigh_<bundle-id>_appstore_certificate-name` という
+環境変数に入れてくれるので、それを使う。
+
 ## GitHub Secrets
 
 | Secret | 内容 |

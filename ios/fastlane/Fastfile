@@ -76,7 +76,16 @@ platform :ios do
         "--dart-define=GIT_REF=#{git_ref.shellescape}",
       ].join(" "))
 
+      # match が keychain に入れた証明書のコモンネーム。
+      # 例: "Apple Distribution: Furukawa Masaki (MUBKJR7U7A)"
+      signing_identity = ENV["sigh_#{APP_IDENTIFIER}_appstore_certificate-name"] || "Apple Distribution"
+
       # pbxproj は自動署名のままなので、手動署名の設定はビルド時に上書きする。
+      #
+      # CODE_SIGN_IDENTITY は素の形と sdk 条件付きの形の両方を指定する。
+      # プロジェクト側が "CODE_SIGN_IDENTITY[sdk=iphoneos*] = iPhone Developer" を
+      # 持っており、素の形だけではこの条件付き指定に負けて開発用証明書を
+      # 探しにいってしまうため。
       build_app(
         workspace:        "Runner.xcworkspace",
         scheme:           "Runner",
@@ -85,11 +94,13 @@ platform :ios do
         clean:            true,
         output_directory: File.join(FLUTTER_ROOT, "build", "ios", "ipa"),
         output_name:      "MuxPod.ipa",
-        xcargs: [
+        xcargs: Shellwords.join([
           "CODE_SIGN_STYLE=Manual",
           "DEVELOPMENT_TEAM=#{TEAM_ID}",
-          "PROVISIONING_PROFILE_SPECIFIER=#{PROFILE_NAME.shellescape}",
-        ].join(" "),
+          "PROVISIONING_PROFILE_SPECIFIER=#{PROFILE_NAME}",
+          "CODE_SIGN_IDENTITY=#{signing_identity}",
+          "CODE_SIGN_IDENTITY[sdk=iphoneos*]=#{signing_identity}",
+        ]),
         export_team_id: TEAM_ID,
         export_options: {
           signingStyle: "manual",
