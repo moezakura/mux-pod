@@ -224,15 +224,51 @@ class TmuxCommands {
     return 'tmux resize-window ${args.join(' ')}';
   }
 
+  /// ウィンドウを自動サイズ（クライアント追従）に戻す。
+  /// -A で最大クライアントサイズへ即リサイズし、window-size の manual を解除する。
+  static String resizeWindowAuto(String target) {
+    final t = _escapeArg(target);
+    return 'tmux resize-window -t $t -A ; tmux set -uw -t $t window-size';
+  }
+
+  /// AutoResizeで縮めたウィンドウを、接続断時にサーバ側で自動復元するtrapを組み立てる。
+  ///
+  /// アプリがスワイプ終了・強制終了・クラッシュで復元コマンドを送れずに死んでも、
+  /// SSHチャネルが閉じて入力シェルがHUP/EXIT/TERMする際にtmuxウィンドウが自動サイズへ
+  /// 戻る（tmuxサーバはSSHシェルとは別プロセスなので生存しており復元コマンドは届く）。
+  ///
+  /// [tmuxBin] は検出済みのtmux絶対パス（シェル終了時はPATHが最小化される場合が
+  /// あるため絶対パスを使う）。[targets] が空なら [clearWindowRestoreTrap] を返す。
+  static String windowRestoreTrap(List<String> targets, {required String tmuxBin}) {
+    if (targets.isEmpty) return clearWindowRestoreTrap();
+    // 全ターゲットを1回のtmux起動にまとめ、\;でコマンド連結する。teardown中に
+    // 2つ目のtmuxプロセス起動がSIGKILLで打ち切られ、サイズ復元だけ実行されて
+    // window-size manualの解除が漏れるのを防ぐ（単一プロセスなら両方まとめて完了）。
+    final seq = targets.map((t) {
+      final tt = _escapeArg(t);
+      return 'resize-window -t $tt -A \\; set -uw -t $tt window-size';
+    }).join(' \\; ');
+    final body = '$tmuxBin $seq 2>/dev/null';
+    // HUP必須: PTYチャネルclose時のSIGHUPはHUPを明示トラップしないとEXIT trapを
+    // 実行せずシェルを終了させる。bodyは冪等なのでHUP後のEXITで二重実行しても無害。
+    return "trap '$body' EXIT HUP TERM";
+  }
+
+  /// [windowRestoreTrap] で設定したtrapを解除する。
+  static String clearWindowRestoreTrap() => 'trap - EXIT HUP TERM';
+
   // ===== 入力・キー送信 =====
 
   /// キーを送信
   static String sendKeys(String paneId, String keys, {bool literal = false}) {
     final escapedKeys = _escapeArg(keys);
+    // `--` で tmux 側のオプション解析を打ち切る。これがないと、ダッシュで
+    // 始まる入力（例: `-X`）が send-keys のオプションとして解釈され、
+    // 文字入力ではなくコピーモード操作等に化ける。
     if (literal) {
-      return 'tmux send-keys -t ${_escapeArg(paneId)} -l $escapedKeys';
+      return 'tmux send-keys -t ${_escapeArg(paneId)} -l -- $escapedKeys';
     }
-    return 'tmux send-keys -t ${_escapeArg(paneId)} $escapedKeys';
+    return 'tmux send-keys -t ${_escapeArg(paneId)} -- $escapedKeys';
   }
 
   /// Enterキーを送信
@@ -339,6 +375,14 @@ class TmuxCommands {
   /// ペインのスクロールバック全体をキャプチャ
   static String capturePaneAll(String paneId) {
     return capturePane(paneId, startLine: -32768, endLine: 32768);
+  }
+
+  /// 指定セッションの履歴（スクロールバック）保持行数を設定する。
+  /// グローバル(-g)ではなく対象セッションのみに適用し、ユーザーの
+  /// tmuxサーバ全体の設定を書き換えない。tmuxの仕様上、既存ペインには
+  /// 遡って適用されず、以後そのセッションに作成されるペインに効く。
+  static String setHistoryLimit(int lines, {required String target}) {
+    return 'tmux set-option -t ${_escapeArg(target)} history-limit $lines';
   }
 
   // ===== セッション/アタッチ =====

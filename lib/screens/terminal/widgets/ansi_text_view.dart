@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,10 +8,10 @@ import '../../../providers/settings_provider.dart';
 import '../../../providers/terminal_display_provider.dart';
 import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
-import '../../../services/terminal/terminal_diff.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
 import '../../../services/tmux/pane_navigator.dart';
 import '../../../theme/design_colors.dart';
+import 'terminal_zoom.dart';
 
 /// キー入力イベント
 class KeyInputEvent {
@@ -118,23 +119,21 @@ class AnsiTextView extends ConsumerStatefulWidget {
   ConsumerState<AnsiTextView> createState() => AnsiTextViewState();
 }
 
-class AnsiTextViewState extends ConsumerState<AnsiTextView>
-    with SingleTickerProviderStateMixin {
+class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _horizontalScrollController = ScrollController();
   ScrollController? _internalVerticalScrollController;
 
-  /// キャレット点滅用コントローラー
-  late final AnimationController _caretBlinkController;
+  /// キャレット点滅用（離散トグル）。連続アニメだと毎 vsync 再描画され、
+  /// 待機中も 60-120fps を消費するため、500ms ごとに ON/OFF を切り替える。
+  Timer? _caretBlinkTimer;
+  final ValueNotifier<bool> _caretVisible = ValueNotifier<bool>(true);
 
   /// 使用する垂直スクロールコントローラー
   ScrollController get _verticalScrollController =>
       widget.verticalScrollController ?? _internalVerticalScrollController!;
 
   late AnsiParser _parser;
-
-  /// 差分計算サービス
-  final TerminalDiff _terminalDiff = TerminalDiff();
 
   /// 修飾キー状態
   bool _ctrlPressed = false;
@@ -148,7 +147,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   static const double _swipeThreshold = 30.0;
 
   /// 2本指ジェスチャーのモード（指の移動方向で判定し、終了までロック）
-  _TwoFingerMode _twoFingerMode = _TwoFingerMode.undetermined;
+  TwoFingerGesture _twoFingerMode = TwoFingerGesture.undetermined;
   Offset _twoFingerPanStart = Offset.zero;
   Offset _twoFingerPanDelta = Offset.zero;
   bool _isTwoFingerPanning = false;
@@ -156,10 +155,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   static const double _twoFingerSwipeThreshold = 50.0;
   static const double _panGlowThreshold = 20.0;
   static const Duration _edgeFlashDuration = Duration(milliseconds: 400);
-
-  /// 個別ポインタ追跡（指の移動方向ベクトルでズーム/パンを判定）
-  final Map<int, Offset> _pointerStartPositions = {};
-  final Map<int, Offset> _pointerCurrentPositions = {};
 
   /// 現在のズームスケール
   double _currentScale = 1.0;
@@ -176,9 +171,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   /// 行の高さ（仮想スクロールで固定高さを使用）
   double _lineHeight = 20.0;
 
-  /// 最後の差分結果（適応型ポーリング用）
-  DiffResult? _lastDiffResult;
-
   @override
   void initState() {
     super.initState();
@@ -191,11 +183,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
       defaultBackground: widget.backgroundColor,
     );
 
-    // 500ms周期で点滅（1秒で1サイクル）
-    _caretBlinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    )..repeat(reverse: true);
+    // 500ms ごとにキャレット表示を反転（離散点滅）。ValueNotifier のみ更新するため、
+    // 連続アニメと違い待機中は再描画されない（idle 時 0fps を維持）。
+    _caretBlinkTimer = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _caretVisible.value = !_caretVisible.value,
+    );
   }
 
   @override
@@ -225,18 +218,17 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     required double fontSize,
     required String fontFamily,
   }) {
-    // 差分計算を実行
-    _lastDiffResult = _terminalDiff.calculateDiff(widget.text);
+    final textChanged = _cachedText != widget.text;
 
     // キャッシュが有効かチェック
     if (_cachedParsedLines != null &&
-        _cachedText == widget.text &&
+        !textChanged &&
         _cachedFontSize == fontSize &&
         _cachedFontFamily == fontFamily) {
       return _cachedParsedLines!;
     }
 
-    // 新しくパースしてキャッシュ
+    // 新しくパース（parseLinesは変更行のみ再パースするインクリメンタル方式）
     _cachedParsedLines = _parser.parseLines(widget.text);
     _cachedText = widget.text;
     _cachedFontSize = fontSize;
@@ -248,23 +240,10 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     return _cachedParsedLines!;
   }
 
-  /// 最後の差分結果を取得（親ウィジェットから参照用）
-  DiffResult? get lastDiffResult => _lastDiffResult;
-
-  /// 推奨ポーリング間隔を取得（適応型ポーリング用）
-  int get recommendedPollingInterval {
-    if (_lastDiffResult == null) {
-      return AdaptivePollingInterval.defaultInterval;
-    }
-    return AdaptivePollingInterval.calculateInterval(
-      _lastDiffResult!.unchangedFrames,
-      _lastDiffResult!.changeRatio,
-    );
-  }
-
   @override
   void dispose() {
-    _caretBlinkController.dispose();
+    _caretBlinkTimer?.cancel();
+    _caretVisible.dispose();
     _focusNode.dispose();
     _horizontalScrollController.dispose();
     // 内部で作成した場合のみ破棄
@@ -281,53 +260,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     widget.onZoomChanged?.call(1.0);
   }
 
-  // === ポインタ追跡（指の移動方向ベクトルでズーム/パンを判定） ===
-
-  void _onPointerDown(PointerDownEvent event) {
-    _pointerStartPositions[event.pointer] = event.position;
-    _pointerCurrentPositions[event.pointer] = event.position;
-  }
-
-  void _onPointerMove(PointerMoveEvent event) {
-    _pointerCurrentPositions[event.pointer] = event.position;
-  }
-
-  void _onPointerUpOrCancel(PointerEvent event) {
-    _pointerStartPositions.remove(event.pointer);
-    _pointerCurrentPositions.remove(event.pointer);
-  }
-
-  /// 2本の指の移動方向ベクトルの内積からモードを判定
-  ///
-  /// - 内積 > 0: 同方向（パン） → ペイン切り替え
-  /// - 内積 < 0: 逆方向（ピンチ） → ズーム
-  /// - 移動量不足: 判定不能
-  _TwoFingerMode _detectModeFromFingerDirections() {
-    if (_pointerCurrentPositions.length < 2) {
-      return _TwoFingerMode.undetermined;
-    }
-
-    final pointers = _pointerStartPositions.keys
-        .where((p) => _pointerCurrentPositions.containsKey(p))
-        .take(2)
-        .toList();
-    if (pointers.length < 2) return _TwoFingerMode.undetermined;
-
-    final v1 =
-        _pointerCurrentPositions[pointers[0]]! -
-        _pointerStartPositions[pointers[0]]!;
-    final v2 =
-        _pointerCurrentPositions[pointers[1]]! -
-        _pointerStartPositions[pointers[1]]!;
-
-    // 最低移動量に達していなければ判定不能
-    if (v1.distance < 15 || v2.distance < 15) {
-      return _TwoFingerMode.undetermined;
-    }
-
-    final dot = v1.dx * v2.dx + v1.dy * v2.dy;
-    return dot > 0 ? _TwoFingerMode.pan : _TwoFingerMode.zoom;
-  }
 
   // === ピンチズーム + 2本指スワイプ処理 ===
 
@@ -336,7 +268,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     _twoFingerPanStart = details.focalPoint;
     _twoFingerPanDelta = Offset.zero;
     _isTwoFingerPanning = false;
-    _twoFingerMode = _TwoFingerMode.undetermined;
+    _twoFingerMode = TwoFingerGesture.undetermined;
   }
 
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -344,32 +276,32 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     if (details.pointerCount <= 1) return;
 
     // モード確定済み → そのまま処理
-    if (_twoFingerMode == _TwoFingerMode.zoom) {
-      _isTwoFingerPanning = false;
+    if (_twoFingerMode == TwoFingerGesture.zoom) {
       _applyZoom(details);
       return;
     }
-    if (_twoFingerMode == _TwoFingerMode.pan) {
-      _isTwoFingerPanning = true;
+    if (_twoFingerMode == TwoFingerGesture.pan) {
       _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
       setState(() {});
       return;
     }
 
-    // モード未確定 → 指の移動方向ベクトルで判定
-    _twoFingerMode = _detectModeFromFingerDirections();
-
+    // モード未確定 → details.scale と焦点移動量で判定
+    // （details.scale は片方の指が静止していても信頼できる合図）
+    _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
+    _twoFingerMode = classifyTwoFingerGesture(
+      scale: details.scale,
+      focalTravel: _twoFingerPanDelta.distance,
+    );
     switch (_twoFingerMode) {
-      case _TwoFingerMode.zoom:
+      case TwoFingerGesture.zoom:
         _isTwoFingerPanning = false;
         _applyZoom(details);
-      case _TwoFingerMode.pan:
+      case TwoFingerGesture.pan:
         _isTwoFingerPanning = true;
-        _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
         setState(() {});
-      case _TwoFingerMode.undetermined:
-        // まだ判定できない → 暫定的にパンデルタだけ追跡
-        _twoFingerPanDelta = details.focalPoint - _twoFingerPanStart;
+      case TwoFingerGesture.undetermined:
+        break;
     }
   }
 
@@ -385,8 +317,15 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   void _onScaleEnd(ScaleEndDetails details) {
     final wasPanning = _isTwoFingerPanning;
+    final wasZooming = _twoFingerMode == TwoFingerGesture.zoom;
     _isTwoFingerPanning = false;
-    _twoFingerMode = _TwoFingerMode.undetermined;
+    _twoFingerMode = TwoFingerGesture.undetermined;
+
+    // ズーム確定: プレビュー倍率を永続 zoomFactor に焼き込み、変形をリセット
+    if (wasZooming) {
+      _commitZoom();
+      return;
+    }
     if (!wasPanning) return;
 
     final direction = PaneNavigator.detectSwipeDirection(
@@ -405,6 +344,20 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
     }
     _twoFingerPanDelta = Offset.zero;
     setState(() {});
+  }
+
+  /// ピンチ確定。永続ズーム倍率 zoomFactor に焼き込む（全モード共通）。
+  /// AutoResize時は terminal_screen が zoomFactor 変更を監視し、実効フォントサイズで
+  /// tmux ペインを再フィット（リフロー）させる。それ以外は描画倍率のみ変更。
+  void _commitZoom() {
+    final settings = ref.read(settingsProvider);
+    final scale = _currentScale;
+    _currentScale = 1.0;
+    _baseScale = 1.0;
+    final committed = clampZoomFactor(settings.zoomFactor * scale);
+    ref.read(settingsProvider.notifier).setZoomFactor(committed);
+    widget.onZoomChanged?.call(1.0);
+    if (mounted) setState(() {});
   }
 
   void _showEdgeFlash(SwipeDirection direction) {
@@ -722,10 +675,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
           });
         }
 
-        // フォントサイズを決定
-        late final double fontSize;
-        late final bool needsHorizontalScroll;
-
+        // 基本フォントサイズを決定
+        late final double baseFontSize;
         if (settings.isAutoFit) {
           // 自動フィット: 画面幅に合わせて計算
           final calcResult = FontCalculator.calculate(
@@ -734,31 +685,43 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
             fontFamily: settings.fontFamily,
             minFontSize: settings.minFontSize,
           );
-          fontSize = calcResult.fontSize;
-          needsHorizontalScroll = calcResult.needsScroll;
+          baseFontSize = calcResult.fontSize;
         } else {
           // 手動設定: settings.fontSizeを使用
-          fontSize = settings.fontSize;
-          // 水平スクロールの必要性を判定
-          final terminalWidth = FontCalculator.calculateTerminalWidth(
-            paneCharWidth: widget.paneWidth,
-            fontSize: fontSize,
-            fontFamily: settings.fontFamily,
-          );
-          needsHorizontalScroll = terminalWidth > constraints.maxWidth;
+          baseFontSize = settings.fontSize;
         }
 
-        // ターミナル幅を計算
+        // ピンチズーム倍率を適用（永続 zoomFactor × 基本サイズ、クランプ）
+        final fontSize = zoomedFontSize(
+          baseFontSize: baseFontSize,
+          zoomFactor: settings.zoomFactor,
+          minFontSize: settings.minFontSize,
+        );
+
+        // ターミナル幅を計算（ズーム後の実サイズ基準）
         final terminalWidth = FontCalculator.calculateTerminalWidth(
           paneCharWidth: widget.paneWidth,
           fontSize: fontSize,
           fontFamily: settings.fontFamily,
         );
 
+        // 幅が画面を超える場合は水平スクロール（ズーム時のはみ出しをパン可能に）
+        final needsHorizontalScroll = terminalWidth > constraints.maxWidth;
+
         // 行データを取得（キャッシュ使用・仮想スクロール用）
         final parsedLines = _getParsedLines(
           fontSize: fontSize,
           fontFamily: settings.fontFamily,
+        );
+
+
+        // 行に依存しない基本スタイルは1回だけ計算
+        // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
+        final baseTextStyle = TerminalFontStyles.getTextStyle(
+          settings.fontFamily,
+          fontSize: fontSize,
+          height: 1.4,
+          color: widget.foregroundColor,
         );
 
         // 仮想スクロール対応のListView.builder
@@ -782,12 +745,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
             // 各行のテキストウィジェット
             Widget lineWidget = Text.rich(
               textSpan,
-              style: TerminalFontStyles.getTextStyle(
-                settings.fontFamily,
-                fontSize: fontSize,
-                height: 1.4,
-                color: widget.foregroundColor,
-              ),
+              style: baseTextStyle,
               textScaler: TextScaler.noScaling,
               maxLines: 1,
               softWrap: false,
@@ -868,24 +826,23 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
                 clipBehavior: Clip.none,
                 children: [
                   lineWidget,
-                  AnimatedBuilder(
-                    animation: _caretBlinkController,
-                    builder: (context, child) {
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _caretVisible,
+                    builder: (context, visible, child) {
+                      if (!visible) {
+                        return const SizedBox.shrink();
+                      }
                       // キャレットの高さを文字サイズに合わせる（行間を含めない）
                       final caretHeight = fontSize;
                       // 行内で垂直方向に中央寄せ
                       final caretTop = (_lineHeight - caretHeight) / 2;
-
                       return Positioned(
                         left: cursorLeft,
                         top: caretTop,
                         width: 2,
                         height: caretHeight,
-                        child: Opacity(
-                          opacity: _caretBlinkController.value, // フェードイン・アウト
-                          child: Container(
-                            color: DesignColors.primary,
-                          ),
+                        child: Container(
+                          color: DesignColors.primary,
                         ),
                       );
                     },
@@ -943,15 +900,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
               alignment: Alignment.topLeft,
               child: listWidget,
             ),
-          );
-          // Listenerで個別ポインタを追跡（gesture arenaに参加しない）
-          // 指の移動方向ベクトルの内積でズーム/パンを判定するために使用
-          listWidget = Listener(
-            onPointerDown: _onPointerDown,
-            onPointerMove: _onPointerMove,
-            onPointerUp: _onPointerUpOrCancel,
-            onPointerCancel: _onPointerUpOrCancel,
-            child: listWidget,
           );
         }
 
@@ -1289,6 +1237,26 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   // === スクロール制御 ===
 
+  /// 指定した行インデックスがビューポート最上部に来るよう即座にスクロールする。
+  /// 履歴プリペンド後、「直前に最上部だった行」を同じ位置に留めるために使う
+  /// （追加行数ぶん絶対位置で移動するので、途中位置へ飛ばない）。
+  void jumpToLineFromTop(int lineIndex, [int attempt = 0]) {
+    if (!mounted || !_verticalScrollController.hasClients) return;
+    final pos = _verticalScrollController.position;
+    final target = lineIndex * _lineHeight;
+    // 巨大コンテンツでは Sliver が末尾までレイアウトされるまで maxScrollExtent が
+    // 小さいまま。現在の最大までジャンプして遅延ビルドを進め、ターゲットに届くまで
+    // 数フレーム繰り返す。
+    if (pos.maxScrollExtent + 1.0 < target && attempt < 60) {
+      _verticalScrollController.jumpTo(pos.maxScrollExtent);
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => jumpToLineFromTop(lineIndex, attempt + 1),
+      );
+      return;
+    }
+    _verticalScrollController.jumpTo(target.clamp(0.0, pos.maxScrollExtent));
+  }
+
   /// 一番下までスクロール
   void scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1355,8 +1323,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   }
 }
 
-/// 2本指ジェスチャーのモード（ジェスチャー開始時に判定し、終了までロック）
-enum _TwoFingerMode { undetermined, pan, zoom }
 
 /// 2本指以上を検出した場合、gesture arenaを強制的に勝ち取るScaleGestureRecognizer。
 ///

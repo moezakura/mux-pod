@@ -48,6 +48,23 @@ class AnsiStyle {
     );
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AnsiStyle &&
+          foreground == other.foreground &&
+          background == other.background &&
+          bold == other.bold &&
+          italic == other.italic &&
+          underline == other.underline &&
+          strikethrough == other.strikethrough &&
+          dim == other.dim &&
+          inverse == other.inverse;
+
+  @override
+  int get hashCode => Object.hash(foreground, background, bold, italic,
+      underline, strikethrough, dim, inverse);
+
   static const AnsiStyle defaultStyle = AnsiStyle();
 }
 
@@ -61,9 +78,6 @@ class AnsiSegment {
 
 /// パースされた行データ
 class ParsedLine {
-  /// 行番号（0始まり）
-  final int index;
-
   /// この行のセグメントリスト
   final List<AnsiSegment> segments;
 
@@ -71,13 +85,20 @@ class ParsedLine {
   final AnsiStyle endStyle;
 
   const ParsedLine({
-    required this.index,
     required this.segments,
     required this.endStyle,
   });
 
   /// 空行かどうか
   bool get isEmpty => segments.isEmpty || segments.every((s) => s.text.isEmpty);
+}
+
+/// 行→TextSpan の描画キャッシュエントリ（[AnsiParser] 内部で使用）。
+class _LineSpan {
+  final TextSpan span;
+  final double fontSize;
+  final String fontFamily;
+  const _LineSpan(this.span, this.fontSize, this.fontFamily);
 }
 
 /// ANSIエスケープシーケンスパーサー
@@ -122,6 +143,18 @@ class AnsiParser {
     this.defaultForeground = const Color(0xFFD4D4D4),
     this.defaultBackground = const Color(0xFF1E1E1E),
   });
+
+  /// インクリメンタルパース用キャッシュ: (開始スタイル, 行テキスト) → 解析済み行。
+  /// 行の出力は (開始スタイル, テキスト) のみに依存するので、位置が変わっても
+  /// （出力が流れて全行が上にシフトしても）同一キーで再利用でき、再パースは
+  /// 末尾の新規行だけになる。同じ ParsedLine インスタンスを返すため
+  /// [_spanCache]（弱参照キー）も同時にヒットする。
+  Map<(AnsiStyle, String), ParsedLine> _lineCache = const {};
+
+  /// 行→TextSpan の描画キャッシュ（弱参照キー = ParsedLine）。
+  /// ParsedLineがGCされればエントリも消えるためリークしない。
+  /// スクロールや再ビルドで可視行のTextSpanを毎フレーム作り直すのを防ぐ。
+  final Expando<_LineSpan> _spanCache = Expando<_LineSpan>('lineSpan');
 
   /// ANSIテキストをセグメントに分解
   List<AnsiSegment> parse(String input) {
@@ -405,21 +438,27 @@ class AnsiParser {
   /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
   List<ParsedLine> parseLines(String input) {
     final lines = input.split('\n');
-    final parsedLines = <ParsedLine>[];
+    final prev = _lineCache;
+    final next = <(AnsiStyle, String), ParsedLine>{};
+    final parsed = <ParsedLine>[];
     var currentStyle = AnsiStyle.defaultStyle;
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final result = _parseLineWithStyle(line, currentStyle);
-      parsedLines.add(ParsedLine(
-        index: i,
-        segments: result.segments,
-        endStyle: result.endStyle,
-      ));
-      currentStyle = result.endStyle;
+      final key = (currentStyle, line);
+      // (開始スタイル, テキスト) が一致すれば位置に関係なく再利用（再パース回避）。
+      var pl = next[key] ?? prev[key];
+      if (pl == null) {
+        final r = _parseLineWithStyle(line, currentStyle);
+        pl = ParsedLine(segments: r.segments, endStyle: r.endStyle);
+      }
+      parsed.add(pl);
+      next[key] = pl;
+      currentStyle = pl.endStyle;
     }
 
-    return parsedLines;
+    _lineCache = next;
+    return parsed;
   }
 
   /// 1行をパースし、セグメントと終了スタイルを返す
@@ -463,6 +502,15 @@ class AnsiParser {
     required double fontSize,
     required String fontFamily,
   }) {
-    return toTextSpan(line.segments, fontSize: fontSize, fontFamily: fontFamily);
+    final cached = _spanCache[line];
+    if (cached != null &&
+        cached.fontSize == fontSize &&
+        cached.fontFamily == fontFamily) {
+      return cached.span;
+    }
+    final span =
+        toTextSpan(line.segments, fontSize: fontSize, fontFamily: fontFamily);
+    _spanCache[line] = _LineSpan(span, fontSize, fontFamily);
+    return span;
   }
 }

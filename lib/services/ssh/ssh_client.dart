@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 
 import 'persistent_shell.dart';
+import '../tmux/tmux_commands.dart';
 
 /// SSH接続エラー
 class SshConnectionError implements Exception {
@@ -131,11 +132,20 @@ class SshClient {
   /// 持続的シェルセッション（ポーリング用）
   PersistentShell? _persistentShell;
 
+  /// 入力専用の持続的シェル（キー送信の fire-and-forget 用）
+  ///
+  /// ポーリング用シェルとは別チャネルにすることで、キー入力がポーリングと
+  /// 競合せず、チャネル開閉・execロック・往復待ちなしで即座に送信できる。
+  PersistentShell? _inputShell;
+
   /// 検出されたtmuxバイナリの絶対パス
   String? _tmuxPath;
 
   /// execチャネル排他制御用ロック
   Completer<void>? _execLock;
+
+  /// AutoResize復元用trapの現在コマンド（入力シェル再起動・再接続時に再適用する）
+  String? _restoreTrapCmd;
 
   /// tmuxの絶対パス（未検出なら null）
   String? get tmuxPath => _tmuxPath;
@@ -203,6 +213,7 @@ class SshClient {
     required int port,
     required String username,
     required SshConnectOptions options,
+    bool lightweight = false,
   }) async {
     // バリデーション
     _validateConnectionParams(host, port, username, options);
@@ -249,7 +260,7 @@ class SshClient {
       if (options.tmuxPath != null && options.tmuxPath!.isNotEmpty) {
         // ユーザー指定パスの存在確認
         final verifyExitCode = await _withExecLock(() async {
-          final session = await _client!.execute('test -x ${options.tmuxPath}');
+          final session = await _client!.execute('test -x ${_shSingleQuote(options.tmuxPath!)}');
           await session.stdout.drain();
           await session.stderr.drain();
           final code = session.exitCode;
@@ -266,11 +277,14 @@ class SshClient {
         await _detectTmuxPath();
       }
 
-      // 持続的シェルを開始（ポーリング用）
-      await _startPersistentShell();
-
-      // Keep-aliveを開始
-      _startKeepAlive();
+      // 一括コマンド実行用の軽量接続では、ポーリング用シェルとkeep-aliveをスキップ。
+      // execWithExitCode は専用チャネルを使うため持続的シェルは不要。
+      if (!lightweight) {
+        // 持続的シェルを開始（ポーリング用）
+        await _startPersistentShell();
+        // Keep-aliveを開始
+        _startKeepAlive();
+      }
     } on SocketException catch (e) {
       _state = SshConnectionState.error;
       _lastError = 'Connection failed: ${e.message}';
@@ -364,6 +378,8 @@ class SshClient {
     // 持続的シェルを解放
     await _persistentShell?.dispose();
     _persistentShell = null;
+    await _inputShell?.dispose();
+    _inputShell = null;
 
     await _stdoutSubscription?.cancel();
     await _stderrSubscription?.cancel();
@@ -384,26 +400,126 @@ class SshClient {
   Future<void> _startPersistentShell() async {
     if (_client == null) return;
 
+    // ポーリング用と入力用の2チャネルを並列で起動（接続時間を増やさない）。
+    // どちらの起動失敗も接続自体は継続し、該当機能はexec()にフォールバックする。
+    final shells = await Future.wait([_tryStartShell(), _tryStartShell()]);
+    _persistentShell = shells[0];
+    _inputShell = shells[1];
+    // 入力シェルが復活したらAutoResize復元trapを再設定する（再接続時など）
+    _reapplyRestoreTrap();
+  }
+
+  /// 持続的シェルを1つ起動する。失敗時はnullを返す（例外を投げない）。
+  Future<PersistentShell?> _tryStartShell() async {
+    final client = _client;
+    if (client == null) return null;
     try {
-      _persistentShell = PersistentShell(_client!);
-      await _persistentShell!.start();
-    } catch (e) {
-      // 持続的シェルの開始に失敗しても接続自体は継続
-      // 従来のexec()メソッドにフォールバック
-      _persistentShell = null;
+      final shell = PersistentShell(client);
+      await shell.start();
+      return shell;
+    } catch (_) {
+      return null;
     }
   }
 
   /// 持続的シェルを再起動
   Future<void> restartPersistentShell() async {
     if (_client == null || !isConnected) return;
-
     try {
       await _persistentShell?.dispose();
-      _persistentShell = PersistentShell(_client!);
-      await _persistentShell!.start();
-    } catch (e) {
-      _persistentShell = null;
+    } catch (_) {
+      // dispose失敗は無視して再作成を試みる
+    }
+    _persistentShell = await _tryStartShell();
+  }
+
+  /// 入力専用シェルを再起動する（送信失敗時の自己回復用）。
+  Future<void> _restartInputShell() async {
+    if (_client == null || !isConnected) return;
+    try {
+      await _inputShell?.dispose();
+    } catch (_) {
+      // dispose失敗は無視して再作成を試みる
+    }
+    _inputShell = await _tryStartShell();
+    _reapplyRestoreTrap();
+  }
+
+  /// 記録済みのAutoResize復元trapを（再起動した）入力シェルへ再設定する。
+  void _reapplyRestoreTrap() {
+    final cmd = _restoreTrapCmd;
+    final input = _inputShell;
+    if (cmd == null || input == null || !input.isStarted) return;
+    try {
+      input.sendNoWait(cmd);
+    } catch (_) {}
+  }
+
+  /// キー送信などの出力不要コマンドを低遅延で送信する。
+  ///
+  /// 専用のfire-and-forgetチャネルに書き込むだけで完了する。[exec]と違い
+  /// チャネル開閉・execロック・往復待ちがないため、高pingの回線でも入力が
+  /// 詰まらない（結果はポーリングで反映される）。
+  /// 高速チャネルが使えない場合は信頼性優先で[exec]にフォールバックする。
+  Future<void> sendKeysCommand(String command) async {
+    if (!isConnected || _client == null) {
+      throw SshConnectionError('Not connected');
+    }
+
+    final input = _inputShell;
+    if (input != null && input.isStarted) {
+      try {
+        input.sendNoWait(_resolveTmuxCommand(command));
+        return;
+      } on PersistentShellError {
+        // 高速チャネルが切れた: 次回のために再起動し、今回はexecへフォールバック
+        unawaited(_restartInputShell());
+      }
+    }
+
+    // フォールバック: 従来のexec（内部で_resolveTmuxCommandを実行）
+    await exec(command);
+  }
+
+  /// AutoResizeで縮めたウィンドウを、接続断時にサーバ側で復元するtrapを入力シェルに
+  /// 設定する。アプリがスワイプ終了・強制終了されても、SSHが切れて入力シェルが終了
+  /// する際にtmuxウィンドウが自動サイズへ戻る（クライアント側の復元が届かないケースの
+  /// フォールバック）。[windowTargets] が空ならtrapを解除する。
+  void setWindowRestoreTrap(List<String> windowTargets) {
+    final cmd = windowTargets.isEmpty
+        ? TmuxCommands.clearWindowRestoreTrap()
+        : TmuxCommands.windowRestoreTrap(windowTargets, tmuxBin: _tmuxPath ?? 'tmux');
+    _restoreTrapCmd = windowTargets.isEmpty ? null : cmd;
+    final input = _inputShell;
+    if (input == null || !input.isStarted) return;
+    try {
+      input.sendNoWait(cmd);
+    } on PersistentShellError {
+      unawaited(_restartInputShell());
+    }
+  }
+
+  /// AutoResizeで縮めたウィンドウを低遅延のfire-and-forgetで自動サイズへ戻す。
+  ///
+  /// [exec] と違いチャネル開閉・execロック・往復待ちがないため、バックグラウンド移行の
+  /// 短い猶予でも確実に送信できる。入力シェルが使えない場合はexecにフォールバックする
+  /// （結果は待たない）。
+  Future<void> restoreWindowsNoWait(List<String> targets) async {
+    if (targets.isEmpty) return;
+    final input = _inputShell;
+    for (final t in targets) {
+      final cmd = TmuxCommands.resizeWindowAuto(t);
+      if (input != null && input.isStarted) {
+        try {
+          input.sendNoWait(_resolveTmuxCommand(cmd));
+          continue;
+        } on PersistentShellError {
+          unawaited(_restartInputShell());
+        }
+      }
+      try {
+        await exec(cmd);
+      } catch (_) {}
     }
   }
 
@@ -481,19 +597,16 @@ class SshClient {
 
   /// コマンド内の `tmux` を検出済み絶対パスに置換
   String _resolveTmuxCommand(String command) {
-    if (_tmuxPath == null) {
-      debugPrint('_resolveTmuxCommand: _tmuxPath=null, command unchanged');
-      return command;
-    }
+    if (_tmuxPath == null) return command;
     final resolved = command.replaceAllMapped(
       RegExp(r'(^|;\s*)tmux\b'),
       (m) => '${m[1]}$_tmuxPath',
     );
-    if (resolved != command) {
-      debugPrint('_resolveTmuxCommand: "$command" => "$resolved"');
-    }
     return resolved;
   }
+
+  /// シェル引数を単一引用符で安全に囲む（ユーザー入力のtmuxパス等に使用）。
+  String _shSingleQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
 
   /// Keep-aliveを開始
   ///
@@ -709,12 +822,9 @@ class SshClient {
 
         // stderrがあればエラーとして扱う（オプション）
         if (stderr.isNotEmpty) {
-          // stderrも結果に含める（tmuxコマンドなどはstderrに出力することがある）
-          debugPrint('exec: stdout="${stdout.trim()}", stderr="${stderr.trim()}"');
           return stdout + stderr;
         }
 
-        debugPrint('exec: stdout="${stdout.trim()}"');
         return stdout;
       });
     } on TimeoutException {

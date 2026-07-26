@@ -23,6 +23,15 @@ void main() {
       });
     });
 
+    group('setHistoryLimit', () {
+      test('generates session-scoped history-limit set-option command', () {
+        expect(
+          TmuxCommands.setHistoryLimit(10000, target: 'main'),
+          'tmux set-option -t main history-limit 10000',
+        );
+      });
+    });
+
     group('selectPane', () {
       test('generates correct select-pane command', () {
         expect(TmuxCommands.selectPane('%0'), 'tmux select-pane -t %0');
@@ -95,6 +104,29 @@ void main() {
         expect(
           TmuxCommands.killWindow('my-session', 2),
           'tmux kill-window -t my-session:2',
+        );
+      });
+    });
+
+    group('renameWindow', () {
+      test('generates correct rename-window command', () {
+        expect(
+          TmuxCommands.renameWindow('main', 2, 'build'),
+          'tmux rename-window -t main:2 build',
+        );
+      });
+
+      test('escapes session name and new name with spaces', () {
+        expect(
+          TmuxCommands.renameWindow('my session', 0, 'new name'),
+          'tmux rename-window -t "my session":0 "new name"',
+        );
+      });
+
+      test('allows underscores and hyphens without escaping', () {
+        expect(
+          TmuxCommands.renameWindow('dev', 10, 'a_b-c'),
+          'tmux rename-window -t dev:10 a_b-c',
         );
       });
     });
@@ -175,19 +207,78 @@ void main() {
       });
     });
 
+    group('resizeWindowAuto', () {
+      test('generates resize -A then unset window-size (restore auto sizing)', () {
+        expect(
+          TmuxCommands.resizeWindowAuto('my-session:0'),
+          'tmux resize-window -t my-session:0 -A ; '
+          'tmux set -uw -t my-session:0 window-size',
+        );
+      });
+
+      test('escapes target with special characters in both commands', () {
+        expect(
+          TmuxCommands.resizeWindowAuto('my session:0'),
+          'tmux resize-window -t "my session:0" -A ; '
+          'tmux set -uw -t "my session:0" window-size',
+        );
+      });
+    });
+
+    group('windowRestoreTrap', () {
+      test('restores size and clears manual in one tmux call for a target', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['@1'], tmuxBin: '/usr/bin/tmux'),
+          "trap '/usr/bin/tmux resize-window -t @1 -A \\; "
+          "set -uw -t @1 window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('chains multiple targets in a single tmux invocation', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['@1', '%3'], tmuxBin: '/bin/tmux'),
+          "trap '/bin/tmux resize-window -t @1 -A \\; set -uw -t @1 window-size \\; "
+          "resize-window -t %3 -A \\; set -uw -t %3 window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('escapes targets with special characters', () {
+        expect(
+          TmuxCommands.windowRestoreTrap(['my session:0'], tmuxBin: '/usr/bin/tmux'),
+          "trap '/usr/bin/tmux resize-window -t \"my session:0\" -A \\; "
+          "set -uw -t \"my session:0\" window-size 2>/dev/null' EXIT HUP TERM",
+        );
+      });
+
+      test('empty targets clears the trap', () {
+        expect(
+          TmuxCommands.windowRestoreTrap([], tmuxBin: '/usr/bin/tmux'),
+          'trap - EXIT HUP TERM',
+        );
+        expect(TmuxCommands.clearWindowRestoreTrap(), 'trap - EXIT HUP TERM');
+      });
+    });
+
     group('sendKeys', () {
       test('generates literal send-keys command', () {
         // _escapeArg escapes backslashes, so \\ becomes \\\\
         expect(
           TmuxCommands.sendKeys('%0', '\\x1b[I', literal: true),
-          'tmux send-keys -t %0 -l "\\\\x1b[I"',
+          'tmux send-keys -t %0 -l -- "\\\\x1b[I"',
         );
       });
 
       test('generates non-literal send-keys command', () {
         expect(
           TmuxCommands.sendKeys('%0', 'Enter'),
-          'tmux send-keys -t %0 Enter',
+          'tmux send-keys -t %0 -- Enter',
+        );
+      });
+
+      test('guards dash-prefixed keys with -- (no tmux option injection)', () {
+        expect(
+          TmuxCommands.sendKeys('%0', '-X cancel', literal: true),
+          'tmux send-keys -t %0 -l -- "-X cancel"',
         );
       });
     });

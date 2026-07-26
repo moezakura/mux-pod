@@ -29,12 +29,6 @@ class TerminalDisplayState {
   /// 水平スクロール位置
   final double horizontalScrollOffset;
 
-  /// ピンチズーム倍率（1.0 = 等倍）
-  final double zoomScale;
-
-  /// ズーム操作中か
-  final bool isZooming;
-
   const TerminalDisplayState({
     this.paneWidth = 80,
     this.paneHeight = 24,
@@ -43,17 +37,7 @@ class TerminalDisplayState {
     this.calculatedFontSize = 14.0,
     this.needsHorizontalScroll = false,
     this.horizontalScrollOffset = 0.0,
-    this.zoomScale = 1.0,
-    this.isZooming = false,
   });
-
-  /// 実際に適用されるフォントサイズ
-  double get effectiveFontSize {
-    if (isZooming) {
-      return calculatedFontSize * zoomScale;
-    }
-    return calculatedFontSize;
-  }
 
   TerminalDisplayState copyWith({
     int? paneWidth,
@@ -63,8 +47,6 @@ class TerminalDisplayState {
     double? calculatedFontSize,
     bool? needsHorizontalScroll,
     double? horizontalScrollOffset,
-    double? zoomScale,
-    bool? isZooming,
   }) {
     return TerminalDisplayState(
       paneWidth: paneWidth ?? this.paneWidth,
@@ -74,8 +56,6 @@ class TerminalDisplayState {
       calculatedFontSize: calculatedFontSize ?? this.calculatedFontSize,
       needsHorizontalScroll: needsHorizontalScroll ?? this.needsHorizontalScroll,
       horizontalScrollOffset: horizontalScrollOffset ?? this.horizontalScrollOffset,
-      zoomScale: zoomScale ?? this.zoomScale,
-      isZooming: isZooming ?? this.isZooming,
     );
   }
 
@@ -90,9 +70,7 @@ class TerminalDisplayState {
           screenHeight == other.screenHeight &&
           calculatedFontSize == other.calculatedFontSize &&
           needsHorizontalScroll == other.needsHorizontalScroll &&
-          horizontalScrollOffset == other.horizontalScrollOffset &&
-          zoomScale == other.zoomScale &&
-          isZooming == other.isZooming;
+          horizontalScrollOffset == other.horizontalScrollOffset;
 
   @override
   int get hashCode => Object.hash(
@@ -103,15 +81,11 @@ class TerminalDisplayState {
         calculatedFontSize,
         needsHorizontalScroll,
         horizontalScrollOffset,
-        zoomScale,
-        isZooming,
       );
 }
 
 /// ターミナル表示状態を管理するNotifier
 class TerminalDisplayNotifier extends Notifier<TerminalDisplayState> {
-  /// 最大フォントサイズ
-  static const double maxFontSize = 48.0;
 
   @override
   TerminalDisplayState build() => const TerminalDisplayState();
@@ -120,12 +94,10 @@ class TerminalDisplayNotifier extends Notifier<TerminalDisplayState> {
   ///
   /// ペイン選択時に呼び出し、フォントサイズを再計算する。
   void updatePane(TmuxPane pane) {
-    // ズーム状態をリセット
+    // スクロール位置をリセット
     state = state.copyWith(
       paneWidth: pane.width,
       paneHeight: pane.height,
-      zoomScale: 1.0,
-      isZooming: false,
       horizontalScrollOffset: 0.0, // スクロール位置もリセット
     );
     _recalculateFontSize();
@@ -152,33 +124,6 @@ class TerminalDisplayNotifier extends Notifier<TerminalDisplayState> {
   /// 水平スクロール位置を更新
   void updateHorizontalScrollOffset(double offset) {
     state = state.copyWith(horizontalScrollOffset: offset);
-  }
-
-  /// ピンチズーム開始
-  void startZoom() {
-    state = state.copyWith(isZooming: true);
-  }
-
-  /// ピンチズーム更新
-  void updateZoom(double scale) {
-    state = state.copyWith(zoomScale: scale);
-  }
-
-  /// ピンチズーム終了
-  ///
-  /// ズーム後のフォントサイズを確定し、スケールをリセットする。
-  void endZoom() {
-    final settings = ref.read(settingsProvider);
-    final newFontSize = state.calculatedFontSize * state.zoomScale;
-
-    state = state.copyWith(
-      calculatedFontSize: newFontSize.clamp(settings.minFontSize, maxFontSize),
-      zoomScale: 1.0,
-      isZooming: false,
-    );
-
-    // 水平スクロールの必要性を再計算
-    _updateScrollRequirement();
   }
 
   /// フォントサイズを再計算

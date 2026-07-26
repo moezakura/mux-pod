@@ -149,6 +149,7 @@ class TmuxWindowTile extends StatelessWidget {
   final TmuxWindow window;
   final bool isActive;
   final VoidCallback? onTap;
+  final VoidCallback? onRename;
   final VoidCallback? onResize;
   final VoidCallback? onClose;
 
@@ -157,6 +158,7 @@ class TmuxWindowTile extends StatelessWidget {
     required this.window,
     required this.isActive,
     this.onTap,
+    this.onRename,
     this.onResize,
     this.onClose,
   });
@@ -173,7 +175,7 @@ class TmuxWindowTile extends StatelessWidget {
       ),
       title: '${window.index}: ${window.name}',
       subtitle: '${window.paneCount} panes',
-      trailing: onResize != null || onClose != null
+      trailing: onRename != null || onResize != null || onClose != null
           ? PopupMenuButton<String>(
               icon: Icon(
                 Icons.more_vert,
@@ -182,6 +184,18 @@ class TmuxWindowTile extends StatelessWidget {
               ),
               padding: EdgeInsets.zero,
               itemBuilder: (menuContext) => [
+                if (onRename != null)
+                  PopupMenuItem(
+                    value: 'rename',
+                    child: Row(
+                      children: [
+                        Icon(Icons.drive_file_rename_outline, size: 18,
+                            color: colorScheme.onSurface),
+                        const SizedBox(width: 8),
+                        const Text('Rename Window'),
+                      ],
+                    ),
+                  ),
                 if (onResize != null)
                   PopupMenuItem(
                     value: 'resize',
@@ -207,7 +221,9 @@ class TmuxWindowTile extends StatelessWidget {
                   ),
               ],
               onSelected: (value) {
-                if (value == 'resize') {
+                if (value == 'rename') {
+                  onRename?.call();
+                } else if (value == 'resize') {
                   onResize?.call();
                 } else if (value == 'close') {
                   onClose?.call();

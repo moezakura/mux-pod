@@ -245,6 +245,19 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  /// セッションのウィンドウ数を更新（ウィンドウ作成/削除後の同期用）
+  void updateWindowCount(String connectionId, String sessionName, int windowCount) {
+    final key = '$connectionId:$sessionName';
+    final existingIndex = state.sessions.indexWhere((s) => s.key == key);
+    if (existingIndex < 0) return;
+    if (state.sessions[existingIndex].windowCount == windowCount) return;
+    final sessions = [...state.sessions];
+    sessions[existingIndex] =
+        sessions[existingIndex].copyWith(windowCount: windowCount);
+    state = state.copyWith(sessions: sessions);
+    _saveToStorage();
+  }
+
   /// セッションを開いた時に最終アクセス日時を更新
   void touchSession(String connectionId, String sessionName) {
     final key = '$connectionId:$sessionName';

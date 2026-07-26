@@ -19,10 +19,12 @@ import '../../services/ssh/input_queue.dart';
 import '../../services/ssh/ssh_client.dart' show SshConnectOptions;
 import '../../services/tmux/pane_navigator.dart';
 import '../../services/terminal/font_calculator.dart';
+import '../../services/terminal/adaptive_polling.dart';
 import '../../services/tmux/tmux_commands.dart';
 import '../../services/tmux/tmux_parser.dart';
 import '../../services/tmux/tmux_version.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
+import '../../widgets/dialogs/rename_window_dialog.dart';
 import '../../theme/design_colors.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../widgets/key_overlay_widget.dart';
@@ -36,6 +38,7 @@ import '../file_browser/file_browser_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
+import 'widgets/terminal_zoom.dart';
 
 /// スクロールモードのソース
 enum ScrollModeSource {
@@ -56,26 +59,22 @@ enum ScrollModeSource {
 /// isDismissible: trueでも安定して動作する。
 class _TerminalViewData {
   final String content;
-  final int latency;
   final int paneWidth;
   final int paneHeight;
 
   const _TerminalViewData({
     this.content = '',
-    this.latency = 0,
     this.paneWidth = 80,
     this.paneHeight = 24,
   });
 
   _TerminalViewData copyWith({
     String? content,
-    int? latency,
     int? paneWidth,
     int? paneHeight,
   }) =>
       _TerminalViewData(
         content: content ?? this.content,
-        latency: latency ?? this.latency,
         paneWidth: paneWidth ?? this.paneWidth,
         paneHeight: paneHeight ?? this.paneHeight,
       );
@@ -129,6 +128,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 親のsetState()を回避し、ValueListenableBuilderでサブツリーのみリビルドする
   final _viewNotifier = ValueNotifier<_TerminalViewData>(const _TerminalViewData());
 
+  // レイテンシ表示専用のNotifier（ping揺れで本文が再描画されないよう分離）
+  final _latencyNotifier = ValueNotifier<int>(0);
+
   // キーオーバーレイ
   final KeyOverlayState _keyOverlayState = KeyOverlayState();
   Timer? _keyOverlayTimer;
@@ -144,17 +146,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   DateTime _lastFrameTime = DateTime.now();
   bool _pendingUpdate = false;
   String _pendingContent = '';
-  int _pendingLatency = 0;
 
   // 適応型ポーリング用
   int _currentPollingInterval = 100;
   static const int _minPollingInterval = 50;
   static const int _maxPollingInterval = 2000;
 
+  // 変化頻度トラッキング（毎ポーリングで更新。アイドル時にポーリングをバックオフ）
+  int _unchangedPolls = 0;
+  String? _lastPolledContent;
+
   // 選択状態保持用（スクロールモード中の更新抑制）
   String _bufferedContent = '';
-  int _bufferedLatency = 0;
   bool _hasBufferedUpdate = false;
+
+  // 深い履歴（全スクロールバック）の自動ロード用
+  bool _isLoadingDeepHistory = false;
 
   // 初回スクロール完了フラグ
   bool _hasInitialScrolled = false;
@@ -167,6 +174,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // ズームスケール
   double _zoomScale = 1.0;
+
+  /// 表示中の実効ズーム倍率（永続 zoomFactor × ピンチ中のプレビュー _zoomScale）。
+  double get _effectiveZoom =>
+      ref.read(settingsProvider).zoomFactor * _zoomScale;
+
+  /// 実効ズームが等倍でない（インジケータ/リセットの活性判定）。
+  bool get _isZoomed => (_effectiveZoom - 1.0).abs() > 0.005;
 
   // EnterCommand入力内容保持（ボトムシートを閉じても保持）
   String _savedCommandInput = '';
@@ -186,8 +200,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // リサイズ中フラグ（排他制御）
   bool _isResizing = false;
 
+  // AutoResizeで縮めたtmuxウィンドウ（切断時に自動サイズへ戻す）
+  final Set<String> _resizedWindowTargets = <String>{};
+
+  // バックグラウンド移行時に自動サイズへ戻したか（復帰時の再フィット用）
+  bool _windowsRestoredForBackground = false;
+
   // 自動リサイズのdebounceタイマー（画面サイズ変更時）
   Timer? _autoResizeDebounceTimer;
+
+  // フォアグラウンドを離れてからウィンドウ復元までの猶予タイマー
+  Timer? _backgroundRestoreTimer;
 
   // tmuxバージョン情報（リサイズ機能判定用）
   TmuxVersionInfo? _tmuxVersion;
@@ -219,17 +242,52 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     switch (state) {
-      case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
-      case AppLifecycleState.hidden:
+        // 一時的な非アクティブ（通知シェード等）: 猶予後に復元をスケジュール。
+        // 早期復帰すればキャンセルされ、無駄なリサイズ往復を避ける。
         _pausePolling();
+        _scheduleBackgroundRestore();
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // 明確なバックグラウンド化。最近のアプリからスワイプ終了されても、SSHが
+        // 生きているこの時点で（猶予を待たず即座に）復元する。
+        _pausePolling();
+        _backgroundRestoreTimer?.cancel();
+        if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+        _restoreResizedWindows();
         break;
       case AppLifecycleState.resumed:
+        _backgroundRestoreTimer?.cancel();
         _resumePolling();
+        // バックグラウンドで戻していた場合は画面サイズに合わせて再リサイズ
+        if (_windowsRestoredForBackground) {
+          _windowsRestoredForBackground = false;
+          final pane = ref.read(tmuxProvider).activePane;
+          if (pane != null && ref.read(settingsProvider).isAutoResize) {
+            _executeAutoResize(pane, force: true);
+          }
+        }
         break;
       case AppLifecycleState.detached:
+        // フォールバック: 即時ベストエフォートで復元
+        _backgroundRestoreTimer?.cancel();
+        if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+        _restoreResizedWindows();
         break;
     }
+  }
+
+  /// フォアグラウンドを離れて一定時間経過したら、AutoResizeで縮めたtmuxウィンドウを
+  /// 自動サイズへ戻す。短時間で復帰した場合（通知シェード等の一時的な非アクティブ）は
+  /// resumedでキャンセルされ、無駄なリサイズ往復を避ける。
+  void _scheduleBackgroundRestore() {
+    _backgroundRestoreTimer?.cancel();
+    _backgroundRestoreTimer = Timer(const Duration(milliseconds: 600), () {
+      if (_isDisposed) return;
+      if (_resizedWindowTargets.isNotEmpty) _windowsRestoredForBackground = true;
+      _restoreResizedWindows();
+    });
   }
 
   @override
@@ -317,6 +375,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           setState(() {
             _directInputEnabled = next.directInputEnabled;
           });
+        }
+        // AutoResize時: フォント/ズーム変更（ピンチや設定）で tmux ペインを再フィット
+        if (next.isAutoResize &&
+            (previous?.fontSize != next.fontSize ||
+                previous?.zoomFactor != next.zoomFactor)) {
+          final pane = ref.read(tmuxProvider).activePane;
+          if (pane != null) _executeAutoResize(pane);
         }
       },
       fireImmediately: false,
@@ -458,6 +523,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         if (!mounted || _isDisposed) return;
       }
 
+      // このセッションの履歴保持行数を設定する（グローバル -g ではなく対象
+      // セッションのみ。ユーザーのtmuxサーバ全体の設定は書き換えない）。tmux仕様で
+      // 既存ペインには遡らず、以後このセッションに作成されるペインに効く。
+      // 値はユーザー設定 scrollbackLines に合わせる。ベストエフォート。
+      try {
+        final historyLimit =
+            ref.read(settingsProvider).scrollbackLines.clamp(200, 20000).toInt();
+        await sshNotifier.client
+            ?.exec(TmuxCommands.setHistoryLimit(historyLimit, target: sessionName));
+      } catch (_) {}
+
       // 6. アクティブセッション/ウィンドウ/ペインを設定
       ref.read(tmuxProvider.notifier).setActiveSession(sessionName);
 
@@ -533,6 +609,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       setState(() {
         _isConnecting = false;
       });
+
+      // 10. 自動リサイズ: 接続直後、レイアウト確定後にtmuxウィンドウを画面幅へ合わせる
+      if (ref.read(settingsProvider).isAutoResize) {
+        _scheduleInitialAutoResize();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -558,6 +639,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       final output = await sshClient.exec(cmd);
       if (!mounted || _isDisposed) return;
       ref.read(tmuxProvider.notifier).parseAndUpdateFullTree(output);
+      // アクティブセッションのウィンドウ数を provider に同期
+      // （ホーム画面と接続カードのウィンドウ数カウンタが作成/削除後も追従する）
+      final refreshedSession = ref.read(tmuxProvider).activeSession;
+      if (refreshedSession != null) {
+        ref.read(activeSessionsProvider.notifier).updateWindowCount(
+              widget.connectionId,
+              refreshedSession.name,
+              refreshedSession.windows.length,
+            );
+      }
     } catch (_) {
       // ツリー更新エラーは静かに無視（次回ポーリングで再試行）
     }
@@ -603,6 +694,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// キー入力後にポーリングを即座にブースト（アイドル時の応答性改善）
   void _boostPolling() {
+    // 既に最小間隔なら Timer 再生成は不要（高速連打時の churn を回避）
+    if (_currentPollingInterval == _minPollingInterval) return;
     _currentPollingInterval = _minPollingInterval;
     _pollTimer?.cancel();
     _scheduleNextPoll();
@@ -610,17 +703,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// ポーリング間隔を更新
   void _updatePollingInterval() {
-    final ansiTextViewState = _ansiTextViewKey.currentState;
-    if (ansiTextViewState != null) {
-      final recommended = ansiTextViewState.recommendedPollingInterval;
-      // tmux copy-mode 検出中はポーリング間隔の上限を500msに制限
-      // copy-mode終了の検出遅延を最大0.5秒に改善
-      final maxInterval = _scrollModeSource == ScrollModeSource.tmux ? 500 : _maxPollingInterval;
-      _currentPollingInterval = recommended.clamp(
-        _minPollingInterval,
-        maxInterval,
-      );
-    }
+    final recommended =
+        AdaptivePollingInterval.calculateInterval(_unchangedPolls);
+    // tmux copy-mode 検出中はポーリング間隔の上限を500msに制限
+    final maxInterval =
+        _scrollModeSource == ScrollModeSource.tmux ? 500 : _maxPollingInterval;
+    _currentPollingInterval =
+        recommended.clamp(_minPollingInterval, maxInterval);
   }
 
   /// ペイン内容をポーリング取得
@@ -655,8 +744,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // 3つのコマンドを1つに統合して実行（持続的シェルは同時に1コマンドのみ）
       // capture-pane + カーソル位置情報 + ペインモード を1回で取得
       // 出力形式: [ペイン内容]\n[カーソル情報]\n[ペインモード]
+      // ライブ更新は直近120行のみ取得する。全スクロールバック（〜1000行）を
+      // 毎ポーリング（〜50ms）でデコード/split/比較/走査すると主スレッドが
+      // 詰まりフレームが遅延するため。深い履歴は tmux copy-mode で参照する。
       final combinedCommand =
-          '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: -1000)}; '
+          '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: -120)}; '
           '${TmuxCommands.getCursorPosition(target)}; '
           '${TmuxCommands.getPaneMode(target)}';
 
@@ -665,11 +757,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         timeout: const Duration(seconds: 2),
       );
 
-      // 出力を分割（最後の行がペインモード、その前がカーソル情報）
-      final lines = combinedOutput.split('\n');
-      final paneModeOutput = lines.isNotEmpty ? lines.removeLast() : '';
-      final cursorOutput = lines.isNotEmpty ? lines.removeLast() : '';
-      final output = lines.join('\n');
+      // 末尾2行（カーソル情報・ペインモード）を全文splitせずに切り出す
+      // （全行 split+join はアクティブ出力時の主スレッド負荷になるため回避）。
+      final modeCut = combinedOutput.lastIndexOf('\n');
+      final paneModeOutput =
+          modeCut >= 0 ? combinedOutput.substring(modeCut + 1) : '';
+      final beforeMode =
+          modeCut >= 0 ? combinedOutput.substring(0, modeCut) : '';
+      final curCut = beforeMode.lastIndexOf('\n');
+      final cursorOutput =
+          curCut >= 0 ? beforeMode.substring(curCut + 1) : '';
+      final output = curCut >= 0 ? beforeMode.substring(0, curCut) : '';
 
       // capture-paneの出力末尾にある改行を削除
       final processedOutput = output.endsWith('\n')
@@ -709,24 +807,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         }
       }
 
-      // レイテンシを更新
+      // レイテンシは専用ValueNotifierで更新（変化時のみインジケーターを再描画）。
+      // コンテンツ用_viewNotifierには含めないことで、ping揺れによる
+      // ターミナル本文（AnsiTextView）の無駄な再描画を排除する。
       final latency = endTime.difference(startTime).inMilliseconds;
+      if (mounted && !_isDisposed) {
+        _latencyNotifier.value = latency;
+      }
 
-      // 差分があれば更新（スロットリング適用）
+      // 適応型ポーリング: 内容変化の頻度を毎ポーリングで記録（アイドル時にバックオフ）
+      if (processedOutput == _lastPolledContent) {
+        _unchangedPolls++;
+      } else {
+        _unchangedPolls = 0;
+        _lastPolledContent = processedOutput;
+      }
+
+      // コンテンツ差分があれば更新（スロットリング適用）
       final currentView = _viewNotifier.value;
-      if (processedOutput != currentView.content || latency != currentView.latency) {
-        // 手動スクロールモード中のみ更新をバッファリングして選択状態を保持
+      if (processedOutput != currentView.content) {
+        // 手動スクロールモード中は更新をバッファリングして選択状態を保持
         // tmux copy-mode中はcapture-paneがスクロール位置の内容を返すためリアルタイム表示
         if (_terminalMode == TerminalMode.scroll && _scrollModeSource == ScrollModeSource.manual) {
           _bufferedContent = processedOutput;
-          _bufferedLatency = latency;
           _hasBufferedUpdate = true;
-          // レイテンシのみ更新（選択に影響しない）
-          if (mounted && !_isDisposed) {
-            _viewNotifier.value = currentView.copyWith(latency: latency);
-          }
         } else {
-          _scheduleUpdate(processedOutput, latency);
+          _scheduleUpdate(processedOutput);
         }
       }
 
@@ -769,10 +875,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// バッファリングされた更新を適用（スクロールモード終了時に呼び出し）
   void _applyBufferedUpdate() {
     if (_hasBufferedUpdate) {
-      _scheduleUpdate(_bufferedContent, _bufferedLatency);
+      _scheduleUpdate(_bufferedContent);
       _hasBufferedUpdate = false;
       _bufferedContent = '';
-      _bufferedLatency = 0;
+    }
+  }
+
+  /// スクロール＆選択モード開始時に履歴を一度だけ取得して表示する。
+  /// ライブポーリングは軽量な直近行のままなので性能は落ちない。深い履歴は
+  /// ポーリングとは別のexecチャネルで取得し、ホットパスに影響しない。
+  Future<void> _loadHistoryForScroll({bool preservePosition = false}) async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) return;
+    final target = ref.read(tmuxProvider.notifier).currentTarget;
+    if (target == null) return;
+    try {
+      // スクロールバック全体を一括取得（-S に大きな負値でヒストリ全体をキャプチャ）。
+      // tmux は履歴上限までにクランプするため、深い履歴も末尾まで遡れる。
+      final out = await sshClient.exec(
+        TmuxCommands.capturePane(
+          target,
+          escapeSequences: true,
+          startLine: -100000,
+        ),
+      );
+      if (!mounted || _isDisposed) return;
+      if (_terminalMode != TerminalMode.scroll) return;
+      final content =
+          out.endsWith('\n') ? out.substring(0, out.length - 1) : out;
+      if (preservePosition) {
+        // スクロール上端からの自動ロード: プリペンドされた行数ぶん位置を補正し、
+        // 直前に最上部だった行を同じ位置に留める（真ん中へ飛ばないように）。
+        // 行数は実際のコンテンツ文字列から算出（ウィジェット側キャッシュに依存しない）。
+        final oldContent = _viewNotifier.value.content;
+        final oldLines =
+            oldContent.isEmpty ? 0 : '\n'.allMatches(oldContent).length + 1;
+        final newLines =
+            content.isEmpty ? 0 : '\n'.allMatches(content).length + 1;
+        final prepended = newLines - oldLines;
+        _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+        if (prepended > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_isDisposed) {
+              _ansiTextViewKey.currentState?.jumpToLineFromTop(prepended);
+            }
+          });
+        }
+      } else {
+        _viewNotifier.value = _viewNotifier.value.copyWith(content: content);
+        // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isDisposed) {
+            _ansiTextViewKey.currentState?.scrollToBottom();
+          }
+        });
+      }
+    } catch (_) {
+      // 取得失敗時は直近行のライブ表示のまま
     }
   }
 
@@ -780,9 +939,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 高頻度更新時（htop等）に毎フレーム更新しないようスロットリングを行う。
   /// 16ms（約60fps）以内の連続更新は次フレームに延期される。
-  void _scheduleUpdate(String content, int latency) {
+  void _scheduleUpdate(String content) {
     _pendingContent = content;
-    _pendingLatency = latency;
 
     // すでに更新がスケジュール済みなら何もしない
     if (_pendingUpdate) return;
@@ -811,7 +969,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ValueNotifier更新（親のsetState()を回避し、ValueListenableBuilderのみリビルド）
     _viewNotifier.value = _viewNotifier.value.copyWith(
       content: _pendingContent,
-      latency: _pendingLatency,
     );
 
     // 初回コンテンツ受信時に一番下へスクロール
@@ -871,7 +1028,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _scrollToBottomKey.currentState?.show();
   }
 
-  @override
+  /// 上端でのオーバースクロール（さらに上へ引っ張る操作）を検出して深い履歴を
+  /// ロードする。単に上端へ達しただけでは発火せず、明示的に引っ張ったときのみ
+  /// 発火する（誤爆を防ぎ、tmux のコピーモード相当の操作感にする）。
+  bool _onTerminalOverscroll(OverscrollNotification n) {
+    if (n.metrics.axis == Axis.vertical &&
+        n.overscroll < 0 &&
+        _terminalMode == TerminalMode.normal &&
+        !_isLoadingDeepHistory) {
+      _loadDeepHistoryOnScroll();
+    }
+    return false;
+  }
+
+  /// スクロール上端到達時に深い履歴を自動ロードする。スクロールモードに入って
+  /// ライブ更新をバッファし、履歴表示を保持する。
+  Future<void> _loadDeepHistoryOnScroll() async {
+    if (_isLoadingDeepHistory) return;
+    _isLoadingDeepHistory = true;
+    if (_terminalMode != TerminalMode.scroll) {
+      setState(() {
+        _terminalMode = TerminalMode.scroll;
+        _scrollModeSource = ScrollModeSource.manual;
+      });
+    }
+    try {
+      await _loadHistoryForScroll(preservePosition: true);
+    } finally {
+      _isLoadingDeepHistory = false;
+    }
+  }
+
   @override
   void deactivate() {
     // ref.readはdeactivateまでは安全（disposeでは_elementsから外れている）
@@ -880,6 +1067,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     sshNotifier.onDisconnectDetected = null;
 
     // popUntil等で_disconnect()を経由せずにpopされた場合もSSHを切断
+    // 切断前にリサイズしたウィンドウを自動サイズへ戻す（best-effort）
+    _restoreResizedWindows();
     if (sshNotifier.checkConnection()) {
       sshNotifier.disconnect();
     }
@@ -915,8 +1104,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _keyOverlayState.dispose();
     _autoResizeDebounceTimer?.cancel();
     _autoResizeDebounceTimer = null;
+    _backgroundRestoreTimer?.cancel();
+    _backgroundRestoreTimer = null;
     // ValueNotifierを破棄
     _viewNotifier.dispose();
+    _latencyNotifier.dispose();
     // スクロールコントローラーのリスナーを削除して破棄
     _terminalScrollController.removeListener(_onTerminalScroll);
     _terminalScrollController.dispose();
@@ -970,7 +1162,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   x: s.activePane?.cursorX ?? 0,
                                   y: s.activePane?.cursorY ?? 0,
                                 )));
-                                return AnsiTextView(
+                                return NotificationListener<OverscrollNotification>(
+                                  onNotification: _onTerminalOverscroll,
+                                  child: AnsiTextView(
                                   key: _ansiTextViewKey,
                                   text: viewData.content,
                                   paneWidth: viewData.paneWidth,
@@ -994,6 +1188,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   onArrowSwipe: _sendSpecialKeyWithOverlay,
                                   onTwoFingerSwipe: _handleTwoFingerSwipe,
                                   navigableDirections: _getNavigableDirections(),
+                                  ),
                                 );
                               },
                             );
@@ -1204,7 +1399,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     try {
       // エスケープシーケンスや特殊キーはリテラルで送信
-      await sshClient.exec(TmuxCommands.sendKeys(target, data, literal: true));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, data, literal: true));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視
@@ -1493,34 +1688,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
               ),
             ),
+            // ブレッドクラムと右側インジケータ群の間に必ず余白を確保する。
+            // これがないとスクロールチップ等がブレッドクラムに密着し、重なって見える。
+            const SizedBox(width: 8),
             // Scroll mode indicator
             if (_terminalMode == TerminalMode.scroll)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                margin: const EdgeInsets.only(right: 8),
-                decoration: BoxDecoration(
-                  color: DesignColors.warning.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: DesignColors.warning.withValues(alpha: 0.5)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.unfold_more, size: 12, color: DesignColors.warning),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Scroll',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 10,
-                        color: DesignColors.warning,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _terminalMode = TerminalMode.normal;
+                    _scrollModeSource = ScrollModeSource.none;
+                  });
+                  _cancelTmuxCopyMode();
+                  _applyBufferedUpdate();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  margin: const EdgeInsets.only(right: 8),
+                  decoration: BoxDecoration(
+                    color: DesignColors.warning.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: DesignColors.warning.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.unfold_more, size: 12, color: DesignColors.warning),
+                      const SizedBox(width: 4),
+                      Icon(Icons.close, size: 12, color: DesignColors.warning),
+                    ],
+                  ),
                 ),
               ),
             // Zoom indicator
-            if (_zoomScale != 1.0)
+            if (_isZoomed)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 margin: const EdgeInsets.only(right: 8),
@@ -1529,7 +1730,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  '${(_zoomScale * 100).toStringAsFixed(0)}%',
+                  '${(_effectiveZoom * 100).round()}%',
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     color: DesignColors.warning,
@@ -1537,22 +1738,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
               ),
             // Latency / Reconnect indicator（ValueListenableBuilderでポーリング更新をスコープ）
-            ValueListenableBuilder<_TerminalViewData>(
-              valueListenable: _viewNotifier,
-              builder: (context, viewData, _) => _buildConnectionIndicator(viewData.latency),
+            ValueListenableBuilder<int>(
+              valueListenable: _latencyNotifier,
+              builder: (context, latency, _) => _buildConnectionIndicator(latency),
             ),
-            // File browser button
-            IconButton(
-              onPressed: _handleFileBrowser,
-              icon: Icon(
-                Icons.folder_outlined,
-                size: 16,
-                color: colorScheme.onSurface.withValues(alpha: 0.6),
+            // File browser button（スクロール中は場所を空けるため非表示）
+            if (_terminalMode != TerminalMode.scroll)
+              IconButton(
+                onPressed: _handleFileBrowser,
+                icon: Icon(
+                  Icons.folder_outlined,
+                  size: 16,
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(),
+                tooltip: 'File Browser',
               ),
-              padding: const EdgeInsets.all(8),
-              constraints: const BoxConstraints(),
-              tooltip: 'File Browser',
-            ),
             // Settings button
             IconButton(
               onPressed: _showTerminalMenu,
@@ -1711,6 +1913,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         onTap: () {
                           Navigator.pop(context);
                           _selectWindow(session.name, window.index);
+                        },
+                        onRename: () {
+                          Navigator.pop(context);
+                          _showRenameWindowDialog(session, window);
                         },
                         onResize: () {
                           Navigator.pop(context);
@@ -1952,14 +2158,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// 自動リサイズ: 画面サイズに合わせてtmuxペインをリサイズ
-  Future<void> _executeAutoResize(TmuxPane pane) async {
+  Future<void> _executeAutoResize(TmuxPane pane, {bool force = false}) async {
     if (_isResizing) return;
-    if (_tmuxVersion != null && !_tmuxVersion!.supportsResizePaneToSize) return;
+    if (_tmuxVersion != null && !_tmuxVersion!.supportsResizeWindow) return;
 
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
 
-    final fontSize = settings.fontSize;
+    final fontSize = zoomedFontSize(
+      baseFontSize: settings.fontSize,
+      zoomFactor: settings.zoomFactor,
+      minFontSize: settings.minFontSize,
+    );
     final targetCols = FontCalculator.calculateMaxCols(
       screenWidth: displayState.screenWidth,
       fontSize: fontSize,
@@ -1979,7 +2189,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         'target=${targetCols}x$targetRows');
 
     // 既存サイズと同一ならスキップ
-    if (pane.width == targetCols && pane.height == targetRows) return;
+    if (!force && pane.width == targetCols && pane.height == targetRows) return;
 
     _isResizing = true;
     _pollTimer?.cancel();
@@ -1987,8 +2197,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       final sshClient = ref.read(sshProvider.notifier).client;
       if (sshClient == null || !sshClient.isConnected) return;
       await sshClient.exec(
-        TmuxCommands.resizePaneToSize(pane.id, cols: targetCols, rows: targetRows),
+        TmuxCommands.resizeWindow(pane.id, cols: targetCols, rows: targetRows),
       );
+      _resizedWindowTargets.add(pane.id);
+      // 接続断時にサーバ側で自動復元するtrapを設定（スワイプ終了・強制終了対策）
+      sshClient.setWindowRestoreTrap(_resizedWindowTargets.toList());
       await _refreshSessionTree();
       final updatedPane = ref.read(tmuxProvider).activePane;
       if (updatedPane != null) {
@@ -1999,6 +2212,35 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } finally {
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
+    }
+  }
+
+  /// AutoResizeで縮めたウィンドウを自動サイズへ戻す（デスクトップ等の他クライアントが
+  /// 幅を取り戻せるように）。SSHがまだ生きているうちに呼ぶこと。
+  Future<void> _restoreResizedWindows() async {
+    if (_resizedWindowTargets.isEmpty) return;
+    final targets = _resizedWindowTargets.toList();
+    _resizedWindowTargets.clear();
+    final client = ref.read(sshProvider.notifier).client;
+    if (client == null || !client.isConnected) return;
+    // fire-and-forget（チャネル開閉なし）で送信。高遅延やバックグラウンド移行の短い
+    // 猶予でも詰まらず、届かず死んだ場合はサーバ側trapが復元する。
+    await client.restoreWindowsNoWait(targets);
+  }
+
+  /// 接続直後の自動リサイズ。screenWidth が確定（>0）してから実行する。
+  /// 初回はレイアウト未確定で screenWidth=0 のため、確定まで数フレーム待つ。
+  void _scheduleInitialAutoResize([int attempt = 0]) {
+    if (!mounted || _isDisposed) return;
+    final screenWidth = ref.read(terminalDisplayProvider).screenWidth;
+    final activePane = ref.read(tmuxProvider).activePane;
+    if (activePane != null && screenWidth > 0) {
+      _executeAutoResize(activePane);
+    } else if (attempt < 15) {
+      Future.delayed(
+        const Duration(milliseconds: 120),
+        () => _scheduleInitialAutoResize(attempt + 1),
+      );
     }
   }
 
@@ -2474,6 +2716,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     });
                     if (newMode == TerminalMode.scroll) {
                       _enterTmuxCopyMode();
+                      _loadHistoryForScroll();
                     } else {
                       _cancelTmuxCopyMode();
                       _applyBufferedUpdate();
@@ -2493,6 +2736,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   });
                   if (newMode == TerminalMode.scroll) {
                     _enterTmuxCopyMode();
+                    _loadHistoryForScroll();
                   } else {
                     _cancelTmuxCopyMode();
                     _applyBufferedUpdate();
@@ -2504,23 +2748,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ListTile(
                 leading: Icon(
                   Icons.zoom_out_map,
-                  color: _zoomScale != 1.0 ? DesignColors.warning : inactiveIconColor,
+                  color: _isZoomed ? DesignColors.warning : inactiveIconColor,
                 ),
                 title: Text(
                   'Reset Zoom',
                   style: TextStyle(
-                    color: _zoomScale != 1.0 ? textColor : mutedTextColor,
+                    color: _isZoomed ? textColor : mutedTextColor,
                   ),
                 ),
                 subtitle: Text(
-                  _zoomScale != 1.0
-                      ? 'Current: ${(_zoomScale * 100).toStringAsFixed(0)}%'
+                  _isZoomed
+                      ? 'Current: ${(_effectiveZoom * 100).round()}%'
                       : 'Pinch to zoom in/out',
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
-                enabled: _zoomScale != 1.0,
-                onTap: _zoomScale != 1.0
+                enabled: _isZoomed,
+                onTap: _isZoomed
                     ? () {
+                        ref.read(settingsProvider.notifier).setZoomFactor(1.0);
                         _ansiTextViewKey.currentState?.resetZoom();
                         setState(() {
                           _zoomScale = 1.0;
@@ -2693,6 +2938,61 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
+  /// ウィンドウ名変更ダイアログを表示
+  void _showRenameWindowDialog(TmuxSession session, TmuxWindow window) {
+    final otherNames = session.windows
+        .where((w) => w.index != window.index)
+        .map((w) => w.name)
+        .toList();
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => RenameWindowDialog(
+        currentName: window.name,
+        otherWindowNames: otherNames,
+      ),
+    ).then((newName) {
+      if (newName == null) return;
+      final trimmed = newName.trim();
+      if (trimmed.isEmpty || trimmed == window.name) return;
+      _renameWindow(
+        sessionName: session.name,
+        windowIndex: window.index,
+        newName: trimmed,
+      );
+    });
+  }
+
+  /// ウィンドウ名を変更
+  Future<void> _renameWindow({
+    required String sessionName,
+    required int windowIndex,
+    required String newName,
+  }) async {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || !sshClient.isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SSH connection is not available')),
+        );
+      }
+      return;
+    }
+    try {
+      debugPrint('[Terminal] Renaming window: $sessionName:$windowIndex -> $newName');
+      await sshClient.exec(
+        TmuxCommands.renameWindow(sessionName, windowIndex, newName),
+      );
+      await _refreshSessionTree();
+    } catch (e) {
+      debugPrint('[Terminal] Failed to rename window: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to rename window: $e')),
+        );
+      }
+    }
+  }
+
   /// 切断確認ダイアログを表示
   void _showDisconnectConfirmation() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -2739,6 +3039,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ポーリングを停止
     _pollTimer?.cancel();
     _treeRefreshTimer?.cancel();
+
+    // 切断前にリサイズしたウィンドウを自動サイズへ戻す
+    await _restoreResizedWindows();
 
     // SSH切断
     await ref.read(sshProvider.notifier).disconnect();
@@ -2933,7 +3236,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (target == null) return;
 
     try {
-      await sshClient.exec(TmuxCommands.sendKeys(target, key, literal: literal));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, key, literal: literal));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
@@ -2947,7 +3250,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
     try {
-      await sshClient.exec(TmuxCommands.enterCopyMode(target));
+      await sshClient.sendKeysCommand(TmuxCommands.enterCopyMode(target));
       _boostPolling();
     } catch (_) {}
   }
@@ -2959,7 +3262,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final target = ref.read(tmuxProvider.notifier).currentTarget;
     if (target == null) return;
     try {
-      await sshClient.exec(TmuxCommands.cancelCopyMode(target));
+      await sshClient.sendKeysCommand(TmuxCommands.cancelCopyMode(target));
       _boostPolling();
     } catch (_) {}
   }
@@ -2976,7 +3279,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     try {
       // 特殊キーはリテラルではなくtmux形式で送信
-      await sshClient.exec(TmuxCommands.sendKeys(target, tmuxKey, literal: false));
+      await sshClient.sendKeysCommand(TmuxCommands.sendKeys(target, tmuxKey, literal: false));
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
@@ -3151,7 +3454,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// SSH round-trip.  Bracketed paste mode (`-p`) tells the receiving
   /// shell to treat the block as literal data, preventing `\`-continuation
   /// and prompt-redraw races that plagued the previous per-line approach.
-  Future<void> _sendMultilineText(String text) async {
+  Future<void> _sendMultilineText(String text, {bool execute = true}) async {
     if (text.isEmpty) return;
 
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -3185,6 +3488,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       await sshClient.exec(
         TmuxCommands.loadBufferAndPaste(target, payload),
       );
+      if (execute) {
+        await sshClient.exec(TmuxCommands.sendKeys(target, 'Enter'));
+      }
       _boostPolling();
     } catch (e) {
       debugPrint('[Terminal] paste-buffer send failed: $e');
@@ -3194,6 +3500,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         await sshClient.exec(
           TmuxCommands.loadBufferAndPasteNoBracketed(target, payload),
         );
+        if (execute) {
+          await sshClient.exec(TmuxCommands.sendKeys(target, 'Enter'));
+        }
         _boostPolling();
       } catch (e2) {
         debugPrint('[Terminal] paste-buffer (no-bracketed) send failed: $e2');
@@ -3212,7 +3521,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
-    if (panes.isEmpty) {
+    // 1ペイン（または0）ではミニマップは情報量ゼロ。右上に重なって内容
+    // （プロンプトやスクロール位置表示など）を隠すだけなので表示しない。
+    if (panes.length <= 1) {
       return const SizedBox.shrink();
     }
 
