@@ -91,19 +91,35 @@ write 権限）でアクセスする。GitHub Secrets に PAT を置く必要は
 CI では実行ごとに使い捨ての keychain を作り、そこへ証明書を取り込んでから
 ビルドし、終了時に削除する（ログインキーチェーンは解錠されていないため）。
 
-`ios/Runner.xcodeproj` は自動署名のままにしてあり、手動署名の設定は
-ビルド時に `xcargs` で上書きしている。
+`ios/Runner.xcodeproj` はリポジトリ上では自動署名のままにしてある。
+手動署名の設定は `update_code_signing_settings` で **Runner ターゲットの
+Release 構成にだけ** 書き込む。CI の checkout は毎回作り直されるので
+pbxproj への書き込みは残らない。
 
-`CODE_SIGN_IDENTITY` は素の形と sdk 条件付きの形の両方を渡す必要がある。
-プロジェクトが `"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"` を
-持っており、素の形だけではこの条件付き指定に負けて開発用証明書を探しに行き、
-次のエラーになる。
+### なぜ xcargs ではないのか
+
+`xcodebuild` のコマンドライン引数は全ターゲットに適用される。
+`PROVISIONING_PROFILE_SPECIFIER` をそこで渡すと、プロファイルを受け付けない
+Pods のフレームワークターゲットが軒並み失敗する。
+
+```
+error: Pods-Runner does not support provisioning profiles, but provisioning
+profile match AppStore si.mox.mux-pod has been manually specified.
+```
+
+### CODE_SIGN_IDENTITY を 2 回書く理由
+
+プロジェクトレベルに `"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer"`
+があり、素の形だけを書いてもこの条件付き指定が残って開発用証明書を探しに行く。
 
 ```
 error: No signing certificate "iOS Development" found:
 No "iOS Development" signing certificate matching team ID "MUBKJR7U7A"
 with a private key was found. (in target 'Runner' from project 'Runner')
 ```
+
+そのため `update_code_signing_settings` を `sdk: nil` と
+`sdk: "iphoneos*"` の 2 回呼んで両方の形を書き込んでいる。
 
 証明書名は match が `sigh_<bundle-id>_appstore_certificate-name` という
 環境変数に入れてくれるので、それを使う。
