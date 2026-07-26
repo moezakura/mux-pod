@@ -59,3 +59,11 @@ worktree/
 # Signing
 android/key.properties
 android/app/upload-keystore.jks
+
+# fastlane
+ios/fastlane/report.xml
+ios/fastlane/Preview.html
+ios/fastlane/screenshots/
+ios/fastlane/test_output/
+ios/.bundle/
+ios/vendor/bundle/

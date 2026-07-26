@@ -1,0 +1,8 @@
+# 証明書・プロビジョニングプロファイルの保管先。
+# 中身は MATCH_PASSWORD で AES 暗号化された上でコミットされる。
+git_url("git@github.com:moezakura/muxpod-certificates.git")
+storage_mode("git")
+
+type("appstore")
+app_identifier(["si.mox.mux-pod"])
+team_id("MUBKJR7U7A")

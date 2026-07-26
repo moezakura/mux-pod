@@ -1,0 +1,129 @@
+require "securerandom"
+require "shellwords"
+
+default_platform(:ios)
+
+APP_IDENTIFIER = "si.mox.mux-pod".freeze
+TEAM_ID        = "MUBKJR7U7A".freeze
+
+# match が Apple Developer 上に作成するプロファイル名。
+# match の命名規則は "match <Type> <BundleID>" で固定。
+PROFILE_NAME = "match AppStore #{APP_IDENTIFIER}".freeze
+
+# ios/fastlane から見た Flutter プロジェクトルート
+FLUTTER_ROOT = File.expand_path("../..", __dir__).freeze
+
+platform :ios do
+  desc "署名付き IPA をビルドして TestFlight へアップロードする"
+  desc ""
+  desc "必須オプション:"
+  desc "  build_name   CFBundleShortVersionString (例: 0.2.2)"
+  desc "  build_number CFBundleVersion (例: 202)"
+  desc "任意オプション:"
+  desc "  git_ref      アプリ内に埋め込む git 参照 (例: v0.2.2@abc1234)"
+  desc ""
+  desc "必須環境変数:"
+  desc "  ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8_BASE64 / MATCH_PASSWORD"
+  lane :beta do |options|
+    build_name   = options[:build_name]   || UI.user_error!("build_name が指定されていません")
+    build_number = options[:build_number] || UI.user_error!("build_number が指定されていません")
+    git_ref      = options[:git_ref].to_s
+
+    api_key = app_store_connect_api_key(
+      key_id:                ENV.fetch("ASC_KEY_ID"),
+      issuer_id:             ENV.fetch("ASC_ISSUER_ID"),
+      key_content:           ENV.fetch("ASC_KEY_P8_BASE64"),
+      is_key_content_base64: true,
+      in_house:              false,
+    )
+
+    # CI ではログインキーチェーンが解錠されていないため、
+    # 実行ごとに使い捨てのキーチェーンを作ってそこへ証明書を入れる。
+    keychain_name     = "muxpod-ci-#{SecureRandom.hex(4)}.keychain"
+    keychain_password = SecureRandom.base64(24)
+
+    create_keychain(
+      name:               keychain_name,
+      password:           keychain_password,
+      default_keychain:   false,
+      add_to_search_list: true,
+      unlock:             true,
+      timeout:            3600,
+      lock_when_sleeps:   false,
+    )
+
+    begin
+      # 配布用証明書とプロビジョニングプロファイルを取得する。
+      # 未作成の場合は ASC API 経由で Apple Developer 上に新規作成される。
+      match(
+        type:              "appstore",
+        app_identifier:    APP_IDENTIFIER,
+        api_key:           api_key,
+        keychain_name:     keychain_name,
+        keychain_password: keychain_password,
+        readonly:          false,
+      )
+
+      # Generated.xcconfig にバージョンと dart-define を書き込ませる。
+      # Dart の AOT コンパイルは xcodebuild 内の Flutter ビルドフェーズが行うため、
+      # ここでは --config-only で設定生成と pod install だけを実施する。
+      sh([
+        "cd", FLUTTER_ROOT.shellescape, "&&",
+        "flutter", "build", "ios", "--config-only", "--release",
+        "--build-name=#{build_name.shellescape}",
+        "--build-number=#{build_number.to_s.shellescape}",
+        "--dart-define=APP_VERSION=v#{build_name.shellescape}",
+        "--dart-define=GIT_REF=#{git_ref.shellescape}",
+      ].join(" "))
+
+      # pbxproj は自動署名のままなので、手動署名の設定はビルド時に上書きする。
+      build_app(
+        workspace:        "Runner.xcworkspace",
+        scheme:           "Runner",
+        configuration:    "Release",
+        export_method:    "app-store",
+        clean:            true,
+        output_directory: File.join(FLUTTER_ROOT, "build", "ios", "ipa"),
+        output_name:      "MuxPod.ipa",
+        xcargs: [
+          "CODE_SIGN_STYLE=Manual",
+          "DEVELOPMENT_TEAM=#{TEAM_ID}",
+          "PROVISIONING_PROFILE_SPECIFIER=#{PROFILE_NAME.shellescape}",
+        ].join(" "),
+        export_team_id: TEAM_ID,
+        export_options: {
+          signingStyle: "manual",
+          teamID:       TEAM_ID,
+          provisioningProfiles: { APP_IDENTIFIER => PROFILE_NAME },
+        },
+      )
+
+      upload_to_testflight(
+        api_key:                           api_key,
+        app_identifier:                    APP_IDENTIFIER,
+        skip_waiting_for_build_processing: true,
+        distribute_external:               false,
+      )
+    ensure
+      delete_keychain(name: keychain_name)
+    end
+  end
+
+  desc "証明書とプロファイルの取得のみを行う（ローカル検証用）"
+  lane :certificates do
+    api_key = app_store_connect_api_key(
+      key_id:                ENV.fetch("ASC_KEY_ID"),
+      issuer_id:             ENV.fetch("ASC_ISSUER_ID"),
+      key_content:           ENV.fetch("ASC_KEY_P8_BASE64"),
+      is_key_content_base64: true,
+      in_house:              false,
+    )
+
+    match(
+      type:           "appstore",
+      app_identifier: APP_IDENTIFIER,
+      api_key:        api_key,
+      readonly:       false,
+    )
+  end
+end
