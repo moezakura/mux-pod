@@ -1,0 +1,132 @@
+name: Upload to TestFlight
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'バージョン (例: 0.2.2)。省略時は pubspec.yaml の値を使う'
+        required: false
+        type: string
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    # 192.168.10.2 (moxs-Mac-mini) の muxpod-ci ユーザで動く self-hosted runner
+    runs-on: [self-hosted, macOS, ARM64, muxpod]
+    timeout-minutes: 90
+
+    env:
+      # fastlane / CocoaPods は UTF-8 ロケールを要求する
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_HIDE_CHANGELOG: '1'
+      # xcodebuild のログを CI 向けに抑制する
+      FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: '120'
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PATH に mise の shim を追加
+        run: |
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: 必須シークレットの存在確認
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64 MATCH_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::シークレット $name が設定されていません"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+      - name: ツールチェーンの確認
+        run: |
+          xcodebuild -version
+          flutter --version
+          ruby --version
+          pod --version
+          fastlane --version | tail -n 1
+
+      - name: バージョンとビルド番号を算出
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            BUILD_NAME="${{ inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            BUILD_NAME="${GITHUB_REF_NAME#v}"
+          else
+            BUILD_NAME=$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)
+          fi
+
+          if ! echo "$BUILD_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::バージョン '$BUILD_NAME' が x.y.z 形式ではありません"
+            exit 1
+          fi
+
+          MAJOR=$(echo "$BUILD_NAME" | cut -d. -f1)
+          MINOR=$(echo "$BUILD_NAME" | cut -d. -f2)
+          PATCH=$(echo "$BUILD_NAME" | cut -d. -f3)
+          # 既存の release-ios.yml と同じ採番規則
+          BUILD_NUMBER=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+
+          echo "build_name=$BUILD_NAME"     >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "git_ref=${GITHUB_REF_NAME}@$(echo "$GITHUB_SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+          echo "### TestFlight ビルド" >> "$GITHUB_STEP_SUMMARY"
+          echo "- バージョン: \`$BUILD_NAME\`"    >> "$GITHUB_STEP_SUMMARY"
+          echo "- ビルド番号: \`$BUILD_NUMBER\`"  >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dart 依存関係を取得
+        run: flutter pub get
+
+      - name: Ruby 依存関係を取得
+        working-directory: ios
+        run: bundle install --quiet
+
+      - name: ビルドして TestFlight へアップロード
+        working-directory: ios
+        run: |
+          bundle exec fastlane beta \
+            build_name:'${{ steps.version.outputs.build_name }}' \
+            build_number:'${{ steps.version.outputs.build_number }}' \
+            git_ref:'${{ steps.version.outputs.git_ref }}'
+
+      - name: 失敗時のログを収集
+        if: failure()
+        run: |
+          mkdir -p /tmp/muxpod-ci-logs
+          cp -R "$HOME/Library/Logs/gym" /tmp/muxpod-ci-logs/ 2>/dev/null || true
+          cp -R ios/fastlane/report.xml  /tmp/muxpod-ci-logs/ 2>/dev/null || true
+
+      - name: 失敗時のログをアーティファクトとして保存
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_id }}
+          path: /tmp/muxpod-ci-logs
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: 使い捨てキーチェーンの後始末
+        if: always()
+        run: |
+          # Fastfile の ensure で消えるはずだが、異常終了時の保険として掃除する
+          for kc in "$HOME"/Library/Keychains/muxpod-ci-*.keychain-db; do
+            [ -e "$kc" ] || continue
+            security delete-keychain "$kc" 2>/dev/null || true
+          done
