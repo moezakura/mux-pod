@@ -80,12 +80,34 @@ platform :ios do
       # 例: "Apple Distribution: Furukawa Masaki (MUBKJR7U7A)"
       signing_identity = ENV["sigh_#{APP_IDENTIFIER}_appstore_certificate-name"] || "Apple Distribution"
 
-      # pbxproj は自動署名のままなので、手動署名の設定はビルド時に上書きする。
+      # 手動署名の設定は Runner ターゲットの Release 構成にだけ書き込む。
       #
-      # CODE_SIGN_IDENTITY は素の形と sdk 条件付きの形の両方を指定する。
-      # プロジェクト側が "CODE_SIGN_IDENTITY[sdk=iphoneos*] = iPhone Developer" を
-      # 持っており、素の形だけではこの条件付き指定に負けて開発用証明書を
+      # xcodebuild のコマンドライン引数 (xcargs) は全ターゲットに適用されるため、
+      # そちらで指定すると Pods 側のフレームワークターゲットが
+      #   "Pods-Runner does not support provisioning profiles"
+      # で失敗する。プロファイルを受け付けるのは Runner だけ。
+      #
+      # CODE_SIGN_IDENTITY は素の形と sdk 条件付きの形の両方を書き込む。
+      # プロジェクトレベルに "CODE_SIGN_IDENTITY[sdk=iphoneos*] = iPhone Developer"
+      # があり、素の形だけではこの条件付き指定が残って開発用証明書を
       # 探しにいってしまうため。
+      #
+      # pbxproj を書き換えるが、CI の checkout は毎回作り直されるので影響はない。
+      # ローカルでこのレーンを実行した場合は差分が残るので注意。
+      [nil, "iphoneos*"].each do |sdk|
+        update_code_signing_settings(
+          path:                  "Runner.xcodeproj",
+          use_automatic_signing: false,
+          sdk:                   sdk,
+          team_id:               TEAM_ID,
+          code_sign_identity:    signing_identity,
+          profile_name:          PROFILE_NAME,
+          bundle_identifier:     APP_IDENTIFIER,
+          targets:               ["Runner"],
+          build_configurations:  ["Release"],
+        )
+      end
+
       build_app(
         workspace:        "Runner.xcworkspace",
         scheme:           "Runner",
@@ -94,14 +116,7 @@ platform :ios do
         clean:            true,
         output_directory: File.join(FLUTTER_ROOT, "build", "ios", "ipa"),
         output_name:      "MuxPod.ipa",
-        xcargs: Shellwords.join([
-          "CODE_SIGN_STYLE=Manual",
-          "DEVELOPMENT_TEAM=#{TEAM_ID}",
-          "PROVISIONING_PROFILE_SPECIFIER=#{PROFILE_NAME}",
-          "CODE_SIGN_IDENTITY=#{signing_identity}",
-          "CODE_SIGN_IDENTITY[sdk=iphoneos*]=#{signing_identity}",
-        ]),
-        export_team_id: TEAM_ID,
+        export_team_id:   TEAM_ID,
         export_options: {
           signingStyle: "manual",
           teamID:       TEAM_ID,
