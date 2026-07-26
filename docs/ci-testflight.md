@@ -40,9 +40,20 @@ CI の実行に sudo は不要。
 ### 注意点
 
 - **Flutter のバージョン指定**: リポジトリの `.mise.toml` は
-  `flutter = "3.38.6-stable"` だが、macOS ではこの表記だと mise が
-  `-stable` を二重に付与して 404 になる。ビルドマシンには
-  `flutter@3.38.6` として導入してある。
+  `flutter = "3.38.6-stable"` を指定しているが、これは古い mise
+  (asdf プラグイン方式) 向けの表記。ビルドマシンの mise 2026.7.x は
+  ここから URL を組み立てる際に `-stable` を二重に付けてしまい 404 になる。
+
+  ```
+  flutter_macos_arm64_3.38.6-stable-stable.zip  ← 存在しない
+  ```
+
+  ローカル開発環境 (mise 2024.9.x) では現在の表記で動作しているため
+  `.mise.toml` は変更せず、workflow の `MISE_FLUTTER_VERSION: '3.38.6'` で
+  CI 側だけ上書きしている。環境変数は設定ファイルより優先される。
+
+  将来ローカルの mise を更新した際は `.mise.toml` を `3.38.6` に直し、
+  この上書きを削除してよい。
 - **libyaml**: macOS には libyaml のヘッダが無いため、mise の Ruby ビルドで
   psych が入らない。`~/.local` に libyaml 0.2.5 を自前ビルドし、
   `RUBY_CONFIGURE_OPTS=--with-libyaml-dir=$HOME/.local` で解決している。
