@@ -5,8 +5,10 @@ import '../providers/active_session_provider.dart';
 import '../providers/connection_provider.dart';
 import '../services/keychain/secure_storage.dart';
 import '../services/ssh/ssh_client.dart';
-import '../services/tmux/tmux_commands.dart';
-import '../services/tmux/tmux_parser.dart';
+import '../services/tmux/tmux_contract.dart';
+import '../services/tmux/tmux_facade.dart';
+import '../services/tmux/tmux_models.dart';
+
 import '../theme/design_colors.dart';
 import 'connections/connections_screen.dart';
 import 'dashboard/dashboard_screen.dart';
@@ -388,10 +390,12 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             options: options,
           );
 
-          final result = await sshClient.execWithExitCode(TmuxCommands.listSessions());
-          final tmuxSessions = (result.exitCode == 0)
-              ? TmuxParser.parseSessions(result.stdout)
-              : <TmuxSession>[];
+          List<TmuxSession> tmuxSessions;
+          try {
+            tmuxSessions = await tmuxFacade.listSessions(sshClient.tmuxExecutor);
+          } on TmuxCommandException {
+            tmuxSessions = <TmuxSession>[];
+          }
 
           // 切断
           await sshClient.disconnect();

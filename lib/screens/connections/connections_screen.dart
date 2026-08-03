@@ -9,8 +9,9 @@ import '../../providers/connection_provider.dart';
 import '../home_screen.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
-import '../../services/tmux/tmux_commands.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_facade.dart';
+import '../../services/tmux/tmux_models.dart';
+
 import '../../theme/design_colors.dart';
 import 'connection_form_screen.dart';
 import '../terminal/terminal_screen.dart';
@@ -716,15 +717,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   /// 接続済みクライアントでセッション一覧を取得し、状態とproviderへ反映する。
   Future<void> _reloadSessions(SshClient client) async {
-    final result = await client.execWithExitCode(TmuxCommands.listSessions());
-    if (result.exitCode != null && result.exitCode != 0) {
-      throw SshConnectionError(
-        result.stderr.isNotEmpty
-            ? result.stderr.trim()
-            : 'tmux command failed (exit code: ${result.exitCode})',
-      );
-    }
-    final sessions = TmuxParser.parseSessions(result.stdout);
+    final sessions = await tmuxFacade.listSessions(client.tmuxExecutor);
     if (!mounted) return;
     setState(() {
       _sessions = sessions;
@@ -773,15 +766,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshClient? client;
     try {
       client = await _connectSsh();
-      final result =
-          await client.execWithExitCode(TmuxCommands.killSession(session.name));
-      if (result.exitCode != null && result.exitCode != 0) {
-        throw SshConnectionError(
-          result.stderr.isNotEmpty
-              ? result.stderr.trim()
-              : 'kill-session failed (exit code: ${result.exitCode})',
-        );
-      }
+      await tmuxFacade.killSession(client.tmuxExecutor, session.name);
       // 同一接続でそのまま一覧を再取得
       await _reloadSessions(client);
       if (mounted) {

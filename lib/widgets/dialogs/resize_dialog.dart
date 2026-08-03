@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../services/terminal/font_calculator.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_models.dart';
+
 import '../../theme/design_colors.dart';
 
 /// リサイズ結果

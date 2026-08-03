@@ -4,7 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/notification_panes_provider.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_models.dart';
+
 import '../../theme/design_colors.dart';
 import '../terminal/terminal_screen.dart';
 

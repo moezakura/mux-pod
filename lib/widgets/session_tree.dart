@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
+
 import 'package:flutter_muxpod/widgets/tmux_tiles.dart';
 
 /// tmuxセッションツリー表示Widget
