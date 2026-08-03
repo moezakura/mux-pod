@@ -1,26 +1,49 @@
+
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../services/tmux/tmux_parser.dart';
+import '../services/tmux/tmux_models.dart';
 
+// inventory: PROV-ACTIVE-001
 /// アクティブセッション情報
 class ActiveSession {
+  // inventory: PROV-ACTIVE-002
+  // inventory: LEGACY-0001
   final String connectionId;
+  // inventory: PROV-ACTIVE-003
+  // inventory: LEGACY-0002
   final String connectionName;
+  // inventory: PROV-ACTIVE-004
+  // inventory: LEGACY-0003
   final String host;
+  // inventory: PROV-ACTIVE-005
+  // inventory: LEGACY-0004
   final String sessionName;
+  // inventory: PROV-ACTIVE-006
+  // inventory: LEGACY-0005
   final int windowCount;
+  // inventory: PROV-ACTIVE-007
+  // inventory: LEGACY-0006
   final DateTime connectedAt;
+  // inventory: PROV-ACTIVE-008
+  // inventory: LEGACY-0007
   final bool isAttached;
 
+  // inventory: PROV-ACTIVE-009
+  // inventory: LEGACY-0008
   /// 最後に開いていたウィンドウインデックス
   final int? lastWindowIndex;
 
+  // inventory: PROV-ACTIVE-010
+  // inventory: LEGACY-0009
   /// 最後に開いていたペインID
   final String? lastPaneId;
 
+  // inventory: PROV-ACTIVE-011
+  // inventory: LEGACY-0010
   /// 最終アクセス日時（履歴ソート用）
   final DateTime? lastAccessedAt;
 
@@ -37,6 +60,8 @@ class ActiveSession {
     this.lastAccessedAt,
   });
 
+  // inventory: PROV-ACTIVE-012
+  // inventory: LEGACY-0011
   ActiveSession copyWith({
     String? connectionId,
     String? connectionName,
@@ -64,6 +89,8 @@ class ActiveSession {
     );
   }
 
+  // inventory: PROV-ACTIVE-013
+  // inventory: LEGACY-0012
   /// JSON形式でシリアライズ
   Map<String, dynamic> toJson() {
     return {
@@ -80,6 +107,8 @@ class ActiveSession {
     };
   }
 
+  // inventory: PROV-ACTIVE-014
+  // inventory: LEGACY-0013
   /// JSONからデシリアライズ
   factory ActiveSession.fromJson(Map<String, dynamic> json) {
     final lastAccessedAtStr = json['lastAccessedAt'] as String?;
@@ -97,13 +126,20 @@ class ActiveSession {
     );
   }
 
+  // inventory: PROV-ACTIVE-015
+  // inventory: LEGACY-0014
   /// セッションの一意なキー
   String get key => '$connectionId:$sessionName';
 }
 
+// inventory: PROV-ACTIVE-016
 /// アクティブセッション一覧の状態
 class ActiveSessionsState {
+  // inventory: PROV-ACTIVE-017
+  // inventory: LEGACY-0015
   final List<ActiveSession> sessions;
+  // inventory: PROV-ACTIVE-018
+  // inventory: LEGACY-0016
   final String? currentSessionKey; // connectionId:sessionName
 
   const ActiveSessionsState({
@@ -111,9 +147,11 @@ class ActiveSessionsState {
     this.currentSessionKey,
   });
 
+  // inventory: PROV-ACTIVE-019
   ActiveSessionsState copyWith({
     List<ActiveSession>? sessions,
     String? currentSessionKey,
+    // inventory: LEGACY-0025
     bool clearCurrentSession = false,
   }) {
     return ActiveSessionsState(
@@ -123,11 +161,14 @@ class ActiveSessionsState {
     );
   }
 
+  // inventory: PROV-ACTIVE-020
+  // inventory: LEGACY-0017
   /// 指定した接続のセッション一覧を取得
   List<ActiveSession> getSessionsForConnection(String connectionId) {
     return sessions.where((s) => s.connectionId == connectionId).toList();
   }
 
+  // inventory: PROV-ACTIVE-021
   /// 現在のセッションを取得
   ActiveSession? get currentSession {
     if (currentSessionKey == null) return null;
@@ -141,13 +182,20 @@ class ActiveSessionsState {
   }
 }
 
+// inventory: PROV-ACTIVE-022
 /// アクティブセッションを管理するNotifier
 class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   static const _storageKey = 'active_sessions';
 
+  /// 永続化書き込みを直列化するためのFutureチェーン。
+  Future<void>? _saveFuture;
+
   @override
+  // inventory: PROV-ACTIVE-023
+  // inventory: LEGACY-0018
   ActiveSessionsState build() {
     // 初期化時にストレージから読み込み
+    // inventory: PROV-ACTIVE-024
     _loadFromStorage();
     return const ActiveSessionsState();
   }
@@ -169,17 +217,34 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     }
   }
 
-  /// ストレージにセッション情報を保存
+  // inventory: PROV-ACTIVE-025
+  /// ストレージにセッション情報を保存。
+  ///
+  /// 複数の非同期書き込みが同時に走らないよう、[_saveFuture] チェーンで
+  /// 直列化する。保存エラーはログに残し、後続の書き込みを阻害しない。
   Future<void> _saveToStorage() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonList = state.sessions.map((s) => s.toJson()).toList();
-      await prefs.setString(_storageKey, jsonEncode(jsonList));
-    } catch (e) {
-      // 保存エラーは無視
-    }
+    final save = _enqueueSave(() async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final jsonList = state.sessions.map((s) => s.toJson()).toList();
+        await prefs.setString(_storageKey, jsonEncode(jsonList));
+      } catch (e) {
+        developer.log('ActiveSessions save error: $e', name: 'ActiveSessionsProvider', error: e);
+      }
+    });
+    await save;
   }
 
+  /// 保存処理を直列キューに入れる。
+  Future<void> _enqueueSave(Future<void> Function() operation) {
+    final previous = _saveFuture ?? Future.value();
+    final current = previous.then((_) => operation(), onError: (_) => operation());
+    _saveFuture = current;
+    return current;
+  }
+
+  // inventory: PROV-ACTIVE-026
+  // inventory: LEGACY-0019
   /// セッションを追加または更新
   void addOrUpdateSession({
     required String connectionId,
@@ -223,6 +288,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-027
+  // inventory: LEGACY-0020
   /// セッションの最後に開いていたペイン情報を更新
   void updateLastPane({
     required String connectionId,
@@ -245,6 +312,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-028
+  // inventory: LEGACY-0021
   /// セッションのウィンドウ数を更新（ウィンドウ作成/削除後の同期用）
   void updateWindowCount(String connectionId, String sessionName, int windowCount) {
     final key = '$connectionId:$sessionName';
@@ -258,6 +327,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-029
+  // inventory: LEGACY-0022
   /// セッションを開いた時に最終アクセス日時を更新
   void touchSession(String connectionId, String sessionName) {
     final key = '$connectionId:$sessionName';
@@ -273,6 +344,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-030
+  // inventory: LEGACY-0023
   /// 接続のセッション一覧を更新（tmuxセッションリストから）
   /// 既存のセッションの lastWindowIndex/lastPaneId/lastAccessedAt は保持する
   void updateSessionsForConnection({
@@ -312,16 +385,21 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-031
+  // inventory: LEGACY-0024
   /// 現在のセッションを設定
   void setCurrentSession(String connectionId, String sessionName) {
     state = state.copyWith(currentSessionKey: '$connectionId:$sessionName');
   }
 
+  // inventory: PROV-ACTIVE-032
   /// 現在のセッションをクリア
   void clearCurrentSession() {
     state = state.copyWith(clearCurrentSession: true);
   }
 
+  // inventory: PROV-ACTIVE-033
+  // inventory: LEGACY-0026
   /// セッションを明示的に閉じる（削除）
   void closeSession(String connectionId, String sessionName) {
     final sessions = state.sessions
@@ -331,11 +409,15 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-034
+  // inventory: LEGACY-0027
   /// セッションを削除（closeSessionのエイリアス）
   void removeSession(String connectionId, String sessionName) {
     closeSession(connectionId, sessionName);
   }
 
+  // inventory: PROV-ACTIVE-035
+  // inventory: LEGACY-0028
   /// 接続の全セッションを削除
   void removeSessionsForConnection(String connectionId) {
     final sessions =
@@ -344,6 +426,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     _saveToStorage();
   }
 
+  // inventory: PROV-ACTIVE-036
+  // inventory: LEGACY-0029
   /// 全セッションをクリア
   void clear() {
     state = const ActiveSessionsState();
@@ -351,6 +435,7 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   }
 }
 
+// inventory: PROV-ACTIVE-037
 /// アクティブセッションプロバイダー
 final activeSessionsProvider =
     NotifierProvider<ActiveSessionsNotifier, ActiveSessionsState>(() {
