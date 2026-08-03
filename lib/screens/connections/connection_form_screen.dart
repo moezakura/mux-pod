@@ -9,6 +9,9 @@ import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
+import '../../services/tmux/ssh_tmux_command_executor.dart';
+import '../../services/tmux/tmux_command_builder.dart';
+import '../../services/tmux/tmux_version.dart';
 import '../../theme/design_colors.dart';
 
 /// 接続編集画面
@@ -704,7 +707,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
-          value: _selectedKeyId,
+          initialValue: _selectedKeyId,
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.vpn_key_outlined, color: mutedColor, size: 20),
             filled: true,
@@ -823,6 +826,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     final sshClient = SshClient();
     String? errorMessage;
     bool tmuxInstalled = false;
+    String? tmuxWarning;
 
     try {
       // 認証情報を準備
@@ -861,9 +865,34 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         ),
       );
 
-      // tmuxがインストールされているか確認
-      // connect()内でPersistentShell（対話シェル）経由で絶対パスを検出済み
-      tmuxInstalled = sshClient.tmuxPath != null;
+      // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
+      try {
+        final result = await sshClient.tmuxExecutor.execWithExitCode(
+          TmuxCommands.version(),
+        );
+        if (result.exitCode != null && result.exitCode != 0) {
+          tmuxInstalled = false;
+          tmuxWarning = customTmuxPath.isNotEmpty
+              ? 'custom tmux path not found or not executable: $customTmuxPath'
+              : 'tmux not found';
+        } else {
+          final version = TmuxVersionInfo.parse(result.stdout);
+          if (version != null) {
+            tmuxInstalled = true;
+          } else {
+            tmuxInstalled = false;
+            tmuxWarning = 'tmux found, but version output was not recognized';
+          }
+        }
+      } on SshConnectionError catch (_) {
+        tmuxInstalled = false;
+        tmuxWarning = customTmuxPath.isNotEmpty
+            ? 'custom tmux path not found or not executable: $customTmuxPath'
+            : 'tmux not found';
+      } catch (e) {
+        tmuxInstalled = false;
+        tmuxWarning = 'tmux check failed: $e';
+      }
     } on SshAuthenticationError catch (e) {
       errorMessage = 'Authentication failed: ${e.message}';
     } on SshConnectionError catch (e) {
@@ -888,7 +917,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       } else {
         final message = tmuxInstalled
             ? 'Connection successful! tmux is available.'
-            : 'Connection successful! Warning: tmux not found.';
+            : 'Connection successful! Warning: ${tmuxWarning ?? 'tmux not found'}.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
