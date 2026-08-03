@@ -1,6 +1,6 @@
 import 'dart:ui' show Offset;
 
-import 'tmux_parser.dart';
+import 'tmux_models.dart';
 
 /// スワイプ方向
 enum SwipeDirection { up, down, left, right }
