@@ -2,7 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
+
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 
 /// Stubs out the async `_loadSettings()` (SharedPreferences / platform
