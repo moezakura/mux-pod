@@ -220,7 +220,7 @@ class _ImageTransferConfirmDialogState
                   child: Image.memory(
                     widget.imageBytes,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, _) => const SizedBox(
+                    errorBuilder: (context, error, stackTrace) => const SizedBox(
                       height: 100,
                       child: Center(child: Icon(Icons.broken_image, size: 48)),
                     ),
