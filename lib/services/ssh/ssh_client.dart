@@ -1,52 +1,53 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'dart:io';
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:dartssh2/dartssh2.dart';
 
+import '../connection_error.dart';
+import '../keychain/secure_storage.dart';
+import '../tmux/tmux_backend.dart';
 import 'persistent_shell.dart';
-import '../tmux/tmux_commands.dart';
+import 'ssh_authentication_error.dart';
+import 'ssh_connection_state.dart';
+export '../connection_error.dart';
+export 'ssh_authentication_error.dart';
+export 'ssh_connection_state.dart';
 
-/// SSH接続エラー
-class SshConnectionError implements Exception {
-  final String message;
-  final Object? cause;
-
-  SshConnectionError(this.message, [this.cause]);
-
-  @override
-  String toString() => 'SshConnectionError: $message${cause != null ? ' ($cause)' : ''}';
-}
-
-/// SSH認証エラー
-class SshAuthenticationError implements Exception {
-  final String message;
-  final Object? cause;
-
-  SshAuthenticationError(this.message, [this.cause]);
-
-  @override
-  String toString() => 'SshAuthenticationError: $message${cause != null ? ' ($cause)' : ''}';
-}
-
+// inventory: SSH-003
 /// SSH接続オプション
 class SshConnectOptions {
+  // inventory: SSH-004
+  // inventory: LEGACY-0128
   /// パスワード認証時のパスワード
   final String? password;
 
+  // inventory: SSH-005
+  // inventory: LEGACY-0129
   /// 鍵認証時の秘密鍵（PEM形式）
   final String? privateKey;
 
+  // inventory: SSH-006
+  // inventory: LEGACY-0130
   /// 秘密鍵のパスフレーズ
   final String? passphrase;
 
+  // inventory: SSH-007
+  // inventory: LEGACY-0131
   /// ユーザー指定のtmuxパス（nullなら自動検出）
   final String? tmuxPath;
 
+  // inventory: SSH-008
+  // inventory: LEGACY-0132
   /// 接続タイムアウト（秒）
   final int timeout;
+
+  // inventory: SSH-043
+  /// 未知のホスト鍵を自動受け入れする（TOFU）。
+  /// false の場合、未保存ホストは拒否する。
+  final bool acceptNewHostKeys;
 
   const SshConnectOptions({
     this.password,
@@ -54,17 +55,25 @@ class SshConnectOptions {
     this.passphrase,
     this.tmuxPath,
     this.timeout = 30,
+    this.acceptNewHostKeys = true,
   });
 }
 
+// inventory: SSH-009
 /// シェルオプション
 class ShellOptions {
+  // inventory: SSH-010
+  // inventory: LEGACY-0133
   /// ターミナルタイプ
   final String term;
 
+  // inventory: SSH-011
+  // inventory: LEGACY-0134
   /// カラム数
   final int cols;
 
+  // inventory: SSH-012
+  // inventory: LEGACY-0135
   /// 行数
   final int rows;
 
@@ -75,14 +84,19 @@ class ShellOptions {
   });
 }
 
+// inventory: SSH-013
 /// SSH接続イベント
 class SshEvents {
+  // inventory: SSH-014
+  // inventory: LEGACY-0136
   /// データ受信時
   final void Function(Uint8List data)? onData;
 
+  // inventory: SSH-015
   /// 接続クローズ時
   final void Function()? onClose;
 
+  // inventory: SSH-016
   /// エラー発生時
   final void Function(Object error)? onError;
 
@@ -92,6 +106,8 @@ class SshEvents {
     this.onError,
   });
 
+  // inventory: SSH-017
+  // inventory: LEGACY-0137
   SshEvents copyWith({
     void Function(Uint8List data)? onData,
     void Function()? onClose,
@@ -105,18 +121,14 @@ class SshEvents {
   }
 }
 
-/// SSH接続状態
-enum SshConnectionState {
-  disconnected,
-  connecting,
-  connected,
-  error,
-}
-
+// inventory: SSH-019
 /// SSHクライアント
 ///
 /// dartssh2をラップし、SSH接続を管理する。
-class SshClient {
+///
+/// [TmuxBackend] も実装し、tmux 層は [SshClient] ではなく
+/// [TmuxBackend] 抽象にだけ依存する。
+class SshClient implements TmuxBackend {
   SSHClient? _client;
   SSHSession? _session;
   SSHSocket? _socket;
@@ -138,17 +150,52 @@ class SshClient {
   /// 競合せず、チャネル開閉・execロック・往復待ちなしで即座に送信できる。
   PersistentShell? _inputShell;
 
-  /// 検出されたtmuxバイナリの絶対パス
-  String? _tmuxPath;
-
   /// execチャネル排他制御用ロック
   Completer<void>? _execLock;
 
-  /// AutoResize復元用trapの現在コマンド（入力シェル再起動・再接続時に再適用する）
-  String? _restoreTrapCmd;
+  /// 接続時に使用したオプション
+  // inventory: SSH-020
+  SshConnectOptions? _connectOptions;
 
-  /// tmuxの絶対パス（未検出なら null）
-  String? get tmuxPath => _tmuxPath;
+  // inventory: LEGACY-0138
+  /// 接続時に使用したオプション
+  SshConnectOptions? get connectOptions => _connectOptions;
+
+  /// ユーザーが接続設定で指定した tmux パス。
+  @override
+  // inventory: LEGACY-0139
+  String? get userTmuxPath => _connectOptions?.tmuxPath;
+
+  /// 入力専用の持続的シェル
+  @override
+  // inventory: LEGACY-0140
+  TmuxInputTransport? get inputTransport => _inputShell;
+
+  /// 入力専用シェルを再起動する。
+  @override
+  // inventory: LEGACY-0141
+  Future<void> restartInputTransport() => restartInputShell();
+
+  /// 入力シェルが再起動した際に呼ばれるコールバック。
+  /// Tmux 側が restore trap を再設定するために使用する。
+  @override
+  // inventory: LEGACY-0142
+  void Function()? get onInputTransportRebooted => onInputShellRebooted;
+
+  @override
+  set onInputTransportRebooted(void Function()? value) {
+    onInputShellRebooted = value;
+  }
+
+  void Function()? onInputShellRebooted;
+
+  // inventory: LEGACY-0143
+  /// ポーリング用の持続的シェル
+  PersistentShell? get persistentShell => _persistentShell;
+
+  // inventory: LEGACY-0144
+  /// 入力専用の持続的シェル
+  PersistentShell? get inputShell => _inputShell;
 
   /// Keep-aliveタイマー
   Timer? _keepAliveTimer;
@@ -157,6 +204,8 @@ class SshClient {
   final _connectionStateController = StreamController<SshConnectionState>.broadcast();
 
   /// 接続状態のストリーム（外部から監視用）
+  // inventory: SSH-024
+  // inventory: LEGACY-0145
   Stream<SshConnectionState> get connectionStateStream => _connectionStateController.stream;
 
   /// Keep-alive最小間隔（秒）
@@ -174,15 +223,24 @@ class SshClient {
   /// Keep-alive連続成功回数
   int _keepAliveSuccessCount = 0;
 
+  // inventory: SSH-021
+  // inventory: LEGACY-0146
   /// 現在の接続状態
   SshConnectionState get state => _state;
 
   /// 接続中かどうか
+  // inventory: SSH-022
+  @override
+  // inventory: LEGACY-0147
   bool get isConnected => _state == SshConnectionState.connected;
 
+  // inventory: SSH-023
+  // inventory: LEGACY-0148
   /// 最後のエラーメッセージ
   String? get lastError => _lastError;
 
+  // inventory: SSH-025
+  // inventory: LEGACY-0149
   /// SFTPクライアントを取得（キャッシュ付き）
   ///
   /// 初回呼び出し時にSFTPセッションを開始し、以降はキャッシュを返す。
@@ -202,6 +260,8 @@ class SshClient {
     return _cachedSftp!;
   }
 
+  // inventory: SSH-026
+  // inventory: LEGACY-0150
   /// SSH接続を確立する
   ///
   /// [host] ホスト名またはIPアドレス
@@ -216,6 +276,7 @@ class SshClient {
     bool lightweight = false,
   }) async {
     // バリデーション
+    // inventory: SSH-LIFE-016
     _validateConnectionParams(host, port, username, options);
 
     _state = SshConnectionState.connecting;
@@ -236,7 +297,15 @@ class SshClient {
           _socket!,
           username: username,
           identities: _parsePrivateKey(options.privateKey!, options.passphrase),
+          // inventory: SSH-LIFE-018
           onAuthenticated: _onAuthenticated,
+          onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
+            host,
+            port,
+            type,
+            fingerprint,
+            acceptNewHostKeys: options.acceptNewHostKeys,
+          ),
         );
       } else if (options.password != null) {
         // パスワード認証
@@ -245,6 +314,13 @@ class SshClient {
           username: username,
           onPasswordRequest: () => options.password!,
           onAuthenticated: _onAuthenticated,
+          onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
+            host,
+            port,
+            type,
+            fingerprint,
+            acceptNewHostKeys: options.acceptNewHostKeys,
+          ),
         );
       } else {
         throw SshAuthenticationError('No authentication method provided');
@@ -256,38 +332,23 @@ class SshClient {
       _state = SshConnectionState.connected;
       _connectionStateController.add(_state);
 
-      // tmuxパス検出（ユーザー指定があればそれを使用、なければ自動検出）
-      if (options.tmuxPath != null && options.tmuxPath!.isNotEmpty) {
-        // ユーザー指定パスの存在確認
-        final verifyExitCode = await _withExecLock(() async {
-          final session = await _client!.execute('test -x ${_shSingleQuote(options.tmuxPath!)}');
-          await session.stdout.drain();
-          await session.stderr.drain();
-          final code = session.exitCode;
-          session.close();
-          return code;
-        });
-        if (verifyExitCode == 0) {
-          _tmuxPath = options.tmuxPath;
-          debugPrint('connect: user-specified tmux path verified: $_tmuxPath');
-        } else {
-          debugPrint('connect: user-specified tmux path not found: ${options.tmuxPath}');
-        }
-      } else {
-        await _detectTmuxPath();
-      }
+      // 接続オプションを保存（Tmux 側は connectOptions.tmuxPath 経由で取得）
+      _connectOptions = options;
 
       // 一括コマンド実行用の軽量接続では、ポーリング用シェルとkeep-aliveをスキップ。
       // execWithExitCode は専用チャネルを使うため持続的シェルは不要。
       if (!lightweight) {
         // 持続的シェルを開始（ポーリング用）
+        // inventory: SSH-LIFE-001
         await _startPersistentShell();
         // Keep-aliveを開始
+        // inventory: SSH-LIFE-008
         _startKeepAlive();
       }
     } on SocketException catch (e) {
       _state = SshConnectionState.error;
       _lastError = 'Connection failed: ${e.message}';
+      // inventory: SSH-LIFE-020
       await _cleanup();
       throw SshConnectionError(_lastError!, e);
     } on SSHAuthFailError catch (e) {
@@ -326,6 +387,43 @@ class SshClient {
     }
   }
 
+  // inventory: SSH-LIFE-017
+  /// ホスト鍵フィンガープリントを検証する。
+  ///
+  /// 初回接続時は [acceptNewHostKeys] が true なら受け入れて保存し、
+  /// false なら拒否する。2回目以降は保存済みフィンガープリントと比較する。
+  Future<bool> _onVerifyHostKey(
+    String host,
+    int port,
+    String type,
+    Uint8List fingerprint, {
+    required bool acceptNewHostKeys,
+  }) async {
+    final formatted = fingerprint
+        .map((b) => b.toRadixString(16).padLeft(2, '0'))
+        .join(':');
+
+    final storage = SecureStorageService();
+    final known = await storage.getHostKeyFingerprint(host, port, type);
+
+    if (known == null) {
+      if (acceptNewHostKeys) {
+        await storage.saveHostKeyFingerprint(host, port, type, formatted);
+        return true;
+      }
+      _lastError = 'Unknown host key: $host:$port ($type)';
+      return false;
+    }
+
+    if (known == formatted) {
+      return true;
+    }
+
+    _lastError =
+        'Host key verification failed: $host:$port ($type) fingerprint changed';
+    return false;
+  }
+
   /// 秘密鍵をパース
   List<SSHKeyPair> _parsePrivateKey(String privateKey, String? passphrase) {
     try {
@@ -351,9 +449,12 @@ class SshClient {
     // 認証成功
   }
 
+  // inventory: SSH-027
+  // inventory: LEGACY-0151
   /// 接続を切断する
   Future<void> disconnect() async {
     await _cleanup();
+    // inventory: SSH-LIFE-019
     _updateState(SshConnectionState.disconnected);
     _events.onClose?.call();
   }
@@ -369,6 +470,7 @@ class SshClient {
   /// リソースをクリーンアップ
   Future<void> _cleanup() async {
     // Keep-aliveを停止
+    // inventory: SSH-LIFE-010
     _stopKeepAlive();
 
     // SFTPキャッシュを無効化
@@ -405,10 +507,12 @@ class SshClient {
     final shells = await Future.wait([_tryStartShell(), _tryStartShell()]);
     _persistentShell = shells[0];
     _inputShell = shells[1];
-    // 入力シェルが復活したらAutoResize復元trapを再設定する（再接続時など）
-    _reapplyRestoreTrap();
+    // 入力シェルが復活したら Tmux 側に通知（restore trap 再設定等）
+    // inventory: SSH-LIFE-004
+    onInputShellRebooted?.call();
   }
 
+  // inventory: SSH-LIFE-002
   /// 持続的シェルを1つ起動する。失敗時はnullを返す（例外を投げない）。
   Future<PersistentShell?> _tryStartShell() async {
     final client = _client;
@@ -422,6 +526,8 @@ class SshClient {
     }
   }
 
+  // inventory: SSH-028
+  // inventory: LEGACY-0152
   /// 持続的シェルを再起動
   Future<void> restartPersistentShell() async {
     if (_client == null || !isConnected) return;
@@ -433,8 +539,10 @@ class SshClient {
     _persistentShell = await _tryStartShell();
   }
 
+  // inventory: SSH-LIFE-003
+  // inventory: LEGACY-0153
   /// 入力専用シェルを再起動する（送信失敗時の自己回復用）。
-  Future<void> _restartInputShell() async {
+  Future<void> restartInputShell() async {
     if (_client == null || !isConnected) return;
     try {
       await _inputShell?.dispose();
@@ -442,86 +550,11 @@ class SshClient {
       // dispose失敗は無視して再作成を試みる
     }
     _inputShell = await _tryStartShell();
-    _reapplyRestoreTrap();
+    // 入力シェルが復活したら Tmux 側に通知
+    onInputShellRebooted?.call();
   }
 
-  /// 記録済みのAutoResize復元trapを（再起動した）入力シェルへ再設定する。
-  void _reapplyRestoreTrap() {
-    final cmd = _restoreTrapCmd;
-    final input = _inputShell;
-    if (cmd == null || input == null || !input.isStarted) return;
-    try {
-      input.sendNoWait(cmd);
-    } catch (_) {}
-  }
-
-  /// キー送信などの出力不要コマンドを低遅延で送信する。
-  ///
-  /// 専用のfire-and-forgetチャネルに書き込むだけで完了する。[exec]と違い
-  /// チャネル開閉・execロック・往復待ちがないため、高pingの回線でも入力が
-  /// 詰まらない（結果はポーリングで反映される）。
-  /// 高速チャネルが使えない場合は信頼性優先で[exec]にフォールバックする。
-  Future<void> sendKeysCommand(String command) async {
-    if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
-    }
-
-    final input = _inputShell;
-    if (input != null && input.isStarted) {
-      try {
-        input.sendNoWait(_resolveTmuxCommand(command));
-        return;
-      } on PersistentShellError {
-        // 高速チャネルが切れた: 次回のために再起動し、今回はexecへフォールバック
-        unawaited(_restartInputShell());
-      }
-    }
-
-    // フォールバック: 従来のexec（内部で_resolveTmuxCommandを実行）
-    await exec(command);
-  }
-
-  /// AutoResizeで縮めたウィンドウを、接続断時にサーバ側で復元するtrapを入力シェルに
-  /// 設定する。アプリがスワイプ終了・強制終了されても、SSHが切れて入力シェルが終了
-  /// する際にtmuxウィンドウが自動サイズへ戻る（クライアント側の復元が届かないケースの
-  /// フォールバック）。[windowTargets] が空ならtrapを解除する。
-  void setWindowRestoreTrap(List<String> windowTargets) {
-    final cmd = windowTargets.isEmpty
-        ? TmuxCommands.clearWindowRestoreTrap()
-        : TmuxCommands.windowRestoreTrap(windowTargets, tmuxBin: _tmuxPath ?? 'tmux');
-    _restoreTrapCmd = windowTargets.isEmpty ? null : cmd;
-    final input = _inputShell;
-    if (input == null || !input.isStarted) return;
-    try {
-      input.sendNoWait(cmd);
-    } on PersistentShellError {
-      unawaited(_restartInputShell());
-    }
-  }
-
-  /// AutoResizeで縮めたウィンドウを低遅延のfire-and-forgetで自動サイズへ戻す。
-  ///
-  /// [exec] と違いチャネル開閉・execロック・往復待ちがないため、バックグラウンド移行の
-  /// 短い猶予でも確実に送信できる。入力シェルが使えない場合はexecにフォールバックする
-  /// （結果は待たない）。
-  Future<void> restoreWindowsNoWait(List<String> targets) async {
-    if (targets.isEmpty) return;
-    final input = _inputShell;
-    for (final t in targets) {
-      final cmd = TmuxCommands.resizeWindowAuto(t);
-      if (input != null && input.isStarted) {
-        try {
-          input.sendNoWait(_resolveTmuxCommand(cmd));
-          continue;
-        } on PersistentShellError {
-          unawaited(_restartInputShell());
-        }
-      }
-      try {
-        await exec(cmd);
-      } catch (_) {}
-    }
-  }
+  // tmux 固有のキー送信・restore trap ・復元は Tmux 側の SshTmuxCommandExecutor で担う。
 
   /// execチャネルを排他的に使用する
   Future<T> _withExecLock<T>(Future<T> Function() fn) async {
@@ -538,76 +571,6 @@ class SshClient {
     }
   }
 
-  /// execチャネル経由でtmuxの絶対パスを検出
-  ///
-  /// Step 1: ログインシェル経由で `command -v tmux` を実行
-  /// Step 2: 失敗時、既知の候補パスで `test -x` フォールバック
-  Future<void> _detectTmuxPath() async {
-    if (_client == null || !isConnected) return;
-
-    // Step 1: ログインシェル経由で検出
-    try {
-      final path = await _withExecLock(() async {
-        final session = await _client!.execute(
-          r"$SHELL -lc 'command -v tmux'",
-        );
-        final stdoutBytes = <int>[];
-        await session.stdout.forEach((data) => stdoutBytes.addAll(data));
-        await session.stderr.drain();
-        session.close();
-        return utf8.decode(stdoutBytes, allowMalformed: true).trim();
-      });
-      if (path.isNotEmpty && path.startsWith('/')) {
-        _tmuxPath = path;
-        debugPrint('_detectTmuxPath: found via login shell: $path');
-        return;
-      }
-    } catch (e) {
-      debugPrint('_detectTmuxPath: login shell detection failed: $e');
-    }
-
-    // Step 2: 既知パスのフォールバック
-    const candidates = [
-      '/opt/homebrew/bin/tmux',
-      '/usr/local/bin/tmux',
-      '/usr/bin/tmux',
-    ];
-
-    for (final candidate in candidates) {
-      try {
-        final exitCode = await _withExecLock(() async {
-          final session = await _client!.execute('test -x $candidate');
-          await session.stdout.drain();
-          await session.stderr.drain();
-          final code = session.exitCode;
-          session.close();
-          return code;
-        });
-        if (exitCode == 0) {
-          _tmuxPath = candidate;
-          debugPrint('_detectTmuxPath: found via fallback: $candidate');
-          return;
-        }
-      } catch (e) {
-        debugPrint('_detectTmuxPath: error checking $candidate: $e');
-      }
-    }
-    debugPrint('_detectTmuxPath: tmux not found');
-  }
-
-  /// コマンド内の `tmux` を検出済み絶対パスに置換
-  String _resolveTmuxCommand(String command) {
-    if (_tmuxPath == null) return command;
-    final resolved = command.replaceAllMapped(
-      RegExp(r'(^|;\s*)tmux\b'),
-      (m) => '${m[1]}$_tmuxPath',
-    );
-    return resolved;
-  }
-
-  /// シェル引数を単一引用符で安全に囲む（ユーザー入力のtmuxパス等に使用）。
-  String _shSingleQuote(String s) => "'${s.replaceAll("'", r"'\''")}'";
-
   /// Keep-aliveを開始
   ///
   /// 定期的に軽量なコマンドを実行して接続が生きているか確認する。
@@ -617,6 +580,7 @@ class SshClient {
     _stopKeepAlive();
     _currentKeepAliveIntervalSeconds = 10; // 初期値10秒
     _keepAliveSuccessCount = 0;
+    // inventory: SSH-LIFE-009
     _scheduleNextKeepAlive();
   }
 
@@ -626,6 +590,7 @@ class SshClient {
     _keepAliveTimer = Timer(
       Duration(seconds: _currentKeepAliveIntervalSeconds),
       () async {
+        // inventory: SSH-LIFE-012
         await _sendKeepAlive();
         if (isConnected) {
           _scheduleNextKeepAlive();
@@ -640,6 +605,7 @@ class SshClient {
     _keepAliveTimer = null;
   }
 
+  // inventory: SSH-LIFE-011
   /// Keep-alive間隔を調整
   void _adjustKeepAliveInterval({required bool success}) {
     if (success) {
@@ -665,6 +631,8 @@ class SshClient {
 
     try {
       // 持続的シェル経由でkeep-alive（高速）
+      // inventory: SSH-033
+      // inventory: LEGACY-0159
       await execPersistent(
         'echo ping',
         timeout: Duration(seconds: _keepAliveTimeoutSeconds),
@@ -680,6 +648,8 @@ class SshClient {
     }
   }
 
+  // inventory: SSH-037
+  // inventory: LEGACY-0154
   /// インタラクティブシェルを開始する
   ///
   /// [options] シェルオプション
@@ -699,8 +669,11 @@ class SshClient {
 
       // stdout/stderrのリスナーを設定
       _stdoutSubscription = _session!.stdout.listen(
+        // inventory: SSH-LIFE-013
         _handleData,
+        // inventory: SSH-LIFE-014
         onError: _handleError,
+        // inventory: SSH-LIFE-015
         onDone: _handleDone,
       );
 
@@ -733,6 +706,9 @@ class SshClient {
   /// シェルにデータを書き込む
   ///
   /// [data] 送信データ（文字列）
+  // inventory: SSH-038
+  @override
+  // inventory: LEGACY-0155
   void write(String data) {
     if (!isConnected || _session == null) {
       throw SshConnectionError('Not connected or shell not started');
@@ -740,6 +716,8 @@ class SshClient {
     _session!.write(utf8.encode(data));
   }
 
+  // inventory: SSH-039
+  // inventory: LEGACY-0156
   /// シェルにバイトデータを書き込む
   ///
   /// [data] 送信データ（バイト）
@@ -750,6 +728,8 @@ class SshClient {
     _session!.write(data);
   }
 
+  // inventory: SSH-040
+  // inventory: LEGACY-0157
   /// ターミナルサイズを変更する
   ///
   /// [cols] カラム数
@@ -772,60 +752,67 @@ class SshClient {
   /// [command] 実行コマンド
   /// [timeout] タイムアウト時間
   /// 戻り値: コマンド出力
+  // inventory: SSH-032
+  @override
+  // inventory: LEGACY-0158
   Future<String> exec(String command, {Duration? timeout}) async {
     if (!isConnected || _client == null) {
       throw SshConnectionError('Not connected');
     }
 
     try {
-      final resolvedCommand = _resolveTmuxCommand(command);
+      final resolvedCommand = command;
       return await _withExecLock(() async {
-        final session = await _client!.execute(resolvedCommand);
+        // ignore: avoid_init_to_null
+        SSHSession? session = null;
+        try {
+          session = await _client!.execute(resolvedCommand);
 
-        // 出力を収集（バイト列として収集し、最後にデコード）
-        final stdoutBytes = <int>[];
-        final stderrBytes = <int>[];
+          // 出力を収集（バイト列として収集し、最後にデコード）
+          final stdoutBytes = <int>[];
+          final stderrBytes = <int>[];
 
-        final stdoutCompleter = Completer<void>();
-        final stderrCompleter = Completer<void>();
+          final stdoutCompleter = Completer<void>();
+          final stderrCompleter = Completer<void>();
 
-        session.stdout.listen(
-          (data) => stdoutBytes.addAll(data),
-          onDone: () => stdoutCompleter.complete(),
-          onError: (e) => stdoutCompleter.completeError(e),
-        );
+          session.stdout.listen(
+            (data) => stdoutBytes.addAll(data),
+            onDone: () => stdoutCompleter.complete(),
+            onError: (e) => stdoutCompleter.completeError(e),
+          );
 
-        session.stderr.listen(
-          (data) => stderrBytes.addAll(data),
-          onDone: () => stderrCompleter.complete(),
-          onError: (e) => stderrCompleter.completeError(e),
-        );
+          session.stderr.listen(
+            (data) => stderrBytes.addAll(data),
+            onDone: () => stderrCompleter.complete(),
+            onError: (e) => stderrCompleter.completeError(e),
+          );
 
-        // タイムアウト付きで完了を待機
-        if (timeout != null) {
-          await Future.wait([
-            stdoutCompleter.future,
-            stderrCompleter.future,
-          ]).timeout(timeout);
-        } else {
-          await Future.wait([
-            stdoutCompleter.future,
-            stderrCompleter.future,
-          ]);
+          // タイムアウト付きで完了を待機
+          if (timeout != null) {
+            await Future.wait([
+              stdoutCompleter.future,
+              stderrCompleter.future,
+            ]).timeout(timeout);
+          } else {
+            await Future.wait([
+              stdoutCompleter.future,
+              stderrCompleter.future,
+            ]);
+          }
+
+          // バイト列をUTF-8デコード（不正なバイトは置換文字に）
+          final stdout = utf8.decode(stdoutBytes, allowMalformed: true);
+          final stderr = utf8.decode(stderrBytes, allowMalformed: true);
+
+          // stderrがあればエラーとして扱う（オプション）
+          if (stderr.isNotEmpty) {
+            return stdout + stderr;
+          }
+
+          return stdout;
+        } finally {
+          session?.close();
         }
-
-        session.close();
-
-        // バイト列をUTF-8デコード（不正なバイトは置換文字に）
-        final stdout = utf8.decode(stdoutBytes, allowMalformed: true);
-        final stderr = utf8.decode(stderrBytes, allowMalformed: true);
-
-        // stderrがあればエラーとして扱う（オプション）
-        if (stderr.isNotEmpty) {
-          return stdout + stderr;
-        }
-
-        return stdout;
       });
     } on TimeoutException {
       debugPrint('exec: timed out');
@@ -844,33 +831,32 @@ class SshClient {
   /// [command] 実行コマンド
   /// [timeout] タイムアウト時間
   /// 戻り値: コマンド出力
+  @override
   Future<String> execPersistent(String command, {Duration? timeout}) async {
     if (!isConnected || _client == null) {
       throw SshConnectionError('Not connected');
     }
 
-    final resolvedCommand = _resolveTmuxCommand(command);
-
     // 持続的シェルが利用できない場合は従来のexec()にフォールバック
     if (_persistentShell == null || !_persistentShell!.isStarted) {
-      return exec(resolvedCommand, timeout: timeout);
+      return exec(command, timeout: timeout);
     }
 
     try {
-      return await _persistentShell!.exec(resolvedCommand, timeout: timeout);
+      return await _persistentShell!.exec(command, timeout: timeout);
     } on PersistentShellError catch (e) {
       // シェルセッションが切断された場合は再起動を試みる
       if (e.message.contains('closed') || e.message.contains('disposed')) {
         try {
           await restartPersistentShell();
-          return await _persistentShell!.exec(resolvedCommand, timeout: timeout);
+          return await _persistentShell!.exec(command, timeout: timeout);
         } catch (_) {
           // 再起動も失敗した場合は従来のexec()にフォールバック
-          return exec(resolvedCommand, timeout: timeout);
+          return exec(command, timeout: timeout);
         }
       }
       // その他のエラーは従来のexec()にフォールバック
-      return exec(resolvedCommand, timeout: timeout);
+      return exec(command, timeout: timeout);
     }
   }
 
@@ -878,6 +864,8 @@ class SshClient {
   ///
   /// [command] 実行コマンド
   /// 戻り値: (stdout, stderr, exitCode)
+  // inventory: SSH-034
+  @override
   Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
     String command, {
     Duration? timeout,
@@ -887,43 +875,48 @@ class SshClient {
     }
 
     try {
-      final resolvedCommand = _resolveTmuxCommand(command);
+      final resolvedCommand = command;
       return await _withExecLock(() async {
-        final session = await _client!.execute(resolvedCommand);
-
-        // バイト列として蓄積（チャンク単位デコードによるUTF-8境界分割を防止）
+        // ignore: avoid_init_to_null
+        SSHSession? session = null;
+        // ignore: avoid_init_to_null
+        int? exitCode = null;
         final stdoutBytes = <int>[];
         final stderrBytes = <int>[];
+        try {
+          session = await _client!.execute(resolvedCommand);
 
-        final stdoutCompleter = Completer<void>();
-        final stderrCompleter = Completer<void>();
+          final stdoutCompleter = Completer<void>();
+          final stderrCompleter = Completer<void>();
 
-        session.stdout.listen(
-          (data) => stdoutBytes.addAll(data),
-          onDone: () => stdoutCompleter.complete(),
-          onError: (e) => stdoutCompleter.completeError(e),
-        );
+          session.stdout.listen(
+            (data) => stdoutBytes.addAll(data),
+            onDone: () => stdoutCompleter.complete(),
+            onError: (e) => stdoutCompleter.completeError(e),
+          );
 
-        session.stderr.listen(
-          (data) => stderrBytes.addAll(data),
-          onDone: () => stderrCompleter.complete(),
-          onError: (e) => stderrCompleter.completeError(e),
-        );
+          session.stderr.listen(
+            (data) => stderrBytes.addAll(data),
+            onDone: () => stderrCompleter.complete(),
+            onError: (e) => stderrCompleter.completeError(e),
+          );
 
-        if (timeout != null) {
-          await Future.wait([
-            stdoutCompleter.future,
-            stderrCompleter.future,
-          ]).timeout(timeout);
-        } else {
-          await Future.wait([
-            stdoutCompleter.future,
-            stderrCompleter.future,
-          ]);
+          if (timeout != null) {
+            await Future.wait([
+              stdoutCompleter.future,
+              stderrCompleter.future,
+            ]).timeout(timeout);
+          } else {
+            await Future.wait([
+              stdoutCompleter.future,
+              stderrCompleter.future,
+            ]);
+          }
+
+          exitCode = session.exitCode;
+        } finally {
+          session?.close();
         }
-
-        final exitCode = session.exitCode;
-        session.close();
 
         return (
           stdout: utf8.decode(stdoutBytes, allowMalformed: true),
@@ -938,11 +931,15 @@ class SshClient {
     }
   }
 
+  // inventory: SSH-035
+  // inventory: LEGACY-0160
   /// イベントハンドラを設定する
   void setEventHandlers(SshEvents events) {
     _events = events;
   }
 
+  // inventory: SSH-036
+  // inventory: LEGACY-0161
   /// イベントハンドラを更新する
   void updateEventHandlers({
     void Function(Uint8List data)? onData,
@@ -956,6 +953,8 @@ class SshClient {
     );
   }
 
+  // inventory: SSH-041
+  // inventory: LEGACY-0162
   /// リソースを解放する
   Future<void> dispose() async {
     await disconnect();
@@ -963,7 +962,10 @@ class SshClient {
   }
 }
 
+// inventory: SSH-042
 /// SSHクライアントを作成する
 SshClient createSshClient() {
   return SshClient();
 }
+
+
