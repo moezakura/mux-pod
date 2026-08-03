@@ -4,6 +4,8 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/keychain/secure_storage.dart';
+
 /// 接続設定
 class Connection {
   final String id;
@@ -126,10 +128,12 @@ class ConnectionsState {
 /// 接続一覧を管理するNotifier
 class ConnectionsNotifier extends Notifier<ConnectionsState> {
   static const String _storageKey = 'connections';
+  bool _disposed = false;
 
   @override
   ConnectionsState build() {
     // 初期状態
+    ref.onDispose(() => _disposed = true);
     _loadConnections();
     return const ConnectionsState(isLoading: true);
   }
@@ -137,8 +141,20 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   Future<void> _loadConnections() async {
     developer.log('_loadConnections() started', name: 'ConnectionsProvider');
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_storageKey);
+      final secure = SecureStorageService();
+      String? jsonString = await secure.readValue(_storageKey);
+
+      // 古いSharedPreferencesからの移行
+      if (jsonString == null) {
+        final prefs = await SharedPreferences.getInstance();
+        jsonString = prefs.getString(_storageKey);
+        if (jsonString != null) {
+          await secure.writeValue(_storageKey, jsonString);
+          await prefs.remove(_storageKey);
+          developer.log('Migrated connections from SharedPreferences to secure storage', name: 'ConnectionsProvider');
+        }
+      }
+
       developer.log('JSON from storage: ${jsonString != null ? 'exists' : 'null'}', name: 'ConnectionsProvider');
 
       if (jsonString != null) {
@@ -156,22 +172,28 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
           return bTime.compareTo(aTime);
         });
 
-        state = ConnectionsState(connections: connections);
+        if (!_disposed) {
+          state = ConnectionsState(connections: connections);
+        }
         developer.log('State updated with ${connections.length} connections', name: 'ConnectionsProvider');
       } else {
-        state = const ConnectionsState();
+        if (!_disposed) {
+          state = const ConnectionsState();
+        }
         developer.log('No saved connections, initialized empty state', name: 'ConnectionsProvider');
       }
     } catch (e, stackTrace) {
       developer.log('Error loading connections: $e', name: 'ConnectionsProvider', error: e, stackTrace: stackTrace);
-      state = ConnectionsState(error: e.toString());
+      if (!_disposed) {
+        state = ConnectionsState(error: e.toString());
+      }
     }
   }
 
-  Future<void> _saveConnections() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = state.connections.map((c) => c.toJson()).toList();
-    await prefs.setString(_storageKey, jsonEncode(jsonList));
+  Future<void> _saveConnections(List<Connection> connections) async {
+    final secure = SecureStorageService();
+    final jsonList = connections.map((c) => c.toJson()).toList();
+    await secure.writeValue(_storageKey, jsonEncode(jsonList));
   }
 
   /// 接続を追加
@@ -183,10 +205,12 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     developer.log('New connections count: ${connections.length}', name: 'ConnectionsProvider');
 
     state = state.copyWith(connections: connections);
-    developer.log('State updated, saving to SharedPreferences...', name: 'ConnectionsProvider');
+    developer.log('State updated, saving to secure storage...', name: 'ConnectionsProvider');
 
-    await _saveConnections();
-    developer.log('Connections saved. Final count: ${state.connections.length}', name: 'ConnectionsProvider');
+    await _saveConnections(connections);
+    if (!_disposed) {
+      developer.log('Connections saved. Final count: ${state.connections.length}', name: 'ConnectionsProvider');
+    }
   }
 
   /// 接続を削除
@@ -194,8 +218,10 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     developer.log('remove() called: $id', name: 'ConnectionsProvider');
     final connections = state.connections.where((c) => c.id != id).toList();
     state = state.copyWith(connections: connections);
-    await _saveConnections();
-    developer.log('Connection removed. Remaining: ${state.connections.length}', name: 'ConnectionsProvider');
+    await _saveConnections(connections);
+    if (!_disposed) {
+      developer.log('Connection removed. Remaining: ${state.connections.length}', name: 'ConnectionsProvider');
+    }
   }
 
   /// 接続を更新
@@ -205,7 +231,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
       return c.id == connection.id ? connection : c;
     }).toList();
     state = state.copyWith(connections: connections);
-    await _saveConnections();
+    await _saveConnections(connections);
     developer.log('Connection updated and saved', name: 'ConnectionsProvider');
   }
 
@@ -218,7 +244,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
       return c;
     }).toList();
     state = state.copyWith(connections: connections);
-    await _saveConnections();
+    await _saveConnections(connections);
   }
 
   /// 接続を取得
