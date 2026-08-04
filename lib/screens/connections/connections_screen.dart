@@ -674,13 +674,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       options = SshConnectOptions(
         privateKey: privateKey,
         passphrase: passphrase,
-        tmuxPath: connection.tmuxPath,
+        multiplexer: connection.multiplexer,
       );
     } else {
       final password = await storage.getPassword(connection.id);
       options = SshConnectOptions(
         password: password,
-        tmuxPath: connection.tmuxPath,
+        multiplexer: connection.multiplexer,
       );
     }
     final sshClient = SshClient();

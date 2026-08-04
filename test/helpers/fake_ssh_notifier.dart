@@ -25,6 +25,17 @@ class FakeSshNotifier extends SshNotifier {
     SshConnectOptions options,
   ) async {
     client ??= FakeSshClient();
+    final effectiveOptions = options.multiplexer != null
+        ? options
+        : SshConnectOptions(
+            password: options.password,
+            privateKey: options.privateKey,
+            passphrase: options.passphrase,
+            multiplexer: connection.multiplexer,
+            timeout: options.timeout,
+            acceptNewHostKeys: options.acceptNewHostKeys,
+          );
+    _applyMultiplexerToFakeClient(client!, effectiveOptions);
     state = state.copyWith(connectionState: SshConnectionState.connected);
   }
 
@@ -34,7 +45,30 @@ class FakeSshNotifier extends SshNotifier {
     SshConnectOptions options,
   ) async {
     client ??= FakeSshClient();
+    final effectiveOptions = options.multiplexer != null
+        ? options
+        : SshConnectOptions(
+            password: options.password,
+            privateKey: options.privateKey,
+            passphrase: options.passphrase,
+            multiplexer: connection.multiplexer,
+            timeout: options.timeout,
+            acceptNewHostKeys: options.acceptNewHostKeys,
+          );
+    _applyMultiplexerToFakeClient(client!, effectiveOptions);
     state = state.copyWith(connectionState: SshConnectionState.connected);
+  }
+
+  void _applyMultiplexerToFakeClient(
+    SshClient client,
+    SshConnectOptions options,
+  ) {
+    if (client is! FakeSshClient) return;
+    final executablePath = options.multiplexer?.executablePath;
+    if (executablePath == null || executablePath.isEmpty) return;
+    client
+      ..userExecutablePath = executablePath
+      ..executablePath = executablePath;
   }
 
   @override
