@@ -13,7 +13,7 @@ import 'fake_sftp_client.dart';
 ///
 /// テスト用に実行ログと fixture 応答を提供する。
 class FakeSshClient extends SshClient
-    implements TmuxCommandExecutor, TmuxPathDetector {
+    implements TmuxCommandExecutor, TmuxPathDetector, BackendAdapter {
   @override
   SshConnectionState state = SshConnectionState.connected;
 
@@ -23,11 +23,23 @@ class FakeSshClient extends SshClient
   @override
   String? lastError;
 
-  @override
-  String? tmuxPath;
+  /// 検出・解決済み tmux パス（[TmuxCommandExecutor.tmuxPath] 用）。
+  String? executablePath;
 
+  /// ユーザーが指定した実行ファイルパス（[BackendAdapter.userExecutablePath] 用）。
   @override
-  String? userTmuxPath;
+  String? userExecutablePath;
+
+  /// 互換用 [TmuxCommandExecutor.tmuxPath] ゲッター。
+  @override
+  String? get tmuxPath => executablePath;
+  set tmuxPath(String? value) => executablePath = value;
+
+  /// 互換用 [TmuxBackend.userTmuxPath] ゲッター。
+  @override
+  @Deprecated('Use userExecutablePath instead')
+  String? get userTmuxPath => userExecutablePath;
+  set userTmuxPath(String? value) => userExecutablePath = value;
 
   final _connectionStateController =
       StreamController<SshConnectionState>.broadcast();
@@ -64,7 +76,15 @@ class FakeSshClient extends SshClient
   /// [restartInputTransport] の呼び出し回数。
   int restartInputTransportCount = 0;
 
-  FakeSshClient({this.tmuxPath = 'tmux'});
+  FakeSshClient({
+    @Deprecated('Use executablePath instead')
+    String? tmuxPath = 'tmux',
+    String? executablePath,
+    @Deprecated('Use userExecutablePath instead')
+    String? userTmuxPath,
+    String? userExecutablePath,
+  })  : executablePath = executablePath ?? tmuxPath,
+        userExecutablePath = userExecutablePath ?? userTmuxPath;
 
   @override
   TmuxInputTransport? get inputTransport => fakeInputTransport;
@@ -83,11 +103,12 @@ class FakeSshClient extends SshClient
   Future<SftpClient> openSftp() async => sftpClient;
 
   String _normalize(String command) {
-    if (tmuxPath == null) return command;
-    final escaped = RegExp.escape(tmuxPath!);
+    final path = executablePath;
+    if (path == null) return command;
+    final escaped = RegExp.escape(path);
     return command.replaceAll(
       RegExp("'$escaped'"),
-      tmuxPath!,
+      path,
     );
   }
 

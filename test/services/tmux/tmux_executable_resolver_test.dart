@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter_muxpod/services/ssh/ssh_connection_state.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_executable_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';

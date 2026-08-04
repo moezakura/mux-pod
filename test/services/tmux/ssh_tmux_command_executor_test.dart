@@ -24,7 +24,7 @@ void main() {
     late SshTmuxCommandExecutor executor;
 
     setUp(() {
-      sshClient = FakeSshClient(tmuxPath: '/usr/bin/tmux');
+      sshClient = FakeSshClient(executablePath: '/usr/bin/tmux');
       sshClient.setConnected(SshConnectionState.connected);
       sshClient.execOutputs = {
         r"$SHELL -lc 'command -v tmux'": '/usr/bin/tmux',
@@ -82,8 +82,8 @@ void main() {
     test('retries detection after first detection fails', () async {
       final client = FakeSshClient()
         ..setConnected(SshConnectionState.connected)
-        ..tmuxPath = '/custom/tmux'
-        ..userTmuxPath = '/custom/tmux';
+        ..executablePath = '/custom/tmux'
+        ..userExecutablePath = '/custom/tmux';
       client.execExceptions = {
         "test -x '/custom/tmux'": SshConnectionError('detection failed'),
       };

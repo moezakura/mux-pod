@@ -1,14 +1,15 @@
 library;
 
+import '../backend/backend_adapter.dart';
+
+export '../backend/backend_adapter.dart';
+
 /// tmux 入力シェル・backend transport の回復可能な失敗。
 ///
 /// [TmuxInputTransport.sendNoWait] 等で発生し、呼出側が再起動や
 /// exec fallback を判断できるようにする。
-class TmuxTransportException implements Exception {
-  final String message;
-  final Object? cause;
-
-  TmuxTransportException(this.message, [this.cause]);
+class TmuxTransportException extends BackendTransportException {
+  TmuxTransportException(super.message, [super.cause]);
 
   @override
   String toString() => 'TmuxTransportException: $message';
@@ -18,12 +19,15 @@ class TmuxTransportException implements Exception {
 ///
 /// 持続的シェル（persistent shell）の具象型を tmux 層に露出させないための
 /// backend-neutral な最小限のインターフェース。
-abstract interface class TmuxInputTransport {
+abstract interface class TmuxInputTransport implements BackendInputTransport {
+  /// 入力シェルが開始されているかどうか。
+  @override
   bool get isStarted;
 
   /// 出力を待たずに [data] を送信する。
   ///
   /// 送信不能な場合は [TmuxTransportException] を投げる。
+  @override
   void sendNoWait(String data);
 }
 
@@ -31,6 +35,10 @@ abstract interface class TmuxInputTransport {
 ///
 /// [SshClient] はこのインターフェースを実装し、tmux 層は
 /// [SshClient] 具象型ではなく [TmuxBackend] だけに依存する。
+///
+/// Task #4a で [SshClient] / [FakeSshClient] を [BackendAdapter] に
+/// 移行するまでは、既存 import との互換性のため [TmuxBackend] として
+/// 従来のメソッド面を維持する。
 abstract interface class TmuxBackend {
   bool get isConnected;
 

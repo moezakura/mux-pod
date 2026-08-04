@@ -4,8 +4,9 @@
 /// tmux 実行ファイルの検出・パス解決・入力専用シェル・restore trap など、
 /// Tmux 固有の責務を SSH 層から分離して担う。
 ///
-/// 具象の [SshClient] ではなく [TmuxBackend] 抽象に依存し、
-/// [TmuxInputTransport] だけを使用して入力シェルとの通信を行う。
+/// 具象の [SshClient] ではなく [BackendAdapter] 抽象に依存し、
+/// [BackendInputTransport] / [TmuxInputTransport] を使用して入力シェルと
+/// 通信を行う。
 library;
 
 import 'dart:async';
@@ -19,9 +20,9 @@ import 'tmux_shell_lifecycle.dart';
 
 // inventory: TMUX-SSH-EXEC-001
 class SshTmuxCommandExecutor implements TmuxCommandExecutor {
-  final TmuxBackend _backend;
+  final BackendAdapter _backend;
   final TmuxExecutableResolver _resolver;
-  final String? _userTmuxPath;
+  final String? _userExecutablePath;
   late final TmuxShellLifecycle _lifecycle;
 
   String? _lastRestoreTrapCommand;
@@ -31,8 +32,11 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
   // inventory: TMUX-SSH-EXEC-002
   SshTmuxCommandExecutor(
     this._backend, {
+    @Deprecated('Use userExecutablePath instead')
     String? userTmuxPath,
-  })  : _userTmuxPath = userTmuxPath ?? _backend.userTmuxPath,
+    String? userExecutablePath,
+  })  : _userExecutablePath =
+            userExecutablePath ?? userTmuxPath ?? _backend.userExecutablePath,
         _resolver = TmuxExecutableResolver() {
     _lifecycle = TmuxShellLifecycle(resolver: _resolver);
     _backend.onInputTransportRebooted = _reapplyLastRestoreTrap;
@@ -42,8 +46,8 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
     if (_detected) return;
     if (_detectFuture != null) return _detectFuture!;
     _detectFuture = _resolver.detect(
-      _TmuxBackendPathDetector(_backend),
-      userTmuxPath: _userTmuxPath,
+      _BackendAdapterPathDetector(_backend),
+      executablePath: _userExecutablePath,
     );
     try {
       await _detectFuture!;
@@ -182,14 +186,14 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
 }
 
 // inventory: TMUX-SSH-EXEC-016
-/// [TmuxBackend] を [TmuxPathDetector] として利用する薄いラッパー。
+/// [BackendAdapter] を [TmuxPathDetector] として利用する薄いラッパー。
 ///
 /// [SshTmuxCommandExecutor] 自身を渡すと `_ensureDetected` が再帰するため、
 /// 検出中はこのラッパー経由で raw transport のみを使う。
-class _TmuxBackendPathDetector implements TmuxPathDetector {
-  final TmuxBackend _backend;
+class _BackendAdapterPathDetector implements TmuxPathDetector {
+  final BackendAdapter _backend;
 
-  _TmuxBackendPathDetector(this._backend);
+  _BackendAdapterPathDetector(this._backend);
 
   @override
   bool get isConnected => _backend.isConnected;
@@ -207,22 +211,22 @@ class _TmuxBackendPathDetector implements TmuxPathDetector {
 }
 
 // inventory: TMUX-SSH-EXEC-014
-/// [TmuxBackend] から [TmuxCommandExecutor] を取得する拡張。
+/// [BackendAdapter] から [TmuxCommandExecutor] を取得する拡張。
 ///
 /// 同一の backend インスタンスに対しては [Expando] で
 /// [SshTmuxCommandExecutor] を共有可能化し、Tmux パス検出や
 /// restore trap 状態を再利用する。
-/// [TmuxBackend] 自体が [TmuxCommandExecutor] を実装している場合
+/// [BackendAdapter] 自体が [TmuxCommandExecutor] を実装している場合
 /// （テスト用の [FakeSshClient] など）はラップせずそのまま返す。
 final _sshExecutors = Expando<SshTmuxCommandExecutor>();
 
 // inventory: TMUX-SSH-EXEC-015
-extension TmuxBackendExecutor on TmuxBackend {
+extension BackendAdapterExecutor on BackendAdapter {
   TmuxCommandExecutor get tmuxExecutor {
     if (this is TmuxCommandExecutor) return this as TmuxCommandExecutor;
     return _sshExecutors[this] ??= SshTmuxCommandExecutor(
       this,
-      userTmuxPath: userTmuxPath,
+      userExecutablePath: userExecutablePath,
     );
   }
 }

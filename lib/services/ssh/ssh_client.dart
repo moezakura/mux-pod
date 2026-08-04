@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:dartssh2/dartssh2.dart';
 
+import '../backend/multiplexer_config.dart';
 import '../connection_error.dart';
 import '../keychain/secure_storage.dart';
 import '../tmux/tmux_backend.dart';
@@ -36,8 +37,8 @@ class SshConnectOptions {
 
   // inventory: SSH-007
   // inventory: LEGACY-0131
-  /// ユーザー指定のtmuxパス（nullなら自動検出）
-  final String? tmuxPath;
+  /// マルチプレクサ設定（nullなら自動検出）
+  final MultiplexerConfig? multiplexer;
 
   // inventory: SSH-008
   // inventory: LEGACY-0132
@@ -49,14 +50,19 @@ class SshConnectOptions {
   /// false の場合、未保存ホストは拒否する。
   final bool acceptNewHostKeys;
 
-  const SshConnectOptions({
+  SshConnectOptions({
     this.password,
     this.privateKey,
     this.passphrase,
-    this.tmuxPath,
+    @Deprecated('Use multiplexer instead')
+    String? tmuxPath,
+    MultiplexerConfig? multiplexer,
     this.timeout = 30,
     this.acceptNewHostKeys = true,
-  });
+  }) : multiplexer = multiplexer ??
+            (tmuxPath != null && tmuxPath.isNotEmpty
+                ? MultiplexerConfig.tmux(tmuxPath)
+                : null);
 }
 
 // inventory: SSH-009
@@ -126,9 +132,9 @@ class SshEvents {
 ///
 /// dartssh2をラップし、SSH接続を管理する。
 ///
-/// [TmuxBackend] も実装し、tmux 層は [SshClient] ではなく
-/// [TmuxBackend] 抽象にだけ依存する。
-class SshClient implements TmuxBackend {
+/// [TmuxBackend] / [BackendAdapter] も実装し、backend 層は
+/// 具象型ではなく抽象にだけ依存する。
+class SshClient implements TmuxBackend, BackendAdapter {
   SSHClient? _client;
   SSHSession? _session;
   SSHSocket? _socket;
@@ -161,10 +167,16 @@ class SshClient implements TmuxBackend {
   /// 接続時に使用したオプション
   SshConnectOptions? get connectOptions => _connectOptions;
 
-  /// ユーザーが接続設定で指定した tmux パス。
+  /// ユーザーが接続設定で指定した実行ファイルパス。
   @override
+  // inventory: SSH-NEW-001
+  String? get userExecutablePath => _connectOptions?.multiplexer?.executablePath;
+
+  /// ユーザーが接続設定で指定した tmux パス（互換）。
+  @override
+  @Deprecated('Use userExecutablePath instead')
   // inventory: LEGACY-0139
-  String? get userTmuxPath => _connectOptions?.tmuxPath;
+  String? get userTmuxPath => userExecutablePath;
 
   /// 入力専用の持続的シェル
   @override
@@ -332,7 +344,7 @@ class SshClient implements TmuxBackend {
       _state = SshConnectionState.connected;
       _connectionStateController.add(_state);
 
-      // 接続オプションを保存（Tmux 側は connectOptions.tmuxPath 経由で取得）
+      // 接続オプションを保存（backend 側は userExecutablePath 経由で取得）
       _connectOptions = options;
 
       // 一括コマンド実行用の軽量接続では、ポーリング用シェルとkeep-aliveをスキップ。

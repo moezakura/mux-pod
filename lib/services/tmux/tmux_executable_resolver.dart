@@ -39,27 +39,36 @@ class TmuxExecutableResolver {
   // inventory: SSH-LIFE-005
   /// リモートで tmux 実行ファイルを検出する。
   ///
-  /// [userTmuxPath] が指定されていればその存在確認のみを行い、
+  /// [executablePath] が指定されていればその存在確認のみを行い、
   /// 成功時はそれを使用する。失敗時は `null` とする。
-  /// [userTmuxPath] が未指定の場合は、ログインシェル経由の
+  /// [executablePath] が未指定の場合は、ログインシェル経由の
   /// `command -v tmux` と既知パスのフォールバックを試行する。
+  ///
+  /// [userTmuxPath] は非推奨の互換エイリアス。[executablePath] が
+  /// 優先される。
   Future<void> detect(
     TmuxPathDetector detector, {
+    String? executablePath,
+    @Deprecated('Use executablePath instead')
     String? userTmuxPath,
   }) async {
     if (!detector.isConnected) return;
 
-    if (userTmuxPath != null && userTmuxPath.isNotEmpty) {
-      _customPath = userTmuxPath;
+    final path = (executablePath?.isNotEmpty == true)
+        ? executablePath
+        : (userTmuxPath?.isNotEmpty == true ? userTmuxPath : null);
+
+    if (path != null) {
+      _customPath = path;
       final result = await detector.execWithExitCode(
-        'test -x ${shQuote(userTmuxPath)}',
+        'test -x ${shQuote(path)}',
       );
       if (result.exitCode == 0) {
-        _tmuxPath = userTmuxPath;
+        _tmuxPath = path;
         debugPrint('TmuxExecutableResolver: user-specified path verified: $_tmuxPath');
         return;
       }
-      debugPrint('TmuxExecutableResolver: user-specified path not found: $userTmuxPath');
+      debugPrint('TmuxExecutableResolver: user-specified path not found: $path');
       _tmuxPath = null;
       return;
     }

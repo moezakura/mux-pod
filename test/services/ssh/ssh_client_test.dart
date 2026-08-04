@@ -1,4 +1,8 @@
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/services/backend/backend_type.dart';
+import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 
 void main() {
@@ -14,12 +18,31 @@ void main() {
     });
 
     test('SshConnectOptions defaults', () {
-      const options = SshConnectOptions(
+      final options = SshConnectOptions(
         password: 'pw',
       );
       expect(options.timeout, 30);
-      expect(options.tmuxPath, isNull);
+      expect(options.multiplexer, isNull);
+      expect(options.multiplexer?.executablePath, isNull);
       expect(options.privateKey, isNull);
+    });
+
+    test('SshConnectOptions uses multiplexer', () {
+      final options = SshConnectOptions(
+        password: 'pw',
+        multiplexer: MultiplexerConfig.tmux('/usr/bin/tmux'),
+      );
+      expect(options.multiplexer?.backend, BackendType.tmux);
+      expect(options.multiplexer?.executablePath, '/usr/bin/tmux');
+    });
+
+    test('SshConnectOptions tmuxPath alias maps to multiplexer', () {
+      final options = SshConnectOptions(
+        password: 'pw',
+        tmuxPath: '/usr/bin/tmux',
+      );
+      expect(options.multiplexer?.backend, BackendType.tmux);
+      expect(options.multiplexer?.executablePath, '/usr/bin/tmux');
     });
 
     test('ShellOptions defaults', () {
@@ -43,7 +66,8 @@ void main() {
       expect(client.isConnected, isFalse);
       expect(client.state, SshConnectionState.disconnected);
       expect(client.lastError, isNull);
-      expect(client.connectOptions?.tmuxPath, isNull);
+      expect(client.userExecutablePath, isNull);
+      expect(client.connectOptions?.multiplexer, isNull);
     });
 
     test('state stream emits when connected is toggled', () {
@@ -97,7 +121,7 @@ void main() {
           host: '  ',
           port: 22,
           username: 'user',
-          options: const SshConnectOptions(password: 'pw'),
+          options: SshConnectOptions(password: 'pw'),
           lightweight: true,
         ),
         throwsA(isA<SshConnectionError>()),
@@ -108,7 +132,7 @@ void main() {
           host: 'host',
           port: 0,
           username: 'user',
-          options: const SshConnectOptions(password: 'pw'),
+          options: SshConnectOptions(password: 'pw'),
           lightweight: true,
         ),
         throwsA(isA<SshConnectionError>()),
@@ -119,7 +143,7 @@ void main() {
           host: 'host',
           port: 70000,
           username: 'user',
-          options: const SshConnectOptions(password: 'pw'),
+          options: SshConnectOptions(password: 'pw'),
           lightweight: true,
         ),
         throwsA(isA<SshConnectionError>()),
@@ -130,7 +154,7 @@ void main() {
           host: 'host',
           port: 22,
           username: '  ',
-          options: const SshConnectOptions(password: 'pw'),
+          options: SshConnectOptions(password: 'pw'),
           lightweight: true,
         ),
         throwsA(isA<SshConnectionError>()),
@@ -141,7 +165,7 @@ void main() {
           host: 'host',
           port: 22,
           username: 'user',
-          options: const SshConnectOptions(),
+          options: SshConnectOptions(),
           lightweight: true,
         ),
         throwsA(isA<SshAuthenticationError>()),
