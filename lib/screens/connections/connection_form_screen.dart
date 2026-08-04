@@ -7,12 +7,19 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
+import '../../services/backend/multiplexer_config.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/ssh_tmux_command_executor.dart';
 import '../../services/tmux/tmux_command_builder.dart';
 import '../../services/tmux/tmux_version.dart';
 import '../../theme/design_colors.dart';
+
+/// [ConnectionFormScreen] の接続テストで使用する [SshClient] のファクトリ。
+///
+/// テスト時に fake client を差し込めるよう Provider として公開する。
+final connectionFormSshClientFactoryProvider =
+    Provider<SshClient Function()>((ref) => createSshClient);
 
 /// 接続編集画面
 class ConnectionFormScreen extends ConsumerStatefulWidget {
@@ -36,7 +43,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   final _portController = TextEditingController(text: '22');
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _tmuxPathController = TextEditingController();
+  final _multiplexerPathController = TextEditingController();
   final _deepLinkIdController = TextEditingController();
 
   String _authMethod = 'password';
@@ -62,7 +69,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       _usernameController.text = connection.username;
       _authMethod = connection.authMethod;
       _selectedKeyId = connection.keyId;
-      _tmuxPathController.text = connection.tmuxPath ?? '';
+      _multiplexerPathController.text = connection.multiplexer.executablePath ?? '';
       _deepLinkIdController.text = connection.deepLinkId ?? '';
     }
   }
@@ -74,7 +81,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     _portController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
-    _tmuxPathController.dispose();
+    _multiplexerPathController.dispose();
     _deepLinkIdController.dispose();
     super.dispose();
   }
@@ -239,10 +246,10 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              // tmux path
-              _buildFieldLabel('TMUX PATH (OPTIONAL)'),
+              // multiplexer path
+              _buildFieldLabel('MULTIPLEXER PATH (OPTIONAL)'),
               const SizedBox(height: 8),
-              _buildTmuxPathInput(),
+              _buildMultiplexerPathInput(),
               const SizedBox(height: 16),
               // Deep Link ID
               _buildFieldLabel('DEEP LINK ID (OPTIONAL)'),
@@ -484,7 +491,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     );
   }
 
-  Widget _buildTmuxPathInput() {
+  Widget _buildMultiplexerPathInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
@@ -493,7 +500,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
-          controller: _tmuxPathController,
+          controller: _multiplexerPathController,
           style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
           decoration: InputDecoration(
             hintText: '/usr/bin/tmux (auto-detect if empty)',
@@ -823,7 +830,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     setState(() => _isTesting = true);
 
-    final sshClient = SshClient();
+    SshClient? sshClient;
     String? errorMessage;
     bool tmuxInstalled = false;
     String? tmuxWarning;
@@ -852,7 +859,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       }
 
       // SSH接続テスト
-      final customTmuxPath = _tmuxPathController.text.trim();
+      final customPath = _multiplexerPathController.text.trim();
+      sshClient = ref.read(connectionFormSshClientFactoryProvider)();
       await sshClient.connect(
         host: _hostController.text.trim(),
         port: int.tryParse(_portController.text) ?? 22,
@@ -861,7 +869,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           password: password,
           privateKey: privateKey,
           passphrase: passphrase,
-          tmuxPath: customTmuxPath.isNotEmpty ? customTmuxPath : null,
+          multiplexer: MultiplexerConfig.tmux(customPath.isNotEmpty ? customPath : null),
         ),
       );
 
@@ -872,8 +880,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         );
         if (result.exitCode != null && result.exitCode != 0) {
           tmuxInstalled = false;
-          tmuxWarning = customTmuxPath.isNotEmpty
-              ? 'custom tmux path not found or not executable: $customTmuxPath'
+          tmuxWarning = customPath.isNotEmpty
+              ? 'custom tmux path not found or not executable: $customPath'
               : 'tmux not found';
         } else {
           final version = TmuxVersionInfo.parse(result.stdout);
@@ -886,8 +894,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         }
       } on SshConnectionError catch (_) {
         tmuxInstalled = false;
-        tmuxWarning = customTmuxPath.isNotEmpty
-            ? 'custom tmux path not found or not executable: $customTmuxPath'
+        tmuxWarning = customPath.isNotEmpty
+            ? 'custom tmux path not found or not executable: $customPath'
             : 'tmux not found';
       } catch (e) {
         tmuxInstalled = false;
@@ -900,7 +908,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     } catch (e) {
       errorMessage = 'Error: $e';
     } finally {
-      await sshClient.dispose();
+      await sshClient?.dispose();
     }
 
     if (mounted) {
@@ -951,7 +959,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         developer.log('Password saved successfully', name: 'ConnectionForm');
       }
 
-      final saveTmuxPath = _tmuxPathController.text.trim();
+      final savePath = _multiplexerPathController.text.trim();
       final saveDeepLinkId = _deepLinkIdController.text.trim();
       final connection = Connection(
         id: connectionId,
@@ -961,7 +969,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         username: _usernameController.text.trim(),
         authMethod: _authMethod,
         keyId: _authMethod == 'key' ? _selectedKeyId : null,
-        tmuxPath: saveTmuxPath.isNotEmpty ? saveTmuxPath : null,
+        multiplexer: MultiplexerConfig.tmux(savePath.isNotEmpty ? savePath : null),
         deepLinkId: saveDeepLinkId.isNotEmpty ? saveDeepLinkId : null,
         createdAt: widget.isEditing
             ? ref.read(connectionsProvider.notifier).getById(connectionId)?.createdAt ?? DateTime.now()
