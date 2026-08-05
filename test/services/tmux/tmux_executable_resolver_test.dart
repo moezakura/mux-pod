@@ -1,5 +1,3 @@
-// ignore_for_file: deprecated_member_use_from_same_package
-
 import 'package:flutter_muxpod/services/ssh/ssh_connection_state.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_executable_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,7 +10,7 @@ void main() {
     late TmuxExecutableResolver resolver;
 
     setUp(() {
-      client = FakeSshClient(tmuxPath: null);
+      client = FakeSshClient(executablePath: null);
       client.setConnected(SshConnectionState.connected);
       resolver = TmuxExecutableResolver();
     });
@@ -64,7 +62,7 @@ void main() {
         "test -x '/custom/tmux'": 0,
       };
 
-      await resolver.detect(client, userTmuxPath: '/custom/tmux');
+      await resolver.detect(client, executablePath: '/custom/tmux');
 
       expect(resolver.tmuxPath, '/custom/tmux');
     });
@@ -77,7 +75,7 @@ void main() {
         r"$SHELL -lc 'command -v tmux'": '/usr/bin/tmux',
       };
 
-      await resolver.detect(client, userTmuxPath: '/custom/tmux');
+      await resolver.detect(client, executablePath: '/custom/tmux');
 
       expect(resolver.tmuxPath, isNull);
       expect(resolver.customPath, '/custom/tmux');

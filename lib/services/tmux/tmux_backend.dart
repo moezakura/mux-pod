@@ -33,33 +33,8 @@ abstract interface class TmuxInputTransport implements BackendInputTransport {
 
 /// tmux 層が SSH 層に要求する backend-neutral transport 能力。
 ///
-/// [SshClient] はこのインターフェースを実装し、tmux 層は
-/// [SshClient] 具象型ではなく [TmuxBackend] だけに依存する。
+/// [SshClient] は [BackendAdapter] を実装し、tmux 層は
+/// [SshClient] 具象型ではなく [TmuxBackend] / [BackendAdapter] 抽象に依存する。
 ///
-/// Task #4a で [SshClient] / [FakeSshClient] を [BackendAdapter] に
-/// 移行するまでは、既存 import との互換性のため [TmuxBackend] として
-/// 従来のメソッド面を維持する。
-abstract interface class TmuxBackend {
-  bool get isConnected;
-
-  Future<String> exec(String command, {Duration? timeout});
-  Future<String> execPersistent(String command, {Duration? timeout});
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  });
-  void write(String data);
-
-  /// ユーザーが接続設定で指定した tmux パス。
-  String? get userTmuxPath;
-
-  /// 入力専用の持続的シェル。
-  TmuxInputTransport? get inputTransport;
-
-  /// 入力専用シェルを再起動する。
-  Future<void> restartInputTransport();
-
-  /// 入力シェルが再起動した際に呼ばれるコールバック。
-  void Function()? get onInputTransportRebooted;
-  set onInputTransportRebooted(void Function()? value);
-}
+/// [TmuxBackend] は [BackendAdapter] の互換名（alias）である。
+typedef TmuxBackend = BackendAdapter;

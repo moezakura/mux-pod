@@ -1,5 +1,3 @@
-// ignore_for_file: deprecated_member_use_from_same_package
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
@@ -31,15 +29,6 @@ void main() {
       final options = SshConnectOptions(
         password: 'pw',
         multiplexer: MultiplexerConfig.tmux('/usr/bin/tmux'),
-      );
-      expect(options.multiplexer?.backend, BackendType.tmux);
-      expect(options.multiplexer?.executablePath, '/usr/bin/tmux');
-    });
-
-    test('SshConnectOptions tmuxPath alias maps to multiplexer', () {
-      final options = SshConnectOptions(
-        password: 'pw',
-        tmuxPath: '/usr/bin/tmux',
       );
       expect(options.multiplexer?.backend, BackendType.tmux);
       expect(options.multiplexer?.executablePath, '/usr/bin/tmux');

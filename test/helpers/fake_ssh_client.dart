@@ -35,12 +35,6 @@ class FakeSshClient extends SshClient
   String? get tmuxPath => executablePath;
   set tmuxPath(String? value) => executablePath = value;
 
-  /// 互換用 [TmuxBackend.userTmuxPath] ゲッター。
-  @override
-  @Deprecated('Use userExecutablePath instead')
-  String? get userTmuxPath => userExecutablePath;
-  set userTmuxPath(String? value) => userExecutablePath = value;
-
   final _connectionStateController =
       StreamController<SshConnectionState>.broadcast();
 
@@ -77,14 +71,9 @@ class FakeSshClient extends SshClient
   int restartInputTransportCount = 0;
 
   FakeSshClient({
-    @Deprecated('Use executablePath instead')
-    String? tmuxPath = 'tmux',
-    String? executablePath,
-    @Deprecated('Use userExecutablePath instead')
-    String? userTmuxPath,
-    String? userExecutablePath,
-  })  : executablePath = executablePath ?? tmuxPath,
-        userExecutablePath = userExecutablePath ?? userTmuxPath;
+    this.executablePath = 'tmux',
+    this.userExecutablePath,
+  });
 
   @override
   TmuxInputTransport? get inputTransport => fakeInputTransport;

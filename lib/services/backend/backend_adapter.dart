@@ -31,7 +31,7 @@ abstract interface class BackendInputTransport {
 
 /// backend 非依存の transport 能力。
 ///
-/// [SshClient] は [TmuxBackend] / [BackendAdapter] としてこのインターフェースを
+/// [SshClient] は [BackendAdapter]（互換名 [TmuxBackend]）としてこのインターフェースを
 /// 実装する。backend 層は具象型ではなくこの抽象に依存する。
 abstract interface class BackendAdapter {
   /// 接続中かどうか。

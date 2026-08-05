@@ -310,51 +310,6 @@ void main() {
         expect(cleared.multiplexer.executablePath, isNull);
       });
 
-      test('copyWith legacy tmuxPath maps to multiplexer', () {
-        final connection = Connection(
-          id: 'c1',
-          name: 'Server',
-          host: 'h',
-          username: 'u',
-          createdAt: DateTime(2025, 1, 1),
-        );
-
-        // ignore: deprecated_member_use_from_same_package
-        final updated = connection.copyWith(tmuxPath: '/legacy');
-        expect(updated.multiplexer.executablePath, '/legacy');
-      });
-
-      test('copyWith multiplexer wins over tmuxPath', () {
-        final connection = Connection(
-          id: 'c1',
-          name: 'Server',
-          host: 'h',
-          username: 'u',
-          createdAt: DateTime(2025, 1, 1),
-        );
-
-        final updated = connection.copyWith(
-          multiplexer: const MultiplexerConfig.tmux('/multiplexer'),
-          // ignore: deprecated_member_use_from_same_package
-          tmuxPath: '/legacy',
-        );
-        expect(updated.multiplexer.executablePath, '/multiplexer');
-      });
-
-      test('legacy tmuxPath getter maps to multiplexer.executablePath', () {
-        final connection = Connection(
-          id: 'c1',
-          name: 'Server',
-          host: 'h',
-          username: 'u',
-          multiplexer: const MultiplexerConfig.tmux('/tmux'),
-          createdAt: DateTime(2025, 1, 1),
-        );
-
-        // ignore: deprecated_member_use, deprecated_member_use_from_same_package
-        expect(connection.tmuxPath, '/tmux');
-      });
-
       test('copyWith clearDeepLinkId', () {
         final now = DateTime(2025, 1, 1);
         final connection = Connection(

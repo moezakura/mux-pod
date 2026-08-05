@@ -44,19 +44,13 @@ class TmuxExecutableResolver {
   /// [executablePath] が未指定の場合は、ログインシェル経由の
   /// `command -v tmux` と既知パスのフォールバックを試行する。
   ///
-  /// [userTmuxPath] は非推奨の互換エイリアス。[executablePath] が
-  /// 優先される。
   Future<void> detect(
     TmuxPathDetector detector, {
     String? executablePath,
-    @Deprecated('Use executablePath instead')
-    String? userTmuxPath,
   }) async {
     if (!detector.isConnected) return;
 
-    final path = (executablePath?.isNotEmpty == true)
-        ? executablePath
-        : (userTmuxPath?.isNotEmpty == true ? userTmuxPath : null);
+    final path = (executablePath?.isNotEmpty == true) ? executablePath : null;
 
     if (path != null) {
       _customPath = path;

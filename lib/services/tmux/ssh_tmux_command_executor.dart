@@ -32,11 +32,8 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
   // inventory: TMUX-SSH-EXEC-002
   SshTmuxCommandExecutor(
     this._backend, {
-    @Deprecated('Use userExecutablePath instead')
-    String? userTmuxPath,
     String? userExecutablePath,
-  })  : _userExecutablePath =
-            userExecutablePath ?? userTmuxPath ?? _backend.userExecutablePath,
+  })  : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
         _resolver = TmuxExecutableResolver() {
     _lifecycle = TmuxShellLifecycle(resolver: _resolver);
     _backend.onInputTransportRebooted = _reapplyLastRestoreTrap;

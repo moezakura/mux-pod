@@ -27,15 +27,6 @@ class Connection {
   /// ディープリンク用の識別子（外部スクリプトと共有可能）
   final String? deepLinkId;
 
-  /// レガシー [tmuxPath] へのアクセサ。
-  ///
-  /// Task #4b 完了後に削除予定。新規コードは [multiplexer.executablePath] を
-  /// 直接使用すること。
-  @Deprecated(
-    'Use multiplexer.executablePath instead. This getter will be removed after #4b.',
-  )
-  String? get tmuxPath => multiplexer.executablePath;
-
   Connection({
     required this.id,
     required this.name,
@@ -45,18 +36,10 @@ class Connection {
     this.authMethod = 'password',
     this.keyId,
     MultiplexerConfig? multiplexer,
-    @Deprecated(
-      'Use multiplexer instead. This parameter will be removed after #4b.',
-    )
-    String? tmuxPath,
     required this.createdAt,
     this.lastConnectedAt,
     this.deepLinkId,
-  }) : multiplexer = _resolveMultiplexer(
-          multiplexer,
-          tmuxPath,
-          const MultiplexerConfig.tmux(),
-        );
+  }) : multiplexer = multiplexer ?? const MultiplexerConfig.tmux();
 
   Connection copyWith({
     String? id,
@@ -67,10 +50,6 @@ class Connection {
     String? authMethod,
     String? keyId,
     MultiplexerConfig? multiplexer,
-    @Deprecated(
-      'Use multiplexer instead. This parameter will be removed after #4b.',
-    )
-    String? tmuxPath,
     DateTime? createdAt,
     DateTime? lastConnectedAt,
     String? deepLinkId,
@@ -84,27 +63,11 @@ class Connection {
       username: username ?? this.username,
       authMethod: authMethod ?? this.authMethod,
       keyId: keyId ?? this.keyId,
-      multiplexer: _resolveMultiplexer(multiplexer, tmuxPath, this.multiplexer),
+      multiplexer: multiplexer ?? this.multiplexer,
       createdAt: createdAt ?? this.createdAt,
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       deepLinkId: clearDeepLinkId ? null : (deepLinkId ?? this.deepLinkId),
     );
-  }
-
-  /// [multiplexer] が明示的に指定されていればそれを優先し、
-  /// 指定されていなければ [tmuxPath] から [MultiplexerConfig.tmux()] を構築する。
-  static MultiplexerConfig _resolveMultiplexer(
-    MultiplexerConfig? multiplexer,
-    String? tmuxPath,
-    MultiplexerConfig fallback,
-  ) {
-    if (multiplexer != null) return multiplexer;
-    if (tmuxPath != null) {
-      return tmuxPath.isNotEmpty
-          ? MultiplexerConfig.tmux(tmuxPath)
-          : const MultiplexerConfig.tmux();
-    }
-    return fallback;
   }
 
   Map<String, dynamic> toJson() {

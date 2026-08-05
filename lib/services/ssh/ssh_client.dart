@@ -54,15 +54,10 @@ class SshConnectOptions {
     this.password,
     this.privateKey,
     this.passphrase,
-    @Deprecated('Use multiplexer instead')
-    String? tmuxPath,
-    MultiplexerConfig? multiplexer,
+    this.multiplexer,
     this.timeout = 30,
     this.acceptNewHostKeys = true,
-  }) : multiplexer = multiplexer ??
-            (tmuxPath != null && tmuxPath.isNotEmpty
-                ? MultiplexerConfig.tmux(tmuxPath)
-                : null);
+  });
 }
 
 // inventory: SSH-009
@@ -132,9 +127,9 @@ class SshEvents {
 ///
 /// dartssh2をラップし、SSH接続を管理する。
 ///
-/// [TmuxBackend] / [BackendAdapter] も実装し、backend 層は
+/// [BackendAdapter]（互換名 [TmuxBackend]）を実装し、backend 層は
 /// 具象型ではなく抽象にだけ依存する。
-class SshClient implements TmuxBackend, BackendAdapter {
+class SshClient implements BackendAdapter {
   SSHClient? _client;
   SSHSession? _session;
   SSHSocket? _socket;
@@ -171,12 +166,6 @@ class SshClient implements TmuxBackend, BackendAdapter {
   @override
   // inventory: SSH-NEW-001
   String? get userExecutablePath => _connectOptions?.multiplexer?.executablePath;
-
-  /// ユーザーが接続設定で指定した tmux パス（互換）。
-  @override
-  @Deprecated('Use userExecutablePath instead')
-  // inventory: LEGACY-0139
-  String? get userTmuxPath => userExecutablePath;
 
   /// 入力専用の持続的シェル
   @override
