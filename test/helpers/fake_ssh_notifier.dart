@@ -12,18 +12,20 @@ class FakeSshNotifier extends SshNotifier {
 
   FakeSshNotifier({this.client});
 
-  @override
-  SshState build() => SshState(
-        connectionState: client != null
-            ? SshConnectionState.connected
-            : SshConnectionState.disconnected,
-      );
+  Connection? lastConnectConnection;
+  SshConnectOptions? lastConnectOptions;
+  int reconnectCalls = 0;
+  bool reconnectResult = false;
 
   @override
-  Future<void> connect(
-    Connection connection,
-    SshConnectOptions options,
-  ) async {
+  SshState build() => SshState(
+    connectionState: client != null
+        ? SshConnectionState.connected
+        : SshConnectionState.disconnected,
+  );
+
+  @override
+  Future<void> connect(Connection connection, SshConnectOptions options) async {
     client ??= FakeSshClient();
     final effectiveOptions = options.multiplexer != null
         ? options
@@ -44,6 +46,8 @@ class FakeSshNotifier extends SshNotifier {
     Connection connection,
     SshConnectOptions options,
   ) async {
+    lastConnectConnection = connection;
+    lastConnectOptions = options;
     client ??= FakeSshClient();
     final effectiveOptions = options.multiplexer != null
         ? options
@@ -80,8 +84,9 @@ class FakeSshNotifier extends SshNotifier {
 
   @override
   Future<bool> reconnect() async {
+    reconnectCalls++;
     state = state.copyWith(connectionState: SshConnectionState.disconnected);
-    return false;
+    return reconnectResult;
   }
 
   @override

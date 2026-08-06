@@ -46,6 +46,9 @@ class FakeSshClient extends SshClient
   /// `command` の接頭辞で一意に識別。
   Map<String, String> execOutputs = {};
 
+  /// Prefix/substring keyed FIFO responses for polling and refresh scenarios.
+  final Map<String, List<String>> execOutputQueues = {};
+
   /// [execWithExitCode] 用の終了コード fixture。
   Map<String, int> execExitCodes = {};
 
@@ -70,10 +73,7 @@ class FakeSshClient extends SshClient
   /// [restartInputTransport] の呼び出し回数。
   int restartInputTransportCount = 0;
 
-  FakeSshClient({
-    this.executablePath = 'tmux',
-    this.userExecutablePath,
-  });
+  FakeSshClient({this.executablePath = 'tmux', this.userExecutablePath});
 
   @override
   TmuxInputTransport? get inputTransport => fakeInputTransport;
@@ -95,10 +95,7 @@ class FakeSshClient extends SshClient
     final path = executablePath;
     if (path == null) return command;
     final escaped = RegExp.escape(path);
-    return command.replaceAll(
-      RegExp("'$escaped'"),
-      path,
-    );
+    return command.replaceAll(RegExp("'$escaped'"), path);
   }
 
   bool _matches(String command, String key) =>
@@ -108,6 +105,11 @@ class FakeSshClient extends SshClient
       _normalize(command).contains(key);
 
   String _lookupOutput(String command) {
+    for (final entry in execOutputQueues.entries) {
+      if (_matches(command, entry.key) && entry.value.isNotEmpty) {
+        return entry.value.removeAt(0);
+      }
+    }
     return execOutputs.entries
         .firstWhere(
           (e) => _matches(command, e.key),
@@ -121,6 +123,9 @@ class FakeSshClient extends SshClient
     final normalized = _normalize(command);
     if (execExitCodes.containsKey(normalized)) {
       return execExitCodes[normalized]!;
+    }
+    for (final entry in execExitCodes.entries) {
+      if (_matches(command, entry.key)) return entry.value;
     }
     return 0;
   }
@@ -137,10 +142,7 @@ class FakeSshClient extends SshClient
   }
 
   @override
-  Future<String> execPersistent(
-    String command, {
-    Duration? timeout,
-  }) async {
+  Future<String> execPersistent(String command, {Duration? timeout}) async {
     execPersistentCommands.add(command);
     return exec(command, timeout: timeout);
   }

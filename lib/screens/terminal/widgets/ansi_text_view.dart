@@ -881,6 +881,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         if (widget.zoomEnabled) {
           // RawGestureDetectorで2本指検出時にgesture arenaを強制勝利
           listWidget = RawGestureDetector(
+            key: const ValueKey('terminal-two-finger-gesture'),
             gestures: <Type, GestureRecognizerFactory>{
               _EagerScaleGestureRecognizer:
                   GestureRecognizerFactoryWithHandlers<
@@ -920,6 +921,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           autofocus: true,
           onKeyEvent: _handleKeyEvent,
           child: GestureDetector(
+            key: const ValueKey('terminal-input-gesture'),
             onTap: () {
               _focusNode.requestFocus();
               widget.onTap?.call();

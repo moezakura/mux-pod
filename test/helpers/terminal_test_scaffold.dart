@@ -13,6 +13,8 @@ import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
+import 'package:flutter_muxpod/widgets/image_transfer_confirm_dialog.dart';
 
 import '../fixtures/tmux/tmux_parser_fixtures.dart';
 import 'fake_settings_notifier.dart';
@@ -21,11 +23,16 @@ import 'fake_ssh_notifier.dart';
 import 'fake_tmux_notifier.dart';
 
 class _FakeConnectionsNotifier extends ConnectionsNotifier {
+  _FakeConnectionsNotifier({this.connection});
+
+  final Connection? connection;
+
   @override
   ConnectionsState build() => const ConnectionsState();
 
   @override
   Connection? getById(String id) {
+    if (connection?.id == id) return connection;
     if (id == 'test-conn') {
       return Connection(
         id: id,
@@ -48,23 +55,46 @@ class _FakeActiveSessionsNotifier extends ActiveSessionsNotifier {
   ActiveSessionsState build() => const ActiveSessionsState();
 
   @override
-  void updateWindowCount(String connectionId, String sessionName, int windowCount) {}
+  void updateWindowCount(
+    String connectionId,
+    String sessionName,
+    int windowCount,
+  ) {}
 }
 
 class _FakeTerminalDisplayNotifier extends TerminalDisplayNotifier {
   @override
   TerminalDisplayState build() => const TerminalDisplayState(
-        paneWidth: 80,
-        paneHeight: 24,
-        screenWidth: 400.0,
-        screenHeight: 800.0,
-        calculatedFontSize: 14.0,
-      );
+    paneWidth: 80,
+    paneHeight: 24,
+    screenWidth: 400.0,
+    screenHeight: 800.0,
+    calculatedFontSize: 14.0,
+  );
 }
 
-class _FakeImageTransferNotifier extends ImageTransferNotifier {
+class FakeImageTransferNotifier extends ImageTransferNotifier {
+  String? uploadResult;
+
   @override
   ImageTransferState build() => const ImageTransferState();
+
+  void emit(ImageTransferState next) => state = next;
+
+  @override
+  Future<String?> confirmAndUpload({
+    required ImageTransferOptions options,
+  }) async {
+    final result = uploadResult;
+    if (result != null) {
+      state = ImageTransferState(
+        phase: ImageTransferPhase.completed,
+        lastUploadedPath: result,
+        uploadProgress: 1,
+      );
+    }
+    return result;
+  }
 }
 
 class _FakeAlertPanesNotifier extends AlertPanesNotifier {
@@ -87,6 +117,11 @@ class TerminalTestScaffold {
     int? deepLinkPaneIndex,
     AppSettings settings = const AppSettings(keepScreenOn: false),
     Map<String, String> execOutputs = const {},
+    Map<String, int> execExitCodes = const {},
+    Map<String, List<String>> execOutputQueues = const {},
+    FakeImageTransferNotifier? imageTransferNotifier,
+    Connection? connection,
+    Map<String, String>? secureStorageValues,
   }) async {
     TestWidgetsFlutterBinding.ensureInitialized();
     tester.view.physicalSize = const Size(1080, 1920);
@@ -100,26 +135,45 @@ class TerminalTestScaffold {
         .setMockMethodCallHandler(secureStorageChannel, (_) async => null);
 
     SharedPreferences.setMockInitialValues({});
+    SecureStorageService.setTestValues(secureStorageValues ?? const {});
+    addTearDown(() => SecureStorageService.setTestValues(null));
 
     final client = FakeSshClient();
     client.execOutputs = {
       'tmux -V': 'tmux 3.4',
       'list-panes -a': kFullTreeOutput,
-      'capture-pane': 'hello\n1 2 80 24\n',
+      'capture-pane': 'hello\n1,2,80,24\n',
       'display-message -p': '1 2 80 24',
       ...execOutputs,
     };
+    client.execExitCodes = execExitCodes;
+    client.execOutputQueues.addAll({
+      for (final entry in execOutputQueues.entries)
+        entry.key: List<String>.of(entry.value),
+    });
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          settingsProvider.overrideWith(() => FakeSettingsNotifier(settings: settings)),
-          connectionsProvider.overrideWith(() => _FakeConnectionsNotifier()),
+          settingsProvider.overrideWith(
+            () => FakeSettingsNotifier(settings: settings),
+          ),
+          connectionsProvider.overrideWith(
+            () => _FakeConnectionsNotifier(connection: connection),
+          ),
           sshProvider.overrideWith(() => FakeSshNotifier(client: client)),
-          tmuxProvider.overrideWith(() => FakeTmuxNotifier(initialState: const TmuxState())),
-          activeSessionsProvider.overrideWith(() => _FakeActiveSessionsNotifier()),
-          terminalDisplayProvider.overrideWith(() => _FakeTerminalDisplayNotifier()),
-          imageTransferProvider.overrideWith(() => _FakeImageTransferNotifier()),
+          tmuxProvider.overrideWith(
+            () => FakeTmuxNotifier(initialState: const TmuxState()),
+          ),
+          activeSessionsProvider.overrideWith(
+            () => _FakeActiveSessionsNotifier(),
+          ),
+          terminalDisplayProvider.overrideWith(
+            () => _FakeTerminalDisplayNotifier(),
+          ),
+          imageTransferProvider.overrideWith(
+            () => imageTransferNotifier ?? FakeImageTransferNotifier(),
+          ),
           alertPanesProvider.overrideWith(() => _FakeAlertPanesNotifier()),
         ],
         child: MaterialApp(

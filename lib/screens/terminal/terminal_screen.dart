@@ -3789,6 +3789,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                   width: width,
                   height: height,
                   child: GestureDetector(
+                    key: ValueKey('terminal-pane-layout-${pane.id}'),
                     onTap: () => _handlePaneTap(pane, isActive, width, height),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
@@ -3927,6 +3928,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               _buildSplitButton(
+                key: ValueKey('terminal-split-right-${pane.id}'),
                 painter: _SplitRightIconPainter(color: DesignColors.primary),
                 onTap: () => widget.onSplitRequested!(
                   pane.id,
@@ -3935,6 +3937,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
               ),
               const SizedBox(width: 8),
               _buildSplitButton(
+                key: ValueKey('terminal-split-down-${pane.id}'),
                 painter: _SplitDownIconPainter(color: DesignColors.primary),
                 onTap: () => widget.onSplitRequested!(
                   pane.id,
@@ -3985,12 +3988,14 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   }
 
   Widget _buildSplitButton({
+    Key? key,
     required CustomPainter painter,
     required VoidCallback onTap,
   }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        key: key,
         onTap: onTap,
         borderRadius: BorderRadius.circular(6),
         child: Container(
@@ -4603,6 +4608,7 @@ class _ResizePaneChooserDialogState extends State<_ResizePaneChooserDialog> {
                     width: width,
                     height: height,
                     child: GestureDetector(
+                      key: ValueKey('terminal-resize-pane-${pane.id}'),
                       onTap: () => setState(() => _selectedPaneId = pane.id),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
@@ -4769,6 +4775,7 @@ class _ResizeWindowChooserDialogState
   Widget _buildWindowCard(TmuxWindow window, bool isSelected) {
     final panes = window.panes;
     return GestureDetector(
+      key: ValueKey('terminal-resize-window-${window.index}'),
       onTap: () => setState(() => _selectedWindowIndex = window.index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
