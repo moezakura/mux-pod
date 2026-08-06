@@ -1,10 +1,10 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/keychain/secure_storage.dart';
 import '../services/ssh/ssh_client.dart';
 import '../services/tmux/tmux_facade.dart';
+import '../services/tmux/tmux_contract.dart';
 import '../services/tmux/tmux_models.dart';
 
 import 'connection_provider.dart';
@@ -112,6 +112,13 @@ class AlertPanesState {
 // inventory: NOTIF-020
 /// 通知ペイン一覧を管理するNotifier
 class AlertPanesNotifier extends Notifier<AlertPanesState> {
+  AlertPanesNotifier({SshClient? sshClient, TmuxContract? tmuxContract})
+    : _injectedSshClient = sshClient,
+      _tmuxContract = tmuxContract ?? tmuxFacade;
+
+  final SshClient? _injectedSshClient;
+  final TmuxContract _tmuxContract;
+
   // inventory: NOTIF-021
   static const _alertFlags = {
     TmuxWindowFlag.activity,
@@ -150,13 +157,20 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await storage.getPrivateKey(connection.keyId!);
       final passphrase = await storage.getPassphrase(connection.keyId!);
-      options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, multiplexer: connection.multiplexer);
+      options = SshConnectOptions(
+        privateKey: privateKey,
+        passphrase: passphrase,
+        multiplexer: connection.multiplexer,
+      );
     } else {
       final password = await storage.getPassword(connection.id);
-      options = SshConnectOptions(password: password, multiplexer: connection.multiplexer);
+      options = SshConnectOptions(
+        password: password,
+        multiplexer: connection.multiplexer,
+      );
     }
 
-    final sshClient = SshClient();
+    final sshClient = _injectedSshClient ?? SshClient();
     try {
       await sshClient.connect(
         host: connection.host,
@@ -166,7 +180,7 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
       );
 
       // 当該ウィンドウを選択してフラグをクリアし、元のウィンドウに戻す
-      await tmuxFacade.selectWindow(
+      await _tmuxContract.selectWindow(
         sshClient.tmuxExecutor,
         alert.sessionName,
         alert.windowIndex,
@@ -194,13 +208,20 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
       if (connection.authMethod == 'key' && connection.keyId != null) {
         final privateKey = await storage.getPrivateKey(connection.keyId!);
         final passphrase = await storage.getPassphrase(connection.keyId!);
-        options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, multiplexer: connection.multiplexer);
+        options = SshConnectOptions(
+          privateKey: privateKey,
+          passphrase: passphrase,
+          multiplexer: connection.multiplexer,
+        );
       } else {
         final password = await storage.getPassword(connection.id);
-        options = SshConnectOptions(password: password, multiplexer: connection.multiplexer);
+        options = SshConnectOptions(
+          password: password,
+          multiplexer: connection.multiplexer,
+        );
       }
 
-      final sshClient = SshClient();
+      final sshClient = _injectedSshClient ?? SshClient();
       try {
         await sshClient.connect(
           host: connection.host,
@@ -209,25 +230,29 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
           options: options,
         );
 
-        final sessions = await tmuxFacade.listAllPanes(sshClient.tmuxExecutor);
+        final sessions = await _tmuxContract.listAllPanes(
+          sshClient.tmuxExecutor,
+        );
 
         for (final session in sessions) {
           for (final window in session.windows) {
             final windowAlertFlags = window.flags.intersection(_alertFlags);
             if (windowAlertFlags.isNotEmpty) {
               for (final pane in window.panes) {
-                allAlertPanes.add(AlertPane(
-                  connectionId: connection.id,
-                  connectionName: connection.name,
-                  host: connection.host,
-                  sessionName: session.name,
-                  windowIndex: window.index,
-                  windowName: window.name,
-                  flags: windowAlertFlags,
-                  paneId: pane.id,
-                  paneIndex: pane.index,
-                  currentCommand: pane.currentCommand,
-                ));
+                allAlertPanes.add(
+                  AlertPane(
+                    connectionId: connection.id,
+                    connectionName: connection.name,
+                    host: connection.host,
+                    sessionName: session.name,
+                    windowIndex: window.index,
+                    windowName: window.name,
+                    flags: windowAlertFlags,
+                    paneId: pane.id,
+                    paneIndex: pane.index,
+                    currentCommand: pane.currentCommand,
+                  ),
+                );
               }
             }
           }

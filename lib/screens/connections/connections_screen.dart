@@ -31,7 +31,9 @@ final _searchVisibleProvider = NotifierProvider<_SearchVisibleNotifier, bool>(()
 
 /// 接続一覧画面
 class ConnectionsScreen extends ConsumerWidget {
-  const ConnectionsScreen({super.key});
+  final Future<SshClient> Function(Connection connection)? sshClientFactory;
+
+  const ConnectionsScreen({super.key, this.sshClientFactory});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -281,6 +283,7 @@ class ConnectionsScreen extends ConsumerWidget {
             child: RepaintBoundary(
               child: _ConnectionCard(
                 connection: connection,
+                sshClientFactory: sshClientFactory,
                 onConnect: (sessionName) =>
                     _connectToServer(context, ref, connection, sessionName),
                 onEdit: () => _editConnection(context, ref, connection),
@@ -500,12 +503,14 @@ class ConnectionsScreen extends ConsumerWidget {
 /// 接続カード（展開可能、tmuxセッション表示）
 class _ConnectionCard extends ConsumerStatefulWidget {
   final Connection connection;
+  final Future<SshClient> Function(Connection connection)? sshClientFactory;
   final void Function(String? sessionName) onConnect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ConnectionCard({
     required this.connection,
+    this.sshClientFactory,
     required this.onConnect,
     required this.onEdit,
     required this.onDelete,
@@ -666,6 +671,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   /// 認証情報を取得してSSH接続し、接続済みクライアントを返す。
   Future<SshClient> _connectSsh() async {
     final connection = widget.connection;
+    final factory = widget.sshClientFactory;
+    if (factory != null) return factory(connection);
     final storage = SecureStorageService();
     SshConnectOptions options;
     if (connection.authMethod == 'key' && connection.keyId != null) {
