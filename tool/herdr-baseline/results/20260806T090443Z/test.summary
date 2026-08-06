@@ -1,0 +1,4 @@
+command=make test 
+exit_status=0
+elapsed_ms=16664
+test_count=671
