@@ -36,7 +36,6 @@ class SshConnectOptions {
   final String? passphrase;
 
   // inventory: SSH-007
-  // inventory: LEGACY-0131
   /// マルチプレクサ設定（nullなら自動検出）
   final MultiplexerConfig? multiplexer;
 
@@ -101,11 +100,7 @@ class SshEvents {
   /// エラー発生時
   final void Function(Object error)? onError;
 
-  const SshEvents({
-    this.onData,
-    this.onClose,
-    this.onError,
-  });
+  const SshEvents({this.onData, this.onClose, this.onError});
 
   // inventory: SSH-017
   // inventory: LEGACY-0137
@@ -130,6 +125,36 @@ class SshEvents {
 /// [BackendAdapter]（互換名 [TmuxBackend]）を実装し、backend 層は
 /// 具象型ではなく抽象にだけ依存する。
 class SshClient implements BackendAdapter {
+  final Future<({SSHSocket socket, SSHClient client})> Function(
+    String host,
+    int port,
+    String username,
+    SshConnectOptions options,
+    void Function() onAuthenticated,
+    Future<bool> Function(String type, Uint8List fingerprint) onVerifyHostKey,
+  )?
+  _connectionFactory;
+  final Future<PersistentShell?> Function(SSHClient client)?
+  _persistentShellFactory;
+  final Timer Function(Duration duration, void Function() callback)
+  _timerFactory;
+
+  SshClient({
+    Future<({SSHSocket socket, SSHClient client})> Function(
+      String host,
+      int port,
+      String username,
+      SshConnectOptions options,
+      void Function() onAuthenticated,
+      Future<bool> Function(String type, Uint8List fingerprint) onVerifyHostKey,
+    )?
+    connectionFactory,
+    Future<PersistentShell?> Function(SSHClient client)? persistentShellFactory,
+    Timer Function(Duration duration, void Function() callback)? timerFactory,
+  }) : _connectionFactory = connectionFactory,
+       _persistentShellFactory = persistentShellFactory,
+       _timerFactory = timerFactory ?? Timer.new;
+
   SSHClient? _client;
   SSHSession? _session;
   SSHSocket? _socket;
@@ -165,7 +190,8 @@ class SshClient implements BackendAdapter {
   /// ユーザーが接続設定で指定した実行ファイルパス。
   @override
   // inventory: SSH-NEW-001
-  String? get userExecutablePath => _connectOptions?.multiplexer?.executablePath;
+  String? get userExecutablePath =>
+      _connectOptions?.multiplexer?.executablePath;
 
   /// 入力専用の持続的シェル
   @override
@@ -202,12 +228,14 @@ class SshClient implements BackendAdapter {
   Timer? _keepAliveTimer;
 
   /// 接続監視用のStreamController
-  final _connectionStateController = StreamController<SshConnectionState>.broadcast();
+  final _connectionStateController =
+      StreamController<SshConnectionState>.broadcast();
 
   /// 接続状態のストリーム（外部から監視用）
   // inventory: SSH-024
   // inventory: LEGACY-0145
-  Stream<SshConnectionState> get connectionStateStream => _connectionStateController.stream;
+  Stream<SshConnectionState> get connectionStateStream =>
+      _connectionStateController.stream;
 
   /// Keep-alive最小間隔（秒）
   static const int _minKeepAliveIntervalSeconds = 5;
@@ -284,23 +312,15 @@ class SshClient implements BackendAdapter {
     _lastError = null;
 
     try {
-      // ソケット接続
-      _socket = await SSHSocket.connect(
-        host,
-        port,
-        timeout: Duration(seconds: options.timeout),
-      );
-
-      // 認証方式に応じたクライアント作成
-      if (options.privateKey != null) {
-        // 鍵認証
-        _client = SSHClient(
-          _socket!,
-          username: username,
-          identities: _parsePrivateKey(options.privateKey!, options.passphrase),
-          // inventory: SSH-LIFE-018
-          onAuthenticated: _onAuthenticated,
-          onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
+      final connectionFactory = _connectionFactory;
+      if (connectionFactory != null) {
+        final connection = await connectionFactory(
+          host,
+          port,
+          username,
+          options,
+          _onAuthenticated,
+          (type, fingerprint) => _onVerifyHostKey(
             host,
             port,
             type,
@@ -308,23 +328,54 @@ class SshClient implements BackendAdapter {
             acceptNewHostKeys: options.acceptNewHostKeys,
           ),
         );
-      } else if (options.password != null) {
-        // パスワード認証
-        _client = SSHClient(
-          _socket!,
-          username: username,
-          onPasswordRequest: () => options.password!,
-          onAuthenticated: _onAuthenticated,
-          onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
-            host,
-            port,
-            type,
-            fingerprint,
-            acceptNewHostKeys: options.acceptNewHostKeys,
-          ),
-        );
+        _socket = connection.socket;
+        _client = connection.client;
       } else {
-        throw SshAuthenticationError('No authentication method provided');
+        // ソケット接続
+        _socket = await SSHSocket.connect(
+          host,
+          port,
+          timeout: Duration(seconds: options.timeout),
+        );
+
+        // 認証方式に応じたクライアント作成
+        if (options.privateKey != null) {
+          // 鍵認証
+          _client = SSHClient(
+            _socket!,
+            username: username,
+            identities: _parsePrivateKey(
+              options.privateKey!,
+              options.passphrase,
+            ),
+            // inventory: SSH-LIFE-018
+            onAuthenticated: _onAuthenticated,
+            onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
+              host,
+              port,
+              type,
+              fingerprint,
+              acceptNewHostKeys: options.acceptNewHostKeys,
+            ),
+          );
+        } else if (options.password != null) {
+          // パスワード認証
+          _client = SSHClient(
+            _socket!,
+            username: username,
+            onPasswordRequest: () => options.password!,
+            onAuthenticated: _onAuthenticated,
+            onVerifyHostKey: (type, fingerprint) => _onVerifyHostKey(
+              host,
+              port,
+              type,
+              fingerprint,
+              acceptNewHostKeys: options.acceptNewHostKeys,
+            ),
+          );
+        } else {
+          throw SshAuthenticationError('No authentication method provided');
+        }
       }
 
       // 認証完了を待機
@@ -439,7 +490,9 @@ class SshClient implements BackendAdapter {
     } catch (e) {
       if (e is SshAuthenticationError) rethrow;
       if (passphrase == null && privateKey.contains('ENCRYPTED')) {
-        throw SshAuthenticationError('Private key is encrypted, passphrase required');
+        throw SshAuthenticationError(
+          'Private key is encrypted, passphrase required',
+        );
       }
       throw SshAuthenticationError('Failed to parse private key: $e');
     }
@@ -519,6 +572,8 @@ class SshClient implements BackendAdapter {
     final client = _client;
     if (client == null) return null;
     try {
+      final factory = _persistentShellFactory;
+      if (factory != null) return await factory(client);
       final shell = PersistentShell(client);
       await shell.start();
       return shell;
@@ -588,7 +643,7 @@ class SshClient implements BackendAdapter {
   /// 次のKeep-aliveをスケジュール
   void _scheduleNextKeepAlive() {
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer(
+    _keepAliveTimer = _timerFactory(
       Duration(seconds: _currentKeepAliveIntervalSeconds),
       () async {
         // inventory: SSH-LIFE-012
@@ -613,8 +668,11 @@ class SshClient implements BackendAdapter {
       _keepAliveSuccessCount++;
       // 3回連続成功で間隔を延長
       if (_keepAliveSuccessCount >= 3) {
-        _currentKeepAliveIntervalSeconds = (_currentKeepAliveIntervalSeconds + 5)
-            .clamp(_minKeepAliveIntervalSeconds, _maxKeepAliveIntervalSeconds);
+        _currentKeepAliveIntervalSeconds =
+            (_currentKeepAliveIntervalSeconds + 5).clamp(
+              _minKeepAliveIntervalSeconds,
+              _maxKeepAliveIntervalSeconds,
+            );
         _keepAliveSuccessCount = 0;
       }
     } else {
@@ -795,10 +853,7 @@ class SshClient implements BackendAdapter {
               stderrCompleter.future,
             ]).timeout(timeout);
           } else {
-            await Future.wait([
-              stdoutCompleter.future,
-              stderrCompleter.future,
-            ]);
+            await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
           }
 
           // バイト列をUTF-8デコード（不正なバイトは置換文字に）
@@ -908,10 +963,7 @@ class SshClient implements BackendAdapter {
               stderrCompleter.future,
             ]).timeout(timeout);
           } else {
-            await Future.wait([
-              stdoutCompleter.future,
-              stderrCompleter.future,
-            ]);
+            await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
           }
 
           exitCode = session.exitCode;
@@ -968,5 +1020,3 @@ class SshClient implements BackendAdapter {
 SshClient createSshClient() {
   return SshClient();
 }
-
-
