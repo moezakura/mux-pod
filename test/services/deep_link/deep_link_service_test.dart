@@ -76,17 +76,27 @@ void main() {
       expect(data.window, isNull);
       expect(data.pane, isNull);
     });
+
+    test('decodes escaped query values and accepts a negative pane index', () {
+      final data = DeepLinkService.parseUri(
+        'muxpod://connect?server=prod%20host&session=main%2Fapi&pane=-1',
+      );
+
+      expect(data.server, 'prod host');
+      expect(data.session, 'main/api');
+      expect(data.pane, -1);
+    });
   });
 
   group('DeepLinkService', () {
     test('initialize reads initial link', () async {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'getInitialLink') {
-          return 'muxpod://connect?server=my-server&session=main';
-        }
-        return null;
-      });
+            if (call.method == 'getInitialLink') {
+              return 'muxpod://connect?server=my-server&session=main';
+            }
+            return null;
+          });
 
       final service = DeepLinkService();
       await service.initialize();
@@ -102,6 +112,44 @@ void main() {
       expect(service.initialLink, isNull);
       service.dispose();
     });
+
+    test(
+      'forwards valid hot links and ignores links without a server',
+      () async {
+        final service = DeepLinkService();
+        await service.initialize();
+        final received = <DeepLinkData>[];
+        final subscription = service.linkStream.listen(received.add);
+
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              'com.muxpod.app/deeplink',
+              const StandardMethodCodec().encodeMethodCall(
+                const MethodCall(
+                  'onDeepLink',
+                  'muxpod://connect?server=s&pane=2',
+                ),
+              ),
+              (_) {},
+            );
+        await Future<void>.delayed(Duration.zero);
+        await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .handlePlatformMessage(
+              'com.muxpod.app/deeplink',
+              const StandardMethodCodec().encodeMethodCall(
+                const MethodCall('onDeepLink', 'muxpod://connect?session=main'),
+              ),
+              (_) {},
+            );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(received, hasLength(1));
+        expect(received.single.server, 's');
+        expect(received.single.pane, 2);
+        await subscription.cancel();
+        service.dispose();
+      },
+    );
 
     test('dispose does not throw', () {
       final service = DeepLinkService();

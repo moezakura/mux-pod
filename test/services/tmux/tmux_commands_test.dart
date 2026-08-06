@@ -1,9 +1,20 @@
 import 'dart:convert';
 
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+
 void main() {
   group('TmuxCommands', () {
+    test(
+      'TMUX-CMD-001: deprecated delimiter remains the US field delimiter',
+      () {
+        expect(TmuxCommands.delimiter, String.fromCharCode(0x1f));
+        expect(TmuxCommands.delimiter, TmuxCommands.fieldDelimiter);
+      },
+    );
+
     group('killPane', () {
       test('generates correct kill-pane command for standard pane ID', () {
         expect(TmuxCommands.killPane('%0'), 'tmux kill-pane -t %0');
@@ -15,10 +26,7 @@ void main() {
 
       test('escapes pane ID with special characters', () {
         // Normally pane IDs are %N, but _escapeArg should handle edge cases
-        expect(
-          TmuxCommands.killPane('%1'),
-          'tmux kill-pane -t %1',
-        );
+        expect(TmuxCommands.killPane('%1'), 'tmux kill-pane -t %1');
       });
     });
 
@@ -207,13 +215,16 @@ void main() {
     });
 
     group('resizeWindowAuto', () {
-      test('generates resize -A then unset window-size (restore auto sizing)', () {
-        expect(
-          TmuxCommands.resizeWindowAuto('my-session:0'),
-          'tmux resize-window -t my-session:0 -A ; '
-          'tmux set -uw -t my-session:0 window-size',
-        );
-      });
+      test(
+        'generates resize -A then unset window-size (restore auto sizing)',
+        () {
+          expect(
+            TmuxCommands.resizeWindowAuto('my-session:0'),
+            'tmux resize-window -t my-session:0 -A ; '
+            'tmux set -uw -t my-session:0 window-size',
+          );
+        },
+      );
 
       test('escapes target with special characters in both commands', () {
         expect(
@@ -243,7 +254,9 @@ void main() {
 
       test('escapes targets with special characters', () {
         expect(
-          TmuxCommands.windowRestoreTrap(['my session:0'], tmuxBin: '/usr/bin/tmux'),
+          TmuxCommands.windowRestoreTrap([
+            'my session:0',
+          ], tmuxBin: '/usr/bin/tmux'),
           'trap "\'/usr/bin/tmux\' resize-window -t "my session:0" -A \\; '
           'set -uw -t "my session:0" window-size 2>/dev/null" EXIT HUP TERM',
         );
@@ -251,7 +264,11 @@ void main() {
 
       test('escapes glob, tilde and comment characters', () {
         expect(
-          TmuxCommands.windowRestoreTrap(['*', '~root', '#comment'], tmuxBin: '/usr/bin/tmux'),
+          TmuxCommands.windowRestoreTrap([
+            '*',
+            '~root',
+            '#comment',
+          ], tmuxBin: '/usr/bin/tmux'),
           'trap "\'/usr/bin/tmux\' resize-window -t "*" -A \\; set -uw -t "*" window-size \\; '
           'resize-window -t "~root" -A \\; set -uw -t "~root" window-size \\; '
           'resize-window -t "#comment" -A \\; set -uw -t "#comment" window-size 2>/dev/null" EXIT HUP TERM',
@@ -303,7 +320,9 @@ void main() {
     group('loadBufferAndPaste', () {
       // Helper: extract the base64 payload from a printf '%s' '...' token.
       String? extractBase64(String cmd) {
-        final match = RegExp(r"printf '%s' '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        final match = RegExp(
+          r"printf '%s' '([A-Za-z0-9+/=]+)'",
+        ).firstMatch(cmd);
         return match?.group(1);
       }
 
@@ -322,19 +341,26 @@ void main() {
         expect(cmd, isNot(contains('echo -n')));
       });
 
-      test('empty text: helper returns a command string (guard handled by caller)', () {
-        // The helper is a pure command-string builder; empty-text guard lives
-        // in _sendMultilineText. The helper does not throw on empty input.
-        expect(() => TmuxCommands.loadBufferAndPaste('%0', ''), returnsNormally);
-        // The encoded form of '' is '' in base64; command should still be valid.
-        final cmd = TmuxCommands.loadBufferAndPaste('%0', '');
-        expect(cmd, contains('printf'));
-      });
+      test(
+        'empty text: helper returns a command string (guard handled by caller)',
+        () {
+          // The helper is a pure command-string builder; empty-text guard lives
+          // in _sendMultilineText. The helper does not throw on empty input.
+          expect(
+            () => TmuxCommands.loadBufferAndPaste('%0', ''),
+            returnsNormally,
+          );
+          // The encoded form of '' is '' in base64; command should still be valid.
+          final cmd = TmuxCommands.loadBufferAndPaste('%0', '');
+          expect(cmd, contains('printf'));
+        },
+      );
 
       test('base64 encoded payload contains no newline characters', () {
         // dart:convert base64.encode does NOT insert line breaks (unlike CLI base64).
         // Newlines in the encoded string would break the single-line shell command.
-        const text = 'line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10';
+        const text =
+            'line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10';
         final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
         final encoded = extractBase64(cmd);
         expect(encoded, isNotNull);
@@ -352,20 +378,23 @@ void main() {
         expect(decoded, equals(text));
       });
 
-      test('special chars are safe: payload base64 contains no shell metachars from input', () {
-        const text = "echo 'hi'; rm -rf \$HOME";
-        final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
+      test(
+        'special chars are safe: payload base64 contains no shell metachars from input',
+        () {
+          const text = "echo 'hi'; rm -rf \$HOME";
+          final cmd = TmuxCommands.loadBufferAndPaste('%0', text);
 
-        // The base64 alphabet contains only [A-Za-z0-9+/=] — no quotes or dollars.
-        final encoded = extractBase64(cmd);
-        expect(encoded, isNotNull);
-        expect(encoded, isNot(contains("'")));
-        expect(encoded, isNot(contains(r'$')));
+          // The base64 alphabet contains only [A-Za-z0-9+/=] — no quotes or dollars.
+          final encoded = extractBase64(cmd);
+          expect(encoded, isNotNull);
+          expect(encoded, isNot(contains("'")));
+          expect(encoded, isNot(contains(r'$')));
 
-        // Round-trip must restore the original.
-        final decoded = utf8.decode(base64.decode(encoded!));
-        expect(decoded, equals(text));
-      });
+          // Round-trip must restore the original.
+          final decoded = utf8.decode(base64.decode(encoded!));
+          expect(decoded, equals(text));
+        },
+      );
 
       test('UTF-8 multibyte payload round-trips correctly', () {
         const text = 'あいうえお\nテスト';
@@ -414,7 +443,9 @@ void main() {
       test('round-trips payload correctly', () {
         const text = 'line1\nline2';
         final cmd = TmuxCommands.loadBufferAndPasteNoBracketed('%1', text);
-        final match = RegExp(r"printf '%s' '([A-Za-z0-9+/=]+)'").firstMatch(cmd);
+        final match = RegExp(
+          r"printf '%s' '([A-Za-z0-9+/=]+)'",
+        ).firstMatch(cmd);
         expect(match, isNotNull);
         final decoded = utf8.decode(base64.decode(match!.group(1)!));
         expect(decoded, equals(text));
@@ -685,7 +716,10 @@ void main() {
     });
 
     test('cancelCopyMode', () {
-      expect(TmuxCommands.cancelCopyMode('%0'), 'tmux send-keys -t %0 -X cancel');
+      expect(
+        TmuxCommands.cancelCopyMode('%0'),
+        'tmux send-keys -t %0 -X cancel',
+      );
     });
   });
 
@@ -707,10 +741,7 @@ void main() {
 
   group('capturePane', () {
     test('generates visible capture with escape sequences', () {
-      expect(
-        TmuxCommands.capturePane('%0'),
-        'tmux capture-pane -t %0 -p -e',
-      );
+      expect(TmuxCommands.capturePane('%0'), 'tmux capture-pane -t %0 -p -e');
     });
 
     test('generates capture with start and end lines', () {
@@ -755,10 +786,7 @@ void main() {
 
   group('attach / detach', () {
     test('attachSession', () {
-      expect(
-        TmuxCommands.attachSession('main'),
-        'tmux attach-session -t main',
-      );
+      expect(TmuxCommands.attachSession('main'), 'tmux attach-session -t main');
     });
 
     test('detachClient without session', () {
@@ -784,22 +812,27 @@ void main() {
 
   group('pipe', () {
     test('pipes multiple commands', () {
-      expect(
-        TmuxCommands.pipe(['cmd1', 'cmd2', 'cmd3']),
-        'cmd1 | cmd2 | cmd3',
-      );
+      expect(TmuxCommands.pipe(['cmd1', 'cmd2', 'cmd3']), 'cmd1 | cmd2 | cmd3');
     });
   });
 
   group('Image path injection via sendKeys', () {
     test('sends simple path with literal flag', () {
-      final cmd = TmuxCommands.sendKeys('%0', '/tmp/muxpod/img_20260403_a3f2.png', literal: true);
+      final cmd = TmuxCommands.sendKeys(
+        '%0',
+        '/tmp/muxpod/img_20260403_a3f2.png',
+        literal: true,
+      );
       expect(cmd, contains('-l'));
       expect(cmd, contains('/tmp/muxpod/img_20260403_a3f2.png'));
     });
 
     test('handles path with safe characters only', () {
-      final cmd = TmuxCommands.sendKeys('%42', '/tmp/muxpod/test_image-v2.0.jpg', literal: true);
+      final cmd = TmuxCommands.sendKeys(
+        '%42',
+        '/tmp/muxpod/test_image-v2.0.jpg',
+        literal: true,
+      );
       expect(cmd, contains('-l'));
       expect(cmd, contains('test_image-v2.0.jpg'));
     });

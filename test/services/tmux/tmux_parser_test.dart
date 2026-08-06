@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use_from_same_package
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
@@ -10,6 +12,14 @@ const _rs = TmuxParser.defaultRecordDelimiter;
 
 void main() {
   group('TmuxParser', () {
+    test(
+      'TMUX-PARSER-001: deprecated defaultDelimiter remains the US delimiter',
+      () {
+        expect(TmuxParser.defaultDelimiter, String.fromCharCode(0x1f));
+        expect(TmuxParser.defaultDelimiter, TmuxParser.defaultFieldDelimiter);
+      },
+    );
+
     group('parseSessions', () {
       test('parses detailed session output', () {
         final sessions = TmuxParser.parseSessions(kSessionOutput);
@@ -36,6 +46,33 @@ void main() {
         final sessions = TmuxParser.parseSessions(kMalformedTooFewFields);
         expect(sessions, isEmpty);
       });
+
+      test(
+        'TMUX-DTO-004 and TMUX-PARSER-014: parses Unix seconds into created',
+        () {
+          final session = TmuxParser.parseSessions(kSessionOutput).first;
+
+          expect(
+            session.created,
+            DateTime.fromMillisecondsSinceEpoch(1735689600000),
+          );
+        },
+      );
+
+      test(
+        'TMUX-PARSER-014: invalid Unix seconds result in a null created value',
+        () {
+          final session = TmuxParser.parseSessionLine(
+            'main$_fs'
+            'not-a-timestamp$_fs'
+            '0$_fs'
+            '1$_fs\$0',
+          );
+
+          expect(session, isNotNull);
+          expect(session!.created, isNull);
+        },
+      );
     });
 
     group('parseSessionsSimple', () {
@@ -70,6 +107,16 @@ void main() {
       test('target formats session:index', () {
         final windows = TmuxParser.parseWindows(kWindowOutput);
         expect(windows[0].target('mysession'), 'mysession:0');
+      });
+
+      test('TMUX-DTO-013 and TMUX-DTO-017: preserves id and parsed flags', () {
+        final windows = TmuxParser.parseWindows(kWindowOutput);
+
+        expect(windows[2].id, '@2');
+        expect(windows[2].flags, {
+          TmuxWindowFlag.current,
+          TmuxWindowFlag.zoomed,
+        });
       });
     });
 
@@ -106,6 +153,12 @@ void main() {
         expect(panes[1].cursorX, 10);
         expect(panes[1].cursorY, 5);
       });
+
+      test('TMUX-DTO-028: preserves pane title', () {
+        final pane = TmuxParser.parsePanes(kPaneOutput).first;
+
+        expect(pane.title, 'shell-title');
+      });
     });
 
     group('parsePanesSimple', () {
@@ -128,7 +181,10 @@ void main() {
         expect(mysession.windows, hasLength(1));
         expect(mysession.windows[0].panes, hasLength(2));
         expect(mysession.windows[0].panes[0].currentCommand, 'bash');
-        expect(mysession.windows[0].panes[1].currentPath, '/home/user/projects');
+        expect(
+          mysession.windows[0].panes[1].currentPath,
+          '/home/user/projects',
+        );
 
         final other = sessions.firstWhere((s) => s.name == 'other');
         expect(other.windows[0].name, 'logs');
@@ -151,6 +207,26 @@ void main() {
         final mysession = sessions.firstWhere((s) => s.name == 'mysession');
         expect(mysession.windows[0].paneCount, 2);
       });
+
+      test(
+        'preserves pane current working directories from full-tree output',
+        () {
+          final sessions = TmuxParser.parseFullTree(kFullTreeOutput);
+          final shellPanes = sessions.first.windows.first.panes;
+
+          expect(shellPanes[0].currentPath, '/home/user');
+          expect(shellPanes[1].currentPath, '/home/user/projects');
+        },
+      );
+
+      test('TMUX-GEOM-003 and TMUX-GEOM-004: preserves pane position', () {
+        final panes = TmuxParser.parseFullTree(
+          kFullTreeOutput,
+        ).first.windows.first.panes;
+
+        expect(panes[1].left, 80);
+        expect(panes[1].top, 0);
+      });
     });
 
     group('parsePaneContent', () {
@@ -163,7 +239,9 @@ void main() {
       });
 
       test('strips trailing empty lines', () {
-        final content = TmuxParser.parsePaneContent(kPaneContentWithTrailingBlank);
+        final content = TmuxParser.parsePaneContent(
+          kPaneContentWithTrailingBlank,
+        );
         expect(content.lines, hasLength(1));
         expect(content.lines[0], 'line1');
       });
@@ -208,10 +286,7 @@ void main() {
       });
 
       test('extracts pane not found', () {
-        expect(
-          TmuxParser.extractError("can't find pane %0"),
-          'Pane not found',
-        );
+        expect(TmuxParser.extractError("can't find pane %0"), 'Pane not found');
       });
 
       test('returns null for normal output', () {
@@ -220,11 +295,26 @@ void main() {
     });
 
     group('DTO', () {
+      test('deprecated tmux aliases preserve their concrete DTO types', () {
+        final TmuxSessionInfo session = TmuxSession(name: 'main');
+        final TmuxWindowInfo window = TmuxWindow(index: 1, name: 'shell');
+        final TmuxPaneInfo pane = TmuxPane(index: 2, id: '%2');
+
+        expect(session, isA<TmuxSession>());
+        expect(window, isA<TmuxWindow>());
+        expect(pane, isA<TmuxPane>());
+      });
       test('TmuxSession copyWith', () {
         const session = TmuxSession(name: 'main');
         final updated = session.copyWith(windowCount: 5);
         expect(updated.windowCount, 5);
         expect(updated.name, 'main');
+      });
+
+      test('TMUX-DTO-009: session target is its name', () {
+        const session = TmuxSession(name: 'main');
+
+        expect(session.target, 'main');
       });
 
       test('TmuxSession equality uses name', () {
@@ -264,6 +354,12 @@ void main() {
         expect(pane.sizeString, '120x30');
       });
 
+      test('TMUX-DTO-029: pane target is its id', () {
+        const pane = TmuxPane(index: 0, id: '%42');
+
+        expect(pane.target, '%42');
+      });
+
       test('TmuxPaneContent plainText strips ANSI', () {
         const content = TmuxPaneContent(
           lines: ['\x1b[32mhello\x1b[0m', 'world'],
@@ -282,6 +378,16 @@ void main() {
           height: 2,
         );
         expect(content.isEmpty, isTrue);
+      });
+
+      test('TMUX-DTO-035: pane content retains its declared height', () {
+        const content = TmuxPaneContent(
+          lines: ['first', 'second'],
+          width: 80,
+          height: 2,
+        );
+
+        expect(content.height, 2);
       });
 
       test('TmuxLayout.name', () {

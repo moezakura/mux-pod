@@ -23,6 +23,7 @@ void main() {
       expect(state.paneWidth, equals(80));
       expect(state.paneHeight, equals(24));
       expect(state.screenWidth, equals(0.0));
+      expect(state.screenHeight, equals(0.0));
       expect(state.calculatedFontSize, equals(14.0));
       expect(state.needsHorizontalScroll, isFalse);
       expect(state.horizontalScrollOffset, equals(0.0));
@@ -85,9 +86,7 @@ void main() {
       // Mock SharedPreferences
       SharedPreferences.setMockInitialValues({});
       container = ProviderContainer(
-        overrides: [
-          settingsProvider.overrideWith(_FixedSettingsNotifier.new),
-        ],
+        overrides: [settingsProvider.overrideWith(_FixedSettingsNotifier.new)],
       );
     });
 
@@ -146,6 +145,7 @@ void main() {
 
       final state = container.read(terminalDisplayProvider);
       expect(state.screenWidth, equals(800.0));
+      expect(state.calculatedFontSize, greaterThan(0));
     });
 
     test('updateScreenWidth does nothing if width unchanged', () {
@@ -169,6 +169,23 @@ void main() {
 
       final state = container.read(terminalDisplayProvider);
       expect(state.horizontalScrollOffset, equals(150.0));
+    });
+
+    test('updateScreenSize updates height and derives scroll requirement', () {
+      final notifier = container.read(terminalDisplayProvider.notifier);
+      notifier.updatePane(
+        TmuxPane(id: '%0', index: 0, width: 240, height: 60, active: true),
+      );
+
+      notifier.updateScreenSize(120.0, 320.0);
+
+      final state = container.read(terminalDisplayProvider);
+      expect(state.paneWidth, 240);
+      expect(state.paneHeight, 60);
+      expect(state.screenWidth, 120.0);
+      expect(state.screenHeight, 320.0);
+      expect(state.calculatedFontSize, greaterThan(0));
+      expect(state.needsHorizontalScroll, isTrue);
     });
 
     test('onSettingsChanged triggers recalculation', () {

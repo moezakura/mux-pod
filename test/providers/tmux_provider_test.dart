@@ -77,6 +77,19 @@ void main() {
       expect(state.activePaneId, '%0');
     });
 
+    test('setActiveWindow clears pane selection when the window is absent', () {
+      final notifier = container.read(tmuxProvider.notifier);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.setActiveSession('mysession');
+
+      notifier.setActiveWindow(99);
+
+      final state = container.read(tmuxProvider);
+      expect(state.activeWindowIndex, 99);
+      expect(state.activePaneIndex, isNull);
+      expect(state.activePaneId, isNull);
+    });
+
     test('setActivePaneByIndex sets pane index and id', () {
       final notifier = container.read(tmuxProvider.notifier);
       notifier.setActivePaneByIndex(1, paneId: '%1');
@@ -95,6 +108,21 @@ void main() {
       expect(state.activePaneIndex, 1);
     });
 
+    test(
+      'setActivePane retains the last index when the pane id is no longer present',
+      () {
+        final notifier = container.read(tmuxProvider.notifier);
+        notifier.parseAndUpdateFullTree(kFullTreeOutput);
+        notifier.setActiveSession('mysession');
+
+        notifier.setActivePane('%missing');
+
+        final state = container.read(tmuxProvider);
+        expect(state.activePaneId, '%missing');
+        expect(state.activePaneIndex, 0);
+      },
+    );
+
     test('updateCursorPosition updates active pane cursor', () {
       final notifier = container.read(tmuxProvider.notifier);
       notifier.parseAndUpdateFullTree(kFullTreeOutput);
@@ -104,6 +132,22 @@ void main() {
       expect(pane?.cursorX, 12);
       expect(pane?.cursorY, 34);
     });
+
+    test(
+      'updateCursorPosition ignores inactive pane and unchanged coordinates',
+      () {
+        final notifier = container.read(tmuxProvider.notifier);
+        notifier.parseAndUpdateFullTree(kFullTreeOutput);
+        notifier.setActiveSession('mysession');
+        final before = container.read(tmuxProvider);
+
+        notifier.updateCursorPosition('%1', 12, 34);
+        expect(identical(container.read(tmuxProvider), before), isTrue);
+
+        notifier.updateCursorPosition('%0', 5, 10);
+        expect(identical(container.read(tmuxProvider), before), isTrue);
+      },
+    );
 
     test('currentTarget returns pane id', () {
       final notifier = container.read(tmuxProvider.notifier);

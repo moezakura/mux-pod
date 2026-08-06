@@ -9,6 +9,8 @@ import 'package:dartssh2/src/sftp/sftp_statvfs.dart';
 class FakeSftpClient implements SftpClient {
   final Map<String, List<SftpName>> entriesByPath;
   final String homeDirectory;
+  final List<String> listdirCalls = [];
+  final List<(String, String)> renameCalls = [];
 
   FakeSftpClient({
     this.entriesByPath = const {},
@@ -16,9 +18,7 @@ class FakeSftpClient implements SftpClient {
   });
 
   SftpName _makeEntry(String name, bool isDirectory, {int? size}) {
-    final mode = SftpFileMode.value(
-      isDirectory ? 0x41ED : 0x81A4,
-    );
+    final mode = SftpFileMode.value(isDirectory ? 0x41ED : 0x81A4);
     return SftpName(
       filename: name,
       longname: isDirectory ? 'drwxr-xr-x' : '-rw-r--r--',
@@ -72,7 +72,10 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
-  Future<List<SftpName>> listdir(String path) async => _listFor(path);
+  Future<List<SftpName>> listdir(String path) async {
+    listdirCalls.add(path);
+    return _listFor(path);
+  }
 
   @override
   Future<void> remove(String filename) async {}
@@ -90,7 +93,9 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
-  Future<void> rename(String oldPath, String newPath) async {}
+  Future<void> rename(String oldPath, String newPath) async {
+    renameCalls.add((oldPath, newPath));
+  }
 
   @override
   Future<String> readlink(String path) async {
