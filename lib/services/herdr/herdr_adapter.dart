@@ -60,6 +60,26 @@ class HerdrAdapter {
     }
   }
 
+  // inventory: HERDR-ADAPTER-004
+  /// pane の内容を読み取る。
+  ///
+  /// [source]: `'visible'`（可視領域）または `'recent'`（履歴含む）。
+  /// [lines]: 読み取る行数（null なら全量）。
+  /// [ansi]: true なら `--raw` で ANSI エスケープ付きの出力を取得する。
+  Future<HerdrPaneContent> paneRead(
+    String paneId, {
+    String source = 'recent',
+    int? lines,
+    bool ansi = false,
+    Duration? timeout,
+  }) async {
+    final stdout = await _execChecked(
+      HerdrCommands.paneRead(paneId, source: source, lines: lines, ansi: ansi),
+      timeout: timeout,
+    );
+    return HerdrPaneContentParser.parse(stdout, ansi: ansi);
+  }
+
   /// [command] 先頭の `herdr` をユーザー指定の実行ファイルパスに置換する。
   String _resolve(String command) {
     final path = _userExecutablePath?.trim();

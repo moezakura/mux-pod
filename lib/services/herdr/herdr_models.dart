@@ -210,3 +210,32 @@ class HerdrSnapshot {
   List<HerdrPane> panesFor(HerdrTab tab) =>
       panes.where((p) => p.tabId == tab.id).toList();
 }
+
+// inventory: HERDR-MODELS-PANE-CONTENT-001
+/// `herdr pane read` の結果。
+///
+/// 出力はプレーンテキスト（`--source visible|recent`）または ANSI エスケープ
+/// 付き（`--raw`）のいずれも、行分割と生文字列の両方を保持する。
+class HerdrPaneContent {
+  /// 行ごとの内容（末尾の改行は除去済み）。
+  final List<String> lines;
+
+  /// 生のテキスト（ANSI エスケープを含む場合あり）。
+  final String rawText;
+
+  /// ANSI エスケープを含むかどうか。
+  final bool hasAnsi;
+
+  const HerdrPaneContent({
+    required this.lines,
+    required this.rawText,
+    this.hasAnsi = false,
+  });
+
+  /// 空かどうか。
+  bool get isEmpty => lines.isEmpty || lines.every((line) => line.trim().isEmpty);
+
+  @override
+  String toString() =>
+      'HerdrPaneContent(${lines.length} lines, ansi: $hasAnsi)';
+}

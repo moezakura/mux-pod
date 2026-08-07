@@ -496,11 +496,14 @@ class ConnectionsScreen extends ConsumerWidget {
             sessionName,
           );
     }
+    final isHerdr = connection.multiplexer.backend == BackendType.herdr;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TerminalScreen(
           connectionId: connection.id,
           sessionName: sessionName,
+          // herdr は read-only 表示（mutation 非表示）
+          readOnly: isHerdr,
         ),
       ),
     );
@@ -1079,7 +1082,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       final windowCount =
           liveWindowCounts[session.name] ?? session.windowCount;
       return InkWell(
-        onTap: readOnly ? null : () => widget.onConnect(session.name),
+        // read-only（herdr）も Terminal を開く（TerminalScreen 側で
+        // read-only 表示になるため、タップ遷移は常に許可する）
+        onTap: () => widget.onConnect(session.name),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(

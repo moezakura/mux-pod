@@ -12,11 +12,21 @@ import '../../providers/connection_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
+import '../../services/backend/backend_type.dart';
+import '../../services/backend/domain/multiplexer_session.dart';
+import '../../services/backend/domain/multiplexer_window.dart';
+import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/herdr/herdr_adapter.dart';
+import '../../services/herdr/herdr_commands.dart' show HerdrCommandException;
+import '../../services/herdr/herdr_models.dart';
+import '../../services/herdr/herdr_pane_content_reader.dart';
+import '../../services/herdr/herdr_to_domain.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/network/network_monitor.dart';
 import '../../services/ssh/input_queue.dart';
-import '../../services/ssh/ssh_client.dart' show SshConnectOptions;
+import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/pane_navigator.dart';
+import '../../services/tmux/tmux_pane_content_reader.dart';
 import '../../services/terminal/font_calculator.dart';
 import '../../services/terminal/adaptive_polling.dart';
 import '../../services/tmux/tmux_command_builder.dart';
@@ -111,6 +121,27 @@ class TerminalScreen extends ConsumerStatefulWidget {
   /// ディープリンク用: ペインインデックス
   final int? deepLinkPaneIndex;
 
+  // inventory: TERM-SCREEN-004
+  /// ペイン内容読み取りの注入用（テスト・呼び出し側）。
+  ///
+  /// null なら接続の backend 種別に応じて
+  /// [TmuxPaneContentReader] / [HerdrPaneContentReader] を自動生成する。
+  final PaneContentReader? paneContentReader;
+
+  // inventory: TERM-SCREEN-005
+  /// read-only（herdr）表示モード。
+  ///
+  /// true の場合、mutation（キー入力・copy-mode・特殊キー・CRUD・リサイズ）
+  /// を非表示/無効化し、ペイン内容の表示とスクロールのみを提供する。
+  final bool readOnly;
+
+  // inventory: TERM-SCREEN-006
+  /// 直接表示する pane ID（herdr 用）。
+  ///
+  /// null なら接続先の herdr スナップショットから
+  /// セッション名（workspace label/id）に一致する pane を解決する。
+  final String? initialPaneId;
+
   const TerminalScreen({
     super.key,
     required this.connectionId,
@@ -119,6 +150,9 @@ class TerminalScreen extends ConsumerStatefulWidget {
     this.lastPaneId,
     this.deepLinkWindowName,
     this.deepLinkPaneIndex,
+    this.paneContentReader,
+    this.readOnly = false,
+    this.initialPaneId,
   });
 
   @override
@@ -230,6 +264,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // tmuxバージョン情報（リサイズ機能判定用）
   TmuxVersionInfo? _tmuxVersion;
+
+  // ペイン内容読み取り（backend 種別で tmux/herdr を選択）
+  PaneContentReader? _paneReader;
+
+  // ポーリング対象 pane ID（tmux では tmuxProvider.currentTarget、
+  // herdr では接続時に解決した pane ID を使う）
+  String? _pollTargetPaneId;
+
+  // backend 種別（herdr は read-only 分岐に使う。接続確立前に確定する）
+  bool? _backendIsHerdr;
+
+  /// read-only モード（mutation 非表示/無効化）。
+  ///
+  /// 呼び出し側の明示（[TerminalScreen.readOnly]）または接続の backend 種別
+  /// （herdr）のどちらかが真なら read-only として振る舞う。
+  bool get _isReadOnly => widget.readOnly || _backendIsHerdr == true;
 
   // Riverpodリスナー
   ProviderSubscription<SshState>? _sshSubscription;
@@ -446,6 +496,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ポーリングフラグをリセット
     _isPolling = false;
 
+    // 再接続で SshClient が作り直されたため、ペイン内容読み取りを再生成
+    _recreatePaneReader();
+
     // ポーリングを再開
     _startPolling();
 
@@ -488,6 +541,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         throw Exception('Connection not found');
       }
 
+      // 1.5. backend 種別を確定（herdr は read-only 分岐に使う）
+      final isHerdr = connection.multiplexer.backend == BackendType.herdr;
+      if (_backendIsHerdr != isHerdr) {
+        _backendIsHerdr = isHerdr;
+      }
+
       // 2. 認証情報を取得
       final options = await _getAuthOptions(connection);
       if (!mounted || _isDisposed) {
@@ -501,14 +560,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return;
       }
 
-      // 3.5. tmuxバージョン取得（リサイズ機能判定用）
       final client = sshNotifier.client;
-      if (client != null) {
-        try {
-          _tmuxVersion = await tmuxFacade.getVersion(client.tmuxExecutor);
-        } catch (_) {
-          _tmuxVersion = null;
-        }
+      if (client == null) {
+        throw Exception('SSH client is not available');
+      }
+
+      // 3.4. herdr: read-only セッションを設定して終了
+      if (isHerdr) {
+        await _setupHerdrSession(client);
+        if (!mounted || _isDisposed) return;
+        setState(() {
+          _isConnecting = false;
+        });
+        return;
+      }
+
+      // 3.5. tmuxバージョン取得（リサイズ機能判定用）
+      try {
+        _tmuxVersion = await tmuxFacade.getVersion(client.tmuxExecutor);
+      } catch (_) {
+        _tmuxVersion = null;
+      }
+
+      // tmux のペイン内容読み取りを設定
+      _recreatePaneReader();
+      if (_paneReader == null) {
+        throw Exception('Pane content reader is not available');
       }
 
       // 4. セ���ションツリー全体を取得
@@ -670,6 +747,94 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
+  /// backend 種別に応じてペイン内容読み取りを（再）生成する。
+  ///
+  /// 再接続時は [SshClient] が作り直されるため、新しいクライアントで
+  /// 読み直す（古いクライアントを保持したままポーリングしない）。
+  void _recreatePaneReader() {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null) return;
+    if (widget.paneContentReader != null) {
+      _paneReader = widget.paneContentReader;
+    } else if (_backendIsHerdr == true) {
+      _paneReader = HerdrPaneContentReader(HerdrAdapter(sshClient));
+    } else {
+      _paneReader = TmuxPaneContentReader(sshClient.tmuxExecutor);
+    }
+  }
+
+  /// herdr の read-only セッションを設定する。
+  ///
+  /// 表示対象 pane を解決し、ライブポーリングを開始する。mutation 系の
+  /// tmux セットアップ（バージョン確認・セッション作成・ツリー取得・
+  /// フォーカス送信・自動リサイズ）は一切行わない。
+  Future<void> _setupHerdrSession(SshClient client) async {
+    _recreatePaneReader();
+
+    // 表示対象 pane を解決（直接指定 or スナップショットから）
+    final directId = widget.initialPaneId ?? widget.lastPaneId;
+    if (directId != null) {
+      _pollTargetPaneId = directId;
+    } else {
+      _pollTargetPaneId = await _resolveHerdrPaneId(client);
+    }
+    if (_pollTargetPaneId == null) {
+      throw Exception('No herdr pane found for this workspace');
+    }
+
+    // ライブ表示を開始
+    _viewNotifier.value = _viewNotifier.value.copyWith(content: '');
+    _hasInitialScrolled = false;
+    _startPolling();
+  }
+
+  /// herdr スナップショットから表示対象の pane ID を解決する。
+  ///
+  /// 優先順: [TerminalScreen.initialPaneId] / [TerminalScreen.lastPaneId] →
+  /// [TerminalScreen.sessionName] に一致する workspace のフォーカス pane →
+  /// 同 workspace の先頭 pane → 全体のフォーカス pane → 全体の先頭 pane。
+  Future<String?> _resolveHerdrPaneId(SshClient client) async {
+    final adapter = HerdrAdapter(client);
+    final HerdrSnapshot snapshot;
+    try {
+      snapshot = await adapter.snapshot();
+    } on HerdrCommandException {
+      // スナップショット取得失敗時は解決不能（呼び出し側でエラー表示）
+      return null;
+    }
+
+    if (widget.initialPaneId != null &&
+        snapshot.panes.any((p) => p.id == widget.initialPaneId)) {
+      return widget.initialPaneId;
+    }
+    if (widget.lastPaneId != null &&
+        snapshot.panes.any((p) => p.id == widget.lastPaneId)) {
+      return widget.lastPaneId;
+    }
+
+    // workspace（session）単位でフォーカス pane を探す
+    final workspaces = snapshot.toDomainSessions();
+    MultiplexerSession? target;
+    if (widget.sessionName != null) {
+      target = workspaces.where((w) => w.name == widget.sessionName).firstOrNull ??
+          workspaces.where((w) => w.id == widget.sessionName).firstOrNull;
+    }
+    target ??= workspaces.firstOrNull;
+
+    for (final window in target?.windows ?? const <MultiplexerWindow>[]) {
+      for (final pane in window.panes) {
+        if (pane.active) return pane.id;
+      }
+    }
+    for (final window in target?.windows ?? const <MultiplexerWindow>[]) {
+      if (window.panes.isNotEmpty) return window.panes.first.id;
+    }
+
+    // 全体のフォーカス/先頭 pane へフォールバック
+    if (snapshot.focusedPaneId != null) return snapshot.focusedPaneId;
+    return snapshot.panes.firstOrNull?.id;
+  }
+
   /// セッションツリー全体を取得して更新
   Future<void> _refreshSessionTree() async {
     if (_isDisposed) {
@@ -783,19 +948,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return;
       }
 
-      // tmux_providerからターゲットを取得
-      final target = ref.read(tmuxProvider.notifier).currentTarget;
-      if (target == null) {
+      // ペイン内容読み取り（PaneContentReader）からターゲットを取得
+      final paneId = _pollTargetPaneId ??
+          ref.read(tmuxProvider.notifier).currentTarget;
+      final reader = _paneReader;
+      if (paneId == null || reader == null) {
         _isPolling = false;
         return;
       }
 
       final startTime = DateTime.now();
 
-      // TmuxFacade の pollPane で capture-pane + カーソル + モードを一括取得
-      final snapshot = await tmuxFacade.pollPane(
-        sshClient.tmuxExecutor,
-        target: target,
+      // PaneContentReader 経由で capture-pane + カーソル + モード（tmux）または
+      // pane read（herdr）を一括取得する。表示コア（AnsiTextView /
+      // ValueNotifier / ポーリングループ）は backend 非依存のためそのまま。
+      final snapshot = await reader.readPane(
+        paneId: paneId,
         historyLines: -120,
       );
 
@@ -804,8 +972,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (!mounted || _isDisposed) return;
 
       // カーソル位置とペインサイズを更新
-      final w = snapshot.paneWidth;
-      final h = snapshot.paneHeight;
+      // （herdr はサイズ不明のため width/height=0 になり、このブロックは
+      //   スキップされて既定の 80x24 が維持される。カーソルも 0 固定フォールバック）
+      final w = snapshot.width;
+      final h = snapshot.height;
       if (w > 0 && h > 0) {
         if (w != _viewNotifier.value.paneWidth || h != _viewNotifier.value.paneHeight) {
           _viewNotifier.value = _viewNotifier.value.copyWith(paneWidth: w, paneHeight: h);
@@ -825,7 +995,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         }
       }
 
-      final processedOutput = snapshot.content.rawText;
+      final processedOutput = snapshot.content;
       final paneModeOutput = snapshot.paneMode;
 
       // レイテンシは専用ValueNotifierで更新（変化時のみインジケーターを再描画）。
@@ -910,20 +1080,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   Future<void> _loadHistoryForScroll({bool preservePosition = false}) async {
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
-    final target = ref.read(tmuxProvider.notifier).currentTarget;
-    if (target == null) return;
+    final paneId =
+        _pollTargetPaneId ?? ref.read(tmuxProvider.notifier).currentTarget;
+    final reader = _paneReader;
+    if (paneId == null || reader == null) return;
     try {
-      // スクロールバック全体を一括取得（-S に大きな負値でヒストリ全体をキャプチャ）。
-      // tmux は履歴上限までにクランプするため、深い履歴も末尾まで遡れる。
-      final paneContent = await tmuxFacade.capturePane(
-        sshClient.tmuxExecutor,
-        target: target,
-        escapeSequences: true,
-        startLine: -100000,
+      // スクロールバック全体を一括取得（大きな負値でヒストリ全体をキャプチャ）。
+      // tmux は履歴上限までにクランプ、herdr は行数で要求する。
+      final snapshot = await reader.readPane(
+        paneId: paneId,
+        historyLines: -100000,
       );
       if (!mounted || _isDisposed) return;
       if (_terminalMode != TerminalMode.scroll) return;
-      final content = paneContent.rawText;
+      final content = snapshot.content;
       if (preservePosition) {
         // スクロール上端からの自動ロード: プリペンドされた行数ぶん位置を補正し、
         // 直前に最上部だった行を同じ位置に留める（真ん中へ飛ばないように）。
@@ -1213,8 +1383,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   paneHeight: viewData.paneHeight,
                                   backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                                   foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.9),
+                                  // read-only（herdr）ではキー入力・スワイプ操作を無効化
                                   // inventory: TERM-INPUT-001
-                                  onKeyInput: _handleKeyInput,
+                                  onKeyInput: _isReadOnly ? null : _handleKeyInput,
                                   onTap: () {
                                     _scrollToBottomKey.currentState?.show();
                                   },
@@ -1229,10 +1400,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                   cursorX: cursor.x,
                                   cursorY: cursor.y,
                                   // inventory: TERM-INPUT-005
-                                  onArrowSwipe: _sendSpecialKeyWithOverlay,
+                                  onArrowSwipe: _isReadOnly ? null : _sendSpecialKeyWithOverlay,
                                   // inventory: TERM-NAV-007
-                                  onTwoFingerSwipe: _handleTwoFingerSwipe,
-                                  navigableDirections: _getNavigableDirections(),
+                                  onTwoFingerSwipe: _isReadOnly ? null : _handleTwoFingerSwipe,
+                                  navigableDirections: _isReadOnly ? null : _getNavigableDirections(),
                                   ),
                                 );
                               },
@@ -1286,19 +1457,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   );
                 },
               ),
-              SpecialKeysBar(
-                // inventory: TERM-INPUT-006
-                onKeyPressed: _sendKeyWithOverlay,
-                onSpecialKeyPressed: _sendSpecialKeyWithOverlay,
-                // inventory: TERM-INPUT-009
-                onInputTap: _showInputDialog,
-                directInputEnabled: _directInputEnabled,
-                onDirectInputToggle: () {
-                  ref.read(settingsProvider.notifier).toggleDirectInput();
-                },
-                // inventory: TERM-FILE-002
-                onImagePickRequested: _handleImageTransfer,
-              ),
+              // read-only（herdr）: 特殊キー入力バーを隠し、読み取り専用バナーを表示
+              if (_isReadOnly)
+                _ReadOnlyBanner(isDark: isDark)
+              else
+                SpecialKeysBar(
+                  // inventory: TERM-INPUT-006
+                  onKeyPressed: _sendKeyWithOverlay,
+                  onSpecialKeyPressed: _sendSpecialKeyWithOverlay,
+                  // inventory: TERM-INPUT-009
+                  onInputTap: _showInputDialog,
+                  directInputEnabled: _directInputEnabled,
+                  onDirectInputToggle: () {
+                    ref.read(settingsProvider.notifier).toggleDirectInput();
+                  },
+                  // inventory: TERM-FILE-002
+                  onImagePickRequested: _handleImageTransfer,
+                ),
             ],
           ),
           // ローディングオーバーレイ
@@ -1371,6 +1546,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// AnsiTextViewからのキー入力を処理
   void _handleKeyInput(KeyInputEvent event) {
+    // read-only（herdr）ではキー入力を無効化
+    if (_isReadOnly) return;
     // 特殊キーの場合はtmux形式で送信（オーバーレイ付き）
     if (event.isSpecialKey && event.tmuxKeyName != null) {
       _sendSpecialKeyWithOverlay(event.tmuxKeyName!);
@@ -1431,6 +1608,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// キーデータをtmux send-keysで送信
   Future<void> _sendKeyData(String data) async {
+    // read-only（herdr）では送信しない
+    if (_isReadOnly) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 接続が切れている場合はキューに追加
@@ -1683,7 +1862,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// 上部のパンくずナビゲーションヘッダー
   Widget _buildBreadcrumbHeader(TmuxState tmuxState) {
-    final currentSession = tmuxState.activeSessionName ?? '';
+    final isReadOnly = _isReadOnly;
+    final currentSession = isReadOnly
+        ? (widget.sessionName ?? tmuxState.activeSessionName ?? '')
+        : (tmuxState.activeSessionName ?? '');
     final activeWindow = tmuxState.activeWindow;
     final currentWindow = activeWindow?.name ?? '';
     final activePane = tmuxState.activePane;
@@ -1709,32 +1891,43 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    // セッション名（タップで切り替え）
+                    // セッション名（read-only ではタップ不可）
                     // inventory: TERM-DIALOG-004
                     _buildBreadcrumbItem(
                       currentSession,
                       icon: Icons.folder,
                       isActive: true,
-                      onTap: () => _showSessionSelector(tmuxState),
+                      onTap: isReadOnly
+                          ? null
+                          : () => _showSessionSelector(tmuxState),
                     ),
                     // inventory: TERM-DIALOG-005
                     _buildBreadcrumbSeparator(),
-                    // ウィンドウ名（タップで切り替え）
-                    _buildBreadcrumbItem(
-                      currentWindow,
-                      icon: Icons.tab,
-                      isSelected: true,
-                      onTap: () => _showWindowSelector(tmuxState),
-                    ),
-                    // ペインがあれば表示
-                    if (activePane != null) ...[
-                      _buildBreadcrumbSeparator(),
+                    if (isReadOnly)
+                      // herdr: read-only バッジ（セレクタは無い）
                       _buildBreadcrumbItem(
-                        'Pane ${activePane.index}',
-                        icon: Icons.terminal,
+                        'Read-only',
+                        icon: Icons.lock_outline,
                         isActive: false,
-                        onTap: () => _showPaneSelector(tmuxState),
+                      )
+                    else ...[
+                      // ウィンドウ名（タップで切り替え）
+                      _buildBreadcrumbItem(
+                        currentWindow,
+                        icon: Icons.tab,
+                        isSelected: true,
+                        onTap: () => _showWindowSelector(tmuxState),
                       ),
+                      // ペインがあれば表示
+                      if (activePane != null) ...[
+                        _buildBreadcrumbSeparator(),
+                        _buildBreadcrumbItem(
+                          'Pane ${activePane.index}',
+                          icon: Icons.terminal,
+                          isActive: false,
+                          onTap: () => _showPaneSelector(tmuxState),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -1795,8 +1988,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               valueListenable: _latencyNotifier,
               builder: (context, latency, _) => _buildConnectionIndicator(latency),
             ),
-            // File browser button（スクロール中は場所を空けるため非表示）
-            if (_terminalMode != TerminalMode.scroll)
+            // File browser button（スクロール中・read-only は場所を空けるため非表示）
+            if (_terminalMode != TerminalMode.scroll && !isReadOnly)
               IconButton(
                 // inventory: TERM-FILE-001
                 onPressed: _handleFileBrowser,
@@ -3308,6 +3501,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// [key] 送信するキー
   /// [literal] trueの場合はリテラル送信（-l フラグ）
   Future<void> _sendKey(String key, {bool literal = true}) async {
+    // read-only（herdr）では送信しない
+    if (_isReadOnly) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 接続が切れている場合はキューに追加（リテラルの場合のみ）
@@ -3340,6 +3535,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeに入る
   Future<void> _enterTmuxCopyMode() async {
+    // read-only（herdr）では copy-mode は使わない（履歴は直接取得する）
+    if (_isReadOnly) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -3352,6 +3549,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeを終了
   Future<void> _cancelTmuxCopyMode() async {
+    // read-only（herdr）では copy-mode は使わない
+    if (_isReadOnly) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -3364,6 +3563,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux特殊キーを送信（Ctrl+C, Escape等）
   Future<void> _sendSpecialKey(String tmuxKey) async {
+    // read-only（herdr）では送信しない
+    if (_isReadOnly) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 特殊キーは接続が切れている場合は送信しない（キューしない）
@@ -4892,4 +5093,56 @@ Widget buildInputDialogContentForTesting({
     onValueChanged: onValueChanged,
     onSend: onSend,
   );
+}
+
+/// READ ONLY バナー（herdr 表示用）。
+///
+/// 特殊キーバー（SpecialKeysBar）の代わりに表示し、読み取り専用であることを
+/// 示す。キー入力が無効なため、デザイン上の注意書きのみを担う。
+class _ReadOnlyBanner extends StatelessWidget {
+  final bool isDark;
+
+  const _ReadOnlyBanner({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: isDark
+          ? DesignColors.connectingCardDark.withValues(alpha: 0.4)
+          : DesignColors.connectingCardLight,
+      child: Row(
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 14,
+            color: isDark
+                ? DesignColors.connectedCardTextDark
+                : DesignColors.connectedCardTextLight,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'READ ONLY — viewing only',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: isDark
+                  ? DesignColors.connectedCardTextDark
+                  : DesignColors.connectedCardTextLight,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            'Herdr',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

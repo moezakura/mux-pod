@@ -25,6 +25,27 @@ class HerdrCommands {
   // inventory: HERDR-CMD-004
   /// protocol 確認用の status コマンド（JSON 出力）。
   static String preflightCommand() => 'herdr status --json';
+
+  // inventory: HERDR-CMD-005
+  /// pane の内容を読み取る（read-only 表示用）。
+  ///
+  /// コマンド形式:
+  /// `herdr pane read <pane_id> --source <source> [--lines N] [--raw]`
+  /// - [paneId]: 読み取り対象の pane ID（例: "w1:p1"。先頭に配置）。
+  /// - [source]: `'visible'`（可視領域）または `'recent'`（履歴含む）。
+  /// - [lines]: 読み取る行数（null なら全量）。
+  /// - [ansi]: true なら `--raw` を付与し ANSI エスケープ付きで取得する。
+  static String paneRead(
+    String paneId, {
+    String source = 'recent',
+    int? lines,
+    bool ansi = false,
+  }) {
+    final parts = ['herdr', 'pane', 'read', paneId, '--source', source];
+    if (lines != null) parts.addAll(['--lines', lines.toString()]);
+    if (ansi) parts.add('--raw');
+    return parts.join(' ');
+  }
 }
 
 // inventory: HERDR-ERR-001

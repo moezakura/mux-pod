@@ -67,6 +67,34 @@ class HerdrSnapshotParser {
   }
 }
 
+// inventory: HERDR-PARSER-PANE-CONTENT-001
+/// `herdr pane read` のパーサ。
+///
+/// 出力はプレーンテキストまたは ANSI 付き（`--raw`）のいずれでもよく、
+/// 生文字列のまま保持して [HerdrPaneContent] を作る。末尾の改行は除去し、
+/// 行分割する。`--raw` で取得した場合は [ansi] を true にする。内容自体に
+/// ANSI エスケープが含まれる場合も検出して [HerdrPaneContent.hasAnsi] を
+/// 補完する（両対応）。
+class HerdrPaneContentParser {
+  HerdrPaneContentParser._();
+
+  /// ANSI CSI（`ESC [`）で始まるエスケープシーケンスの簡易検出用。
+  static final RegExp _ansiEscape = RegExp(r'\x1b\[[0-9;?]*[ -/]*[@-~]');
+
+  /// 出力を [HerdrPaneContent] に変換する。
+  static HerdrPaneContent parse(String output, {bool ansi = false}) {
+    final processed = output.endsWith('\n')
+        ? output.substring(0, output.length - 1)
+        : output;
+    final lines = processed.isEmpty ? const <String>[] : processed.split('\n');
+    return HerdrPaneContent(
+      lines: lines,
+      rawText: processed,
+      hasAnsi: ansi || _ansiEscape.hasMatch(processed),
+    );
+  }
+}
+
 // ===== shared helpers =====
 
 HerdrWorkspace _parseWorkspace(dynamic raw) {

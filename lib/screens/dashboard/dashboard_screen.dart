@@ -129,13 +129,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   void _navigateToTerminal(BuildContext context, WidgetRef ref, ActiveSession session) {
-    // herdr は read-only のため Terminal へは遷移せず SnackBar で案内する
-    if (session.backend == MultiplexerBackendKind.herdr) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Herdr workspaces are read-only')),
-      );
-      return;
-    }
+    final isHerdr = session.backend == MultiplexerBackendKind.herdr;
 
     // 最終アクセス日時を更新
     ref.read(activeSessionsProvider.notifier).touchSession(
@@ -150,6 +144,8 @@ class DashboardScreen extends ConsumerWidget {
           sessionName: session.sessionName,
           lastWindowIndex: session.lastWindowIndex,
           lastPaneId: session.lastPaneId,
+          // herdr は read-only 表示（mutation 非表示）
+          readOnly: isHerdr,
         ),
       ),
     );
