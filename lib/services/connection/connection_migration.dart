@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../backend/multiplexer_config.dart';
 import '../keychain/secure_storage.dart';
+import 'connection_storage_schema.dart';
 
 /// 接続設定のマイグレーション結果。
 class ConnectionMigrationResult {
@@ -28,7 +29,10 @@ class ConnectionMigrationResult {
 
 /// 接続設定の旧 `tmuxPath` から `multiplexer` 形式へのマイグレーション。
 ///
-/// backup / rollback / recovery を持ち、原子性を保つ。
+/// `storageSchemaVersion == [ConnectionStorageSchema.current]` のレコードは
+/// 新形式（downgrade 互換の `tmuxPath` を保持）として migration をスキップ
+/// する。旧形式レコードのみを対象に、backup / rollback / recovery を持ち
+/// 原子性を保つ。
 class ConnectionMigration {
   static const String _storageKey = 'connections';
   static const String _backupKey = 'connections_backup_v2';
@@ -168,14 +172,29 @@ class ConnectionMigration {
 
   static bool _listNeedsMigration(List<dynamic> list) {
     for (final record in list) {
-      if (record is Map<String, dynamic> && record.containsKey('tmuxPath')) {
+      if (record is Map<String, dynamic> &&
+          !_isCurrentSchemaRecord(record) &&
+          record.containsKey('tmuxPath')) {
         return true;
       }
     }
     return false;
   }
 
+  /// [record] が現在スキーマ（`storageSchemaVersion == current`）かどうか。
+  ///
+  /// 現在スキーマのレコードは downgrade 互換の `tmuxPath` を含み得るため、
+  /// `tmuxPath` の有無だけでは migration 要否を判定できない（G6 合意#4）。
+  static bool _isCurrentSchemaRecord(Map<String, dynamic> record) {
+    return record.containsKey('storageSchemaVersion') &&
+        record['storageSchemaVersion'] == ConnectionStorageSchema.current;
+  }
+
   static Map<String, dynamic> _migrateRecord(Map<String, dynamic> record) {
+    // 現在スキーマのレコードは downgrade 互換の tmuxPath を保持するため変更しない。
+    if (_isCurrentSchemaRecord(record)) {
+      return record;
+    }
     final newRecord = Map<String, dynamic>.of(record);
     final hasMultiplexer = newRecord.containsKey('multiplexer');
     if (newRecord.containsKey('tmuxPath')) {
