@@ -743,6 +743,14 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           _herdrSnapshot = snapshot;
           _isLoadingSessions = false;
         });
+        // アクティブセッションへも共通 domain 経由で登録する。
+        ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+              connectionId: widget.connection.id,
+              connectionName: widget.connection.name,
+              host: widget.connection.host,
+              sessions: snapshot.toDomainSessions(),
+              backend: MultiplexerBackendKind.herdr,
+            );
       } else {
         await _reloadSessions(client);
       }
@@ -765,11 +773,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       _sessions = sessions;
       _isLoadingSessions = false;
     });
-    ref.read(activeSessionsProvider.notifier).updateSessionsForConnection(
+    ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
           connectionId: widget.connection.id,
           connectionName: widget.connection.name,
           host: widget.connection.host,
-          tmuxSessions: sessions,
+          sessions: sessions.map((s) => s.toDomain()).toList(),
+          backend: MultiplexerBackendKind.tmux,
         );
   }
 

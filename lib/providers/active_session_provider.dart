@@ -5,7 +5,10 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/backend/domain/multiplexer_backend.dart';
+import '../services/backend/domain/multiplexer_session.dart';
 import '../services/tmux/tmux_models.dart';
+import '../services/tmux/tmux_to_domain.dart';
 
 // inventory: PROV-ACTIVE-001
 /// アクティブセッション情報
@@ -32,6 +35,9 @@ class ActiveSession {
   // inventory: LEGACY-0007
   final bool isAttached;
 
+  /// backend 種別（herdr は read-only のため Terminal 遷移不可）。
+  final MultiplexerBackendKind backend;
+
   // inventory: PROV-ACTIVE-009
   // inventory: LEGACY-0008
   /// 最後に開いていたウィンドウインデックス
@@ -55,6 +61,7 @@ class ActiveSession {
     required this.windowCount,
     required this.connectedAt,
     this.isAttached = true,
+    this.backend = MultiplexerBackendKind.tmux,
     this.lastWindowIndex,
     this.lastPaneId,
     this.lastAccessedAt,
@@ -70,6 +77,7 @@ class ActiveSession {
     int? windowCount,
     DateTime? connectedAt,
     bool? isAttached,
+    MultiplexerBackendKind? backend,
     int? lastWindowIndex,
     String? lastPaneId,
     DateTime? lastAccessedAt,
@@ -83,6 +91,7 @@ class ActiveSession {
       windowCount: windowCount ?? this.windowCount,
       connectedAt: connectedAt ?? this.connectedAt,
       isAttached: isAttached ?? this.isAttached,
+      backend: backend ?? this.backend,
       lastWindowIndex: lastWindowIndex ?? this.lastWindowIndex,
       lastPaneId: clearLastPane ? null : (lastPaneId ?? this.lastPaneId),
       lastAccessedAt: lastAccessedAt ?? this.lastAccessedAt,
@@ -101,6 +110,7 @@ class ActiveSession {
       'windowCount': windowCount,
       'connectedAt': connectedAt.toIso8601String(),
       'isAttached': isAttached,
+      'backend': backend.name,
       'lastWindowIndex': lastWindowIndex,
       'lastPaneId': lastPaneId,
       'lastAccessedAt': lastAccessedAt?.toIso8601String(),
@@ -120,6 +130,10 @@ class ActiveSession {
       windowCount: json['windowCount'] as int? ?? 0,
       connectedAt: DateTime.parse(json['connectedAt'] as String),
       isAttached: json['isAttached'] as bool? ?? false,
+      backend: MultiplexerBackendKind.values.firstWhere(
+        (b) => b.name == json['backend'],
+        orElse: () => MultiplexerBackendKind.tmux,
+      ),
       lastWindowIndex: json['lastWindowIndex'] as int?,
       lastPaneId: json['lastPaneId'] as String?,
       lastAccessedAt: lastAccessedAtStr != null ? DateTime.parse(lastAccessedAtStr) : null,
@@ -354,6 +368,25 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     required String host,
     required List<TmuxSession> tmuxSessions,
   }) {
+    updateSessionsFromDomain(
+      connectionId: connectionId,
+      connectionName: connectionName,
+      host: host,
+      sessions: tmuxSessions.map((ts) => ts.toDomain()).toList(),
+    );
+  }
+
+  /// 接続のセッション一覧を共通 domain モデルから更新する。
+  ///
+  /// tmux/herdr どちらの backend も [MultiplexerSession] 経由で登録できる。
+  /// 既存のセッションの lastWindowIndex/lastPaneId/lastAccessedAt は保持する。
+  void updateSessionsFromDomain({
+    required String connectionId,
+    required String connectionName,
+    required String host,
+    required List<MultiplexerSession> sessions,
+    MultiplexerBackendKind backend = MultiplexerBackendKind.tmux,
+  }) {
     // 既存のセッション情報をマップに保存
     final existingMap = <String, ActiveSession>{};
     for (final s in state.sessions.where((s) => s.connectionId == connectionId)) {
@@ -365,16 +398,17 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
         .where((s) => s.connectionId != connectionId)
         .toList();
 
-    final newSessions = tmuxSessions.map((ts) {
-      final existing = existingMap[ts.name];
+    final newSessions = sessions.map((ms) {
+      final existing = existingMap[ms.name];
       return ActiveSession(
         connectionId: connectionId,
         connectionName: connectionName,
         host: host,
-        sessionName: ts.name,
-        windowCount: ts.windowCount,
+        sessionName: ms.name,
+        windowCount: ms.windowCount,
         connectedAt: existing?.connectedAt ?? DateTime.now(),
-        isAttached: ts.attached,
+        isAttached: ms.attached,
+        backend: backend,
         lastWindowIndex: existing?.lastWindowIndex,
         lastPaneId: existing?.lastPaneId,
         lastAccessedAt: existing?.lastAccessedAt,

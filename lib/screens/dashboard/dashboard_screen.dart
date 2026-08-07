@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/session_history_provider.dart';
+import '../../services/backend/domain/multiplexer_backend.dart';
 import '../../theme/design_colors.dart';
 import '../connections/connection_form_screen.dart';
 import '../terminal/terminal_screen.dart';
@@ -128,6 +129,14 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   void _navigateToTerminal(BuildContext context, WidgetRef ref, ActiveSession session) {
+    // herdr は read-only のため Terminal へは遷移せず SnackBar で案内する
+    if (session.backend == MultiplexerBackendKind.herdr) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Herdr workspaces are read-only')),
+      );
+      return;
+    }
+
     // 最終アクセス日時を更新
     ref.read(activeSessionsProvider.notifier).touchSession(
           session.connectionId,
@@ -179,6 +188,7 @@ class _SessionHistoryCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     final isAttached = session.isAttached;
+    final isReadOnly = session.backend == MultiplexerBackendKind.herdr;
 
     return Dismissible(
       key: Key(session.key),
@@ -376,11 +386,14 @@ class _SessionHistoryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // Arrow
-              Icon(
-                Icons.chevron_right,
-                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
-              ),
+              // READ ONLY バッジ（herdr） / 遷移矢印（tmux）
+              if (isReadOnly)
+                _ReadOnlyBadge(isDark: isDark)
+              else
+                Icon(
+                  Icons.chevron_right,
+                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                ),
             ],
           ),
         ),
@@ -407,5 +420,53 @@ class _SessionHistoryCard extends StatelessWidget {
       final weeks = (diff.inDays / 7).floor();
       return '$weeks week${weeks > 1 ? 's' : ''} ago';
     }
+  }
+}
+
+/// READ ONLY バッジ（herdr セッション表示用）。
+class _ReadOnlyBadge extends StatelessWidget {
+  final bool isDark;
+
+  const _ReadOnlyBadge({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isDark
+            ? DesignColors.connectingCardDark.withValues(alpha: 0.5)
+            : DesignColors.connectingCardLight,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isDark
+              ? DesignColors.connectingCardBorderDark.withValues(alpha: 0.7)
+              : DesignColors.connectingCardBorderLight,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 10,
+            color: isDark
+                ? DesignColors.connectedCardTextDark
+                : DesignColors.connectedCardTextLight,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'READ ONLY',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: isDark
+                  ? DesignColors.connectedCardTextDark
+                  : DesignColors.connectedCardTextLight,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
