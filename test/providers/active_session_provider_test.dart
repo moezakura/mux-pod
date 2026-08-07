@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/providers/active_session_provider.dart';
+import 'package:flutter_muxpod/services/backend/domain/multiplexer_backend.dart';
+import 'package:flutter_muxpod/services/backend/domain/multiplexer_session.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -485,6 +487,125 @@ void main() {
       expect(updated.connectedAt, before.connectedAt);
       expect(updated.lastWindowIndex, 2);
       expect(updated.lastPaneId, '%9');
+      expect(updated.backend, MultiplexerBackendKind.tmux);
+    });
+
+    test('ActiveSession defaults backend to tmux', () {
+      final session = ActiveSession(
+        connectionId: 'c1',
+        connectionName: 'Server',
+        host: 'h',
+        sessionName: 'main',
+        windowCount: 1,
+        connectedAt: DateTime(2025, 1, 1),
+      );
+      expect(session.backend, MultiplexerBackendKind.tmux);
+    });
+
+    test('ActiveSession JSON round trip preserves herdr backend', () {
+      final session = ActiveSession(
+        connectionId: 'c1',
+        connectionName: 'Server',
+        host: 'h',
+        sessionName: 'main',
+        windowCount: 1,
+        connectedAt: DateTime(2025, 1, 1),
+        backend: MultiplexerBackendKind.herdr,
+      );
+      final json = session.toJson();
+      expect(json['backend'], 'herdr');
+
+      final restored = ActiveSession.fromJson(json);
+      expect(restored.backend, MultiplexerBackendKind.herdr);
+      expect(restored.key, session.key);
+    });
+
+    test('ActiveSession.fromJson falls back to tmux when backend is missing', () {
+      final json = ActiveSession(
+        connectionId: 'c1',
+        connectionName: 'Server',
+        host: 'h',
+        sessionName: 'main',
+        windowCount: 1,
+        connectedAt: DateTime(2025, 1, 1),
+      ).toJson()
+        ..remove('backend');
+
+      final restored = ActiveSession.fromJson(json);
+      expect(restored.backend, MultiplexerBackendKind.tmux);
+    });
+
+    test(
+      'updateSessionsFromDomain registers domain sessions with backend and preserves history',
+      () {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final notifier = container.read(activeSessionsProvider.notifier);
+        notifier.addOrUpdateSession(
+          connectionId: 'c1',
+          connectionName: 'A',
+          host: 'a',
+          sessionName: 'main',
+          windowCount: 1,
+          lastWindowIndex: 2,
+          lastPaneId: '%9',
+        );
+        final before = container.read(activeSessionsProvider).sessions.single;
+
+        notifier.updateSessionsFromDomain(
+          connectionId: 'c1',
+          connectionName: 'Renamed',
+          host: 'new-host',
+          sessions: const [
+            MultiplexerSession(name: 'main', windowCount: 3, attached: false),
+            MultiplexerSession(name: 'herdr-ws', windowCount: 5, attached: true),
+          ],
+          backend: MultiplexerBackendKind.herdr,
+        );
+
+        final sessions = container.read(activeSessionsProvider).sessions;
+        expect(sessions, hasLength(2));
+
+        final main = sessions.singleWhere((s) => s.sessionName == 'main');
+        expect(main.connectionName, 'Renamed');
+        expect(main.host, 'new-host');
+        expect(main.windowCount, 3);
+        expect(main.isAttached, isFalse);
+        expect(main.backend, MultiplexerBackendKind.herdr);
+        expect(main.connectedAt, before.connectedAt);
+        expect(main.lastWindowIndex, 2);
+        expect(main.lastPaneId, '%9');
+
+        final ws = sessions.singleWhere((s) => s.sessionName == 'herdr-ws');
+        expect(ws.windowCount, 5);
+        expect(ws.isAttached, isTrue);
+        expect(ws.backend, MultiplexerBackendKind.herdr);
+      },
+    );
+
+    test('updateSessionsFromDomain preserves other connections', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(activeSessionsProvider.notifier);
+      notifier.addOrUpdateSession(
+        connectionId: 'c2',
+        connectionName: 'B',
+        host: 'b',
+        sessionName: 'other',
+        windowCount: 4,
+      );
+
+      notifier.updateSessionsFromDomain(
+        connectionId: 'c1',
+        connectionName: 'A',
+        host: 'a',
+        sessions: const [MultiplexerSession(name: 'main', windowCount: 1)],
+        backend: MultiplexerBackendKind.herdr,
+      );
+
+      final sessions = container.read(activeSessionsProvider).sessions;
+      expect(sessions.map((s) => s.connectionId), ['c2', 'c1']);
+      expect(sessions.last.backend, MultiplexerBackendKind.herdr);
     });
   });
 }
