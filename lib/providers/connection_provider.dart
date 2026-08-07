@@ -4,12 +4,29 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/backend/backend_type.dart';
 import '../services/backend/multiplexer_config.dart';
 import '../services/connection/connection_migration.dart';
+import '../services/connection/connection_storage_schema.dart';
 import '../services/keychain/secure_storage.dart';
 
 /// 接続設定
 class Connection {
+  /// 現在の永続化スキーマバージョン（このアプリが書き込む新形式）。
+  ///
+  /// 旧 JSON（schemaVersion なし・tmuxPath 形式）は [legacyStorageSchemaVersion]
+  /// として読み込む。新旧 JSON を共存させ、ダウングレード時に旧アプリが
+  /// 読めるよう tmux backend では旧 `tmuxPath` フィールドも書き出す
+  /// （G6 合意#4: schema 番号で新旧共存）。
+  ///
+  /// 実値は service 層（[ConnectionMigration]）と共有するため
+  /// [ConnectionStorageSchema] に集約している。provider 層から import すると
+  /// 循環依存になるため、このエイリアス経由で参照する。
+  static const int currentStorageSchemaVersion = ConnectionStorageSchema.current;
+
+  /// 旧 JSON（schemaVersion なし・tmuxPath 形式）のバージョン。
+  static const int legacyStorageSchemaVersion = ConnectionStorageSchema.legacy;
+
   final String id;
   final String name;
   final String host;
@@ -20,6 +37,9 @@ class Connection {
 
   /// 使用する multiplexer の設定。
   final MultiplexerConfig multiplexer;
+
+  /// 永続化スキーマのバージョン（JSON 上の形式を表す）。
+  final int storageSchemaVersion;
 
   final DateTime createdAt;
   final DateTime? lastConnectedAt;
@@ -36,10 +56,13 @@ class Connection {
     this.authMethod = 'password',
     this.keyId,
     MultiplexerConfig? multiplexer,
+    int? storageSchemaVersion,
     required this.createdAt,
     this.lastConnectedAt,
     this.deepLinkId,
-  }) : multiplexer = multiplexer ?? const MultiplexerConfig.tmux();
+  }) : storageSchemaVersion =
+           storageSchemaVersion ?? currentStorageSchemaVersion,
+       multiplexer = multiplexer ?? const MultiplexerConfig.tmux();
 
   Connection copyWith({
     String? id,
@@ -50,6 +73,7 @@ class Connection {
     String? authMethod,
     String? keyId,
     MultiplexerConfig? multiplexer,
+    int? storageSchemaVersion,
     DateTime? createdAt,
     DateTime? lastConnectedAt,
     String? deepLinkId,
@@ -64,6 +88,7 @@ class Connection {
       authMethod: authMethod ?? this.authMethod,
       keyId: keyId ?? this.keyId,
       multiplexer: multiplexer ?? this.multiplexer,
+      storageSchemaVersion: storageSchemaVersion ?? this.storageSchemaVersion,
       createdAt: createdAt ?? this.createdAt,
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       deepLinkId: clearDeepLinkId ? null : (deepLinkId ?? this.deepLinkId),
@@ -80,6 +105,13 @@ class Connection {
       'authMethod': authMethod,
       'keyId': keyId,
       'multiplexer': multiplexer.toJson(),
+      // ダウングレード互換: 旧アプリ（tmuxPath のみ読む）向けに tmux の
+      // 実行ファイルパスも書き出す。自動検出（null）の場合は旧アプリ側で
+      // 自動検出になるため省略してよい（G6 合意#4）。
+      if (multiplexer.backend == BackendType.tmux &&
+          multiplexer.executablePath != null)
+        'tmuxPath': multiplexer.executablePath,
+      'storageSchemaVersion': currentStorageSchemaVersion,
       'createdAt': createdAt.toIso8601String(),
       'lastConnectedAt': lastConnectedAt?.toIso8601String(),
       'deepLinkId': deepLinkId,
@@ -107,6 +139,9 @@ class Connection {
       authMethod: json['authMethod'] as String? ?? 'password',
       keyId: json['keyId'] as String?,
       multiplexer: multiplexer,
+      // schemaVersion なしの旧 JSON は v1 として扱う。
+      storageSchemaVersion:
+          json['storageSchemaVersion'] as int? ?? legacyStorageSchemaVersion,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastConnectedAt: json['lastConnectedAt'] != null
           ? DateTime.parse(json['lastConnectedAt'] as String)
