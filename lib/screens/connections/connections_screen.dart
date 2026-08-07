@@ -7,10 +7,17 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../home_screen.dart';
+import '../../services/backend/backend_type.dart';
+import '../../services/backend/domain/multiplexer_backend.dart';
+import '../../services/backend/domain/multiplexer_session.dart';
+import '../../services/herdr/herdr_adapter.dart';
+import '../../services/herdr/herdr_models.dart';
+import '../../services/herdr/herdr_to_domain.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/tmux_facade.dart';
 import '../../services/tmux/tmux_models.dart';
+import '../../services/tmux/tmux_to_domain.dart';
 
 import '../../theme/design_colors.dart';
 import 'connection_form_screen.dart';
@@ -526,6 +533,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   List<TmuxSession> _sessions = [];
   String? _sessionError;
 
+  /// herdr 接続のスナップショット（read-only 表示用）。
+  HerdrSnapshot? _herdrSnapshot;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -658,12 +668,26 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     );
   }
 
+  /// 接続の backend 種別（表示側の read-only 分岐用）。
+  MultiplexerBackendKind get _backendKind {
+    return switch (widget.connection.multiplexer.backend) {
+      BackendType.tmux => MultiplexerBackendKind.tmux,
+      BackendType.herdr => MultiplexerBackendKind.herdr,
+    };
+  }
+
   void _toggleExpand() {
     setState(() {
       _isExpanded = !_isExpanded;
     });
-    // 展開時にセッション情報をフェッチ
-    if (_isExpanded && _sessions.isEmpty && !_isLoadingSessions) {
+    // 展開時にセッション/スナップショット情報をフェッチ
+    if (!_isExpanded) return;
+    final isHerdr = _backendKind == MultiplexerBackendKind.herdr;
+    if (isHerdr) {
+      if (_herdrSnapshot == null && !_isLoadingSessions) {
+        _fetchSessions();
+      }
+    } else if (_sessions.isEmpty && !_isLoadingSessions) {
       _fetchSessions();
     }
   }
@@ -710,7 +734,18 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshClient? client;
     try {
       client = await _connectSsh();
-      await _reloadSessions(client);
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        // herdr: read-only スナップショットを取得して共通 domain に変換する。
+        final adapter = HerdrAdapter(client);
+        final snapshot = await adapter.snapshot();
+        if (!mounted) return;
+        setState(() {
+          _herdrSnapshot = snapshot;
+          _isLoadingSessions = false;
+        });
+      } else {
+        await _reloadSessions(client);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -740,13 +775,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   /// tmuxセッションをkillする（確認ダイアログ付き）。
   /// kill と一覧再取得を同一接続で行い、SSH往復を1回に抑える。
-  Future<void> _killSession(TmuxSession session) async {
+  Future<void> _killSession(String sessionName) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Kill Session'),
         content: Text(
-          'Kill tmux session "${session.name}"? '
+          'Kill tmux session "$sessionName"? '
           'Its windows and processes will be terminated.',
         ),
         actions: [
@@ -773,12 +808,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshClient? client;
     try {
       client = await _connectSsh();
-      await tmuxFacade.killSession(client.tmuxExecutor, session.name);
+      await tmuxFacade.killSession(client.tmuxExecutor, sessionName);
       // 同一接続でそのまま一覧を再取得
       await _reloadSessions(client);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Session ${session.name} killed')),
+          SnackBar(content: Text('Session $sessionName killed')),
         );
       }
     } catch (e) {
@@ -792,7 +827,34 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
-  Widget _buildExpandedContent(List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+  Widget _buildExpandedContent(
+      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+    // Tmux/Herdr を共通 domain モデル（MultiplexerSession）で表示する。
+    // herdr は read-only のため、Kill / New Session を非表示にする。
+    final readOnly = _backendKind == MultiplexerBackendKind.herdr;
+    final sessions = readOnly
+        ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
+        : _sessions.map((s) => s.toDomain()).toList();
+    return _buildDomainExpandedContent(
+      sessions: sessions,
+      isDark: isDark,
+      colorScheme: colorScheme,
+      readOnly: readOnly,
+      activeSessions: activeSessions,
+    );
+  }
+
+  /// 共通 domain モデルによる展開コンテンツ。
+  ///
+  /// [readOnly]（herdr）の場合、Kill / New Session を非表示にし、
+  /// 各行のバッジを「READ ONLY」、タップ遷移を無効化する。
+  Widget _buildDomainExpandedContent({
+    required List<MultiplexerSession> sessions,
+    required bool isDark,
+    required ColorScheme colorScheme,
+    required bool readOnly,
+    required List<ActiveSession> activeSessions,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF15161C) : const Color(0xFFF8F9FA),
@@ -857,11 +919,11 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                 ),
               ),
             )
-          else if (_sessions.isEmpty && activeSessions.isEmpty)
+          else if (sessions.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                'No tmux sessions found',
+                readOnly ? 'No herdr workspaces found' : 'No tmux sessions found',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
                   color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -869,26 +931,33 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               ),
             )
           else
-            // セッションリスト（_sessionsまたはactiveSessionsを使用）
-            ..._buildSessionItems(activeSessions, isDark, colorScheme),
-          // New Session Button
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: OutlinedButton.icon(
-              onPressed: _showNewSessionDialog,
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('New Session'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
-                side: BorderSide(
-                  color: colorScheme.primary.withValues(alpha: 0.3),
-                  style: BorderStyle.solid,
+            // セッションリスト（共通 domain モデルを表示）
+            ..._buildDomainSessionItems(
+              sessions,
+              readOnly: readOnly,
+              activeSessions: activeSessions,
+              isDark: isDark,
+              colorScheme: colorScheme,
+            ),
+          // New Session Button（read-only の場合は非表示）
+          if (!readOnly)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: OutlinedButton.icon(
+                onPressed: _showNewSessionDialog,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('New Session'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
+                  side: BorderSide(
+                    color: colorScheme.primary.withValues(alpha: 0.3),
+                    style: BorderStyle.solid,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  minimumSize: const Size(double.infinity, 0),
                 ),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                minimumSize: const Size(double.infinity, 0),
               ),
             ),
-          ),
           Divider(color: isDark ? DesignColors.borderDark : DesignColors.borderLight, height: 1),
           // Action Buttons
           Padding(
@@ -936,22 +1005,72 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
-  List<Widget> _buildSessionItems(
-      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
-    // _sessions（フェッチ結果）を表示。ウィンドウ数は provider の最新値を優先し、
-    // ターミナルでのウィンドウ作成/削除後もカウンタが追従するようにする。
-    final sessions = _sessions;
+  /// READ ONLY バッジ。
+  Widget _buildReadOnlyBadge(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isDark
+            ? DesignColors.connectingCardDark.withValues(alpha: 0.5)
+            : DesignColors.connectingCardLight,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isDark
+              ? DesignColors.connectingCardBorderDark.withValues(alpha: 0.7)
+              : DesignColors.connectingCardBorderLight,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            size: 10,
+            color: isDark
+                ? DesignColors.connectedCardTextDark
+                : DesignColors.connectedCardTextLight,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            'READ ONLY',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: isDark
+                  ? DesignColors.connectedCardTextDark
+                  : DesignColors.connectedCardTextLight,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 共通 domain のセッション行リスト。
+  ///
+  /// 既存の tmux 表示（terminal アイコン・名前・window 数・
+  /// Attached/Detached バッジ・Kill ボタン）を再現する。
+  /// [readOnly] の場合、Kill ボタン非表示・バッジ「READ ONLY」・タップ無効。
+  List<Widget> _buildDomainSessionItems(
+    List<MultiplexerSession> sessions, {
+    required bool readOnly,
+    required List<ActiveSession> activeSessions,
+    required bool isDark,
+    required ColorScheme colorScheme,
+  }) {
     if (sessions.isEmpty) return [];
-    final liveWindowCounts = {
-      for (final a in activeSessions) a.sessionName: a.windowCount,
-    };
+    // tmux では provider の最新ウィンドウ数を優先（ターミナルでの
+    // ウィンドウ作成/削除後もカウンタが追従するようにする）。
+    final liveWindowCounts = readOnly
+        ? const <String, int>{}
+        : {for (final a in activeSessions) a.sessionName: a.windowCount};
 
     return sessions.map((session) {
       final isAttached = session.attached;
       final windowCount =
           liveWindowCounts[session.name] ?? session.windowCount;
       return InkWell(
-        onTap: () => widget.onConnect(session.name),
+        onTap: readOnly ? null : () => widget.onConnect(session.name),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
@@ -984,44 +1103,51 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   ],
                 ),
               ),
-              // Status Badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isAttached
-                      ? (isDark ? DesignColors.connectedCardDark.withValues(alpha: 0.5) : DesignColors.connectedCardLight)
-                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(
+              // Status Badge（read-only の場合は「READ ONLY」を表示）
+              if (readOnly)
+                _buildReadOnlyBadge(isDark)
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
                     color: isAttached
-                        ? (isDark ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7) : DesignColors.connectedCardBorderLight)
+                        ? (isDark ? DesignColors.connectedCardDark.withValues(alpha: 0.5) : DesignColors.connectedCardLight)
                         : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isAttached
+                          ? (isDark ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7) : DesignColors.connectedCardBorderLight)
+                          : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                    ),
+                  ),
+                  child: Text(
+                    isAttached ? 'Attached' : 'Detached',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: isAttached
+                          ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
+                          : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
+                    ),
                   ),
                 ),
-                child: Text(
-                  isAttached ? 'Attached' : 'Detached',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: isAttached
-                        ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
-                        : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
+              // Kill ボタン（read-only の場合は非表示）
+              if (!readOnly) ...[
+                const SizedBox(width: 4),
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 16,
+                    icon: const Icon(Icons.delete, color: DesignColors.error),
+                    onPressed: _isLoadingSessions
+                        ? null
+                        : () => _killSession(session.name),
+                    tooltip: 'Kill session',
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 16,
-                  icon: const Icon(Icons.delete, color: DesignColors.error),
-                  onPressed:
-                      _isLoadingSessions ? null : () => _killSession(session),
-                  tooltip: 'Kill session',
-                ),
-              ),
+              ],
             ],
           ),
         ),
