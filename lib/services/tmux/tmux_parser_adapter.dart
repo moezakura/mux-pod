@@ -2,8 +2,6 @@
 /// tmux コマンド出力パーサー（アダプター）
 library;
 
-import 'package:flutter/foundation.dart';
-
 import 'tmux_models.dart';
 
 // inventory: TMUX-PARSER-000
@@ -34,11 +32,10 @@ class TmuxParser {
     String fieldDelimiter = defaultFieldDelimiter,
     String recordDelimiter = defaultRecordDelimiter,
   }) {
-    debugPrint('parseSessions: raw output="${output.trim()}"');
     if (!isServerRunning(output)) {
-      debugPrint('parseSessions: isServerRunning=false, returning empty');
       return [];
     }
+    output = normalizeDelimiters(output);
 
     final sessions = <TmuxSession>[];
 
@@ -116,6 +113,7 @@ class TmuxParser {
     String fieldDelimiter = defaultFieldDelimiter,
     String recordDelimiter = defaultRecordDelimiter,
   }) {
+    output = normalizeDelimiters(output);
     final windows = <TmuxWindow>[];
 
     for (final record in output.split(recordDelimiter)) {
@@ -190,6 +188,7 @@ class TmuxParser {
     String fieldDelimiter = defaultFieldDelimiter,
     String recordDelimiter = defaultRecordDelimiter,
   }) {
+    output = normalizeDelimiters(output);
     final panes = <TmuxPane>[];
 
     for (final record in output.split(recordDelimiter)) {
@@ -304,11 +303,10 @@ class TmuxParser {
     String fieldDelimiter = defaultFieldDelimiter,
     String recordDelimiter = defaultRecordDelimiter,
   }) {
-    debugPrint('parseFullTree: raw output="${output.trim()}"');
     if (!isServerRunning(output)) {
-      debugPrint('parseFullTree: isServerRunning=false, returning empty');
       return [];
     }
+    output = normalizeDelimiters(output);
 
     final sessionsMap = <String, TmuxSession>{};
     final windowsMap = <String, Map<int, TmuxWindow>>{};
@@ -465,7 +463,25 @@ class TmuxParser {
         !lower.contains('permission denied');
   }
 
-  // inventory: TMUX-PARSER-019
+  // inventory: TMUX-PARSER-020
+  /// tmux の `-F` 出力で、制御文字がリテラル表記に化けた場合に制御文字へ戻す。
+  ///
+  /// tmux は `-F` フォーマット内の制御文字（0x1f / 0x1e）を、SSH シェル経由で
+  /// `\037` / `\036`（8 進数表記）や `\x1f` / `\x1e`（16 進数表記）のリテラル
+  /// 文字列として出力することがある。このヘルパーで各リテラル表記を元の
+  /// 制御文字に正規化してから分割できるようにする。
+  ///
+  /// tmux のセッション名・ウィンドウ名は ASCII 制御文字を受け付けないため、
+  /// リテラル表記が名前の中に現れて誤変換される実害はない。
+  static String normalizeDelimiters(String output) {
+    return output
+        .replaceAll(r'\x1f', defaultFieldDelimiter)
+        .replaceAll(r'\x1e', defaultRecordDelimiter)
+        .replaceAll(r'\037', defaultFieldDelimiter)
+        .replaceAll(r'\036', defaultRecordDelimiter);
+  }
+
+  // inventory: TMUX-PARSER-021
   /// エラーメッセージを抽出
   static String? extractError(String output) {
     final lower = output.toLowerCase();
