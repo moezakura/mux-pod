@@ -208,6 +208,72 @@ void main() {
       );
     });
   });
+
+  group('HerdrAdapter.paneRead', () {
+    test('reads pane content with default options', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = 'hello\nworld\n';
+
+      final adapter = HerdrAdapter(client);
+      final content = await adapter.paneRead('w1:p1');
+
+      expect(client.execCommands, contains('herdr pane read w1:p1 --source recent'));
+      expect(content.rawText, 'hello\nworld');
+      expect(content.lines, ['hello', 'world']);
+      expect(content.hasAnsi, isFalse);
+    });
+
+    test('passes source, lines, and --raw through to the command', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = '\x1b[32mok\x1b[0m\n';
+
+      final adapter = HerdrAdapter(client);
+      await adapter.paneRead('w1:p1', source: 'visible', lines: 120, ansi: true);
+
+      expect(
+        client.execCommands,
+        contains('herdr pane read w1:p1 --source visible --lines 120 --raw'),
+      );
+    });
+
+    test('marks content as ANSI when --raw is requested', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = '\x1b[32mok\x1b[0m\n';
+
+      final adapter = HerdrAdapter(client);
+      final content = await adapter.paneRead('w1:p1', ansi: true);
+
+      expect(content.hasAnsi, isTrue);
+    });
+
+    test('throws HerdrCommandException on non-zero exit', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = '';
+      client.execExitCodes['herdr pane read'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.paneRead('w1:p1'),
+        throwsA(
+          isA<HerdrCommandException>().having((e) => e.exitCode, 'exitCode', 1),
+        ),
+      );
+    });
+
+    test('prefixes pane read with the user executable path', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = 'hello\n';
+      client.userExecutablePath = '/usr/local/bin/herdr';
+
+      final adapter = HerdrAdapter(client);
+      await adapter.paneRead('w1:p1');
+
+      expect(
+        client.execCommands.first,
+        startsWith('/usr/local/bin/herdr pane read w1:p1'),
+      );
+    });
+  });
 }
 
 /// stderr を返す [FakeSshClient] のスタブ。

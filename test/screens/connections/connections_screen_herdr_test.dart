@@ -5,13 +5,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_muxpod/providers/active_session_provider.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
+import 'package:flutter_muxpod/providers/settings_provider.dart';
+import 'package:flutter_muxpod/providers/ssh_provider.dart';
+import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/connections/connections_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 
+import '../../helpers/fake_settings_notifier.dart';
 import '../../helpers/fake_ssh_client.dart';
+import '../../helpers/fake_ssh_notifier.dart';
+import '../../helpers/fake_tmux_notifier.dart';
 
 // G4 実測の証跡フィクスチャ（/tmp/herdr-lab/work/evidence/read/12_api_snapshot.json）
 const kHerdrSnapshotFixture =
@@ -64,6 +70,7 @@ void main() {
       );
       final client = FakeSshClient();
       client.execOutputs['herdr api snapshot'] = kHerdrSnapshotFixture;
+      client.execOutputs['herdr pane read'] = 'hello\nworld\n';
 
       await tester.pumpWidget(
         ProviderScope(
@@ -73,6 +80,16 @@ void main() {
             ),
             activeSessionsProvider.overrideWith(
               () => _EmptyActiveSessionsNotifier(),
+            ),
+            // TerminalScreen が herdr セッションを read-only で開けるようにする
+            sshProvider.overrideWith(() => FakeSshNotifier(client: client)),
+            settingsProvider.overrideWith(
+              () => FakeSettingsNotifier(
+                settings: const AppSettings(keepScreenOn: false),
+              ),
+            ),
+            tmuxProvider.overrideWith(
+              () => FakeTmuxNotifier(initialState: const TmuxState()),
             ),
           ],
           child: MaterialApp(
@@ -101,16 +118,24 @@ void main() {
       expect(find.text('New Session'), findsNothing);
       expect(find.byTooltip('Kill session'), findsNothing);
 
-      // read-only のためタップしても Terminal へ遷移しない
-      await tester.tap(find.text('lab-ws1'));
-      await tester.pumpAndSettle();
-      expect(find.byType(TerminalScreen), findsNothing);
-
       // スナップショットコマンドが実行された
       expect(
         client.execCommands.any((c) => c.contains('herdr api snapshot')),
         isTrue,
       );
+
+      // read-only でもタップすると TerminalScreen（read-only 表示）が開く
+      await tester.tap(find.text('lab-ws1'));
+      // 遷移アニメーション + 接続 + 初回ポーリング分だけ進める
+      // （ライブポーリングが動き続けるため pumpAndSettle は使わない）
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.byType(TerminalScreen), findsOneWidget);
+
+      // TerminalScreen 内で herdr の pane 内容が read-only 表示される
+      expect(find.text('READ ONLY — viewing only'), findsOneWidget);
+      expect(find.text('Read-only'), findsOneWidget);
     },
   );
 

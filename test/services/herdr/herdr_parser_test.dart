@@ -177,4 +177,41 @@ void main() {
       );
     });
   });
+
+  group('HerdrPaneContentParser', () {
+    test('parses plain text output into lines and rawText', () {
+      final content = HerdrPaneContentParser.parse('line1\nline2\nline3\n');
+      expect(content.lines, ['line1', 'line2', 'line3']);
+      expect(content.rawText, 'line1\nline2\nline3');
+      expect(content.hasAnsi, isFalse);
+    });
+
+    test('keeps ANSI escapes in rawText when --raw is requested', () {
+      const ansiOutput = '\x1b[32mgreen\x1b[0m\n\x1b[31mred\x1b[0m\n';
+      final content = HerdrPaneContentParser.parse(ansiOutput, ansi: true);
+      expect(content.lines, ['\x1b[32mgreen\x1b[0m', '\x1b[31mred\x1b[0m']);
+      expect(content.rawText, ansiOutput.trimRight());
+      expect(content.hasAnsi, isTrue);
+    });
+
+    test('detects ANSI escapes from content even without the flag', () {
+      const ansiOutput = 'prompt\x1b[1m>\x1b[0m\n';
+      final content = HerdrPaneContentParser.parse(ansiOutput);
+      expect(content.hasAnsi, isTrue);
+    });
+
+    test('handles empty output', () {
+      final content = HerdrPaneContentParser.parse('');
+      expect(content.lines, isEmpty);
+      expect(content.rawText, '');
+      expect(content.hasAnsi, isFalse);
+      expect(content.isEmpty, isTrue);
+    });
+
+    test('single line without trailing newline is not split', () {
+      final content = HerdrPaneContentParser.parse('hello');
+      expect(content.lines, ['hello']);
+      expect(content.rawText, 'hello');
+    });
+  });
 }

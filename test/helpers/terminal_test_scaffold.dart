@@ -13,6 +13,7 @@ import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/widgets/image_transfer_confirm_dialog.dart';
 
@@ -122,6 +123,13 @@ class TerminalTestScaffold {
     FakeImageTransferNotifier? imageTransferNotifier,
     Connection? connection,
     Map<String, String>? secureStorageValues,
+    // herdr（read-only）向け
+    bool readOnly = false,
+    String? initialPaneId,
+    PaneContentReader? paneContentReader,
+    // ライブポーリングが動く間は pumpAndSettle が終わらないため
+    // herdr 系テストでは false にして手動 pump する
+    bool settle = true,
   }) async {
     TestWidgetsFlutterBinding.ensureInitialized();
     tester.view.physicalSize = const Size(1080, 1920);
@@ -184,11 +192,21 @@ class TerminalTestScaffold {
             lastPaneId: lastPaneId,
             deepLinkWindowName: deepLinkWindowName,
             deepLinkPaneIndex: deepLinkPaneIndex,
+            readOnly: readOnly,
+            initialPaneId: initialPaneId,
+            paneContentReader: paneContentReader,
           ),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    if (settle) {
+      await tester.pumpAndSettle();
+    } else {
+      // 接続 + 初回ポーリング分だけ進める
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 200));
+    }
     return client;
   }
 }

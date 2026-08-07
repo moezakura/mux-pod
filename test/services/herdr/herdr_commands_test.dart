@@ -12,6 +12,34 @@ void main() {
       expect(HerdrCommands.preflightCommand(), 'herdr status --json');
     });
 
+    test('paneRead builds the default recent-source command', () {
+      expect(
+        HerdrCommands.paneRead('w1:p1'),
+        'herdr pane read w1:p1 --source recent',
+      );
+    });
+
+    test('paneRead appends --lines when given', () {
+      expect(
+        HerdrCommands.paneRead('w1:p1', lines: 120),
+        'herdr pane read w1:p1 --source recent --lines 120',
+      );
+    });
+
+    test('paneRead appends --raw when ansi is requested', () {
+      expect(
+        HerdrCommands.paneRead('w1:p1', source: 'visible', lines: 50, ansi: true),
+        'herdr pane read w1:p1 --source visible --lines 50 --raw',
+      );
+    });
+
+    test('paneRead keeps visible source without --raw by default', () {
+      expect(
+        HerdrCommands.paneRead('w1:p1', source: 'visible'),
+        'herdr pane read w1:p1 --source visible',
+      );
+    });
+
     test('supported protocol constant is 17', () {
       expect(kHerdrSupportedProtocol, 17);
       expect(HerdrPreflight.supportedProtocol, 17);
