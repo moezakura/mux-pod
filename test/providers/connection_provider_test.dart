@@ -324,6 +324,132 @@ void main() {
         final cleared = connection.copyWith(clearDeepLinkId: true);
         expect(cleared.deepLinkId, isNull);
       });
+
+      test('toJson writes current storageSchemaVersion (2)', () {
+        final now = DateTime(2025, 1, 1);
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          createdAt: now,
+        );
+
+        final json = connection.toJson();
+        expect(json['storageSchemaVersion'], 2);
+      });
+
+      test('toJson omits legacy tmuxPath when tmux path is auto-detected', () {
+        final now = DateTime(2025, 1, 1);
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          createdAt: now,
+        );
+
+        final json = connection.toJson();
+        expect(json, isNot(contains('tmuxPath')));
+      });
+
+      test('toJson keeps legacy tmuxPath for custom tmux path (downgrade compat)', () {
+        final now = DateTime(2025, 1, 1);
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          multiplexer: const MultiplexerConfig.tmux('/usr/bin/tmux'),
+          createdAt: now,
+        );
+
+        final json = connection.toJson();
+        expect(json['tmuxPath'], '/usr/bin/tmux');
+        expect(json['multiplexer']['executablePath'], '/usr/bin/tmux');
+        expect(json['storageSchemaVersion'], 2);
+      });
+
+      test('toJson omits tmuxPath for herdr backend', () {
+        final now = DateTime(2025, 1, 1);
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          multiplexer: const MultiplexerConfig(
+            backend: BackendType.herdr,
+            executablePath: '/usr/local/bin/herdr',
+          ),
+          createdAt: now,
+        );
+
+        final json = connection.toJson();
+        expect(json, isNot(contains('tmuxPath')));
+        expect(json['multiplexer']['backend'], 'herdr');
+        expect(json['multiplexer']['executablePath'], '/usr/local/bin/herdr');
+      });
+
+      test('fromJson defaults storageSchemaVersion to 1 when absent', () {
+        final json = <String, dynamic>{
+          'id': 'c1',
+          'name': 'Server',
+          'host': 'h',
+          'username': 'u',
+          'createdAt': '2025-01-01T00:00:00.000Z',
+        };
+
+        final restored = Connection.fromJson(json);
+        expect(restored.storageSchemaVersion, 1);
+      });
+
+      test('fromJson reads storageSchemaVersion when present', () {
+        final json = <String, dynamic>{
+          'id': 'c1',
+          'name': 'Server',
+          'host': 'h',
+          'username': 'u',
+          'createdAt': '2025-01-01T00:00:00.000Z',
+          'storageSchemaVersion': 2,
+        };
+
+        final restored = Connection.fromJson(json);
+        expect(restored.storageSchemaVersion, 2);
+      });
+
+      test('copyWith preserves storageSchemaVersion', () {
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          storageSchemaVersion: 1,
+          createdAt: DateTime(2025, 1, 1),
+        );
+
+        final renamed = connection.copyWith(name: 'Renamed');
+        expect(renamed.storageSchemaVersion, 1);
+      });
+
+      test('new-format record with tmuxPath loads via multiplexer (which wins)', () {
+        final json = <String, dynamic>{
+          'id': 'c1',
+          'name': 'Server',
+          'host': 'h',
+          'username': 'u',
+          'createdAt': '2025-01-01T00:00:00.000Z',
+          'storageSchemaVersion': 2,
+          'tmuxPath': '/legacy/path',
+          'multiplexer': {
+            'backend': 'tmux',
+            'executablePath': '/winner/path',
+          },
+        };
+
+        final restored = Connection.fromJson(json);
+        expect(restored.storageSchemaVersion, 2);
+        expect(restored.multiplexer.executablePath, '/winner/path');
+      });
     });
 
     test('sort by lastConnected then created', () {
@@ -446,6 +572,116 @@ void main() {
 
         expect(result.json, newJson);
         expect(await secure.readValue('connections_backup_v2'), isNull);
+      });
+
+      test('migrate skips v2 records even when tmuxPath is present (downgrade compat)', () async {
+        final secure = SecureStorageService();
+        final v2Json = jsonEncode([
+          {
+            'id': 'c1',
+            'name': 'Server',
+            'host': 'h',
+            'username': 'u',
+            'createdAt': '2025-01-01T00:00:00.000Z',
+            'storageSchemaVersion': 2,
+            'multiplexer': {
+              'backend': 'tmux',
+              'executablePath': '/usr/bin/tmux',
+            },
+            'tmuxPath': '/usr/bin/tmux',
+          },
+        ]);
+
+        final result = await ConnectionMigration.migrate(
+          secure: secure,
+          sourceJson: v2Json,
+        );
+
+        // 新形式（schema 番号あり）は migration 不要として source がそのまま返る
+        expect(result.error, isNull);
+        expect(result.json, v2Json);
+        // backup は作成されず、primary も書き換えられない
+        expect(await secure.readValue('connections_backup_v2'), isNull);
+        expect(await secure.readValue('connections'), isNull);
+      });
+
+      test('migrate with mixed v2 and legacy records migrates only legacy records', () async {
+        final secure = SecureStorageService();
+        final mixedJson = jsonEncode([
+          {
+            'id': 'c1',
+            'name': 'V2',
+            'host': 'h1',
+            'username': 'u1',
+            'createdAt': '2025-01-01T00:00:00.000Z',
+            'storageSchemaVersion': 2,
+            'multiplexer': {
+              'backend': 'tmux',
+              'executablePath': '/winner',
+            },
+            'tmuxPath': '/downgrade-compat',
+          },
+          {
+            'id': 'c2',
+            'name': 'Legacy',
+            'host': 'h2',
+            'username': 'u2',
+            'createdAt': '2025-01-02T00:00:00.000Z',
+            'tmuxPath': '/legacy/tmux',
+          },
+        ]);
+
+        final result = await ConnectionMigration.migrate(
+          secure: secure,
+          sourceJson: mixedJson,
+        );
+
+        expect(result.error, isNull);
+        final migratedList = jsonDecode(result.json!) as List<dynamic>;
+        expect(migratedList, hasLength(2));
+
+        // v2 レコードはスキップされ、downgrade 互換の tmuxPath を保持する
+        final v2 = migratedList[0] as Map<String, dynamic>;
+        expect(v2['storageSchemaVersion'], 2);
+        expect(v2['tmuxPath'], '/downgrade-compat');
+        expect((v2['multiplexer'] as Map<String, dynamic>)['executablePath'], '/winner');
+
+        // 旧形式レコードのみ migration される
+        final legacy = migratedList[1] as Map<String, dynamic>;
+        expect(legacy, isNot(contains('tmuxPath')));
+        expect((legacy['multiplexer'] as Map<String, dynamic>)['backend'], 'tmux');
+        expect((legacy['multiplexer'] as Map<String, dynamic>)['executablePath'], '/legacy/tmux');
+
+        // backup は成功後に削除され、primary には migration 済み JSON が書かれる
+        expect(await secure.readValue('connections_backup_v2'), isNull);
+        expect(await secure.readValue('connections'), result.json);
+      });
+
+      test('provider reload does not re-migrate v2 data with downgrade-compat tmuxPath', () async {
+        final storage = SecureStorageService();
+        // toJson() は storageSchemaVersion=2 と tmuxPath の両方を書き出す
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          multiplexer: const MultiplexerConfig.tmux('/usr/bin/tmux'),
+          createdAt: DateTime(2025, 1, 1),
+        );
+        final json = jsonEncode([connection.toJson()]);
+        expect(jsonDecode(json) as List, hasLength(1));
+        await storage.writeValue('connections', json);
+
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container.read(connectionsProvider.notifier).reload();
+
+        final state = container.read(connectionsProvider);
+        expect(state.connections, hasLength(1));
+        expect(state.connections[0].multiplexer.executablePath, '/usr/bin/tmux');
+        expect(state.corruptedRecords, isEmpty);
+        // migration が走らないため backup は作られない
+        expect(await storage.readValue('connections_backup_v2'), isNull);
       });
 
       test('migrate returns source when sourceJson is null', () async {

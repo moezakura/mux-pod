@@ -12,6 +12,11 @@ import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 
 import '../../helpers/fake_ssh_client.dart';
 
+const kHerdrStatusOk =
+    '{"client":{"version":"0.7.5","protocol":17},"server":{"status":"running",'
+    '"running":true,"version":"0.7.5","protocol":17,"compatible":true,'
+    '"socket":"/tmp/herdr.sock"},"update":{}}';
+
 class _FakeConnectionsNotifier extends ConnectionsNotifier {
   final List<Connection> _initial;
   final List<Connection> added = [];
@@ -169,21 +174,97 @@ void main() {
       expect(saved.multiplexer.executablePath, '/new/tmux');
     });
 
-    testWidgets('does not contain Herdr or herdr text', (tester) async {
+    testWidgets('shows backend toggle with Tmux and Herdr options',
+        (tester) async {
       await _pumpForm(tester);
 
-      bool mentionsHerdr(Widget widget) {
-        String? text;
-        if (widget is Text) {
-          text = widget.data;
-        } else if (widget is RichText) {
-          final span = widget.text;
-          if (span is TextSpan) text = span.text;
-        }
-        return text?.toLowerCase().contains('herdr') ?? false;
-      }
+      expect(find.text('Tmux'), findsOneWidget);
+      expect(find.text('Herdr'), findsOneWidget);
+    });
 
-      expect(find.byWidgetPredicate(mentionsHerdr), findsNothing);
+    testWidgets('selecting Herdr shows read-only notice and saves a herdr connection',
+        (tester) async {
+      final harness = await _pumpForm(tester);
+
+      await tester.tap(find.text('Herdr'));
+      await tester.pumpAndSettle();
+
+      // read-only である旨の説明が表示される
+      expect(find.textContaining('Read-only'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
+      await tester.enterText(find.byType(TextFormField).at(1), '192.168.1.2');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(
+          find.byType(TextFormField).at(4), '/usr/local/bin/herdr');
+      await tester.enterText(find.byType(TextFormField).at(6), 'secret');
+      await tester.pump();
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(harness.connections.added, hasLength(1));
+      final saved = harness.connections.added.first;
+      expect(saved.multiplexer.backend, BackendType.herdr);
+      expect(saved.multiplexer.executablePath, '/usr/local/bin/herdr');
+    });
+
+    testWidgets('herdr connection test runs preflight via herdr status --json',
+        (tester) async {
+      final client = _TestSshClient();
+      client.execOutputs['herdr status --json'] = kHerdrStatusOk;
+      final harness = await _pumpForm(tester, client: client);
+
+      // 名前入力前にトグルを選択（名前欄とトグルで 'Herdr' が重複しないように）
+      await tester.tap(find.text('Herdr'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(
+          find.byType(TextFormField).at(4), '/usr/local/bin/herdr');
+      await tester.enterText(find.byType(TextFormField).at(6), 'password');
+      await tester.pump();
+
+      await tester.tap(find.text('TEST CONNECTION'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Connection successful! Herdr is available (read-only).'),
+        findsOneWidget,
+      );
+      expect(harness.client!.lastOptions!.multiplexer!.backend, BackendType.herdr);
+      expect(
+        harness.client!.execCommands
+            .any((c) => c.contains('herdr status --json')),
+        isTrue,
+      );
+    });
+
+    testWidgets('herdr connection test reports protocol mismatch',
+        (tester) async {
+      final client = _TestSshClient();
+      // running な server が protocol 16 を報告する mismatch シナリオ。
+      client.execOutputs['herdr status --json'] =
+          '{"client":{"protocol":17},"server":{"status":"running","running":true,"protocol":16}}';
+      await _pumpForm(tester, client: client);
+
+      await tester.tap(find.text('Herdr'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(
+          find.byType(TextFormField).at(4), '/usr/local/bin/herdr');
+      await tester.enterText(find.byType(TextFormField).at(6), 'password');
+      await tester.pump();
+
+      await tester.tap(find.text('TEST CONNECTION'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('protocol 16 is not supported'), findsOneWidget);
     });
 
     testWidgets('rejects relative multiplexer path and accepts empty', (tester) async {
