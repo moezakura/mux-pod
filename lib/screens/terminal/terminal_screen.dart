@@ -3188,12 +3188,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// herdr の現在位置（H-1: ハイライト導出用）を [_SelectorContext] で返す。
   ///
-  /// 表示状態（[_HerdrDisplayData]）の workspaceLabel / tabId と
-  /// [_TargetSource.currentPaneId] から導出する。
+  /// 表示状態（[_HerdrDisplayData]）の workspaceLabel / workspaceId / tabId と
+  /// [_TargetSource.currentPaneId] から導出する。sessionId（workspace ID）は
+  /// ハイライト判定の一義的な基準（同名ラベル "tmp" w3/w4 の区別用）。
   _SelectorContext _herdrSelectorContext() {
     final display = _herdrDisplayNotifier.value;
     return _SelectorContext(
       sessionName: display?.workspaceLabel,
+      sessionId: display?.workspaceId,
       windowId: display?.tabId,
       paneId: _targetSource?.currentPaneId,
     );
@@ -3411,10 +3413,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux の現在位置（H-1: ハイライト導出用）を [_SelectorContext] で返す。
   ///
-  /// provider のアクティブ状態（activeSessionName / activeWindowIndex /
-  /// activeWindowId / activePaneId）を渡す。
+  /// provider のアクティブ状態（activeSessionName / activeSession.id /
+  /// activeWindowIndex / activeWindowId / activePaneId）を渡す。sessionId は
+  /// ハイライト判定の一義的な基準（$0 等）。
   _SelectorContext _selectorContextOf(TmuxState tmuxState) => _SelectorContext(
         sessionName: tmuxState.activeSessionName,
+        sessionId: tmuxState.activeSession?.id,
         windowIndex: tmuxState.activeWindowIndex,
         windowId: tmuxState.activeWindow?.id,
         paneId: tmuxState.activePaneId,
@@ -6497,6 +6501,13 @@ class _SelectorContext {
   /// 現在の session 名。
   final String? sessionName;
 
+  /// 現在の session / workspace ID（tmux: "$0" / herdr: "w1"）。
+  ///
+  /// ハイライト判定（H-1）の一義的な基準。同名ラベル（herdr の "tmp" w3/w4）
+  /// の曖昧さはこの ID で解消する。不明（旧データ等）の場合のみ名前一致へ
+  /// フォールバックする。
+  final String? sessionId;
+
   /// 現在の window インデックス。
   final int? windowIndex;
 
@@ -6508,6 +6519,7 @@ class _SelectorContext {
 
   const _SelectorContext({
     this.sessionName,
+    this.sessionId,
     this.windowIndex,
     this.windowId,
     this.paneId,
@@ -6516,24 +6528,49 @@ class _SelectorContext {
 
 /// H-1: セッションのハイライト（[_SelectorContext] の現在位置と照合）。
 ///
-/// herdr は pane ID の prefix（"w1:" 等）で属する workspace を判定する
-/// （paneId prefix 照合）。
+/// 一義的な基準は現在の session ID（[MultiplexerSession.id] ==
+/// [_SelectorContext.sessionId]）。現在の session ID が判明している場合は
+/// ID ベース判定のみで行い、名前（表示名）一致はしない。これにより同名ラベル
+/// の workspace（herdr の "tmp" w3/w4）でも、現在の workspace ID と一致する
+/// ものだけがハイライトされる。
+///
+/// [_SelectorContext.sessionId] が不明（旧データ等）の場合のみ、名前一致と
+/// paneId prefix（"w1:" 等）の旧挙動へフォールバックする。
 bool _isCurrentSession(MultiplexerSession session, _SelectorContext? current) {
   if (current == null) return false;
+  // 一義的な基準: 現在の session ID と一致するか
+  final currentSessionId = current.sessionId;
+  final sessionId = session.id;
+  if (currentSessionId != null && currentSessionId.isNotEmpty) {
+    if (sessionId != null && sessionId == currentSessionId) return true;
+    // paneId が現在の session に属するか（pane 由来の ID 判定）
+    final paneId = current.paneId;
+    if (paneId != null && sessionId != null && paneId.startsWith('$sessionId:')) {
+      return true;
+    }
+    return false;
+  }
+  // フォールバック: sessionId が不明な場合は名前一致（旧挙動）
   if (session.name == current.sessionName) return true;
   final paneId = current.paneId;
-  final sessionId = session.id;
   return sessionId != null &&
       paneId != null &&
       paneId.startsWith('$sessionId:');
 }
 
 /// H-1: ウィンドウのハイライト（[_SelectorContext] の現在位置と照合）。
+///
+/// 一義的な基準は現在の window ID（[MultiplexerWindow.id] ==
+/// [_SelectorContext.windowId]）。[windowId] が判明している場合は ID 一致のみで
+/// 判定し、[windowId] 不明時のみ index フォールバックする（旧挙動）。
 bool _isCurrentWindow(MultiplexerWindow window, _SelectorContext? current) {
   if (current == null) return false;
+  final currentWindowId = current.windowId;
+  if (currentWindowId != null && currentWindowId.isNotEmpty) {
+    return window.id == currentWindowId;
+  }
   if (window.index == current.windowIndex) return true;
-  final windowId = current.windowId;
-  return windowId != null && window.id == windowId;
+  return false;
 }
 
 /// H-1: ペインのハイライト（[_SelectorContext] の現在位置と照合）。
