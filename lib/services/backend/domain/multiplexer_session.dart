@@ -52,8 +52,12 @@ class MultiplexerSession {
       identical(this, other) ||
       other is MultiplexerSession &&
           runtimeType == other.runtimeType &&
-          name == other.name;
+          _identityKey == other._identityKey;
 
   @override
-  int get hashCode => name.hashCode;
+  int get hashCode => _identityKey.hashCode;
+
+  /// 同一性キー: id があれば `id__name`、無ければ `name`（旧データ互換）。
+  String get _identityKey =>
+      id != null && id!.isNotEmpty ? '${id}__$name' : name;
 }
