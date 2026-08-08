@@ -7,7 +7,9 @@ import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
+import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
 import 'package:flutter_muxpod/widgets/special_keys_bar.dart';
 
@@ -30,6 +32,34 @@ Finder paneIndicatorPainter() => find.byWidgetPredicate(
       w is CustomPaint &&
       w.painter.runtimeType.toString() == '_PaneLayoutPainter',
 );
+
+/// 初回のポーリング read は成功し、[failNextPoll] 後は target-not-found で
+/// 失敗する reader（T3: 再解決の tabId 伝播検証用）。
+///
+/// 直接指定（initialPaneId）の初期表示を安定させた後、任意のタイミングで
+/// 再解決（強制再取得 → `_switchHerdrTarget`）を発火させられる。
+class _ReResolvePropagationReader implements PaneContentReader {
+  String pollContent = 'content from p1\n';
+  bool failNextPoll = false;
+
+  @override
+  Future<MultiplexerPaneSnapshot> readPane({
+    required String paneId,
+    int? historyLines,
+    String source = 'recent',
+  }) async {
+    if (failNextPoll) {
+      failNextPoll = false;
+      throw const HerdrTargetNotFoundException(
+        kind: HerdrTargetNotFoundKind.pane,
+        message: 'no such pane',
+        errorCode: 'pane_not_found',
+        exitCode: 1,
+      );
+    }
+    return MultiplexerPaneSnapshot(content: pollContent);
+  }
+}
 
 // G4 実測のスナップショット fixture（workspace label は lab-ws1 / pane は w1:p1）。
 const kHerdrSnapshotFixture =
@@ -100,6 +130,25 @@ const kHerdrTwoWorkspaceSnapshotFixture =
     '{"active_tab_id":"w2:t1","agent_status":"unknown","focused":false,'
     '"label":"lab-ws2","number":1,"pane_count":1,"tab_count":1,'
     '"workspace_id":"w2"}]},"type":"session_snapshot"}}';
+
+// M-4 検証用: tab に数字以外の実ラベル（"editor"）を持つ snapshot fixture。
+// パンくずの tab セグメントが数字抽出（"1"）ではなく実ラベルを表示することを
+// 検証する（T4）。
+const kHerdrLabeledTabSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"editor","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
 
 Connection _herdrConnection() {
   return Connection(
@@ -194,8 +243,8 @@ void main() {
     });
 
     testWidgets(
-      'breadcrumb shows workspace label, pane segment, and tappable read-only '
-      'badge (A9 display state / T11)',
+      'breadcrumb shows workspace label, tab segment, pane segment, and '
+      'display-only read-only badge (A9 display state / T11 / T4)',
       (tester) async {
         await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -209,23 +258,117 @@ void main() {
           settle: false,
         );
 
-        // workspace ラベル + pane セグメント + Read-only バッジ（T11）。
-        // pane ID が 2 セグメント形式（w1:p1）のため tab セグメントは非表示。
+        // workspace ラベル + tab セグメント + pane セグメント + Read-only バッジ
+        // （T11）。tabId はスナップショット解決済みの実値（w1:t1）を保持するため、
+        // 2 セグメント pane ID（w1:p1）でも tab セグメント "1"（実ラベル）が
+        // 表示される（L-1 / M-4）。
         expect(find.text('lab-ws1'), findsOneWidget);
+        expect(find.text('1'), findsOneWidget); // tab セグメント（実ラベル '1'）
+        expect(find.byIcon(Icons.tab), findsOneWidget);
         expect(find.text('Pane 1'), findsOneWidget);
         expect(find.text('Read-only'), findsOneWidget);
-        expect(find.byIcon(Icons.tab), findsNothing);
 
-        // read-only のためセッションセグメントはタップ不可（セレクタが開かない）
+        // T4: セッション（workspace）セグメントのタップで共通シートの
+        // workspace 一覧（第 1 段）が開く
         await tester.tap(find.text('lab-ws1'));
         await tester.pump();
-        expect(find.text('Select Session'), findsNothing);
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Session'), findsOneWidget);
+      },
+    );
 
-        // T11: read-only バッジのタップで herdr 3 段セレクタ（第 1 段）が開く
+    testWidgets(
+      'T4: Read-only badge is display-only and does not open a selector',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        // バッジは表示のみ（非インタラクティブ）: タップしてもセレクタは開かない
         await tester.tap(find.text('Read-only'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Workspace'), findsOneWidget);
+        expect(find.text('Select Session'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'T4: tab segment tap opens the selector at the tab stage (stage 2)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        // tab セグメント（snapshot 解決済みラベル '1'）タップ → 現在 workspace の
+        // tab 一覧（第 2 段）が開く
+        await tester.tap(find.text('1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Window'), findsOneWidget);
+        // 現在 workspace（lab-ws1）の tab が表示される（index: name）
+        expect(find.text('1: 1'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'T4: pane segment tap opens the selector at the pane stage (stage 3)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        // pane セグメント（'Pane 1'）タップ → 現在 tab の pane 一覧（第 3 段）
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Pane'), findsOneWidget);
+        // A10: pane 表示名は cwd（/tmp）優先
+        expect(find.text('/tmp'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'M-4: tab segment shows the snapshot-resolved tab label (not a number)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrLabeledTabSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        // 旧実装（数字抽出）なら '1' になるが、M-4 では実ラベル 'editor' を表示する
+        expect(find.text('editor'), findsOneWidget);
+        expect(find.text('1'), findsNothing);
       },
     );
 
@@ -340,6 +483,38 @@ void main() {
           client.execCommands.any((c) => c.contains('herdr pane focus')),
           isFalse,
         );
+      },
+    );
+
+    testWidgets(
+      'switch to the same target is a no-op (L-3: no flicker)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          initialPaneId: 'w1:p1',
+          execOutputs: {'herdr pane read': 'content\n'},
+          settle: false,
+        );
+
+        // 直接指定（initialPaneId）の初期表示: workspaceId 'w1' / tabId null。
+        // 同一ターゲット（paneId / workspaceId / tabId が全て一致）への切替は
+        // no-op で、表示リセット・切替イベント・ポーリングブーストを抑止する。
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        state.switchHerdrTargetForTesting('w1:p1');
+        await tester.pump();
+
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('switch target')),
+          isFalse,
+          reason: '同一ターゲットへの切替は no-op で切替イベントを記録しないこと',
+        );
+
+        // 表示内容が維持されている（no-op でコンテンツがクリアされない）
+        expect(find.textContaining('content'), findsWidgets);
       },
     );
 
@@ -465,6 +640,65 @@ void main() {
           notifier.reconnectCalls,
           0,
           reason: 'target-not-found の再解決は再接続を伴わないこと',
+        );
+      },
+    );
+
+    testWidgets(
+      're-resolve propagates the snapshot tabId/workspaceId into the display '
+      'state (T3)',
+      (tester) async {
+        final reader = _ReResolvePropagationReader();
+
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          initialPaneId: 'w1:p1',
+          paneContentReader: reader,
+          // 直接指定（initialPaneId）のため初回の snapshot 取得は再解決時のみ
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotPane2Fixture,
+          },
+          settle: false,
+        );
+
+        // 直接指定の初期表示では tabId 未確定（2 セグメント pane ID）のため
+        // tab セグメントは非表示。
+        expect(find.byIcon(Icons.tab), findsNothing);
+        expect(find.textContaining('content from p1'), findsWidgets);
+
+        // 次のポーリング read を target-not-found で失敗 → 強制再取得（w1:p2 の
+        // snapshot）で再解決し、_switchHerdrTarget へ tabId / workspaceId が
+        // 伝播する。再解決後のポーリング内容も差し替えておく。
+        reader.failNextPoll = true;
+        reader.pollContent = 'hello from p2\n';
+        // 失敗ポーリング → 強制再取得 → 再解決 → 切替コミット
+        await tester.pump(const Duration(milliseconds: 300));
+        // 切替後のブーストポーリングが新ターゲットを読み、内容が反映される
+        await tester.pump(const Duration(milliseconds: 300));
+
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('re-resolve succeeded -> w1:p2')),
+          isTrue,
+          reason: '再解決成功がリングバッファに記録されること',
+        );
+
+        // 表示が w1:p2 に切り替わり、新しい pane の内容が表示される
+        expect(
+          find.textContaining('hello from p2'),
+          findsWidgets,
+          reason: '再解決後は新しい pane の内容が表示されること',
+        );
+
+        // 再解決後の表示状態に snapshot 実値（w1:p2 → tabId w1:t1）が反映され、
+        // パンくずに tab セグメントが表示される。
+        expect(
+          find.byIcon(Icons.tab),
+          findsOneWidget,
+          reason: '再解決で確定した tabId が表示状態へ伝播し tab セグメントが表示されること',
         );
       },
     );
@@ -763,8 +997,8 @@ void main() {
     );
 
     testWidgets(
-      'T10 3-stage selector (workspace → tab → pane) switches the displayed '
-      'pane via the single commit without mutation',
+      'T10 selectors (workspace → tab → pane) each close on selection and '
+      'switch the displayed pane via the single commit without mutation',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -785,37 +1019,28 @@ void main() {
           isTrue,
         );
 
-        // バッジタップ → 第 1 段: workspace 一覧
-        await tester.tap(find.text('Read-only'));
+        // workspace セレクタ（Select Session 相当）: セッションセグメントタップ
+        await tester.tap(find.text('lab-ws1'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Workspace'), findsOneWidget);
-        expect(find.text('lab-ws1'), findsWidgets);
+        expect(find.text('Select Session'), findsOneWidget);
         expect(find.text('lab-ws2'), findsOneWidget);
 
-        // workspace 選択 → 第 2 段: tab 一覧
-        await tester.tap(find.byKey(const ValueKey('herdr-sel-ws-w2')));
+        // workspace 選択 → シート即閉じ + 切替コミット（workspace のフォーカス pane）
+        await tester.tap(
+          find.byKey(const ValueKey('mux-sel-session-lab-ws2')),
+        );
         await tester.pump();
-        expect(find.text('Select Tab'), findsOneWidget);
-
-        // tab 選択 → 第 3 段: pane 一覧
-        await tester.tap(find.byKey(const ValueKey('herdr-sel-tab-w2:t1')));
-        await tester.pump();
-        expect(find.text('Select Pane'), findsOneWidget);
-
-        // A10: pane 表示名は currentPath(cwd=/var) を優先する
-        expect(find.text('/var'), findsOneWidget);
-
-        // pane 選択 → 切替コミット（_switchHerdrTarget の単一入口経由）
-        await tester.tap(find.byKey(const ValueKey('herdr-sel-pane-w2:p1')));
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Session'), findsNothing);
+        expect(find.text('Select Window'), findsNothing);
 
         // A8 監視: 切替イベントがリングバッファに記録される
         final events = herdrSwitchEvents(tester);
         expect(
           events.any((e) => e.contains('switch target -> w2:p1')),
           isTrue,
-          reason: 'セレクタ選択が切替コミット（_switchHerdrTarget）を呼ぶこと',
+          reason: 'workspace 選択が切替コミット（_switchHerdrTarget）を呼ぶこと',
         );
 
         // ポーリングが新しいターゲットを読む
@@ -826,13 +1051,40 @@ void main() {
           reason: '切替後に新しい pane ID がポーリング対象になること',
         );
         expect(find.textContaining('content from p2'), findsWidgets);
-
         // T11: ブレッドクラムの workspace ラベルが選択結果へ更新される
         expect(
           find.text('lab-ws2'),
           findsOneWidget,
           reason: 'パンくずの workspace 名が選択結果のラベルに更新されること',
         );
+
+        // tab セレクタ（Select Window 相当）: 現在 workspace（lab-ws2）の tab 一覧
+        await tester.tap(find.text('1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Window'), findsOneWidget);
+        expect(find.text('1: 1'), findsOneWidget);
+
+        // tab 選択 → シート即閉じ（切替先は同一ターゲットのため no-op）
+        await tester.tap(find.byKey(const ValueKey('mux-sel-window-w2:t1')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Window'), findsNothing);
+        expect(find.text('Select Pane'), findsNothing);
+
+        // pane セレクタ（Select Pane 相当）: 現在 tab の pane 一覧。
+        // A10: pane 表示名は currentPath（cwd=/var）を優先する
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Pane'), findsOneWidget);
+        expect(find.text('/var'), findsOneWidget);
+
+        // pane 選択 → シート即閉じ + 切替コミット
+        await tester.tap(find.byKey(const ValueKey('mux-sel-pane-w2:p1')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Pane'), findsNothing);
 
         // read-only（A6）: セレクタ経由でも mutation コマンドは一切発行されない
         expect(
@@ -846,7 +1098,7 @@ void main() {
       },
     );
 
-    testWidgets('T10 selector highlights the current display target as initial '
+    testWidgets('T10 selectors highlight the current display target as initial '
         'emphasis (workspace/tab/pane)', (tester) async {
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
@@ -860,43 +1112,60 @@ void main() {
         settle: false,
       );
 
-      await tester.tap(find.text('Read-only'));
+      // workspace セレクタ（Select Session 相当）: 現在ターゲット（w1:p1）が
+      // 属する workspace が active 表示（ActiveListTile のアクティブ時は title が
+      // 太字になる）
+      await tester.tap(find.text('lab-ws1'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('Select Workspace'), findsOneWidget);
-
-      // 初期強調: 現在ターゲット（w1:p1）が属する workspace が active 表示
-      // （ActiveListTile のアクティブ時は title が太字になる）
+      expect(find.text('Select Session'), findsOneWidget);
       final wsTitle = tester.widget<Text>(
         find.descendant(
-          of: find.byKey(const ValueKey('herdr-sel-ws-w1')),
+          of: find.byKey(const ValueKey('mux-sel-session-lab-ws1')),
           matching: find.text('lab-ws1'),
         ),
       );
       expect(wsTitle.style?.fontWeight, FontWeight.bold);
 
-      // workspace → tab へドリルダウン
-      await tester.tap(find.byKey(const ValueKey('herdr-sel-ws-w1')));
+      // シートを閉じて tab セレクタを開く: 現在 tab（w1:t1）が active 表示
+      await tester.tapAt(const Offset(500, 100));
       await tester.pump();
-      expect(find.text('Select Tab'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Select Session'), findsNothing);
 
-      // tab → pane 一覧。pane 表示名は cwd（A10: /tmp）を優先する
-      await tester.tap(find.byKey(const ValueKey('herdr-sel-tab-w1:t1')));
+      await tester.tap(find.text('1'));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Select Window'), findsOneWidget);
+      final tabTitle = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('mux-sel-window-w1:t1')),
+          matching: find.text('1: 1'),
+        ),
+      );
+      expect(tabTitle.style?.fontWeight, FontWeight.bold);
+
+      // シートを閉じて pane セレクタを開く: 現在 pane（w1:p1、cwd=/tmp）が
+      // active 表示。pane 表示名は cwd（A10）を優先する
+      await tester.tapAt(const Offset(500, 100));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Select Window'), findsNothing);
+
+      await tester.tap(find.text('Pane 1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Select Pane'), findsOneWidget);
       expect(find.text('/tmp'), findsOneWidget);
-
-      // 初期強調: 現在ターゲット w1:p1 が active 表示（title 太字）
       final paneTitle = tester.widget<Text>(
         find.descendant(
-          of: find.byKey(const ValueKey('herdr-sel-pane-w1:p1')),
+          of: find.byKey(const ValueKey('mux-sel-pane-w1:p1')),
           matching: find.text('/tmp'),
         ),
       );
       expect(paneTitle.style?.fontWeight, FontWeight.bold);
 
-      // セレクタを閉じる（第 1 段の戻る位置まで戻す必要はなく、スワイプ/外側
-      // タップ相当で閉じる。ここでは pane タップせずに dismiss する）
+      // セレクタを閉じる
       await tester.tapAt(const Offset(500, 100));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));

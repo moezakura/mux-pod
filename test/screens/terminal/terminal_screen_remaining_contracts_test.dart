@@ -8,6 +8,7 @@ import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_muxpod/widgets/multiplexer_tiles.dart';
 
 import '../../fixtures/tmux/tmux_parser_fixtures.dart';
 import '../../helpers/fake_ssh_notifier.dart';
@@ -225,6 +226,202 @@ void main() {
       await tester.tap(find.text('Upload'));
       await tester.pumpAndSettle();
       expect(client.writtenData, contains('\x1b[200~/tmp/upload.png\x1b[201~'));
+    });
+
+    group('TerminalScreen common selector sheets (T2 / 選択即閉じ)', () {
+      testWidgets('session selector lists all sessions and closes on selection', (
+        tester,
+      ) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // session セグメントタップ → Select Session シート（M-6: タイトル統一）
+        await tester.tap(find.text('mysession'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Session'), findsOneWidget);
+        expect(find.text('mysession'), findsWidgets);
+        expect(find.text('other'), findsOneWidget);
+
+        // session タップ → 選択確定 + シート即閉じ（元 tmux 挙動）
+        await tester.tap(find.text('other'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Session'), findsNothing);
+        expect(find.text('Select Window'), findsNothing);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        expect(container.read(tmuxProvider).activeSessionName, 'other');
+        expect(
+          client.execCommands.any((c) => c.contains('select-pane')),
+          isTrue,
+        );
+      });
+
+      testWidgets('window selector shows the current session windows and closes '
+          'on selection', (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // window セグメントタップ → Select Window シート
+        await tester.tap(find.text('shell'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Window'), findsOneWidget);
+        expect(find.text('0: shell'), findsOneWidget);
+
+        // window タップ → select-window 発行 + シート即閉じ
+        await tester.tap(find.text('0: shell'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Window'), findsNothing);
+        expect(find.text('Select Pane'), findsNothing);
+        expect(
+          client.execCommands.any(
+            (c) => c.contains('select-window') && c.contains('mysession'),
+          ),
+          isTrue,
+        );
+      });
+
+      testWidgets('pane selector shows the active window panes and closes on '
+          'selection', (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // pane セグメントタップ → Select Pane シート
+        await tester.tap(find.text('Pane 0'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Pane'), findsOneWidget);
+        expect(find.text('bash'), findsOneWidget);
+        expect(find.text('vim'), findsOneWidget);
+
+        // pane タップ → select-pane 発行 + シート即閉じ
+        await tester.tap(find.text('vim'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Pane'), findsNothing);
+        expect(
+          client.execCommands.any(
+            (c) => c.contains('select-pane') && c.contains('%1'),
+          ),
+          isTrue,
+        );
+      });
+
+      testWidgets('H-1 highlight follows the active session/window/pane', (
+        tester,
+      ) async {
+        await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // session セレクタ: アクティブ session（mysession）が強調される
+        await tester.tap(find.text('mysession'));
+        await tester.pumpAndSettle();
+        final sessions = tester
+            .widgetList<MultiplexerSessionTile>(
+              find.byType(MultiplexerSessionTile),
+            )
+            .toList();
+        expect(sessions, hasLength(2));
+        expect(sessions[0].session.name, 'mysession');
+        expect(sessions[0].isActive, isTrue);
+        expect(sessions[1].session.name, 'other');
+        expect(sessions[1].isActive, isFalse);
+
+        // シートを閉じてから window セレクタを開く
+        await tester.tapAt(const Offset(20, 100));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('shell'));
+        await tester.pumpAndSettle();
+        final windows = tester
+            .widgetList<MultiplexerWindowTile>(
+              find.byType(MultiplexerWindowTile),
+            )
+            .toList();
+        expect(windows, hasLength(1));
+        expect(windows[0].window.index, 0);
+        expect(windows[0].isActive, isTrue);
+
+        // シートを閉じてから pane セレクタを開く
+        await tester.tapAt(const Offset(20, 100));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pane 0'));
+        await tester.pumpAndSettle();
+        final panes = tester
+            .widgetList<MultiplexerPaneTile>(find.byType(MultiplexerPaneTile))
+            .toList();
+        expect(panes, hasLength(2));
+        expect(panes[0].pane.id, '%0');
+        expect(panes[0].isActive, isTrue);
+        expect(panes[1].pane.id, '%1');
+        expect(panes[1].isActive, isFalse);
+      });
+
+      testWidgets('mutation UI is available when mutations enabled (tmux)', (
+        tester,
+      ) async {
+        await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // window シート: New Window / Resize Window ヘッダーボタン + PopupMenu
+        await tester.tap(find.text('shell'));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('New Window'), findsOneWidget);
+        expect(find.byTooltip('Resize Window'), findsOneWidget);
+        expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+
+        // シートを閉じて pane シートを開く: Resize Pane ヘッダーボタン
+        await tester.tapAt(const Offset(20, 100));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Pane 0'));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Resize Pane'), findsOneWidget);
+      });
+
+      testWidgets('selection wires session/window/pane selectors', (
+        tester,
+      ) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+
+        // session 選択: シート即閉じ + session 切替
+        await tester.tap(find.text('mysession'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('other'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Session'), findsNothing);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        expect(container.read(tmuxProvider).activeSessionName, 'other');
+        expect(
+          client.execCommands.any((c) => c.contains('select-pane')),
+          isTrue,
+        );
+
+        // パンくずが更新され、window セグメント（logs）から window 選択
+        await tester.tap(find.text('logs'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Window'), findsOneWidget);
+        await tester.tap(find.text('0: logs'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Window'), findsNothing);
+        expect(
+          client.execCommands.any(
+            (c) => c.contains('select-window') && c.contains('other'),
+          ),
+          isTrue,
+        );
+
+        // pane セグメントから pane 選択: tail で確定しシートが閉じる
+        await tester.tap(find.text('Pane 0'));
+        await tester.pumpAndSettle();
+        expect(find.text('Select Pane'), findsOneWidget);
+        await tester.tap(find.text('tail'));
+        await tester.pumpAndSettle();
+        expect(
+          client.execCommands.any(
+            (c) => c.contains('select-pane') && c.contains('%10'),
+          ),
+          isTrue,
+        );
+        expect(find.text('Select Pane'), findsNothing);
+        // ポーリング/フェードタイマーを破棄してテストを終了する
+        // （TERM-NAV-003/007 と同じライフサイクルパターン）。
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump(const Duration(milliseconds: 200));
+      });
     });
   });
 }
