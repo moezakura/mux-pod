@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../providers/key_provider.dart';
 import '../../theme/design_colors.dart';
 import '../home_screen.dart';
+import '../home_tab_index.dart';
 import 'key_generate_screen.dart';
 import 'key_import_screen.dart';
 import 'widgets/key_tile.dart';
@@ -66,7 +67,7 @@ class KeysScreen extends ConsumerWidget {
             Icons.settings,
             color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
           ),
-          onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
+          onPressed: () => ref.read(currentTabProvider.notifier).setTab(HomeTabIndex.settings),
           tooltip: 'Settings',
         ),
         const SizedBox(width: 8),

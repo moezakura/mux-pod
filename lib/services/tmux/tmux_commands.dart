@@ -341,6 +341,12 @@ class TmuxCommands {
     return 'tmux display-message -p -t ${_escapeArg(target)} "#{pane_mode}"';
   }
 
+  /// ペインで実行中のコマンド名を取得（エージェント終了検出用）
+  static String getPaneCurrentCommand(String target) {
+    return 'tmux display-message -p -t ${_escapeArg(target)} '
+        '"#{pane_current_command}"';
+  }
+
   /// copy-modeに入る
   static String enterCopyMode(String target) {
     return 'tmux copy-mode -t ${_escapeArg(target)}';

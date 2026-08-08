@@ -12,14 +12,17 @@ import 'connections/connections_screen.dart';
 import 'dashboard/dashboard_screen.dart';
 import 'keys/keys_screen.dart';
 import 'notifications/notification_panes_screen.dart';
+import 'remote_ui/remote_ui_screen.dart';
 import 'settings/settings_screen.dart';
 import 'terminal/terminal_screen.dart';
+import 'home_tab_index.dart';
 
 /// 現在のタブインデックス Notifier
-/// タブ順序: 0=Servers, 1=Keys, 2=Dashboard, 3=Notify, 4=Settings
+/// タブ順序:
+/// 0=Servers, 1=Keys, 2=Dashboard, 3=Remote UI, 4=Notify, 5=Settings
 class CurrentTabNotifier extends Notifier<int> {
   @override
-  int build() => 2; // Dashboard（中央）をデフォルトに
+  int build() => HomeTabIndex.dashboard; // Dashboard（中央）をデフォルトに
 
   void setTab(int index) => state = index;
 }
@@ -29,7 +32,7 @@ final currentTabProvider = NotifierProvider<CurrentTabNotifier, int>(
 );
 
 /// ホーム画面（Bottom Navigation付き）
-/// タブ順序: Servers | Keys | [Dashboard] | Notify | Settings
+/// タブ順序: Servers | Keys | [Dashboard] | Remote UI | Notify | Settings
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -44,8 +47,9 @@ class HomeScreen extends ConsumerWidget {
           ConnectionsScreen(),        // 0: Servers
           KeysScreen(),               // 1: Keys
           DashboardScreen(),          // 2: Dashboard（中央）
-          NotificationPanesScreen(),  // 3: Alerts
-          SettingsScreen(),           // 4: Settings
+          RemoteUiScreen(),           // 3: Remote UI
+          NotificationPanesScreen(),  // 4: Alerts
+          SettingsScreen(),           // 5: Settings
         ],
       ),
       bottomNavigationBar: _buildBottomNavigationBar(context, ref, currentTab),
@@ -77,46 +81,64 @@ class HomeScreen extends ConsumerWidget {
             children: [
               // 通常のナビゲーションアイテム（5つ均等配置）
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   // Servers（左端）
-                  _buildNavItem(
-                    context,
-                    ref,
-                    index: 0,
-                    icon: Icons.dns,
-                    label: 'Servers',
-                    isSelected: currentTab == 0,
+                  Expanded(
+                    child: _buildNavItem(
+                      context,
+                      ref,
+                      index: HomeTabIndex.servers,
+                      icon: Icons.dns,
+                      label: 'Servers',
+                      isSelected: currentTab == HomeTabIndex.servers,
+                    ),
                   ),
                   // Keys（左寄り）
-                  _buildNavItem(
-                    context,
-                    ref,
-                    index: 1,
-                    icon: Icons.key,
-                    label: 'Keys',
-                    isSelected: currentTab == 1,
+                  Expanded(
+                    child: _buildNavItem(
+                      context,
+                      ref,
+                      index: HomeTabIndex.keys,
+                      icon: Icons.key,
+                      label: 'Keys',
+                      isSelected: currentTab == HomeTabIndex.keys,
+                    ),
                   ),
                   // 中央スペーサー（Dashboardボタンの場所）
                   const SizedBox(width: 64),
-                  // Notify（右寄り）
-                  _buildNavItem(
-                    context,
-                    ref,
-                    index: 3,
-                    icon: Icons.notifications_outlined,
-                    label: 'Notify',
-                    isSelected: currentTab == 3,
+                  // Remote UI（右寄り1）
+                  Expanded(
+                    child: _buildNavItem(
+                      context,
+                      ref,
+                      index: HomeTabIndex.remoteUi,
+                      icon: Icons.chat_bubble_outline,
+                      label: 'Remote UI',
+                      isSelected: currentTab == HomeTabIndex.remoteUi,
+                    ),
+                  ),
+                  // Notify（右寄り2）
+                  Expanded(
+                    child: _buildNavItem(
+                      context,
+                      ref,
+                      index: HomeTabIndex.notifications,
+                      icon: Icons.notifications_outlined,
+                      label: 'Notify',
+                      isSelected: currentTab == HomeTabIndex.notifications,
+                    ),
                   ),
                   // Settings（右端）
-                  _buildNavItem(
-                    context,
-                    ref,
-                    index: 4,
-                    icon: Icons.settings,
-                    label: 'Settings',
-                    isSelected: currentTab == 4,
+                  Expanded(
+                    child: _buildNavItem(
+                      context,
+                      ref,
+                      index: HomeTabIndex.settings,
+                      icon: Icons.settings,
+                      label: 'Settings',
+                      isSelected: currentTab == HomeTabIndex.settings,
+                    ),
                   ),
                 ],
               ),
@@ -205,7 +227,9 @@ class HomeScreen extends ConsumerWidget {
       onTap: () => ref.read(currentTabProvider.notifier).setTab(index),
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 56,
+        // No fixed width: the parent Row wraps items in Expanded so the
+        // bar fits narrow screens (foldables, split-screen) without
+        // overflowing now that there are six tabs.
         child: Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: Column(
@@ -350,7 +374,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             Icons.settings,
             color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
           ),
-          onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
+          onPressed: () => ref.read(currentTabProvider.notifier).setTab(HomeTabIndex.settings),
           tooltip: 'Settings',
         ),
         const SizedBox(width: 8),
