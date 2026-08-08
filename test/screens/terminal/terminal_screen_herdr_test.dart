@@ -102,6 +102,35 @@ const kHerdrEmptySnapshotFixture =
     '"layouts":[],"panes":[],"protocol":17,"tabs":[],"version":"0.7.5",'
     '"workspaces":[]},"type":"session_snapshot"}}';
 
+// 同名ラベル "tmp" の 2 workspace（w1/w2）fixture。
+// herdr の実測と同じく label が重複するケース（tmp w3/w4）を模し、
+// sessionId 優先（id 一致 → label 一致 → フォールバック）の解決を検証する。
+// w1:p1（focused・cwd=/tmp）/ w2:p1（cwd=/var）。
+const kHerdrSameLabelSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/var","focused":false,'
+    '"foreground_cwd":"/var","pane_id":"w2:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w2:t1",'
+    '"terminal_id":"term_2","workspace_id":"w2"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","focused":false,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"tmp","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"},'
+    '{"active_tab_id":"w2:t1","agent_status":"unknown","focused":false,'
+    '"label":"tmp","number":1,"pane_count":1,"tab_count":1,'
+    '"workspace_id":"w2"}]},"type":"session_snapshot"}}';
+
 // T10 セレクタ用: 2 workspace（w1/w2）の snapshot fixture。
 // w1:p1（cwd=/tmp・focused）/ w2:p1（cwd=/var）を持ち、セレクタの
 // workspace → tab → pane ドリルダウンと pane 表示名（A10: currentPath 優先）
@@ -213,6 +242,197 @@ void main() {
       expect(find.textContaining('hello'), findsWidgets);
       expect(find.textContaining('world'), findsWidgets);
     });
+
+    testWidgets(
+      'sessionId disambiguates same-label workspaces (tmp w3/w4 pattern)',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'tmp',
+          sessionId: 'w2',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
+            'herdr pane read': 'content from w2\n',
+          },
+          settle: false,
+        );
+
+        // sessionId 優先（id 一致 → label 一致 → フォールバック）:
+        // 同名ラベル "tmp" でも w2 の pane が解決される。
+        expect(
+          client.execCommands.any(
+            (c) => c.contains(
+              'herdr pane read w2:p1 --source recent --lines 120 --raw',
+            ),
+          ),
+          isTrue,
+        );
+        // focused_workspace_id は w1 だが、sessionId=w2 なので w1:p1 は読まない
+        expect(
+          client.execCommands.any(
+            (c) => c.contains(
+              'herdr pane read w1:p1 --source recent --lines 120 --raw',
+            ),
+          ),
+          isFalse,
+        );
+        expect(find.textContaining('content from w2'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'sessionId not in snapshot falls back to same-label workspace resolution',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'tmp',
+          sessionId: 'w9', // 存在しない ID → label 一致にフォールバック
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
+            'herdr pane read': 'content from fallback\n',
+          },
+          settle: false,
+        );
+
+        // 存在しない sessionId では label 一致（先頭の "tmp" workspace = w1）へ
+        // フォールバックする（resolver の workspaceLabel 経路）。
+        expect(
+          client.execCommands.any(
+            (c) => c.contains(
+              'herdr pane read w1:p1 --source recent --lines 120 --raw',
+            ),
+          ),
+          isTrue,
+        );
+        expect(find.textContaining('content from fallback'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'legacy sessionId-null entry on empty snapshot shows the error and '
+      'records diagnostic events (No herdr pane found root cause)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          // 旧データ（sessionId: null）の "tmp" エントリから遷移した状態。
+          sessionName: 'tmp',
+          readOnly: true,
+          execOutputs: {
+            // snapshot に workspace / pane が 1 件も無い（herdr サーバ空）。
+            'herdr api snapshot': kHerdrEmptySnapshotFixture,
+          },
+          settle: false,
+        );
+
+        // エラーオーバーレイに「No herdr pane found for this workspace」
+        expect(find.textContaining('No herdr pane found'), findsWidgets);
+
+        // 診断ログがリングバッファ（[HerdrSwitch]）に記録される。
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any(
+            (e) => e.contains('resolve failed: no pane in snapshot'),
+          ),
+          isTrue,
+          reason: 'resolver の解決失敗理由（workspaces/panes 件数）が記録されること',
+        );
+        expect(
+          events.any(
+            (e) => e.contains('initial resolve failed: no pane found'),
+          ),
+          isTrue,
+          reason: '初期解決失敗（要求 sessionId/label 付き）が記録されること',
+        );
+      },
+    );
+
+    testWidgets(
+      'snapshot fetch failure (HerdrCommandException) records diagnostic '
+      'events with errorCode/exitCode (No herdr pane found root cause)',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'tmp',
+          sessionId: 'w4',
+          readOnly: true,
+          // `herdr api snapshot` が exit 1 で失敗する（server-down 相当・
+          // stderr は fake が空文字のため "herdr command failed (exit code: 1)"）。
+          execExitCodes: {
+            'herdr api snapshot': 1,
+          },
+          settle: false,
+        );
+
+        // エラーオーバーレイに「No herdr pane found for this workspace」
+        expect(find.textContaining('No herdr pane found'), findsWidgets);
+
+        // catch 経路の診断ログ（例外種別 + errorCode + exitCode）が記録される。
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any(
+            (e) =>
+                e.contains('initial resolve failed: snapshot fetch error') &&
+                e.contains('type=HerdrCommandException') &&
+                e.contains('errorCode=<null>') &&
+                e.contains('exitCode=1'),
+          ),
+          isTrue,
+          reason: 'HerdrCommandException の種別・errorCode・exitCode が記録されること',
+        );
+        expect(
+          events.any((e) => e.contains('initial resolve failed: no pane found')),
+          isTrue,
+          reason: '最終的に「No herdr pane found」に帰着したことが記録されること',
+        );
+      },
+    );
+
+    testWidgets(
+      'snapshot fetch failure (HerdrTargetNotFoundException) records '
+      'diagnostic events with kind/errorCode',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'tmp',
+          sessionId: 'w4',
+          readOnly: true,
+          // `herdr api snapshot` が構造化エラー
+          // `{"error":{"code":"workspace_not_found",...}}` を返して exit 1。
+          execOutputs: {
+            'herdr api snapshot':
+                '{"error":{"code":"workspace_not_found","message":"no workspace"}}',
+          },
+          execExitCodes: {
+            'herdr api snapshot': 1,
+          },
+          settle: false,
+        );
+
+        expect(find.textContaining('No herdr pane found'), findsWidgets);
+
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any(
+            (e) =>
+                e.contains(
+                  'initial resolve failed: target not found in snapshot',
+                ) &&
+                e.contains('type=HerdrTargetNotFoundException') &&
+                e.contains('kind=HerdrTargetNotFoundKind.workspace') &&
+                e.contains('errorCode=workspace_not_found'),
+          ),
+          isTrue,
+          reason: 'HerdrTargetNotFoundException の種別・kind・errorCode が記録されること',
+        );
+      },
+    );
 
     testWidgets('uses an injected paneContentReader when provided', (
       tester,

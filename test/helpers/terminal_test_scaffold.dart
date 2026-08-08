@@ -59,8 +59,9 @@ class _FakeActiveSessionsNotifier extends ActiveSessionsNotifier {
   void updateWindowCount(
     String connectionId,
     String sessionName,
-    int windowCount,
-  ) {}
+    int windowCount, {
+    String? sessionId,
+  }) {}
 }
 
 class _FakeTerminalDisplayNotifier extends TerminalDisplayNotifier {
@@ -112,6 +113,7 @@ class TerminalTestScaffold {
     WidgetTester tester, {
     String connectionId = 'test-conn',
     String? sessionName,
+    String? sessionId,
     int? lastWindowIndex,
     String? lastPaneId,
     String? deepLinkWindowName,
@@ -188,6 +190,7 @@ class TerminalTestScaffold {
           home: TerminalScreen(
             connectionId: connectionId,
             sessionName: sessionName,
+            sessionId: sessionId,
             lastWindowIndex: lastWindowIndex,
             lastPaneId: lastPaneId,
             deepLinkWindowName: deepLinkWindowName,

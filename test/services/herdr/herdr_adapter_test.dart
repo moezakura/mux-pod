@@ -1,3 +1,4 @@
+import 'package:flutter_muxpod/services/connection_error.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +135,34 @@ void main() {
       expect(snapshot.panes, hasLength(1));
       expect(snapshot.panes.first.cwd, '/tmp');
     });
+
+    test(
+      'throws SshConnectionError when the channel closes without exit status '
+      'or output (SSH/transport anomaly, not a herdr command failure)',
+      () async {
+        final client = _FakeSshClientNullExit();
+
+        final adapter = HerdrAdapter(client);
+        await expectLater(
+          adapter.snapshot(),
+          throwsA(isA<SshConnectionError>()),
+        );
+      },
+    );
+
+    test(
+      'treats exit code null with non-empty stdout as success '
+      '(output obtained, exit status lost)',
+      () async {
+        final client = _FakeSshClientNullExitWithOutput(kSnapshotOk);
+
+        final adapter = HerdrAdapter(client);
+        final snapshot = await adapter.snapshot();
+
+        expect(snapshot.workspaces, hasLength(1));
+        expect(snapshot.workspaces.first.id, 'w1');
+      },
+    );
 
     test('throws HerdrTargetNotFoundException for workspace_not_found code',
         () async {
@@ -330,5 +359,39 @@ class _FakeSshClientWithStderr extends FakeSshClient {
   }) async {
     execCommands.add(command);
     return (stdout: '', stderr: stderr, exitCode: 0);
+  }
+}
+
+/// exitCode null・出力なしで戻す [FakeSshClient] のスタブ。
+///
+/// SSH exec チャネルが終了コードも出力も返さず閉じた（SSH 断・transport 層の
+/// 異常）ケースを模す。実機では `herdr command failed (exit code: null)` として
+/// 「No herdr pane found」に誤って swallow されていた経路（TERM-HERDR 診断）。
+class _FakeSshClientNullExit extends FakeSshClient {
+  @override
+  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
+    String command, {
+    Duration? timeout,
+  }) async {
+    execCommands.add(command);
+    return (stdout: '', stderr: '', exitCode: null);
+  }
+}
+
+/// exitCode null だが stdout は返す [FakeSshClient] のスタブ。
+///
+/// 出力は得られたが終了コードだけ欠落したケース（dartssh2 の exit-status
+/// 欠落）を模し、stdout が成功扱いで返ることを検証する。
+class _FakeSshClientNullExitWithOutput extends FakeSshClient {
+  final String output;
+  _FakeSshClientNullExitWithOutput(this.output);
+
+  @override
+  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
+    String command, {
+    Duration? timeout,
+  }) async {
+    execCommands.add(command);
+    return (stdout: output, stderr: '', exitCode: null);
   }
 }
