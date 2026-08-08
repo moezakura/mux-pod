@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../home_screen.dart';
+import '../home_tab_index.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/tmux_commands.dart';
@@ -133,8 +134,7 @@ class ConnectionsScreen extends ConsumerWidget {
   }
 
   void _openSettings(BuildContext context, WidgetRef ref) {
-    // 設定タブ（インデックス3）に切り替え
-    ref.read(currentTabProvider.notifier).setTab(3);
+    ref.read(currentTabProvider.notifier).setTab(HomeTabIndex.settings);
   }
 
   void _showSortDialog(BuildContext context, WidgetRef ref) {
