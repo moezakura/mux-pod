@@ -11,6 +11,7 @@ import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart'
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
+import 'package:flutter_muxpod/widgets/multiplexer_tiles.dart';
 import 'package:flutter_muxpod/widgets/special_keys_bar.dart';
 
 import '../../helpers/fake_ssh_notifier.dart';
@@ -1391,6 +1392,56 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Select Pane'), findsNothing);
     });
+
+    testWidgets(
+      'H-1 same-label workspaces (tmp w3/w4 pattern) highlight only the '
+      'sessionId-matched workspace in the session selector',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'tmp',
+          sessionId: 'w2',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
+            'herdr pane read': 'content from w2\n',
+          },
+          settle: false,
+        );
+
+        // 現在ターゲットは sessionId=w2 の workspace（w2:p1）に解決される。
+        // workspace セレクタ（Select Session 相当）を開く。
+        await tester.tap(find.text('tmp'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Session'), findsOneWidget);
+
+        // 同名ラベル "tmp" の workspace が w1 / w2 の 2 つ表示される。
+        final tiles = tester
+            .widgetList<MultiplexerSessionTile>(
+              find.byType(MultiplexerSessionTile),
+            )
+            .toList();
+        expect(tiles, hasLength(2));
+        expect(tiles.map((t) => t.session.name).toSet(), {'tmp'});
+
+        // ハイライトは ID を一義的な基準とする:
+        // sessionId 一致（w2）の workspace だけが active になり、
+        // 同名ラベルでも ID 不一致（w1）は active にならない。
+        final activeById = {for (final t in tiles) t.session.id: t.isActive};
+        expect(
+          activeById['w2'],
+          isTrue,
+          reason: '現在の workspace ID（w2）だけがハイライトされること',
+        );
+        expect(
+          activeById['w1'],
+          isFalse,
+          reason: '同名ラベル "tmp" でも ID 不一致（w1）はハイライトされないこと',
+        );
+      },
+    );
 
     testWidgets('M2: herdr (read-only) では stale な tmux 複数ペイン状態でも pane '
         'indicator を表示せず mutation を発行しない', (tester) async {
