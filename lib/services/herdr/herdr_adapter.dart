@@ -10,6 +10,7 @@ import 'dart:convert';
 
 import '../backend/backend_adapter.dart';
 import 'herdr_commands.dart';
+import 'herdr_errors.dart';
 import 'herdr_models.dart';
 import 'herdr_parser.dart';
 
@@ -88,16 +89,31 @@ class HerdrAdapter {
   }
 
   /// [BackendAdapter.execWithExitCode] でコマンドを実行し、
-  /// 非 0 終了・stderr 出力を [HerdrCommandException] に変換する。
+  /// 非 0 終了・stderr 出力を例外に変換する。
+  ///
+  /// target-not-found 系 errorCode（`pane_not_found` / `tab_not_found` /
+  /// `workspace_not_found`）なら [HerdrTargetNotFoundException] を、
+  /// それ以外の失敗は [HerdrCommandException] を投げる。
   Future<String> _execChecked(String command, {Duration? timeout}) async {
     final result = await _backend.execWithExitCode(
       _resolve(command),
       timeout: timeout,
     );
     if (result.exitCode != 0 || result.stderr.trim().isNotEmpty) {
+      final errorCode = _extractErrorCode(result);
+      final kind = herdrTargetNotFoundKindForCode(errorCode);
+      if (kind != null) {
+        throw HerdrTargetNotFoundException(
+          kind: kind,
+          message: _buildErrorMessage(result),
+          errorCode: errorCode,
+          exitCode: result.exitCode,
+        );
+      }
       throw HerdrCommandException(
         _buildErrorMessage(result),
         exitCode: result.exitCode,
+        errorCode: errorCode,
       );
     }
     return result.stdout;
@@ -108,29 +124,35 @@ class HerdrAdapter {
   ) {
     final stderr = result.stderr.trim();
     if (stderr.isNotEmpty) return 'herdr command failed: $stderr';
-    final errorCode = _extractErrorCode(result.stdout);
+    final errorCode = _extractErrorCode(result);
     if (errorCode != null) {
       return 'herdr command failed: $errorCode (exit code: ${result.exitCode})';
     }
     return 'herdr command failed (exit code: ${result.exitCode})';
   }
 
-  /// 構造化エラー JSON の `error.code` を取り出す（無ければ null）。
+  /// 構造化エラー JSON の `error.code` を stdout / stderr の両方から探す
+  /// （無ければ null）。
   ///
   /// 出力形式（G4 実測）:
   /// `{"error":{"code":"workspace_not_found","message":"..."},"id":"cli:pane:get"}`
-  String? _extractErrorCode(String stdout) {
-    try {
-      final decoded = jsonDecode(stdout);
-      if (decoded is Map<String, dynamic>) {
-        final error = decoded['error'];
-        if (error is Map<String, dynamic>) {
-          final code = error['code'];
-          if (code is String && code.isNotEmpty) return code;
+  /// CLI がエラーを stderr に書く実装もあるため、両方を対象にする。
+  String? _extractErrorCode(
+    ({String stdout, String stderr, int? exitCode}) result,
+  ) {
+    for (final text in [result.stdout, result.stderr]) {
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map<String, dynamic>) {
+          final error = decoded['error'];
+          if (error is Map<String, dynamic>) {
+            final code = error['code'];
+            if (code is String && code.isNotEmpty) return code;
+          }
         }
+      } catch (_) {
+        // JSON でなければ無視
       }
-    } catch (_) {
-      // JSON でなければ無視
     }
     return null;
   }

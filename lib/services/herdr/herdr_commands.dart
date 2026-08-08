@@ -59,13 +59,71 @@ class HerdrCommandException implements Exception {
   /// コマンドの終了コード（不明な場合は null）。
   final int? exitCode;
 
+  /// 構造化エラー JSON の `error.code`（machine-readable）。
+  ///
+  /// stdout/stderr のいずれかが
+  /// `{"error":{"code":"...","message":"..."}}` 形式のとき抽出される
+  /// （無ければ null）。`isServerDownException` / `isHerdrTargetNotFound`
+  /// （herdr_errors.dart）の分類に使う。
+  final String? errorCode;
+
   /// 元の例外（任意）。
   final Object? cause;
 
-  HerdrCommandException(this.message, {this.exitCode, this.cause});
+  HerdrCommandException(this.message, {this.exitCode, this.errorCode, this.cause});
 
   @override
   String toString() => 'HerdrCommandException: $message';
+}
+
+// inventory: HERDR-ERR-004
+/// 対象（pane/tab/workspace）が存在しないことの種別。
+enum HerdrTargetNotFoundKind {
+  /// pane 不在（errorCode: `pane_not_found`）
+  pane,
+
+  /// tab 不在（errorCode: `tab_not_found`）
+  tab,
+
+  /// workspace 不在（errorCode: `workspace_not_found`）
+  workspace,
+}
+
+// inventory: HERDR-ERR-005
+/// 対象 pane/tab/workspace が存在しないことを表す例外。
+///
+/// target-not-found 系 errorCode（`pane_not_found` / `tab_not_found` /
+/// `workspace_not_found`）を [HerdrAdapter] が検出したときに送出する。
+///
+/// [HerdrCommandException] は継承しない（既存例外の継承関係を変えない。
+/// catch 順序で server-down と誤判定されるのを防ぐため例外の「種別」を
+/// 分離する）。判定は `isHerdrTargetNotFound`（herdr_errors.dart）が行う。
+class HerdrTargetNotFoundException implements Exception {
+  /// 不在だった対象の種別。
+  final HerdrTargetNotFoundKind kind;
+
+  /// エラーメッセージ（stdout/stderr 由来）。
+  final String message;
+
+  /// 構造化エラー JSON の `error.code`（例: `pane_not_found`）。
+  final String? errorCode;
+
+  /// コマンドの終了コード（不明な場合は null）。
+  final int? exitCode;
+
+  /// 元の例外（任意）。
+  final Object? cause;
+
+  const HerdrTargetNotFoundException({
+    required this.kind,
+    required this.message,
+    this.errorCode,
+    this.exitCode,
+    this.cause,
+  });
+
+  @override
+  String toString() => 'HerdrTargetNotFoundException($kind): $message';
 }
 
 // inventory: HERDR-ERR-002

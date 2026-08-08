@@ -135,7 +135,7 @@ void main() {
       expect(snapshot.panes.first.cwd, '/tmp');
     });
 
-    test('throws HerdrCommandException with error code on structured error',
+    test('throws HerdrTargetNotFoundException for workspace_not_found code',
         () async {
       final client = FakeSshClient();
       client.execOutputs['herdr api snapshot'] =
@@ -147,8 +147,50 @@ void main() {
       await expectLater(
         adapter.snapshot(),
         throwsA(
+          isA<HerdrTargetNotFoundException>()
+              .having((e) => e.kind, 'kind', HerdrTargetNotFoundKind.workspace)
+              .having((e) => e.errorCode, 'errorCode', 'workspace_not_found')
+              .having(
+                (e) => e.message,
+                'message',
+                contains('workspace_not_found'),
+              ),
+        ),
+      );
+    });
+
+    test('throws HerdrCommandException with errorCode for non-target error code',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr api snapshot'] =
+          '{"error":{"code":"internal_error","message":"boom"},'
+          '"id":"cli:api:snapshot"}';
+      client.execExitCodes['herdr api snapshot'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.snapshot(),
+        throwsA(
           isA<HerdrCommandException>()
-              .having((e) => e.message, 'message', contains('workspace_not_found')),
+              .having((e) => e.errorCode, 'errorCode', 'internal_error')
+              .having((e) => e.message, 'message', contains('internal_error')),
+        ),
+      );
+    });
+
+    test('extracts error code from stderr', () async {
+      final client = _FakeSshClientWithStderr(
+        '{"error":{"code":"pane_not_found","message":"no pane"},'
+        '"id":"cli:pane:get"}',
+      );
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.paneRead('w1:p1'),
+        throwsA(
+          isA<HerdrTargetNotFoundException>()
+              .having((e) => e.kind, 'kind', HerdrTargetNotFoundKind.pane)
+              .having((e) => e.errorCode, 'errorCode', 'pane_not_found'),
         ),
       );
     });
