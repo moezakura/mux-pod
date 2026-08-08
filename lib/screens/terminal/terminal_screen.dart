@@ -320,6 +320,15 @@ class TerminalScreen extends ConsumerStatefulWidget {
   // inventory: LEGACY-0064
   final String? sessionName;
 
+  // inventory: TERM-SCREEN-007
+  /// セッション ID（tmux: "$0" / herdr: "w3"）。
+  ///
+  /// herdr では同名ラベル（例: "tmp" の w3/w4）の workspace を ID で区別する
+  /// ために使う（id 一致 → label 一致 → フォールバックの優先順）。tmux 経路
+  /// ではセッション照合・新規作成に実セッション名（[sessionName]）を使うため、
+  /// この値は tmux の解決には影響しない。null 許容（旧呼び出し互換）。
+  final String? sessionId;
+
   // inventory: LEGACY-0065
   /// 復元用: 最後に開いていたウィンドウインデックス
   final int? lastWindowIndex;
@@ -361,6 +370,7 @@ class TerminalScreen extends ConsumerStatefulWidget {
     super.key,
     required this.connectionId,
     this.sessionName,
+    this.sessionId,
     this.lastWindowIndex,
     this.lastPaneId,
     this.deepLinkWindowName,
@@ -1127,6 +1137,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final resolvedTarget = directId == null ? await _resolveHerdrPaneId() : null;
     final resolvedId = resolvedTarget?.paneId ?? directId;
     if (resolvedId == null) {
+      // 診断: 要求条件（sessionId / label）とスナップショット状態を記録する。
+      // 旧データ（sessionId: null）はラベル一致（先頭の同名 workspace）に
+      // フォールバックするため、この経路は snapshot 取得失敗 or 空
+      // （workspace/pane が 0 件）のときに到達する。
+      _recordHerdrSwitchEvent(
+        'initial resolve failed: no pane found '
+        '(sessionId=${widget.sessionId ?? '<null>'}, '
+        'label=${widget.sessionName ?? '<null>'}, directId=$directId)',
+      );
       throw Exception('No herdr pane found for this workspace');
     }
 
@@ -1159,17 +1178,50 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 戻り値は解決 pane と属する workspaceId / tabId の実値（[_HerdrResolvedTarget]）。
   Future<_HerdrResolvedTarget?> _resolveHerdrPaneId() async {
     final cache = _herdrSnapshotCache;
-    if (cache == null) return null;
+    if (cache == null) {
+      // 診断: スナップショットキャッシュ未生成（backendKind が herdr でない /
+      // SSH client 未接続 / paneContentReader 分岐で cache を作らなかった）とき。
+      // 「No herdr pane found」の原因特定用。
+      _recordHerdrSwitchEvent(
+        'initial resolve failed: no snapshot cache '
+        '(backendKind=$_backendKind, '
+        'hasPaneContentReader=${widget.paneContentReader != null})',
+      );
+      return null;
+    }
     final HerdrSnapshot snapshot;
     try {
       // 初回解決も cache 経由（A5）。初回はキャッシュが空のため実取得が 1 回走る。
       snapshot = await cache.get(force: true);
-    } on HerdrCommandException {
-      // スナップショット取得失敗時は解決不能（呼び出し側でエラー表示）
+    } on HerdrCommandException catch (e) {
+      // スナップショット取得失敗時は解決不能（呼び出し側でエラー表示）。
+      // 診断: 例外種別・errorCode・exitCode・message（stderr 由来）を記録し、
+      // server-down / stderr 混入 / パース失敗のどれが原因かを特定可能にする。
+      _recordHerdrSwitchEvent(
+        'initial resolve failed: snapshot fetch error '
+        '(type=${e.runtimeType}, errorCode=${e.errorCode ?? '<null>'}, '
+        'exitCode=${e.exitCode}, message=${e.message})',
+      );
       return null;
-    } on HerdrTargetNotFoundException {
-      // target 不在（pane/tab/workspace_not_found）も解決不能として扱う
+    } on HerdrTargetNotFoundException catch (e) {
+      // target 不在（pane/tab/workspace_not_found）も解決不能として扱う。
+      // 診断: kind / errorCode を記録する。
+      _recordHerdrSwitchEvent(
+        'initial resolve failed: target not found in snapshot '
+        '(type=${e.runtimeType}, kind=${e.kind}, '
+        'errorCode=${e.errorCode ?? '<null>'}, '
+        'exitCode=${e.exitCode}, message=${e.message})',
+      );
       return null;
+    } catch (e) {
+      // SSH/transport 層の例外（SshConnectionError 等）は従来どおり伝播させる
+      // （呼び出し側 `_connectAndSetup` の接続エラー UI に倒す）。挙動は変えず、
+      // 原因特定用に種別のみ記録する。
+      _recordHerdrSwitchEvent(
+        'initial resolve failed: unexpected error '
+        '(type=${e.runtimeType}, error=$e)',
+      );
+      rethrow;
     }
 
     return _resolveHerdrPaneIdFromSnapshot(snapshot);
@@ -1179,12 +1231,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// [preferredPaneId]（現在表示中の pane）を最優先し、続いて要求時の
   /// initialPaneId / lastPaneId、その後 workspace ベースの解決へフォールバックする。
+  /// workspace 解決は [TerminalScreen.sessionId]（id 一致）→ [TerminalScreen.sessionName]
+  /// （label 一致 → id 一致）→ 先頭 workspace の優先順。同名ラベル（herdr の
+  /// "tmp" w3/w4）は sessionId で区別される。sessionId が snapshot に存在しない
+  /// 場合のみ workspaceId を渡さず、ラベル一致にフォールバックする。
   /// 解決した pane の属する workspaceId / tabId は snapshot の [HerdrPane] から
   /// 実値を引き当てて [_HerdrResolvedTarget] として返す。
   _HerdrResolvedTarget? _resolveHerdrPaneIdFromSnapshot(
     HerdrSnapshot snapshot, {
     String? preferredPaneId,
   }) {
+    // sessionId 優先: スナップショット内に一致する workspace がある場合のみ
+    // workspaceId として resolver へ渡す（無ければラベル一致にフォールバック）。
+    final requestedId = widget.sessionId;
+    final workspaceId = (requestedId != null &&
+            requestedId.isNotEmpty &&
+            snapshot.workspaces.any((w) => w.id == requestedId))
+        ? requestedId
+        : null;
     final paneId = HerdrTargetResolver.resolve(
       snapshot,
       paneIds: [
@@ -1192,9 +1256,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         if (widget.initialPaneId != null) widget.initialPaneId!,
         if (widget.lastPaneId != null) widget.lastPaneId!,
       ],
+      workspaceId: workspaceId,
       workspaceLabel: widget.sessionName,
     );
-    if (paneId == null) return null;
+    if (paneId == null) {
+      // 診断: resolver が pane を解決できなかった理由を記録する。
+      // 「No herdr pane found」の原因特定用（workspace 0 件 / pane 0 件 /
+      // label 不一致で先頭ワークスペースへもフォールバックできない場合）。
+      _recordHerdrSwitchEvent(
+        'resolve failed: no pane in snapshot '
+        '(workspaces=${snapshot.workspaces.length}, '
+        'panes=${snapshot.panes.length}, '
+        'sessionId=${widget.sessionId ?? '<null>'}, '
+        'label=${widget.sessionName ?? '<null>'}, '
+        'requestedWorkspaceId=${workspaceId ?? '<null>'})',
+      );
+      return null;
+    }
     final pane = snapshot.panes.where((p) => p.id == paneId).firstOrNull;
     // M-4: tab の表示名（tab.label ?? tab.id 相当）も snapshot 実値で確定する。
     final tab = pane?.tabId == null
@@ -1232,6 +1310,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               widget.connectionId,
               refreshedSession.name,
               refreshedSession.windows.length,
+              sessionId: refreshedSession.id,
             );
       }
     } catch (_) {
@@ -1660,14 +1739,26 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (pane != null) return _herdrResolvedTargetOf(sessions, pane);
     }
 
-    // 2. workspace 決定: sessionName（label 一致 → id 一致）→ 先頭
+    // 2. workspace 決定: sessionId（id 一致）→ sessionName（label 一致 → id 一致）
+    //    → 先頭。同名ラベル（herdr の "tmp" w3/w4）は sessionId で区別する。
     MultiplexerSession? workspace;
-    final label = widget.sessionName;
-    if (label != null && label.isNotEmpty) {
+    final requestedId = widget.sessionId;
+    if (requestedId != null && requestedId.isNotEmpty) {
       for (final session in sessions) {
-        if (session.name == label || session.id == label) {
+        if (session.id == requestedId) {
           workspace = session;
           break;
+        }
+      }
+    }
+    if (workspace == null) {
+      final label = widget.sessionName;
+      if (label != null && label.isNotEmpty) {
+        for (final session in sessions) {
+          if (session.name == label || session.id == label) {
+            workspace = session;
+            break;
+          }
         }
       }
     }
@@ -2632,6 +2723,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       // セッション情報を保存（復元用）
       final sessionName = tmuxState.activeSessionName;
+      final sessionId = tmuxState.activeSession?.id;
       final windowIndex = tmuxState.activeWindowIndex;
       if (sessionName != null && windowIndex != null) {
         ref
@@ -2639,6 +2731,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             .updateLastPane(
               connectionId: widget.connectionId,
               sessionName: sessionName,
+              sessionId: sessionId,
               windowIndex: windowIndex,
               paneId: paneId,
             );

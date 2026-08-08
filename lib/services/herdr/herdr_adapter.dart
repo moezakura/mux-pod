@@ -9,6 +9,7 @@ library;
 import 'dart:convert';
 
 import '../backend/backend_adapter.dart';
+import '../connection_error.dart';
 import 'herdr_commands.dart';
 import 'herdr_errors.dart';
 import 'herdr_models.dart';
@@ -94,12 +95,29 @@ class HerdrAdapter {
   /// target-not-found 系 errorCode（`pane_not_found` / `tab_not_found` /
   /// `workspace_not_found`）なら [HerdrTargetNotFoundException] を、
   /// それ以外の失敗は [HerdrCommandException] を投げる。
+  ///
+  /// **exitCode null かつ stdout/stderr が空** の結果は「herdr コマンド失敗」
+  /// ではなく SSH/transport 層の異常（チャネルが終了コードも出力も返さず
+  /// 閉じた・接続断等）として [SshConnectionError] を投げる。これは
+  /// [isServerDownException] で server-down に分類され、呼び出し側の再接続 /
+  /// 通知ロジックに流れる。従来の「exitCode null → HerdrCommandException →
+  /// No herdr pane found」と誤って swallow されるのを防ぐ（TERM-HERDR 診断）。
+  ///
+  /// exitCode null でも stdout が非空の場合は「出力は得られたが終了コードが
+  /// 欠落した」とみなし、stdout を返す（後段のパーサが検証する）。
   Future<String> _execChecked(String command, {Duration? timeout}) async {
-    final result = await _backend.execWithExitCode(
-      _resolve(command),
-      timeout: timeout,
-    );
-    if (result.exitCode != 0 || result.stderr.trim().isNotEmpty) {
+    final resolved = _resolve(command);
+    final result = await _backend.execWithExitCode(resolved, timeout: timeout);
+    final stderr = result.stderr.trim();
+    final exitCode = result.exitCode;
+
+    if (exitCode == null && result.stdout.trim().isEmpty && stderr.isEmpty) {
+      throw SshConnectionError(
+        'Command channel closed without exit status or output: $resolved',
+      );
+    }
+
+    if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
       final errorCode = _extractErrorCode(result);
       final kind = herdrTargetNotFoundKindForCode(errorCode);
       if (kind != null) {
@@ -107,12 +125,12 @@ class HerdrAdapter {
           kind: kind,
           message: _buildErrorMessage(result),
           errorCode: errorCode,
-          exitCode: result.exitCode,
+          exitCode: exitCode,
         );
       }
       throw HerdrCommandException(
         _buildErrorMessage(result),
-        exitCode: result.exitCode,
+        exitCode: exitCode,
         errorCode: errorCode,
       );
     }
@@ -128,7 +146,12 @@ class HerdrAdapter {
     if (errorCode != null) {
       return 'herdr command failed: $errorCode (exit code: ${result.exitCode})';
     }
-    return 'herdr command failed (exit code: ${result.exitCode})';
+    // 診断: stdout が空かどうか・何バイトあったかを付与する（コマンドは
+    // 出力したが終了コードが異常・欠落したケースの判別用）。A8 のプライバシー
+    // 規則に従い、出力の内容（snapshot JSON 等）は含めずバイト数のみ記録する。
+    final stdout = result.stdout.trim();
+    final preview = stdout.isEmpty ? '' : ', stdout(${stdout.length}b)';
+    return 'herdr command failed (exit code: ${result.exitCode}$preview)';
   }
 
   /// 構造化エラー JSON の `error.code` を stdout / stderr の両方から探す
