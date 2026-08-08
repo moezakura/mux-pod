@@ -24,6 +24,11 @@ class AlertPane {
   // inventory: NOTIF-005
   // inventory: LEGACY-0107
   final String sessionName;
+  // inventory: NOTIF-005b
+  /// tmux セッション ID（例: "$0"）。
+  ///
+  /// null の場合は sessionName でキー化される（旧データ互換）。
+  final String? sessionId;
   // inventory: NOTIF-006
   // inventory: LEGACY-0108
   final int windowIndex;
@@ -48,6 +53,7 @@ class AlertPane {
     required this.connectionName,
     required this.host,
     required this.sessionName,
+    this.sessionId,
     required this.windowIndex,
     required this.windowName,
     required this.flags,
@@ -245,6 +251,7 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
                     connectionName: connection.name,
                     host: connection.host,
                     sessionName: session.name,
+                    sessionId: session.id,
                     windowIndex: window.index,
                     windowName: window.name,
                     flags: windowAlertFlags,

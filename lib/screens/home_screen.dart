@@ -443,12 +443,14 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
     ref.read(activeSessionsProvider.notifier).setCurrentSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TerminalScreen(
           connectionId: session.connectionId,
           sessionName: session.sessionName,
+          sessionId: session.sessionId,
           lastWindowIndex: session.lastWindowIndex,
           lastPaneId: session.lastPaneId,
         ),
@@ -460,6 +462,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
     ref.read(activeSessionsProvider.notifier).closeSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
   }
 }

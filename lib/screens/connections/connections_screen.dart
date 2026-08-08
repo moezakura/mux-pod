@@ -291,8 +291,14 @@ class ConnectionsScreen extends ConsumerWidget {
               child: _ConnectionCard(
                 connection: connection,
                 sshClientFactory: sshClientFactory,
-                onConnect: (sessionName) =>
-                    _connectToServer(context, ref, connection, sessionName),
+                onConnect: (sessionName, {sessionId}) =>
+                    _connectToServer(
+                      context,
+                      ref,
+                      connection,
+                      sessionName,
+                      sessionId: sessionId,
+                    ),
                 onEdit: () => _editConnection(context, ref, connection),
                 onDelete: () => _deleteConnection(context, ref, connection),
               ),
@@ -486,14 +492,16 @@ class ConnectionsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     Connection connection,
-    String? sessionName,
-  ) {
+    String? sessionName, {
+    String? sessionId,
+  }) {
     ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
     // 既存セッションを開く場合は最終アクセス日時を更新
     if (sessionName != null) {
       ref.read(activeSessionsProvider.notifier).touchSession(
             connection.id,
             sessionName,
+            sessionId: sessionId,
           );
     }
     final isHerdr = connection.multiplexer.backend == BackendType.herdr;
@@ -502,6 +510,7 @@ class ConnectionsScreen extends ConsumerWidget {
         builder: (context) => TerminalScreen(
           connectionId: connection.id,
           sessionName: sessionName,
+          sessionId: sessionId,
           // herdr は read-only 表示（mutation 非表示）
           readOnly: isHerdr,
         ),
@@ -514,7 +523,7 @@ class ConnectionsScreen extends ConsumerWidget {
 class _ConnectionCard extends ConsumerStatefulWidget {
   final Connection connection;
   final Future<SshClient> Function(Connection connection)? sshClientFactory;
-  final void Function(String? sessionName) onConnect;
+  final void Function(String? sessionName, {String? sessionId}) onConnect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -1073,18 +1082,22 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     if (sessions.isEmpty) return [];
     // tmux では provider の最新ウィンドウ数を優先（ターミナルでの
     // ウィンドウ作成/削除後もカウンタが追従するようにする）。
+    // キーは sessionId ?? sessionName（ID 優先）で、同名ラベル（herdr の
+    // "tmp" w3/w4）によるカウント混線を防ぐ。
     final liveWindowCounts = readOnly
         ? const <String, int>{}
-        : {for (final a in activeSessions) a.sessionName: a.windowCount};
+        : {
+            for (final a in activeSessions) a.sessionId ?? a.sessionName: a.windowCount,
+          };
 
     return sessions.map((session) {
       final isAttached = session.attached;
       final windowCount =
-          liveWindowCounts[session.name] ?? session.windowCount;
+          liveWindowCounts[session.id ?? session.name] ?? session.windowCount;
       return InkWell(
         // read-only（herdr）も Terminal を開く（TerminalScreen 側で
         // read-only 表示になるため、タップ遷移は常に許可する）
-        onTap: () => widget.onConnect(session.name),
+        onTap: () => widget.onConnect(session.name, sessionId: session.id),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(

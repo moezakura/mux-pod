@@ -25,6 +25,12 @@ class ActiveSession {
   // inventory: PROV-ACTIVE-005
   // inventory: LEGACY-0004
   final String sessionName;
+  // inventory: PROV-ACTIVE-005b
+  /// セッション ID（tmux: "$0" / herdr: "w3"）。
+  ///
+  /// null の場合は [sessionName] でキー化する（旧データ互換）。
+  /// herdr の同名ラベル（例: "tmp" の w3/w4）を ID で区別するために使う。
+  final String? sessionId;
   // inventory: PROV-ACTIVE-006
   // inventory: LEGACY-0005
   final int windowCount;
@@ -58,6 +64,7 @@ class ActiveSession {
     required this.connectionName,
     required this.host,
     required this.sessionName,
+    this.sessionId,
     required this.windowCount,
     required this.connectedAt,
     this.isAttached = true,
@@ -74,6 +81,7 @@ class ActiveSession {
     String? connectionName,
     String? host,
     String? sessionName,
+    String? sessionId,
     int? windowCount,
     DateTime? connectedAt,
     bool? isAttached,
@@ -88,6 +96,7 @@ class ActiveSession {
       connectionName: connectionName ?? this.connectionName,
       host: host ?? this.host,
       sessionName: sessionName ?? this.sessionName,
+      sessionId: sessionId ?? this.sessionId,
       windowCount: windowCount ?? this.windowCount,
       connectedAt: connectedAt ?? this.connectedAt,
       isAttached: isAttached ?? this.isAttached,
@@ -107,6 +116,7 @@ class ActiveSession {
       'connectionName': connectionName,
       'host': host,
       'sessionName': sessionName,
+      'sessionId': sessionId,
       'windowCount': windowCount,
       'connectedAt': connectedAt.toIso8601String(),
       'isAttached': isAttached,
@@ -127,6 +137,7 @@ class ActiveSession {
       connectionName: json['connectionName'] as String,
       host: json['host'] as String,
       sessionName: json['sessionName'] as String,
+      sessionId: json['sessionId'] as String?,
       windowCount: json['windowCount'] as int? ?? 0,
       connectedAt: DateTime.parse(json['connectedAt'] as String),
       isAttached: json['isAttached'] as bool? ?? false,
@@ -143,7 +154,13 @@ class ActiveSession {
   // inventory: PROV-ACTIVE-015
   // inventory: LEGACY-0014
   /// セッションの一意なキー
-  String get key => '$connectionId:$sessionName';
+  ///
+  /// セッション ID（tmux: "$0" / herdr: "w3"）を優先し、無ければ
+  /// sessionName（ラベル名）でキー化する（旧データ互換）。
+  String get key {
+    final id = sessionId ?? sessionName;
+    return '$connectionId:$id';
+  }
 }
 
 // inventory: PROV-ACTIVE-016
@@ -187,9 +204,7 @@ class ActiveSessionsState {
   ActiveSession? get currentSession {
     if (currentSessionKey == null) return null;
     try {
-      return sessions.firstWhere(
-        (s) => '${s.connectionId}:${s.sessionName}' == currentSessionKey,
-      );
+      return sessions.firstWhere((s) => s.key == currentSessionKey);
     } catch (e) {
       return null;
     }
@@ -265,12 +280,13 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     required String connectionName,
     required String host,
     required String sessionName,
+    String? sessionId,
     required int windowCount,
     bool isAttached = true,
     int? lastWindowIndex,
     String? lastPaneId,
   }) {
-    final key = '$connectionId:$sessionName';
+    final key = '$connectionId:${sessionId ?? sessionName}';
     final existingIndex = state.sessions.indexWhere(
       (s) => s.key == key,
     );
@@ -283,6 +299,7 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
       connectionName: connectionName,
       host: host,
       sessionName: sessionName,
+      sessionId: sessionId,
       windowCount: windowCount,
       connectedAt: existingSession?.connectedAt ?? now,
       isAttached: isAttached,
@@ -308,10 +325,11 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   void updateLastPane({
     required String connectionId,
     required String sessionName,
+    String? sessionId,
     required int windowIndex,
     required String paneId,
   }) {
-    final key = '$connectionId:$sessionName';
+    final key = '$connectionId:${sessionId ?? sessionName}';
     final existingIndex = state.sessions.indexWhere((s) => s.key == key);
     if (existingIndex < 0) return;
 
@@ -329,8 +347,13 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-028
   // inventory: LEGACY-0021
   /// セッションのウィンドウ数を更新（ウィンドウ作成/削除後の同期用）
-  void updateWindowCount(String connectionId, String sessionName, int windowCount) {
-    final key = '$connectionId:$sessionName';
+  void updateWindowCount(
+    String connectionId,
+    String sessionName,
+    int windowCount, {
+    String? sessionId,
+  }) {
+    final key = '$connectionId:${sessionId ?? sessionName}';
     final existingIndex = state.sessions.indexWhere((s) => s.key == key);
     if (existingIndex < 0) return;
     if (state.sessions[existingIndex].windowCount == windowCount) return;
@@ -344,8 +367,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-029
   // inventory: LEGACY-0022
   /// セッションを開いた時に最終アクセス日時を更新
-  void touchSession(String connectionId, String sessionName) {
-    final key = '$connectionId:$sessionName';
+  void touchSession(String connectionId, String sessionName, {String? sessionId}) {
+    final key = '$connectionId:${sessionId ?? sessionName}';
     final existingIndex = state.sessions.indexWhere((s) => s.key == key);
     if (existingIndex < 0) return;
 
@@ -388,9 +411,27 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     MultiplexerBackendKind backend = MultiplexerBackendKind.tmux,
   }) {
     // 既存のセッション情報をマップに保存
+    // キーは sessionId ?? sessionName（ID 優先）にすることで、同名ラベル
+    // （herdr の "tmp" w3/w4）の履歴が相互誤継承されるのを防ぐ。
+    final connectionSessions = state.sessions
+        .where((s) => s.connectionId == connectionId)
+        .toList();
     final existingMap = <String, ActiveSession>{};
-    for (final s in state.sessions.where((s) => s.connectionId == connectionId)) {
-      existingMap[s.sessionName] = s;
+    for (final s in connectionSessions) {
+      existingMap[s.sessionId ?? s.sessionName] = s;
+    }
+
+    // 旧データ移行: sessionId 導入前のエントリ（sessionId == null）のうち、
+    // 同名ラベル（sessionName）が一意なものを、新データの ID キーへ履歴ごと
+    // 引き継ぐ。同名ラベルが複数ある場合（herdr の "tmp" w3/w4 が両方
+    // sessionId: null で保存された旧データ）は対応関係を一意に決められない
+    // ため移行しない（旧エントリは replace セマンティクスで破棄される）。
+    final legacyLabelCounts = <String, int>{};
+    for (final s in connectionSessions) {
+      if (s.sessionId == null) {
+        legacyLabelCounts[s.sessionName] =
+            (legacyLabelCounts[s.sessionName] ?? 0) + 1;
+      }
     }
 
     // 他の接続のセッションを保持
@@ -398,13 +439,33 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
         .where((s) => s.connectionId != connectionId)
         .toList();
 
+    // 移行で adopting 済みの旧エントリのキー（重複継承防止）。
+    final adoptedLegacyKeys = <String>{};
+
     final newSessions = sessions.map((ms) {
-      final existing = existingMap[ms.name];
+      var existing = existingMap[ms.id ?? ms.name];
+      // 旧エントリ（sessionId: null）→ 新データ（sessionId 付き）の引き継ぎ:
+      // ID キーでヒットせず、ラベル一致する旧エントリが唯一の場合のみ
+      // その旧エントリを adopting して履歴（connectedAt / lastAccessedAt /
+      // lastWindowIndex / lastPaneId）を新エントリへ引き継ぐ。
+      // adopting した旧エントリは以降の新エントリへ再利用しない
+      // （新データ側にも同名ラベルが複数ある場合、履歴が重複継承されるのを防ぐ）。
+      if (existing == null && ms.id != null) {
+        final legacy = existingMap[ms.name];
+        if (legacy != null &&
+            legacy.sessionId == null &&
+            legacyLabelCounts[ms.name] == 1 &&
+            !adoptedLegacyKeys.contains(legacy.key)) {
+          existing = legacy;
+          adoptedLegacyKeys.add(legacy.key);
+        }
+      }
       return ActiveSession(
         connectionId: connectionId,
         connectionName: connectionName,
         host: host,
         sessionName: ms.name,
+        sessionId: ms.id,
         windowCount: ms.windowCount,
         connectedAt: existing?.connectedAt ?? DateTime.now(),
         isAttached: ms.attached,
@@ -422,8 +483,14 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-031
   // inventory: LEGACY-0024
   /// 現在のセッションを設定
-  void setCurrentSession(String connectionId, String sessionName) {
-    state = state.copyWith(currentSessionKey: '$connectionId:$sessionName');
+  void setCurrentSession(
+    String connectionId,
+    String sessionName, {
+    String? sessionId,
+  }) {
+    state = state.copyWith(
+      currentSessionKey: '$connectionId:${sessionId ?? sessionName}',
+    );
   }
 
   // inventory: PROV-ACTIVE-032
@@ -435,9 +502,10 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-033
   // inventory: LEGACY-0026
   /// セッションを明示的に閉じる（削除）
-  void closeSession(String connectionId, String sessionName) {
+  void closeSession(String connectionId, String sessionName, {String? sessionId}) {
+    final targetKey = '$connectionId:${sessionId ?? sessionName}';
     final sessions = state.sessions
-        .where((s) => !(s.connectionId == connectionId && s.sessionName == sessionName))
+        .where((s) => s.key != targetKey)
         .toList();
     state = state.copyWith(sessions: sessions);
     _saveToStorage();
@@ -446,8 +514,8 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-034
   // inventory: LEGACY-0027
   /// セッションを削除（closeSessionのエイリアス）
-  void removeSession(String connectionId, String sessionName) {
-    closeSession(connectionId, sessionName);
+  void removeSession(String connectionId, String sessionName, {String? sessionId}) {
+    closeSession(connectionId, sessionName, sessionId: sessionId);
   }
 
   // inventory: PROV-ACTIVE-035

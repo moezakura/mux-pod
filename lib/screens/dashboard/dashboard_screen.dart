@@ -135,6 +135,7 @@ class DashboardScreen extends ConsumerWidget {
     ref.read(activeSessionsProvider.notifier).touchSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
 
     Navigator.of(context).push(
@@ -142,6 +143,7 @@ class DashboardScreen extends ConsumerWidget {
         builder: (context) => TerminalScreen(
           connectionId: session.connectionId,
           sessionName: session.sessionName,
+          sessionId: session.sessionId,
           lastWindowIndex: session.lastWindowIndex,
           lastPaneId: session.lastPaneId,
           // herdr は read-only 表示（mutation 非表示）
@@ -155,6 +157,7 @@ class DashboardScreen extends ConsumerWidget {
     ref.read(activeSessionsProvider.notifier).removeSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
   }
 

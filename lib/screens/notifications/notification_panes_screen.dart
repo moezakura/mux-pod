@@ -60,6 +60,7 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
       connectionName: alert.connectionName,
       host: alert.host,
       sessionName: alert.sessionName,
+      sessionId: alert.sessionId,
       windowCount: 0,
       isAttached: true,
       lastWindowIndex: alert.windowIndex,
@@ -72,6 +73,7 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
         builder: (context) => TerminalScreen(
           connectionId: alert.connectionId,
           sessionName: alert.sessionName,
+          sessionId: alert.sessionId,
           lastWindowIndex: alert.windowIndex,
           lastPaneId: alert.paneId,
         ),
