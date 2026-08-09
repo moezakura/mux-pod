@@ -1,0 +1,7 @@
+captured_at_utc=2026-08-08T15:14:19Z
+host=192.168.10.132
+Linux angelic 6.12.57+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.57-1 (2025-11-05) x86_64 GNU/Linux
+herdr 0.7.5
+repo_commit=0ece3e8ecda8a9446d3b7460b9575f08deac7479
+git_status_porcelain:
+?? tool/herdr-mutation-baseline/

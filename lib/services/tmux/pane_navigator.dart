@@ -1,8 +1,9 @@
 import 'dart:ui' show Offset;
 
-import 'tmux_parser.dart';
+import 'tmux_models.dart';
 
 /// スワイプ方向
+// inventory: TMUX-NAV-005
 enum SwipeDirection { up, down, left, right }
 
 /// SwipeDirectionの方向反転
@@ -24,6 +25,7 @@ extension SwipeDirectionExtension on SwipeDirection {
 /// tmuxのペイン間には1カラム/1行のセパレータがあるため、
 /// 隣接ペインの座標は `current.left + current.width + 1` となる。
 /// 隣接判定に `>=` を使用することで、セパレータ幅に依存しない。
+// inventory: TMUX-NAV-001
 class PaneNavigator {
   /// 指定方向の隣接ペインを検索
   ///
@@ -31,6 +33,7 @@ class PaneNavigator {
   /// [current] アクティブペイン
   /// [direction] スワイプ方向
   /// 見つからなければnullを返す
+  // inventory: TMUX-NAV-002
   static TmuxPane? findAdjacentPane({
     required List<TmuxPane> panes,
     required TmuxPane current,
@@ -84,6 +87,7 @@ class PaneNavigator {
   }
 
   /// 各方向に隣接ペインが存在するかのマップを返す
+  // inventory: TMUX-NAV-003
   static Map<SwipeDirection, bool> getNavigableDirections({
     required List<TmuxPane> panes,
     required TmuxPane current,
@@ -102,6 +106,7 @@ class PaneNavigator {
   /// 2本指スワイプのdelta(dx, dy)からスワイプ方向を判定
   ///
   /// 移動量が[threshold]未満の場合はnullを返す
+  // inventory: TMUX-NAV-004
   static SwipeDirection? detectSwipeDirection(
     Offset delta, {
     double threshold = 50.0,

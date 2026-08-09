@@ -4,7 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/notification_panes_provider.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_models.dart';
+
 import '../../theme/design_colors.dart';
 import '../terminal/terminal_screen.dart';
 
@@ -59,6 +60,7 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
       connectionName: alert.connectionName,
       host: alert.host,
       sessionName: alert.sessionName,
+      sessionId: alert.sessionId,
       windowCount: 0,
       isAttached: true,
       lastWindowIndex: alert.windowIndex,
@@ -71,6 +73,7 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
         builder: (context) => TerminalScreen(
           connectionId: alert.connectionId,
           sessionName: alert.sessionName,
+          sessionId: alert.sessionId,
           lastWindowIndex: alert.windowIndex,
           lastPaneId: alert.paneId,
         ),

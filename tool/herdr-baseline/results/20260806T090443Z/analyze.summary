@@ -1,0 +1,4 @@
+command=make analyze 
+exit_status=0
+elapsed_ms=6077
+test_count=unavailable

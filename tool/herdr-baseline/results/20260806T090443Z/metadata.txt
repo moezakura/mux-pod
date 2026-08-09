@@ -1,0 +1,58 @@
+captured_at_utc=2026-08-06T09:04:43Z
+git_commit=68d4eecb8b4147e250baaa6bc11b4c316e264fc0
+git_branch=feat/support-hardr
+contract_inventory=tool/herdr-inventory/tmux-contract-inventory.json
+contract_inventory_sha256=43ce061c662a17d2c9974f916f048bf29034adc07af790fffb0eaad8e35fd594
+git_status_porcelain=
+ M lib/providers/notification_panes_provider.dart
+ M lib/screens/connections/connections_screen.dart
+ M lib/screens/terminal/terminal_screen.dart
+ M lib/screens/terminal/widgets/ansi_text_view.dart
+ M lib/services/ssh/shell_marker_scanner.dart
+ M lib/services/ssh/ssh_client.dart
+ M lib/services/tmux/pane_navigator.dart
+ M lib/services/tmux/tmux_version.dart
+ M test/helpers/fake_sftp_client.dart
+ M test/helpers/fake_ssh_client.dart
+ M test/helpers/fake_ssh_notifier.dart
+ M test/helpers/terminal_test_scaffold.dart
+ M test/providers/active_session_provider_test.dart
+ M test/providers/file_browser_provider_test.dart
+ M test/providers/notification_panes_provider_test.dart
+ M test/providers/terminal_display_provider_test.dart
+ M test/providers/tmux_provider_test.dart
+ M test/screens/terminal/terminal_screen_crud_test.dart
+ M test/screens/terminal/terminal_screen_history_test.dart
+ M test/screens/terminal/terminal_screen_input_test.dart
+ M test/screens/terminal/terminal_screen_lifecycle_test.dart
+ M test/screens/terminal/terminal_screen_paste_test.dart
+ M test/screens/terminal/terminal_screen_setup_test.dart
+ M test/services/deep_link/deep_link_service_test.dart
+ M test/services/ssh/persistent_shell_test.dart
+ M test/services/ssh/ssh_client_test.dart
+ M test/services/tmux/ssh_tmux_command_executor_test.dart
+ M test/services/tmux/tmux_commands_test.dart
+ M test/services/tmux/tmux_executable_resolver_test.dart
+ M test/services/tmux/tmux_facade_test.dart
+ M test/services/tmux/tmux_parser_test.dart
+ M tool/herdr-inventory/check-report-G0.json
+ M tool/herdr-inventory/tmux-contract-inventory.json
+?? test/screens/connections/connections_screen_session_kill_test.dart
+?? test/screens/terminal/terminal_screen_contract_test.dart
+?? test/screens/terminal/terminal_screen_remaining_contracts_test.dart
+?? tool/herdr-baseline/
+platform=
+Linux jocho 6.18.35-1-lts #1 SMP PREEMPT_DYNAMIC Tue, 09 Jun 2026 11:41:56 +0000 x86_64 GNU/Linux
+flutter_version=
+
+┌─────────────────────────────────────────────────────────┐
+│ A new version of Flutter is available!                  │
+│                                                         │
+│ To update to the latest version, run "flutter upgrade". │
+└─────────────────────────────────────────────────────────┘
+Flutter 3.38.6 • channel stable • https://github.com/flutter/flutter.git
+Framework • revision 8b87286849 (7 months ago) • 2026-01-08 10:49:17 -0800
+Engine • hash 6f3039bf7c3cb5306513c75092822d4d94716003 (revision 78fc3012e4) (6 months ago) • 2026-01-07 18:42:12.000Z
+Tools • Dart 3.10.7 • DevTools 2.51.1
+dart_version=
+Dart SDK version: 3.10.7 (stable) (Tue Dec 23 00:01:57 2025 -0800) on "linux_x64"

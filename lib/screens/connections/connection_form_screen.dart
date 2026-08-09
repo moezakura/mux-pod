@@ -7,9 +7,22 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
+import '../../services/backend/backend_type.dart';
+import '../../services/backend/multiplexer_config.dart';
+import '../../services/herdr/herdr_adapter.dart';
+import '../../services/herdr/herdr_commands.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
+import '../../services/tmux/ssh_tmux_command_executor.dart';
+import '../../services/tmux/tmux_command_builder.dart';
+import '../../services/tmux/tmux_version.dart';
 import '../../theme/design_colors.dart';
+
+/// [ConnectionFormScreen] の接続テストで使用する [SshClient] のファクトリ。
+///
+/// テスト時に fake client を差し込めるよう Provider として公開する。
+final connectionFormSshClientFactoryProvider =
+    Provider<SshClient Function()>((ref) => createSshClient);
 
 /// 接続編集画面
 class ConnectionFormScreen extends ConsumerStatefulWidget {
@@ -33,7 +46,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   final _portController = TextEditingController(text: '22');
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _tmuxPathController = TextEditingController();
+  final _multiplexerPathController = TextEditingController();
   final _deepLinkIdController = TextEditingController();
 
   String _authMethod = 'password';
@@ -41,6 +54,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   bool _isSaving = false;
   bool _isTesting = false;
   bool _obscurePassword = true;
+
+  /// 選択中の backend（Tmux / Herdr）。
+  BackendType _backend = BackendType.tmux;
 
   @override
   void initState() {
@@ -59,7 +75,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       _usernameController.text = connection.username;
       _authMethod = connection.authMethod;
       _selectedKeyId = connection.keyId;
-      _tmuxPathController.text = connection.tmuxPath ?? '';
+      _backend = connection.multiplexer.backend;
+      _multiplexerPathController.text = connection.multiplexer.executablePath ?? '';
       _deepLinkIdController.text = connection.deepLinkId ?? '';
     }
   }
@@ -71,7 +88,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     _portController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
-    _tmuxPathController.dispose();
+    _multiplexerPathController.dispose();
     _deepLinkIdController.dispose();
     super.dispose();
   }
@@ -236,10 +253,19 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              // tmux path
-              _buildFieldLabel('TMUX PATH (OPTIONAL)'),
+              // backend toggle
+              _buildFieldLabel('BACKEND'),
               const SizedBox(height: 8),
-              _buildTmuxPathInput(),
+              _buildBackendToggle(),
+              const SizedBox(height: 16),
+              // multiplexer path
+              _buildFieldLabel(
+                _backend == BackendType.herdr
+                    ? 'HERDR PATH (OPTIONAL)'
+                    : 'MULTIPLEXER PATH (OPTIONAL)',
+              ),
+              const SizedBox(height: 8),
+              _buildMultiplexerPathInput(),
               const SizedBox(height: 16),
               // Deep Link ID
               _buildFieldLabel('DEEP LINK ID (OPTIONAL)'),
@@ -481,19 +507,22 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     );
   }
 
-  Widget _buildTmuxPathInput() {
+  Widget _buildMultiplexerPathInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
     final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final isHerdr = _backend == BackendType.herdr;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
-          controller: _tmuxPathController,
+          controller: _multiplexerPathController,
           style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
           decoration: InputDecoration(
-            hintText: '/usr/bin/tmux (auto-detect if empty)',
+            hintText: isHerdr
+                ? '/usr/local/bin/herdr (auto-detect if empty)'
+                : '/usr/bin/tmux (auto-detect if empty)',
             hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
             prefixIcon: Icon(Icons.terminal_outlined, color: mutedColor, size: 20),
             filled: true,
@@ -514,19 +543,43 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           ),
           validator: (value) {
             if (value != null && value.isNotEmpty && !value.startsWith('/')) {
-              return 'Absolute path required (e.g., /usr/bin/tmux)';
+              return isHerdr
+                  ? 'Absolute path required (e.g., /usr/local/bin/herdr)'
+                  : 'Absolute path required (e.g., /usr/bin/tmux)';
             }
             return null;
           },
         ),
         const SizedBox(height: 6),
         Text(
-          'Leave empty for automatic detection',
+          isHerdr
+              ? 'Leave empty for automatic detection'
+              : 'Leave empty for automatic detection',
           style: GoogleFonts.spaceGrotesk(
             fontSize: 11,
             color: mutedColor.withValues(alpha: 0.7),
           ),
         ),
+        if (isHerdr) ...[
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.lock_outline, size: 14, color: mutedColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Read-only: you can view workspaces, tabs and panes, '
+                  'but not modify them.',
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 11,
+                    color: mutedColor.withValues(alpha: 0.9),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -565,6 +618,91 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         }
         return null;
       },
+    );
+  }
+
+  Widget _buildBackendToggle() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _backend = BackendType.tmux),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _backend == BackendType.tmux
+                      ? colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: _backend == BackendType.tmux
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  'Tmux',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _backend == BackendType.tmux
+                        ? colorScheme.onPrimary
+                        : mutedColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _backend = BackendType.herdr),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _backend == BackendType.herdr
+                      ? colorScheme.primary
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: _backend == BackendType.herdr
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  'Herdr',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.spaceGrotesk(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _backend == BackendType.herdr
+                        ? colorScheme.onPrimary
+                        : mutedColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -704,7 +842,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
-          value: _selectedKeyId,
+          initialValue: _selectedKeyId,
           decoration: InputDecoration(
             prefixIcon: Icon(Icons.vpn_key_outlined, color: mutedColor, size: 20),
             filled: true,
@@ -820,9 +958,12 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     setState(() => _isTesting = true);
 
-    final sshClient = SshClient();
+    SshClient? sshClient;
     String? errorMessage;
     bool tmuxInstalled = false;
+    String? tmuxWarning;
+    bool herdrReady = false;
+    String? herdrWarning;
 
     try {
       // 認証情報を準備
@@ -848,7 +989,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       }
 
       // SSH接続テスト
-      final customTmuxPath = _tmuxPathController.text.trim();
+      final customPath = _multiplexerPathController.text.trim();
+      final isHerdr = _backend == BackendType.herdr;
+      sshClient = ref.read(connectionFormSshClientFactoryProvider)();
       await sshClient.connect(
         host: _hostController.text.trim(),
         port: int.tryParse(_portController.text) ?? 22,
@@ -857,13 +1000,64 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           password: password,
           privateKey: privateKey,
           passphrase: passphrase,
-          tmuxPath: customTmuxPath.isNotEmpty ? customTmuxPath : null,
+          multiplexer: isHerdr
+              ? MultiplexerConfig(
+                  backend: BackendType.herdr,
+                  executablePath: customPath.isNotEmpty ? customPath : null,
+                )
+              : MultiplexerConfig.tmux(customPath.isNotEmpty ? customPath : null),
         ),
       );
 
-      // tmuxがインストールされているか確認
-      // connect()内でPersistentShell（対話シェル）経由で絶対パスを検出済み
-      tmuxInstalled = sshClient.tmuxPath != null;
+      if (isHerdr) {
+        // Herdr preflight: `herdr status --json` で protocol 17 を確認
+        try {
+          final adapter = HerdrAdapter(sshClient);
+          await adapter.preflight();
+          herdrReady = true;
+        } on HerdrProtocolMismatchException catch (e) {
+          herdrReady = false;
+          herdrWarning =
+              'Herdr protocol ${e.actual} is not supported (expected ${e.supported}).';
+        } on HerdrCommandException catch (_) {
+          herdrReady = false;
+          herdrWarning = customPath.isNotEmpty
+              ? 'custom herdr path not found or not executable: $customPath'
+              : 'herdr not found';
+        } catch (e) {
+          herdrReady = false;
+          herdrWarning = 'herdr check failed: $e';
+        }
+      } else {
+      // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
+      try {
+        final result = await sshClient.tmuxExecutor.execWithExitCode(
+          TmuxCommands.version(),
+        );
+        if (result.exitCode != null && result.exitCode != 0) {
+          tmuxInstalled = false;
+          tmuxWarning = customPath.isNotEmpty
+              ? 'custom tmux path not found or not executable: $customPath'
+              : 'tmux not found';
+        } else {
+          final version = TmuxVersionInfo.parse(result.stdout);
+          if (version != null) {
+            tmuxInstalled = true;
+          } else {
+            tmuxInstalled = false;
+            tmuxWarning = 'tmux found, but version output was not recognized';
+          }
+        }
+      } on SshConnectionError catch (_) {
+        tmuxInstalled = false;
+        tmuxWarning = customPath.isNotEmpty
+            ? 'custom tmux path not found or not executable: $customPath'
+            : 'tmux not found';
+      } catch (e) {
+        tmuxInstalled = false;
+        tmuxWarning = 'tmux check failed: $e';
+      }
+      }
     } on SshAuthenticationError catch (e) {
       errorMessage = 'Authentication failed: ${e.message}';
     } on SshConnectionError catch (e) {
@@ -871,7 +1065,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     } catch (e) {
       errorMessage = 'Error: $e';
     } finally {
-      await sshClient.dispose();
+      await sshClient?.dispose();
     }
 
     if (mounted) {
@@ -885,10 +1079,22 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
+      } else if (_backend == BackendType.herdr) {
+        final message = herdrReady
+            ? 'Connection successful! Herdr is available (read-only).'
+            : 'Connection successful! Warning: '
+                '${herdrWarning ?? 'herdr not found'}.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: herdrReady ? DesignColors.success : DesignColors.warning,
+            duration: const Duration(seconds: 3),
+          ),
+        );
       } else {
         final message = tmuxInstalled
             ? 'Connection successful! tmux is available.'
-            : 'Connection successful! Warning: tmux not found.';
+            : 'Connection successful! Warning: ${tmuxWarning ?? 'tmux not found'}.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -922,8 +1128,14 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         developer.log('Password saved successfully', name: 'ConnectionForm');
       }
 
-      final saveTmuxPath = _tmuxPathController.text.trim();
+      final savePath = _multiplexerPathController.text.trim();
       final saveDeepLinkId = _deepLinkIdController.text.trim();
+      final multiplexer = _backend == BackendType.herdr
+          ? MultiplexerConfig(
+              backend: BackendType.herdr,
+              executablePath: savePath.isNotEmpty ? savePath : null,
+            )
+          : MultiplexerConfig.tmux(savePath.isNotEmpty ? savePath : null);
       final connection = Connection(
         id: connectionId,
         name: _nameController.text.trim(),
@@ -932,7 +1144,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         username: _usernameController.text.trim(),
         authMethod: _authMethod,
         keyId: _authMethod == 'key' ? _selectedKeyId : null,
-        tmuxPath: saveTmuxPath.isNotEmpty ? saveTmuxPath : null,
+        multiplexer: multiplexer,
         deepLinkId: saveDeepLinkId.isNotEmpty ? saveDeepLinkId : null,
         createdAt: widget.isEditing
             ? ref.read(connectionsProvider.notifier).getById(connectionId)?.createdAt ?? DateTime.now()

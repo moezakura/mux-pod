@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
+import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +62,7 @@ void main() {
     // Start each test with empty shared preferences so _loadConnections()
     // returns an empty list quickly.
     SharedPreferences.setMockInitialValues({});
+    SecureStorageService.setTestValues({});
   });
 
   group('ConnectionsNotifier.add() — immediate reflect', () {
@@ -109,7 +111,7 @@ void main() {
       int buildCount = 0;
       container.listen<ConnectionsState>(
         connectionsProvider,
-        (_, __) => buildCount++,
+        (previous, current) => buildCount++,
       );
 
       final notifier = container.read(connectionsProvider.notifier);
@@ -174,7 +176,7 @@ void main() {
       int updateNotifications = 0;
       container.listen<ConnectionsState>(
         connectionsProvider,
-        (_, __) => updateNotifications++,
+        (previous, current) => updateNotifications++,
       );
 
       await notifier.update(_makeConnection(id: 'c1', name: 'After'));

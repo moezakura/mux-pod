@@ -3,10 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/active_session_provider.dart';
 import '../providers/connection_provider.dart';
+import '../services/backend/backend_type.dart';
+import '../services/backend/domain/multiplexer_backend.dart';
+import '../services/herdr/herdr_adapter.dart';
+import '../services/herdr/herdr_to_domain.dart';
 import '../services/keychain/secure_storage.dart';
 import '../services/ssh/ssh_client.dart';
-import '../services/tmux/tmux_commands.dart';
-import '../services/tmux/tmux_parser.dart';
+import '../services/tmux/tmux_contract.dart';
+import '../services/tmux/tmux_facade.dart';
+import '../services/tmux/tmux_models.dart';
+import '../services/tmux/tmux_to_domain.dart';
+
 import '../theme/design_colors.dart';
 import 'connections/connections_screen.dart';
 import 'dashboard/dashboard_screen.dart';
@@ -373,10 +380,10 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
           if (connection.authMethod == 'key' && connection.keyId != null) {
             final privateKey = await storage.getPrivateKey(connection.keyId!);
             final passphrase = await storage.getPassphrase(connection.keyId!);
-            options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, tmuxPath: connection.tmuxPath);
+            options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, multiplexer: connection.multiplexer);
           } else {
             final password = await storage.getPassword(connection.id);
-            options = SshConnectOptions(password: password, tmuxPath: connection.tmuxPath);
+            options = SshConnectOptions(password: password, multiplexer: connection.multiplexer);
           }
 
           // SSH接続してセッション一覧を取得
@@ -388,21 +395,38 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             options: options,
           );
 
-          final result = await sshClient.execWithExitCode(TmuxCommands.listSessions());
-          final tmuxSessions = (result.exitCode == 0)
-              ? TmuxParser.parseSessions(result.stdout)
-              : <TmuxSession>[];
+          final isHerdr = connection.multiplexer.backend == BackendType.herdr;
+          if (isHerdr) {
+            // herdr: read-only スナップショットを共通 domain に変換して登録
+            final adapter = HerdrAdapter(sshClient);
+            final snapshot = await adapter.snapshot();
+            ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+                  connectionId: connection.id,
+                  connectionName: connection.name,
+                  host: connection.host,
+                  sessions: snapshot.toDomainSessions(),
+                  backend: MultiplexerBackendKind.herdr,
+                );
+          } else {
+            List<TmuxSession> tmuxSessions;
+            try {
+              tmuxSessions = await tmuxFacade.listSessions(sshClient.tmuxExecutor);
+            } on TmuxCommandException {
+              tmuxSessions = <TmuxSession>[];
+            }
+
+            // ActiveSessionsProviderを更新
+            ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+                  connectionId: connection.id,
+                  connectionName: connection.name,
+                  host: connection.host,
+                  sessions: tmuxSessions.map((ts) => ts.toDomain()).toList(),
+                  backend: MultiplexerBackendKind.tmux,
+                );
+          }
 
           // 切断
           await sshClient.disconnect();
-
-          // ActiveSessionsProviderを更新
-          ref.read(activeSessionsProvider.notifier).updateSessionsForConnection(
-                connectionId: connection.id,
-                connectionName: connection.name,
-                host: connection.host,
-                tmuxSessions: tmuxSessions,
-              );
         } catch (e) {
           // 個別の接続エラーは無視（他の接続は続行）
           debugPrint('Failed to reload sessions for ${connection.name}: $e');
@@ -419,12 +443,14 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
     ref.read(activeSessionsProvider.notifier).setCurrentSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TerminalScreen(
           connectionId: session.connectionId,
           sessionName: session.sessionName,
+          sessionId: session.sessionId,
           lastWindowIndex: session.lastWindowIndex,
           lastPaneId: session.lastPaneId,
         ),
@@ -436,6 +462,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
     ref.read(activeSessionsProvider.notifier).closeSession(
           session.connectionId,
           session.sessionName,
+          sessionId: session.sessionId,
         );
   }
 }

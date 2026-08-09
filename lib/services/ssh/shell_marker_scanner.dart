@@ -14,7 +14,9 @@ import 'dart:typed_data';
 /// consist of ASCII/control bytes (`\x01`, `#`, letters, digits); none of those
 /// can appear as a UTF-8 continuation byte (`0x80`–`0xBF`) or lead byte, so
 /// byte matching never splits a multi-byte character.
+// inventory: SHELL-SCAN-001
 class ShellMarkerScanner {
+  // inventory: SHELL-SCAN-002
   ShellMarkerScanner({
     required List<int> startMarker,
     required List<int> endMarker,
@@ -34,6 +36,7 @@ class ShellMarkerScanner {
   int _len = 0;
 
   /// Appends [data] into [_buf], growing the backing store as needed.
+  // inventory: SHELL-SCAN-005
   void _append(List<int> data) {
     final needed = _len + data.length;
     if (needed > _buf.length) {
@@ -59,6 +62,7 @@ class ShellMarkerScanner {
   int _endSearchFrom = 0;
 
   /// Discards buffered bytes and resets the search state.
+  // inventory: SHELL-SCAN-003
   void reset() {
     _len = 0;
     _startSearchFrom = 0;
@@ -72,6 +76,7 @@ class ShellMarkerScanner {
   /// On a successful match the scanner resets itself, so it is ready for the
   /// next command without an explicit [reset] call. Bytes before the start
   /// marker and after the end marker are discarded.
+  // inventory: SHELL-SCAN-004
   Uint8List? feed(List<int> data) {
     if (data.isNotEmpty) {
       _append(data);
@@ -104,6 +109,7 @@ class ShellMarkerScanner {
 
   /// First index of [needle] within the first [hayLen] bytes of [haystack] at
   /// or after [from], or -1.
+  // inventory: SHELL-SCAN-006
   static int _indexOf(Uint8List haystack, int hayLen, Uint8List needle, int from) {
     final n = needle.length;
     final limit = hayLen - n;

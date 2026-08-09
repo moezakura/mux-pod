@@ -7,10 +7,18 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../home_screen.dart';
+import '../../services/backend/backend_type.dart';
+import '../../services/backend/domain/multiplexer_backend.dart';
+import '../../services/backend/domain/multiplexer_session.dart';
+import '../../services/herdr/herdr_adapter.dart';
+import '../../services/herdr/herdr_models.dart';
+import '../../services/herdr/herdr_to_domain.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
-import '../../services/tmux/tmux_commands.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_facade.dart';
+import '../../services/tmux/tmux_models.dart';
+import '../../services/tmux/tmux_to_domain.dart';
+
 import '../../theme/design_colors.dart';
 import 'connection_form_screen.dart';
 import '../terminal/terminal_screen.dart';
@@ -30,7 +38,9 @@ final _searchVisibleProvider = NotifierProvider<_SearchVisibleNotifier, bool>(()
 
 /// 接続一覧画面
 class ConnectionsScreen extends ConsumerWidget {
-  const ConnectionsScreen({super.key});
+  final Future<SshClient> Function(Connection connection)? sshClientFactory;
+
+  const ConnectionsScreen({super.key, this.sshClientFactory});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -280,8 +290,15 @@ class ConnectionsScreen extends ConsumerWidget {
             child: RepaintBoundary(
               child: _ConnectionCard(
                 connection: connection,
-                onConnect: (sessionName) =>
-                    _connectToServer(context, ref, connection, sessionName),
+                sshClientFactory: sshClientFactory,
+                onConnect: (sessionName, {sessionId}) =>
+                    _connectToServer(
+                      context,
+                      ref,
+                      connection,
+                      sessionName,
+                      sessionId: sessionId,
+                    ),
                 onEdit: () => _editConnection(context, ref, connection),
                 onDelete: () => _deleteConnection(context, ref, connection),
               ),
@@ -475,14 +492,16 @@ class ConnectionsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     Connection connection,
-    String? sessionName,
-  ) {
+    String? sessionName, {
+    String? sessionId,
+  }) {
     ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
     // 既存セッションを開く場合は最終アクセス日時を更新
     if (sessionName != null) {
       ref.read(activeSessionsProvider.notifier).touchSession(
             connection.id,
             sessionName,
+            sessionId: sessionId,
           );
     }
     Navigator.of(context).push(
@@ -490,6 +509,9 @@ class ConnectionsScreen extends ConsumerWidget {
         builder: (context) => TerminalScreen(
           connectionId: connection.id,
           sessionName: sessionName,
+          sessionId: sessionId,
+          // T16（Q-05）: herdr も mutation 可能。readOnly は呼び出し側明示の
+          // opt-in としてのみ渡す（herdr による自動付与は廃止・H6）。
         ),
       ),
     );
@@ -499,12 +521,14 @@ class ConnectionsScreen extends ConsumerWidget {
 /// 接続カード（展開可能、tmuxセッション表示）
 class _ConnectionCard extends ConsumerStatefulWidget {
   final Connection connection;
-  final void Function(String? sessionName) onConnect;
+  final Future<SshClient> Function(Connection connection)? sshClientFactory;
+  final void Function(String? sessionName, {String? sessionId}) onConnect;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ConnectionCard({
     required this.connection,
+    this.sshClientFactory,
     required this.onConnect,
     required this.onEdit,
     required this.onDelete,
@@ -519,6 +543,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   bool _isLoadingSessions = false;
   List<TmuxSession> _sessions = [];
   String? _sessionError;
+
+  /// herdr 接続のスナップショット（T16/Q-05: workspace 一覧表示 + mutation 後同期用）。
+  HerdrSnapshot? _herdrSnapshot;
 
   @override
   Widget build(BuildContext context) {
@@ -652,12 +679,26 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     );
   }
 
+  /// 接続の backend 種別（表示側の read-only 分岐用）。
+  MultiplexerBackendKind get _backendKind {
+    return switch (widget.connection.multiplexer.backend) {
+      BackendType.tmux => MultiplexerBackendKind.tmux,
+      BackendType.herdr => MultiplexerBackendKind.herdr,
+    };
+  }
+
   void _toggleExpand() {
     setState(() {
       _isExpanded = !_isExpanded;
     });
-    // 展開時にセッション情報をフェッチ
-    if (_isExpanded && _sessions.isEmpty && !_isLoadingSessions) {
+    // 展開時にセッション/スナップショット情報をフェッチ
+    if (!_isExpanded) return;
+    final isHerdr = _backendKind == MultiplexerBackendKind.herdr;
+    if (isHerdr) {
+      if (_herdrSnapshot == null && !_isLoadingSessions) {
+        _fetchSessions();
+      }
+    } else if (_sessions.isEmpty && !_isLoadingSessions) {
       _fetchSessions();
     }
   }
@@ -665,6 +706,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   /// 認証情報を取得してSSH接続し、接続済みクライアントを返す。
   Future<SshClient> _connectSsh() async {
     final connection = widget.connection;
+    final factory = widget.sshClientFactory;
+    if (factory != null) return factory(connection);
     final storage = SecureStorageService();
     SshConnectOptions options;
     if (connection.authMethod == 'key' && connection.keyId != null) {
@@ -673,13 +716,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       options = SshConnectOptions(
         privateKey: privateKey,
         passphrase: passphrase,
-        tmuxPath: connection.tmuxPath,
+        multiplexer: connection.multiplexer,
       );
     } else {
       final password = await storage.getPassword(connection.id);
       options = SshConnectOptions(
         password: password,
-        tmuxPath: connection.tmuxPath,
+        multiplexer: connection.multiplexer,
       );
     }
     final sshClient = SshClient();
@@ -702,7 +745,26 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshClient? client;
     try {
       client = await _connectSsh();
-      await _reloadSessions(client);
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        // herdr: read-only スナップショットを取得して共通 domain に変換する。
+        final adapter = HerdrAdapter(client);
+        final snapshot = await adapter.snapshot();
+        if (!mounted) return;
+        setState(() {
+          _herdrSnapshot = snapshot;
+          _isLoadingSessions = false;
+        });
+        // アクティブセッションへも共通 domain 経由で登録する。
+        ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+              connectionId: widget.connection.id,
+              connectionName: widget.connection.name,
+              host: widget.connection.host,
+              sessions: snapshot.toDomainSessions(),
+              backend: MultiplexerBackendKind.herdr,
+            );
+      } else {
+        await _reloadSessions(client);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -716,37 +778,38 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   /// 接続済みクライアントでセッション一覧を取得し、状態とproviderへ反映する。
   Future<void> _reloadSessions(SshClient client) async {
-    final result = await client.execWithExitCode(TmuxCommands.listSessions());
-    if (result.exitCode != null && result.exitCode != 0) {
-      throw SshConnectionError(
-        result.stderr.isNotEmpty
-            ? result.stderr.trim()
-            : 'tmux command failed (exit code: ${result.exitCode})',
-      );
-    }
-    final sessions = TmuxParser.parseSessions(result.stdout);
+    final sessions = await tmuxFacade.listSessions(client.tmuxExecutor);
     if (!mounted) return;
     setState(() {
       _sessions = sessions;
       _isLoadingSessions = false;
     });
-    ref.read(activeSessionsProvider.notifier).updateSessionsForConnection(
+    ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
           connectionId: widget.connection.id,
           connectionName: widget.connection.name,
           host: widget.connection.host,
-          tmuxSessions: sessions,
+          sessions: sessions.map((s) => s.toDomain()).toList(),
+          backend: MultiplexerBackendKind.tmux,
         );
   }
 
-  /// tmuxセッションをkillする（確認ダイアログ付き）。
+  /// セッション / workspace を kill する（確認ダイアログ付き）。
+  ///
+  /// tmux: `kill-session` / herdr: `workspace close`（連鎖 close の警告）。
   /// kill と一覧再取得を同一接続で行い、SSH往復を1回に抑える。
-  Future<void> _killSession(TmuxSession session) async {
+  Future<void> _killSession(MultiplexerSession session) async {
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      await _killHerdrWorkspace(session);
+      return;
+    }
+
+    final sessionName = session.name;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Kill Session'),
         content: Text(
-          'Kill tmux session "${session.name}"? '
+          'Kill tmux session "$sessionName"? '
           'Its windows and processes will be terminated.',
         ),
         actions: [
@@ -773,20 +836,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshClient? client;
     try {
       client = await _connectSsh();
-      final result =
-          await client.execWithExitCode(TmuxCommands.killSession(session.name));
-      if (result.exitCode != null && result.exitCode != 0) {
-        throw SshConnectionError(
-          result.stderr.isNotEmpty
-              ? result.stderr.trim()
-              : 'kill-session failed (exit code: ${result.exitCode})',
-        );
-      }
+      await tmuxFacade.killSession(client.tmuxExecutor, sessionName);
       // 同一接続でそのまま一覧を再取得
       await _reloadSessions(client);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Session ${session.name} killed')),
+          SnackBar(content: Text('Session $sessionName killed')),
         );
       }
     } catch (e) {
@@ -800,7 +855,112 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
-  Widget _buildExpandedContent(List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+  /// herdr workspace を閉じる（Q-05: `herdr workspace close`）。
+  ///
+  /// workspace 内の全 tab / pane が連鎖終了するため、確認ダイアログで
+  /// 明示した上で実行する（R2: 連鎖 close の破壊）。閉鎖後の一覧は
+  /// スナップショット再取得で同期する。
+  Future<void> _killHerdrWorkspace(MultiplexerSession workspace) async {
+    final workspaceId = workspace.id;
+    if (workspaceId == null || workspaceId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot close workspace without an ID')),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Close Workspace?'),
+        content: Text(
+          'Close herdr workspace "${workspace.name}"? '
+          'All tabs and panes in this workspace will be terminated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isLoadingSessions = true;
+      _sessionError = null;
+    });
+
+    SshClient? client;
+    try {
+      client = await _connectSsh();
+      final adapter = HerdrAdapter(client);
+      await adapter.workspaceClose(workspaceId);
+      final snapshot = await adapter.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _herdrSnapshot = snapshot;
+        _isLoadingSessions = false;
+      });
+      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            connectionId: widget.connection.id,
+            connectionName: widget.connection.name,
+            host: widget.connection.host,
+            sessions: snapshot.toDomainSessions(),
+            backend: MultiplexerBackendKind.herdr,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Workspace ${workspace.name} closed')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSessions = false;
+        _sessionError = e.toString();
+      });
+    } finally {
+      await client?.disconnect();
+    }
+  }
+
+  Widget _buildExpandedContent(
+      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+    // Tmux/Herdr を共通 domain モデル（MultiplexerSession）で表示する。
+    // T16（Q-05）: herdr も workspace 操作（New/Kill）を有効化するため
+    // read-only 分岐は撤廃する。
+    final sessions = _backendKind == MultiplexerBackendKind.herdr
+        ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
+        : _sessions.map((s) => s.toDomain()).toList();
+    return _buildDomainExpandedContent(
+      sessions: sessions,
+      isDark: isDark,
+      colorScheme: colorScheme,
+      activeSessions: activeSessions,
+    );
+  }
+
+  /// 共通 domain モデルによる展開コンテンツ。
+  ///
+  /// Kill / New Session は tmux / herdr とも表示し、backend 別の
+  /// mutation（tmux: kill-session / herdr: workspace close・create）を
+  /// 実行する（Q-05）。
+  Widget _buildDomainExpandedContent({
+    required List<MultiplexerSession> sessions,
+    required bool isDark,
+    required ColorScheme colorScheme,
+    required List<ActiveSession> activeSessions,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF15161C) : const Color(0xFFF8F9FA),
@@ -865,11 +1025,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                 ),
               ),
             )
-          else if (_sessions.isEmpty && activeSessions.isEmpty)
+          else if (sessions.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                'No tmux sessions found',
+                _backendKind == MultiplexerBackendKind.herdr
+                    ? 'No herdr workspaces found'
+                    : 'No tmux sessions found',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
                   color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -877,15 +1039,24 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               ),
             )
           else
-            // セッションリスト（_sessionsまたはactiveSessionsを使用）
-            ..._buildSessionItems(activeSessions, isDark, colorScheme),
-          // New Session Button
+            // セッションリスト（共通 domain モデルを表示）
+            ..._buildDomainSessionItems(
+              sessions,
+              activeSessions: activeSessions,
+              isDark: isDark,
+              colorScheme: colorScheme,
+            ),
+          // New Session / New Workspace ボタン（Q-05: herdr でも有効化）
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: OutlinedButton.icon(
               onPressed: _showNewSessionDialog,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('New Session'),
+              label: Text(
+                _backendKind == MultiplexerBackendKind.herdr
+                    ? 'New Workspace'
+                    : 'New Session',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
                 side: BorderSide(
@@ -932,34 +1103,102 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   }
 
   Future<void> _showNewSessionDialog() async {
+    // tmux: セッション名 / herdr: workspace 名。既存名で重複チェックする。
+    final existingSessionNames =
+        _backendKind == MultiplexerBackendKind.herdr
+        ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
+              .map((s) => s.name)
+              .toList()
+        : _sessions.map((s) => s.name).toList();
+
     final sessionName = await showDialog<String>(
       context: context,
       builder: (context) => _NewSessionDialog(
-        existingSessionNames: _sessions.map((s) => s.name).toList(),
+        existingSessionNames: existingSessionNames,
       ),
     );
 
-    if (sessionName != null && sessionName.isNotEmpty) {
+    if (sessionName == null || sessionName.isEmpty) return;
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      // Q-05: herdr は workspace を作成する。
+      await _createHerdrWorkspace(sessionName);
+    } else {
       widget.onConnect(sessionName);
     }
   }
 
-  List<Widget> _buildSessionItems(
-      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
-    // _sessions（フェッチ結果）を表示。ウィンドウ数は provider の最新値を優先し、
-    // ターミナルでのウィンドウ作成/削除後もカウンタが追従するようにする。
-    final sessions = _sessions;
+  /// herdr workspace を作成する（Q-05: `herdr workspace create`）。
+  ///
+  /// 作成とスナップショット再取得を同一 SSH 接続で行い、一覧と
+  /// アクティブセッションを更新する。
+  Future<void> _createHerdrWorkspace(String label) async {
+    setState(() {
+      _isLoadingSessions = true;
+      _sessionError = null;
+    });
+
+    SshClient? client;
+    try {
+      client = await _connectSsh();
+      final adapter = HerdrAdapter(client);
+      await adapter.workspaceCreate(label: label);
+      final snapshot = await adapter.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _herdrSnapshot = snapshot;
+        _isLoadingSessions = false;
+      });
+      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            connectionId: widget.connection.id,
+            connectionName: widget.connection.name,
+            host: widget.connection.host,
+            sessions: snapshot.toDomainSessions(),
+            backend: MultiplexerBackendKind.herdr,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Workspace $label created')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSessions = false;
+        _sessionError = e.toString();
+      });
+    } finally {
+      await client?.disconnect();
+    }
+  }
+
+  /// 共通 domain のセッション行リスト。
+  ///
+  /// 既存の tmux 表示（terminal アイコン・名前・window 数・
+  /// Attached/Detached バッジ・Kill ボタン）を再現する。T16（Q-05）:
+  /// herdr も workspace 操作を有効化するため read-only 分岐は撤廃する。
+  List<Widget> _buildDomainSessionItems(
+    List<MultiplexerSession> sessions, {
+    required List<ActiveSession> activeSessions,
+    required bool isDark,
+    required ColorScheme colorScheme,
+  }) {
     if (sessions.isEmpty) return [];
+    // tmux / herdr とも provider の最新ウィンドウ数を優先（ターミナルでの
+    // ウィンドウ作成/削除後もカウンタが追従するようにする）。
+    // キーは sessionId ?? sessionName（ID 優先）で、同名ラベル（herdr の
+    // "tmp" w3/w4）によるカウント混線を防ぐ。
     final liveWindowCounts = {
-      for (final a in activeSessions) a.sessionName: a.windowCount,
+      for (final a in activeSessions) a.sessionId ?? a.sessionName: a.windowCount,
     };
 
     return sessions.map((session) {
       final isAttached = session.attached;
       final windowCount =
-          liveWindowCounts[session.name] ?? session.windowCount;
+          liveWindowCounts[session.id ?? session.name] ?? session.windowCount;
       return InkWell(
-        onTap: () => widget.onConnect(session.name),
+        // タップで Terminal を開く（tmux / herdr とも mutation 可能な
+        // TerminalScreen に遷移する・Q-05）
+        onTap: () => widget.onConnect(session.name, sessionId: session.id),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
@@ -992,7 +1231,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   ],
                 ),
               ),
-              // Status Badge
+              // Status Badge（Attached / Detached）
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -1017,6 +1256,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   ),
                 ),
               ),
+              // Kill ボタン（tmux: Kill Session / herdr: Kill Workspace・Q-05）
               const SizedBox(width: 4),
               SizedBox(
                 width: 24,
@@ -1025,9 +1265,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   padding: EdgeInsets.zero,
                   iconSize: 16,
                   icon: const Icon(Icons.delete, color: DesignColors.error),
-                  onPressed:
-                      _isLoadingSessions ? null : () => _killSession(session),
-                  tooltip: 'Kill session',
+                  onPressed: _isLoadingSessions
+                      ? null
+                      : () => _killSession(session),
+                  tooltip: _backendKind == MultiplexerBackendKind.herdr
+                      ? 'Kill workspace'
+                      : 'Kill session',
                 ),
               ),
             ],

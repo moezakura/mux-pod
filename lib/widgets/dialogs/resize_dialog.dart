@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../services/terminal/font_calculator.dart';
-import '../../services/tmux/tmux_parser.dart';
+import '../../services/tmux/tmux_models.dart';
+
 import '../../theme/design_colors.dart';
 
 /// リサイズ結果
@@ -11,6 +12,247 @@ class ResizeResult {
   final int cols;
   final int rows;
   const ResizeResult({required this.cols, required this.rows});
+}
+
+// ====================================================================
+// HerdrResizePaneDialog（Q-04: 方向 + ステップ）
+// ====================================================================
+
+/// herdr 用リサイズ結果（方向 + 相対ステップ量）。
+///
+/// herdr の `pane resize` は絶対 cols/rows 不可・相対分数のみ（Q-04・m11/m16
+/// 実測）のため、方向（left/right/up/down）とステップ量（0.05/0.1/0.2 等）で
+/// 表現する。
+class HerdrResizeResult {
+  /// リサイズ方向（`'left'` / `'right'` / `'up'` / `'down'`）。
+  final String direction;
+
+  /// 相対ステップ量（現在 ratio への加算・`[0.1, 0.9]` クランプ）。
+  final double amount;
+
+  const HerdrResizeResult({required this.direction, required this.amount});
+}
+
+/// herdr ペインの「方向 + ステップ」リサイズダイアログ（T14・Q-04）。
+///
+/// tmux の絶対値 [ResizePaneDialog] とは別系統。方向ボタン（←→↑↓）を押すと
+/// 選択中のステップ量で確定し、[HerdrResizeResult] を返して閉じる。現在サイズ
+/// は layout の rect（[paneWidth] x [paneHeight]）から表示する。
+class HerdrResizePaneDialog extends StatefulWidget {
+  /// リサイズ対象の pane ID（例: "w1:p1"）。表示のみに使う。
+  final String paneId;
+
+  /// 現在の文字幅（layout rect 由来・不明なら 0）。
+  final int currentWidth;
+
+  /// 現在の文字高さ（layout rect 由来・不明なら 0）。
+  final int currentHeight;
+
+  /// 選択可能なステップ量一覧。
+  final List<double> steps;
+
+  const HerdrResizePaneDialog({
+    super.key,
+    required this.paneId,
+    this.currentWidth = 0,
+    this.currentHeight = 0,
+    this.steps = const [0.05, 0.1, 0.2, 0.3, 0.5],
+  });
+
+  @override
+  State<HerdrResizePaneDialog> createState() => _HerdrResizePaneDialogState();
+}
+
+class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
+  late double _selectedStep;
+
+  @override
+  void initState() {
+    super.initState();
+    // 既定ステップは 0.1（T0 キャリブレーションの実用値）。
+    _selectedStep = widget.steps.contains(0.1) ? 0.1 : widget.steps.first;
+  }
+
+  void _submit(String direction) {
+    Navigator.pop(
+      context,
+      HerdrResizeResult(direction: direction, amount: _selectedStep),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSize = widget.currentWidth > 0 && widget.currentHeight > 0;
+    return AlertDialog(
+      backgroundColor: DesignColors.surfaceDark,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: const Text(
+        'Resize Pane',
+        style: TextStyle(color: DesignColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.8,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 現在サイズ（layout rect 由来・不明なら非表示）
+            if (hasSize)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Current: ${widget.currentWidth} x ${widget.currentHeight}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: DesignColors.textSecondary,
+                  ),
+                ),
+              ),
+            const Text(
+              'Direction',
+              style: TextStyle(
+                fontSize: 12,
+                color: DesignColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _buildDirectionPad(),
+            const SizedBox(height: 16),
+            const Text(
+              'Step',
+              style: TextStyle(
+                fontSize: 12,
+                color: DesignColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _buildStepChips(),
+            if (hasSize)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Resize is relative (fraction of the split ratio).',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  /// 方向パッド（← ↑ ↓ → の十字配置）。
+  Widget _buildDirectionPad() {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _directionButton(
+              icon: Icons.arrow_upward,
+              tooltip: 'Up',
+              onPressed: () => _submit('up'),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _directionButton(
+              icon: Icons.arrow_back,
+              tooltip: 'Left',
+              onPressed: () => _submit('left'),
+            ),
+            const SizedBox(width: 48),
+            _directionButton(
+              icon: Icons.arrow_forward,
+              tooltip: 'Right',
+              onPressed: () => _submit('right'),
+            ),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _directionButton(
+              icon: Icons.arrow_downward,
+              tooltip: 'Down',
+              onPressed: () => _submit('down'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _directionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: IconButton(
+          icon: Icon(icon, color: DesignColors.textPrimary),
+          onPressed: onPressed,
+          style: IconButton.styleFrom(
+            backgroundColor: DesignColors.keyBackground,
+            side: const BorderSide(color: DesignColors.borderDark),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        ),
+      ),
+    );
+  }
+
+  /// ステップ量のチップ選択。
+  Widget _buildStepChips() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: widget.steps.map((step) {
+        final selected = step == _selectedStep;
+        final label = step == step.roundToDouble()
+            ? step.toInt().toString()
+            : step.toString();
+        return ActionChip(
+          label: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: selected
+                  ? DesignColors.primary
+                  : DesignColors.textPrimary,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          backgroundColor: selected
+              ? DesignColors.primary.withValues(alpha: 0.15)
+              : DesignColors.keyBackground,
+          side: BorderSide(
+            color: selected
+                ? DesignColors.primary
+                : DesignColors.borderDark,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onPressed: () => setState(() => _selectedStep = step),
+        );
+      }).toList(),
+    );
+  }
 }
 
 /// プリセットサイズ定義

@@ -1,3 +1,4 @@
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -5,16 +6,19 @@ import 'dart:math';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
+import '../tmux/tmux_backend.dart';
 import 'shell_marker_scanner.dart';
 
+// inventory: SHELL-001
 /// 持続的シェルセッション
 ///
 /// コマンドを書き込み、マーカーで出力終了を検知して結果を返す。
 /// チャネル開閉のオーバーヘッドを排除し、1 RTT程度でコマンド実行可能。
-class PersistentShell {
+class PersistentShell implements TmuxInputTransport {
   final SSHClient _sshClient;
   SSHSession? _session;
 
+  // inventory: SHELL-002
   /// マーカーのコアテキスト（インスタンスごとにランダム生成するnonce）
   ///
   /// 静的な定数にすると、ユーザーのtmuxペイン内で動作するプログラムが
@@ -22,6 +26,7 @@ class PersistentShell {
   /// セッションごとに予測不能なnonceを生成することでこの偽装を防ぐ。
   final String _markerId = _generateMarkerId();
 
+  // inventory: SHELL-003
   /// コマンド開始検知用マーカー（\x01プレフィックス/サフィックス付き）
   ///
   /// \x01（SOH制御文字）を含めることで、シェルのエコーバックテキスト内の
@@ -29,6 +34,7 @@ class PersistentShell {
   /// printfの実出力のみがバイト0x01を含むため、エコーバック内では一致しない。
   late final String _startMarker = '\x01###START_$_markerId###\x01';
 
+  // inventory: SHELL-004
   /// コマンド終了検知用マーカー
   late final String _endMarker = '\x01###END_$_markerId###\x01';
 
@@ -45,7 +51,10 @@ class PersistentShell {
   /// コマンド実行中のCompleter
   Completer<String>? _pendingCommand;
 
+  // inventory: SHELL-005
   /// シェルが開始されているかどうか
+  @override
+  // inventory: LEGACY-0051
   bool get isStarted => _session != null;
 
   /// セッション切断検知用
@@ -54,8 +63,10 @@ class PersistentShell {
   /// stdoutサブスクリプション
   StreamSubscription<Uint8List>? _stdoutSubscription;
 
+  // inventory: SHELL-006
   PersistentShell(this._sshClient);
 
+  // inventory: SHELL-007
   /// 予測不能なマーカーID（16進16文字 = 64bit）を生成する。
   ///
   /// Random.secureを使い、ユーザーのペイン内プログラムがマーカー文字列を
@@ -66,6 +77,8 @@ class PersistentShell {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
+  // inventory: SHELL-008
+  // inventory: LEGACY-0052
   /// シェルセッションを開始
   Future<void> start() async {
     if (_session != null) {
@@ -84,8 +97,11 @@ class PersistentShell {
 
     // stdout監視を開始
     _stdoutSubscription = _session!.stdout.listen(
+      // inventory: SHELL-011
       _onData,
+      // inventory: SHELL-012
       onDone: _onDone,
+      // inventory: SHELL-013
       onError: _onError,
     );
 
@@ -110,6 +126,8 @@ class PersistentShell {
     _scanner.reset();
   }
 
+  // inventory: SHELL-009
+  // inventory: LEGACY-0053
   /// コマンドを実行して結果を取得
   ///
   /// [command] 実行するコマンド
@@ -149,6 +167,7 @@ class PersistentShell {
     }
   }
 
+  // inventory: SHELL-010
   /// コマンドを書き込むが出力は待たない（fire-and-forget）。
   ///
   /// tmux send-keys のような出力を持たない・待つ必要のないコマンド専用。
@@ -157,15 +176,21 @@ class PersistentShell {
   ///
   /// マーカーを付与しないため、このシェルでは決して [exec] を併用しないこと
   /// （併用すると入力バイトが混線する）。専用チャネルでのみ使用する。
+  @override
+  // inventory: LEGACY-0054
   void sendNoWait(String command) {
     final session = _session;
     if (session == null) {
-      throw PersistentShellError('Shell not started');
+      throw TmuxTransportException('Shell not started');
     }
     if (_isClosed) {
-      throw PersistentShellError('Shell session is closed');
+      throw TmuxTransportException('Shell session is closed');
     }
-    session.write(utf8.encode('$command\n'));
+    try {
+      session.write(utf8.encode('$command\n'));
+    } catch (e) {
+      throw TmuxTransportException('Failed to send to shell', e);
+    }
   }
 
   /// stdout受信時の処理
@@ -234,10 +259,14 @@ class PersistentShell {
     }
   }
 
+  // inventory: SHELL-014
+  // inventory: LEGACY-0055
   /// シェルセッションを再起動
   ///
   /// セッションが切断された場合に呼び出す
   Future<void> restart() async {
+    // inventory: SHELL-015
+    // inventory: LEGACY-0056
     await dispose();
     await start();
   }
@@ -261,12 +290,15 @@ class PersistentShell {
   }
 }
 
+// inventory: SHELL-016
 /// PersistentShellのエラー
 class PersistentShellError implements Exception {
+  // inventory: LEGACY-0057
   final String message;
 
   PersistentShellError(this.message);
 
   @override
+  // inventory: LEGACY-0058
   String toString() => 'PersistentShellError: $message';
 }

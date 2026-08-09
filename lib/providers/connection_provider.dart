@@ -4,8 +4,29 @@ import 'dart:developer' as developer;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/backend/backend_type.dart';
+import '../services/backend/multiplexer_config.dart';
+import '../services/connection/connection_migration.dart';
+import '../services/connection/connection_storage_schema.dart';
+import '../services/keychain/secure_storage.dart';
+
 /// 接続設定
 class Connection {
+  /// 現在の永続化スキーマバージョン（このアプリが書き込む新形式）。
+  ///
+  /// 旧 JSON（schemaVersion なし・tmuxPath 形式）は [legacyStorageSchemaVersion]
+  /// として読み込む。新旧 JSON を共存させ、ダウングレード時に旧アプリが
+  /// 読めるよう tmux backend では旧 `tmuxPath` フィールドも書き出す
+  /// （G6 合意#4: schema 番号で新旧共存）。
+  ///
+  /// 実値は service 層（[ConnectionMigration]）と共有するため
+  /// [ConnectionStorageSchema] に集約している。provider 層から import すると
+  /// 循環依存になるため、このエイリアス経由で参照する。
+  static const int currentStorageSchemaVersion = ConnectionStorageSchema.current;
+
+  /// 旧 JSON（schemaVersion なし・tmuxPath 形式）のバージョン。
+  static const int legacyStorageSchemaVersion = ConnectionStorageSchema.legacy;
+
   final String id;
   final String name;
   final String host;
@@ -13,14 +34,20 @@ class Connection {
   final String username;
   final String authMethod; // 'password' | 'key'
   final String? keyId;
-  final String? tmuxPath;
+
+  /// 使用する multiplexer の設定。
+  final MultiplexerConfig multiplexer;
+
+  /// 永続化スキーマのバージョン（JSON 上の形式を表す）。
+  final int storageSchemaVersion;
+
   final DateTime createdAt;
   final DateTime? lastConnectedAt;
 
   /// ディープリンク用の識別子（外部スクリプトと共有可能）
   final String? deepLinkId;
 
-  const Connection({
+  Connection({
     required this.id,
     required this.name,
     required this.host,
@@ -28,11 +55,14 @@ class Connection {
     required this.username,
     this.authMethod = 'password',
     this.keyId,
-    this.tmuxPath,
+    MultiplexerConfig? multiplexer,
+    int? storageSchemaVersion,
     required this.createdAt,
     this.lastConnectedAt,
     this.deepLinkId,
-  });
+  }) : storageSchemaVersion =
+           storageSchemaVersion ?? currentStorageSchemaVersion,
+       multiplexer = multiplexer ?? const MultiplexerConfig.tmux();
 
   Connection copyWith({
     String? id,
@@ -42,7 +72,8 @@ class Connection {
     String? username,
     String? authMethod,
     String? keyId,
-    String? tmuxPath,
+    MultiplexerConfig? multiplexer,
+    int? storageSchemaVersion,
     DateTime? createdAt,
     DateTime? lastConnectedAt,
     String? deepLinkId,
@@ -56,7 +87,8 @@ class Connection {
       username: username ?? this.username,
       authMethod: authMethod ?? this.authMethod,
       keyId: keyId ?? this.keyId,
-      tmuxPath: tmuxPath ?? this.tmuxPath,
+      multiplexer: multiplexer ?? this.multiplexer,
+      storageSchemaVersion: storageSchemaVersion ?? this.storageSchemaVersion,
       createdAt: createdAt ?? this.createdAt,
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       deepLinkId: clearDeepLinkId ? null : (deepLinkId ?? this.deepLinkId),
@@ -72,7 +104,14 @@ class Connection {
       'username': username,
       'authMethod': authMethod,
       'keyId': keyId,
-      'tmuxPath': tmuxPath,
+      'multiplexer': multiplexer.toJson(),
+      // ダウングレード互換: 旧アプリ（tmuxPath のみ読む）向けに tmux の
+      // 実行ファイルパスも書き出す。自動検出（null）の場合は旧アプリ側で
+      // 自動検出になるため省略してよい（G6 合意#4）。
+      if (multiplexer.backend == BackendType.tmux &&
+          multiplexer.executablePath != null)
+        'tmuxPath': multiplexer.executablePath,
+      'storageSchemaVersion': currentStorageSchemaVersion,
       'createdAt': createdAt.toIso8601String(),
       'lastConnectedAt': lastConnectedAt?.toIso8601String(),
       'deepLinkId': deepLinkId,
@@ -80,6 +119,17 @@ class Connection {
   }
 
   factory Connection.fromJson(Map<String, dynamic> json) {
+    final multiplexerJson = json['multiplexer'] as Map<String, dynamic>?;
+    final tmuxPath = json['tmuxPath'] as String?;
+    final MultiplexerConfig multiplexer;
+    if (multiplexerJson != null) {
+      multiplexer = MultiplexerConfig.fromJson(multiplexerJson);
+    } else if (tmuxPath != null && tmuxPath.isNotEmpty) {
+      multiplexer = MultiplexerConfig.tmux(tmuxPath);
+    } else {
+      multiplexer = const MultiplexerConfig.tmux();
+    }
+
     return Connection(
       id: json['id'] as String,
       name: json['name'] as String,
@@ -88,7 +138,10 @@ class Connection {
       username: json['username'] as String,
       authMethod: json['authMethod'] as String? ?? 'password',
       keyId: json['keyId'] as String?,
-      tmuxPath: json['tmuxPath'] as String?,
+      multiplexer: multiplexer,
+      // schemaVersion なしの旧 JSON は v1 として扱う。
+      storageSchemaVersion:
+          json['storageSchemaVersion'] as int? ?? legacyStorageSchemaVersion,
       createdAt: DateTime.parse(json['createdAt'] as String),
       lastConnectedAt: json['lastConnectedAt'] != null
           ? DateTime.parse(json['lastConnectedAt'] as String)
@@ -98,27 +151,67 @@ class Connection {
   }
 }
 
+/// 読み込めなかった破損レコードの情報。
+class CorruptedConnection {
+  /// 読み込めた ID（ない場合もある）。
+  final String? id;
+
+  /// 破損理由（非機密）。
+  final String reason;
+
+  /// 元の JSON レコード（デバッグ・回復用）。
+  final Map<String, dynamic>? rawJson;
+
+  const CorruptedConnection({
+    this.id,
+    required this.reason,
+    this.rawJson,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'reason': reason,
+      'rawJson': rawJson,
+    };
+  }
+}
+
 /// 接続一覧の状態
 class ConnectionsState {
   final List<Connection> connections;
   final bool isLoading;
   final String? error;
 
+  /// 読み込めなかった破損レコード一覧。
+  final List<CorruptedConnection> corruptedRecords;
+
+  /// ユーザー向けの非機密警告（マイグレーションや破損レカウント）。
+  final String? warning;
+
+  static const Object _kKeepSentinel = Object();
+
   const ConnectionsState({
     this.connections = const [],
     this.isLoading = false,
     this.error,
+    this.corruptedRecords = const [],
+    this.warning,
   });
 
   ConnectionsState copyWith({
     List<Connection>? connections,
     bool? isLoading,
     String? error,
+    List<CorruptedConnection>? corruptedRecords,
+    Object? warning = _kKeepSentinel,
   }) {
     return ConnectionsState(
       connections: connections ?? this.connections,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      corruptedRecords: corruptedRecords ?? this.corruptedRecords,
+      warning: warning == _kKeepSentinel ? this.warning : warning as String?,
     );
   }
 }
@@ -126,10 +219,12 @@ class ConnectionsState {
 /// 接続一覧を管理するNotifier
 class ConnectionsNotifier extends Notifier<ConnectionsState> {
   static const String _storageKey = 'connections';
+  bool _disposed = false;
 
   @override
   ConnectionsState build() {
     // 初期状態
+    ref.onDispose(() => _disposed = true);
     _loadConnections();
     return const ConnectionsState(isLoading: true);
   }
@@ -137,17 +232,75 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
   Future<void> _loadConnections() async {
     developer.log('_loadConnections() started', name: 'ConnectionsProvider');
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_storageKey);
+      final secure = SecureStorageService();
+      String? jsonString = await secure.readValue(_storageKey);
+
+      // 古いSharedPreferencesからの移行
+      SharedPreferences? prefs;
+      var fromSharedPreferences = false;
+      if (jsonString == null) {
+        prefs = await SharedPreferences.getInstance();
+        final sharedPrefsJson = prefs.getString(_storageKey);
+        if (sharedPrefsJson != null) {
+          await secure.writeValue(_storageKey, sharedPrefsJson);
+          jsonString = sharedPrefsJson;
+          fromSharedPreferences = true;
+          developer.log('Copied connections from SharedPreferences to secure storage for migration', name: 'ConnectionsProvider');
+        }
+      }
+
       developer.log('JSON from storage: ${jsonString != null ? 'exists' : 'null'}', name: 'ConnectionsProvider');
+
+      // 旧 tmuxPath から multiplexer へのマイグレーション
+      final migrationResult = await ConnectionMigration.migrate(
+        secure: secure,
+        sourceJson: jsonString,
+      );
+
+      // SharedPreferences コピーは schema migration が成功してから削除
+      if (fromSharedPreferences &&
+          migrationResult.error == null &&
+          migrationResult.json != null) {
+        await prefs?.remove(_storageKey);
+        developer.log('Removed migrated SharedPreferences copy', name: 'ConnectionsProvider');
+      }
+
+      if (migrationResult.error != null && migrationResult.json == null) {
+        developer.log('Migration error: ${migrationResult.error}', name: 'ConnectionsProvider');
+        if (!_disposed) {
+          state = ConnectionsState(
+            error: migrationResult.error,
+            warning: migrationResult.warning,
+          );
+        }
+        return;
+      }
+
+      jsonString = migrationResult.json;
 
       if (jsonString != null) {
         final jsonList = jsonDecode(jsonString) as List<dynamic>;
-        final connections = jsonList
-            .map((json) => Connection.fromJson(json as Map<String, dynamic>))
-            .toList();
+        final connections = <Connection>[];
+        final corruptedRecords = <CorruptedConnection>[];
 
-        developer.log('Loaded ${connections.length} connections from storage', name: 'ConnectionsProvider');
+        for (final record in jsonList) {
+          try {
+            if (record is! Map<String, dynamic>) {
+              throw FormatException('Record is not a JSON object');
+            }
+            connections.add(Connection.fromJson(record));
+          } catch (e, stackTrace) {
+            developer.log('Corrupted connection record: $e', name: 'ConnectionsProvider', error: e, stackTrace: stackTrace);
+            final id = record is Map<String, dynamic> ? record['id'] as String? : null;
+            corruptedRecords.add(CorruptedConnection(
+              id: id,
+              reason: 'Failed to load connection record: $e',
+              rawJson: record is Map<String, dynamic> ? record : null,
+            ));
+          }
+        }
+
+        developer.log('Loaded ${connections.length} healthy and ${corruptedRecords.length} corrupted connection records from storage', name: 'ConnectionsProvider');
 
         // 最終接続日時で並び替え（降順）
         connections.sort((a, b) {
@@ -156,22 +309,45 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
           return bTime.compareTo(aTime);
         });
 
-        state = ConnectionsState(connections: connections);
-        developer.log('State updated with ${connections.length} connections', name: 'ConnectionsProvider');
+        String? warning;
+        if (corruptedRecords.isNotEmpty) {
+          warning = '${corruptedRecords.length} connections could not be loaded.';
+        }
+        if (migrationResult.warning != null) {
+          warning = warning == null
+              ? migrationResult.warning
+              : '$warning ${migrationResult.warning}';
+        }
+
+        if (!_disposed) {
+          state = ConnectionsState(
+            connections: connections,
+            corruptedRecords: corruptedRecords,
+            warning: warning,
+            error: migrationResult.error,
+          );
+        }
+        developer.log('State updated with ${connections.length} connections, ${corruptedRecords.length} corrupted records', name: 'ConnectionsProvider');
       } else {
-        state = const ConnectionsState();
+        if (!_disposed) {
+          state = ConnectionsState(
+            warning: migrationResult.warning,
+          );
+        }
         developer.log('No saved connections, initialized empty state', name: 'ConnectionsProvider');
       }
     } catch (e, stackTrace) {
       developer.log('Error loading connections: $e', name: 'ConnectionsProvider', error: e, stackTrace: stackTrace);
-      state = ConnectionsState(error: e.toString());
+      if (!_disposed) {
+        state = ConnectionsState(error: e.toString());
+      }
     }
   }
 
-  Future<void> _saveConnections() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = state.connections.map((c) => c.toJson()).toList();
-    await prefs.setString(_storageKey, jsonEncode(jsonList));
+  Future<void> _saveConnections(List<Connection> connections) async {
+    final secure = SecureStorageService();
+    final jsonList = connections.map((c) => c.toJson()).toList();
+    await secure.writeValue(_storageKey, jsonEncode(jsonList));
   }
 
   /// 接続を追加
@@ -182,20 +358,32 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     final connections = [...state.connections, connection];
     developer.log('New connections count: ${connections.length}', name: 'ConnectionsProvider');
 
-    state = state.copyWith(connections: connections);
-    developer.log('State updated, saving to SharedPreferences...', name: 'ConnectionsProvider');
+    state = state.copyWith(
+      connections: connections,
+      corruptedRecords: const <CorruptedConnection>[],
+      warning: null,
+    );
+    developer.log('State updated, saving to secure storage...', name: 'ConnectionsProvider');
 
-    await _saveConnections();
-    developer.log('Connections saved. Final count: ${state.connections.length}', name: 'ConnectionsProvider');
+    await _saveConnections(connections);
+    if (!_disposed) {
+      developer.log('Connections saved. Final count: ${state.connections.length}', name: 'ConnectionsProvider');
+    }
   }
 
   /// 接続を削除
   Future<void> remove(String id) async {
     developer.log('remove() called: $id', name: 'ConnectionsProvider');
     final connections = state.connections.where((c) => c.id != id).toList();
-    state = state.copyWith(connections: connections);
-    await _saveConnections();
-    developer.log('Connection removed. Remaining: ${state.connections.length}', name: 'ConnectionsProvider');
+    state = state.copyWith(
+      connections: connections,
+      corruptedRecords: const <CorruptedConnection>[],
+      warning: null,
+    );
+    await _saveConnections(connections);
+    if (!_disposed) {
+      developer.log('Connection removed. Remaining: ${state.connections.length}', name: 'ConnectionsProvider');
+    }
   }
 
   /// 接続を更新
@@ -204,8 +392,12 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     final connections = state.connections.map((c) {
       return c.id == connection.id ? connection : c;
     }).toList();
-    state = state.copyWith(connections: connections);
-    await _saveConnections();
+    state = state.copyWith(
+      connections: connections,
+      corruptedRecords: const <CorruptedConnection>[],
+      warning: null,
+    );
+    await _saveConnections(connections);
     developer.log('Connection updated and saved', name: 'ConnectionsProvider');
   }
 
@@ -217,8 +409,12 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
       }
       return c;
     }).toList();
-    state = state.copyWith(connections: connections);
-    await _saveConnections();
+    state = state.copyWith(
+      connections: connections,
+      corruptedRecords: const <CorruptedConnection>[],
+      warning: null,
+    );
+    await _saveConnections(connections);
   }
 
   /// 接続を取得
@@ -256,7 +452,12 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
   /// リロード
   Future<void> reload() async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(
+      isLoading: true,
+      error: null,
+      corruptedRecords: const <CorruptedConnection>[],
+      warning: null,
+    );
     await _loadConnections();
   }
 }

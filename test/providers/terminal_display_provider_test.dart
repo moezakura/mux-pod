@@ -2,7 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
+
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 
 /// Stubs out the async `_loadSettings()` (SharedPreferences / platform
@@ -22,6 +23,7 @@ void main() {
       expect(state.paneWidth, equals(80));
       expect(state.paneHeight, equals(24));
       expect(state.screenWidth, equals(0.0));
+      expect(state.screenHeight, equals(0.0));
       expect(state.calculatedFontSize, equals(14.0));
       expect(state.needsHorizontalScroll, isFalse);
       expect(state.horizontalScrollOffset, equals(0.0));
@@ -84,9 +86,7 @@ void main() {
       // Mock SharedPreferences
       SharedPreferences.setMockInitialValues({});
       container = ProviderContainer(
-        overrides: [
-          settingsProvider.overrideWith(_FixedSettingsNotifier.new),
-        ],
+        overrides: [settingsProvider.overrideWith(_FixedSettingsNotifier.new)],
       );
     });
 
@@ -145,6 +145,7 @@ void main() {
 
       final state = container.read(terminalDisplayProvider);
       expect(state.screenWidth, equals(800.0));
+      expect(state.calculatedFontSize, greaterThan(0));
     });
 
     test('updateScreenWidth does nothing if width unchanged', () {
@@ -168,6 +169,23 @@ void main() {
 
       final state = container.read(terminalDisplayProvider);
       expect(state.horizontalScrollOffset, equals(150.0));
+    });
+
+    test('updateScreenSize updates height and derives scroll requirement', () {
+      final notifier = container.read(terminalDisplayProvider.notifier);
+      notifier.updatePane(
+        TmuxPane(id: '%0', index: 0, width: 240, height: 60, active: true),
+      );
+
+      notifier.updateScreenSize(120.0, 320.0);
+
+      final state = container.read(terminalDisplayProvider);
+      expect(state.paneWidth, 240);
+      expect(state.paneHeight, 60);
+      expect(state.screenWidth, 120.0);
+      expect(state.screenHeight, 320.0);
+      expect(state.calculatedFontSize, greaterThan(0));
+      expect(state.needsHorizontalScroll, isTrue);
     });
 
     test('onSettingsChanged triggers recalculation', () {
