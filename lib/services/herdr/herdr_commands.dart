@@ -46,6 +46,228 @@ class HerdrCommands {
     if (ansi) parts.add('--raw');
     return parts.join(' ');
   }
+
+  // ===== mutation コマンド（Q-02/Q-03/Q-06/Q-07。T0 実測の CLI 形式）=====
+
+  // inventory: HERDR-CMD-100
+  /// pane へテキストを送信する（Q-06: paste/copy-mode/画像パスの送信基盤）。
+  ///
+  /// コマンド形式: `herdr pane send-text <pane_id> <text>`
+  /// 成功時 stdout は空（R7）。[text] はシェル引用符で括る（複数行・unicode
+  /// 対応。`send-text` はバイナリ素通し・G4 実測）。
+  static String paneSendText(String paneId, String text) {
+    return 'herdr pane send-text $paneId ${_shellQuote(text)}';
+  }
+
+  // inventory: HERDR-CMD-101
+  /// pane へキーを送信する（Q-07: `PaneKeyMap` の送信経路で変換済みキー名）。
+  ///
+  /// コマンド形式: `herdr pane send-keys <pane_id> <key>`
+  /// 受理キーは F1-F12 / 基本 / 矢印 / C-c（T0 実測 1-a）。拒否キーは
+  /// `paneSendText` でエスケープシーケンス / 制御文字を送る。
+  static String paneSendKeys(String paneId, String keyName) {
+    return 'herdr pane send-keys $paneId $keyName';
+  }
+
+  // inventory: HERDR-CMD-102
+  /// 方向 focus（`--pane` 指定）。
+  ///
+  /// コマンド形式: `herdr pane focus --direction <dir> --pane <pane_id>`
+  /// [direction]: `'up'` / `'down'` / `'left'` / `'right'`。
+  /// 隣接なしはエラーではなく `reason:"no_neighbor"` + `changed:false`
+  /// （T0 実測 5-b・soft 失敗）。
+  static String paneFocus(String paneId, String direction) {
+    return 'herdr pane focus --direction $direction --pane $paneId';
+  }
+
+  // inventory: HERDR-CMD-103
+  /// 隣接方向の有無を返す。
+  ///
+  /// コマンド形式: `herdr pane edges --pane <pane_id>`
+  /// 応答は `{up,down,left,right}` の bool + layout（T0 実測 5-a）。
+  static String paneEdges(String paneId) {
+    return 'herdr pane edges --pane $paneId';
+  }
+
+  // inventory: HERDR-CMD-104
+  /// 相対分数 resize（Q-04）。
+  ///
+  /// コマンド形式:
+  /// `herdr pane resize --direction <dir> --amount <FLOAT> --pane <pane_id>`
+  /// [amount] は現在 ratio への加算・結果は [0.1, 0.9] にクランプ・
+  /// 1 回の delta 上限 0.5（T0 実測 4-b）。
+  static String paneResize(String paneId, String direction, double amount) {
+    return 'herdr pane resize --direction $direction '
+        '--amount ${amount.toString()} --pane $paneId';
+  }
+
+  // inventory: HERDR-CMD-105
+  /// zoom。
+  ///
+  /// コマンド形式: `herdr pane zoom --pane <pane_id> --<mode>`
+  /// [mode]: `'toggle'` / `'on'` / `'off'`（既定 `'toggle'`）。
+  static String paneZoom(String paneId, {String mode = 'toggle'}) {
+    return 'herdr pane zoom --pane $paneId --$mode';
+  }
+
+  // inventory: HERDR-CMD-106
+  /// ラベル変更。
+  ///
+  /// コマンド形式: `herdr pane rename <pane_id> <label>...`
+  static String paneRename(String paneId, String label) {
+    return 'herdr pane rename $paneId ${_shellQuote(label)}';
+  }
+
+  // inventory: HERDR-CMD-107
+  /// pane を閉じる（**破壊的 close の唯一経路**・Q-03）。
+  ///
+  /// コマンド形式: `herdr pane close <pane_id>`
+  /// 最後の pane を閉じると tab → workspace が連鎖終了する（lifecycle 実測・
+  /// R2）。対象不在は `pane_not_found`（`isHerdrTargetNotFound`）。
+  static String paneClose(String paneId) {
+    return 'herdr pane close $paneId';
+  }
+
+  // inventory: HERDR-CMD-108
+  /// pane を分割する。
+  ///
+  /// コマンド形式:
+  /// `herdr pane split <pane_id> --direction <dir> [--ratio <FLOAT>] [--cwd <path>]`
+  /// [direction]: `'right'` / `'down'`。
+  /// 応答は layout を含まない（`pane_info`。T0 実測 6-a）。layout 反映は
+  /// 別途 `api snapshot` が必要。
+  static String paneSplit(
+    String paneId,
+    String direction, {
+    double? ratio,
+    String? cwd,
+  }) {
+    final parts = ['herdr', 'pane', 'split', paneId, '--direction', direction];
+    if (ratio != null) parts.addAll(['--ratio', ratio.toString()]);
+    if (cwd != null && cwd.isNotEmpty) {
+      parts.addAll(['--cwd', _shellQuote(cwd)]);
+    }
+    return parts.join(' ');
+  }
+
+  // inventory: HERDR-CMD-109
+  /// tab を作成する（Q-05）。
+  ///
+  /// コマンド形式:
+  /// `herdr tab create --workspace <workspace_id> [--cwd <path>] [--label <label>] [--focus|--no-focus]`
+  /// 応答は layout を含まない（`.result.tab.tab_id` / `.result.root_pane.pane_id`。
+  /// herdr 0.7.5 CLI reference）。layout 反映は別途 `api snapshot` が必要。
+  /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
+  /// false で `--no-focus`（既定を明示）。
+  static String tabCreate(
+    String workspaceId, {
+    String? label,
+    String? cwd,
+    bool? focus,
+  }) {
+    final parts = ['herdr', 'tab', 'create', '--workspace', workspaceId];
+    if (cwd != null && cwd.isNotEmpty) {
+      parts.addAll(['--cwd', _shellQuote(cwd)]);
+    }
+    if (label != null && label.isNotEmpty) {
+      parts.addAll(['--label', _shellQuote(label)]);
+    }
+    if (focus == true) {
+      parts.add('--focus');
+    } else if (focus == false) {
+      parts.add('--no-focus');
+    }
+    return parts.join(' ');
+  }
+
+  // inventory: HERDR-CMD-110
+  /// tab を閉じる。
+  ///
+  /// コマンド形式: `herdr tab close <tab_id>`
+  /// workspace の最後の tab を閉じると workspace も連鎖終了する
+  /// （herdr 0.7.5 CLI reference）。対象不在は `tab_not_found`
+  /// （`isHerdrTargetNotFound`）。
+  static String tabClose(String tabId) {
+    return 'herdr tab close $tabId';
+  }
+
+  // inventory: HERDR-CMD-111
+  /// tab のラベルを変更する。
+  ///
+  /// コマンド形式: `herdr tab rename <tab_id> <label>`
+  static String tabRename(String tabId, String label) {
+    return 'herdr tab rename $tabId ${_shellQuote(label)}';
+  }
+
+  // inventory: HERDR-CMD-112
+  /// tab へフォーカスする。
+  ///
+  /// コマンド形式: `herdr tab focus <tab_id>`
+  static String tabFocus(String tabId) {
+    return 'herdr tab focus $tabId';
+  }
+
+  // inventory: HERDR-CMD-113
+  /// workspace を作成する（Q-05）。
+  ///
+  /// コマンド形式:
+  /// `herdr workspace create [--cwd <path>] [--label <label>] [--focus|--no-focus]`
+  /// workspace 作成と同時に最初の tab と root pane も作られる。応答は layout
+  /// を含まない（`.result.workspace.workspace_id` / `.result.tab.tab_id` /
+  /// `.result.root_pane.pane_id`。herdr 0.7.5 CLI reference）。
+  /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
+  /// false で `--no-focus`（既定を明示）。
+  static String workspaceCreate({
+    String? label,
+    String? cwd,
+    bool? focus,
+  }) {
+    final parts = ['herdr', 'workspace', 'create'];
+    if (cwd != null && cwd.isNotEmpty) {
+      parts.addAll(['--cwd', _shellQuote(cwd)]);
+    }
+    if (label != null && label.isNotEmpty) {
+      parts.addAll(['--label', _shellQuote(label)]);
+    }
+    if (focus == true) {
+      parts.add('--focus');
+    } else if (focus == false) {
+      parts.add('--no-focus');
+    }
+    return parts.join(' ');
+  }
+
+  // inventory: HERDR-CMD-114
+  /// workspace を閉じる。
+  ///
+  /// コマンド形式: `herdr workspace close <workspace_id>`
+  /// 対象不在は `workspace_not_found`（`isHerdrTargetNotFound`）。
+  static String workspaceClose(String workspaceId) {
+    return 'herdr workspace close $workspaceId';
+  }
+
+  // inventory: HERDR-CMD-115
+  /// workspace のラベルを変更する。
+  ///
+  /// コマンド形式: `herdr workspace rename <workspace_id> <label>`
+  static String workspaceRename(String workspaceId, String label) {
+    return 'herdr workspace rename $workspaceId ${_shellQuote(label)}';
+  }
+
+  // inventory: HERDR-CMD-116
+  /// workspace へフォーカスする。
+  ///
+  /// コマンド形式: `herdr workspace focus <workspace_id>`
+  static String workspaceFocus(String workspaceId) {
+    return 'herdr workspace focus $workspaceId';
+  }
+
+  /// シェル引用符（単一引用符）で囲む。`'` は `'\''` にエスケープする。
+  ///
+  /// コマンドは SSH 経由でシェルに渡るため、空白・改行・unicode を含む
+  /// テキスト（send-text / rename label / split cwd）を安全に転送する。
+  static String _shellQuote(String value) =>
+      "'${value.replaceAll("'", r"'\''")}'";
 }
 
 // inventory: HERDR-ERR-001

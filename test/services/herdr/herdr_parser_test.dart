@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_muxpod/services/herdr/herdr_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -38,6 +40,27 @@ const kStatusNotRunningFixture =
     '"running":false,"version":null,"protocol":null,"capabilities":null,'
     '"compatible":null,"socket":"/home/lab/.config/herdr/herdr.sock",'
     '"session":null,"restart_needed":false},"update":{"restart_needed":false}}';
+
+// T0 実測⑥の layout JSON（5-pane / rect / splits 実測形）。
+// 元データ: tool/herdr-mutation-baseline/mutation-baseline-report.md §⑥
+const kLayoutFixture = '{"area":{"height":59,"width":78,"x":26,"y":1},'
+    '"focused_pane_id":"w5:p1","panes":['
+    '{"focused":true,"pane_id":"w5:p1","rect":{"height":59,"width":39,"x":26,"y":1}},'
+    '{"focused":false,"pane_id":"w5:p4","rect":{"height":59,"width":39,"x":65,"y":1}}],'
+    '"splits":['
+    '{"direction":"right","id":"split_0_root","ratio":0.5,'
+    '"rect":{"height":59,"width":78,"x":26,"y":1}},'
+    '{"direction":"down","id":"split_1_0","ratio":0.6,'
+    '"rect":{"height":59,"width":39,"x":26,"y":1}}],'
+    '"tab_id":"w5:t1","workspace_id":"w5","zoomed":false}';
+
+/// [kLayoutFixture] を 1 件含む snapshot JSON（layout パース専用）。
+final String kLayoutSnapshotJson =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{'
+    '"protocol":17,"version":"0.7.5","focused_workspace_id":"w5",'
+    '"focused_tab_id":"w5:t1","focused_pane_id":"w5:p1",'
+    '"workspaces":[],"tabs":[],"panes":[],'
+    '"layouts":[$kLayoutFixture]},"type":"session_snapshot"}}';
 
 void main() {
   group('HerdrSnapshotParser', () {
@@ -132,6 +155,110 @@ void main() {
         () => HerdrSnapshotParser.parse(json),
         throwsA(isA<FormatException>()),
       );
+    });
+  });
+
+  group('HerdrSnapshotParser.layouts', () {
+    test('parses the T0 five-pane layout fixture', () {
+      final snapshot = HerdrSnapshotParser.parse(kLayoutSnapshotJson);
+
+      expect(snapshot.layouts, hasLength(1));
+      final layout = snapshot.layouts.single;
+
+      // area
+      expect(layout.area.x, 26);
+      expect(layout.area.y, 1);
+      expect(layout.area.width, 78);
+      expect(layout.area.height, 59);
+
+      // panes[].rect
+      expect(layout.focusedPaneId, 'w5:p1');
+      expect(layout.panes, hasLength(2));
+      final p1 = layout.panes.first;
+      expect(p1.paneId, 'w5:p1');
+      expect(p1.focused, isTrue);
+      expect(p1.rect.x, 26);
+      expect(p1.rect.y, 1);
+      expect(p1.rect.width, 39);
+      expect(p1.rect.height, 59);
+      expect(layout.rectFor('w5:p1')?.width, 39);
+      expect(layout.rectFor('w5:p1')?.x, 26);
+      expect(layout.rectFor('w5:missing'), isNull);
+      final p4 = layout.panes.last;
+      expect(p4.paneId, 'w5:p4');
+      expect(p4.focused, isFalse);
+      expect(p4.rect.x, 65);
+
+      // splits[].ratio/rect
+      expect(layout.splits, hasLength(2));
+      final root = layout.splits.first;
+      expect(root.direction, 'right');
+      expect(root.id, 'split_0_root');
+      expect(root.ratio, closeTo(0.5, 1e-9));
+      expect(root.rect.width, 78);
+      final child = layout.splits.last;
+      expect(child.direction, 'down');
+      expect(child.id, 'split_1_0');
+      expect(child.ratio, closeTo(0.6, 1e-9));
+
+      // tab/workspace/zoomed
+      expect(layout.tabId, 'w5:t1');
+      expect(layout.workspaceId, 'w5');
+      expect(layout.zoomed, isFalse);
+    });
+
+    test('tolerates missing layouts key (empty list)', () {
+      const json =
+          '{"id":"cli:api:snapshot","result":{"snapshot":{"protocol":17,'
+          '"version":"0.7.5","workspaces":[],"tabs":[],"panes":[]},'
+          '"type":"session_snapshot"}}';
+      final snapshot = HerdrSnapshotParser.parse(json);
+      expect(snapshot.layouts, isEmpty);
+    });
+
+    test('tolerates empty layouts array', () {
+      const json =
+          '{"id":"cli:api:snapshot","result":{"snapshot":{"protocol":17,'
+          '"version":"0.7.5","workspaces":[],"tabs":[],"panes":[],'
+          '"layouts":[]},"type":"session_snapshot"}}';
+      final snapshot = HerdrSnapshotParser.parse(json);
+      expect(snapshot.layouts, isEmpty);
+    });
+
+    test('tolerates missing fields inside a layout (defaults)', () {
+      const json =
+          '{"id":"cli:api:snapshot","result":{"snapshot":{"protocol":17,'
+          '"version":"0.7.5","workspaces":[],"tabs":[],"panes":[],'
+          '"layouts":[{"panes":[],"splits":[]}]},"type":"session_snapshot"}}';
+      final snapshot = HerdrSnapshotParser.parse(json);
+      final layout = snapshot.layouts.single;
+      expect(layout.area.x, 0);
+      expect(layout.area.width, 0);
+      expect(layout.focusedPaneId, isNull);
+      expect(layout.panes, isEmpty);
+      expect(layout.splits, isEmpty);
+      expect(layout.tabId, isNull);
+      expect(layout.workspaceId, isNull);
+      expect(layout.zoomed, isFalse);
+    });
+  });
+
+  group('HerdrSnapshotParser.parseLayoutMap', () {
+    test('parses a standalone layout object (mutation response)', () {
+      final layout = HerdrSnapshotParser.parseLayoutMap(
+        jsonDecode(kLayoutFixture) as Map<String, dynamic>,
+      );
+      expect(layout.workspaceId, 'w5');
+      expect(layout.focusedPaneId, 'w5:p1');
+      expect(layout.zoomed, isFalse);
+      expect(layout.panes, hasLength(2));
+    });
+
+    test('parses a zoomed layout (T0 実測 6-b)', () {
+      final zoomed = jsonDecode(kLayoutFixture) as Map<String, dynamic>;
+      zoomed['zoomed'] = true;
+      final layout = HerdrSnapshotParser.parseLayoutMap(zoomed);
+      expect(layout.zoomed, isTrue);
     });
   });
 

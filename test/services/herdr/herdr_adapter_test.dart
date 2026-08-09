@@ -1,6 +1,7 @@
 import 'package:flutter_muxpod/services/connection_error.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
+import 'package:flutter_muxpod/services/herdr/herdr_errors.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_ssh_client.dart';
@@ -35,6 +36,36 @@ const kSnapshotOk =
     '"focused":true,"agent_status":"unknown","cwd":"/tmp",'
     '"foreground_cwd":"/tmp","revision":0,"terminal_id":"term_x"}]},'
     '"type":"session_snapshot"}}';
+
+// T0 実測⑥の mutation 応答内 layout JSON（compact 版）。
+const kMutationLayoutJson = '{"area":{"height":59,"width":78,"x":26,"y":1},'
+    '"focused_pane_id":"w5:p1","panes":['
+    '{"focused":true,"pane_id":"w5:p1",'
+    '"rect":{"height":59,"width":39,"x":26,"y":1}}],'
+    '"splits":[{"direction":"right","id":"split_0_root","ratio":0.5,'
+    '"rect":{"height":59,"width":78,"x":26,"y":1}}],'
+    '"tab_id":"w5:t1","workspace_id":"w5","zoomed":false}';
+
+// T0 実測 4-c: resize 応答（layout 込み）。
+const kResizeOk = '{"id":"cli:pane:resize","result":{"resize":{'
+    '"changed":true,"focused_pane_id":"w5:p1","layout":$kMutationLayoutJson,'
+    '"pane_id":"w5:p1"},"type":"pane_resize"}}';
+
+// T0 実測 5-b: focus の soft 失敗（no_neighbor・layout 込み）。
+const kFocusNoNeighbor = '{"id":"cli:pane:focus","result":{"focus":{'
+    '"changed":false,"focused_pane_id":"w5:p1","layout":$kMutationLayoutJson,'
+    '"reason":"no_neighbor","source_pane_id":"w5:p1"},'
+    '"type":"pane_focus_direction"}}';
+
+// T0 実測 5-a: edges 応答（layout 込み）。
+const kEdgesOk = '{"id":"cli:pane:edges","result":{"edges":{'
+    '"down":true,"layout":$kMutationLayoutJson,"left":true,'
+    '"pane_id":"w5:p1","right":false,"up":true},"type":"pane_edges"}}';
+
+// T0 実測 6-a: zoom 応答（zoom_changed）。
+const kZoomOk = '{"id":"cli:pane:zoom","result":{"zoom":{'
+    '"zoom_changed":true,"focus_changed":false,"zoomed":true},'
+    '"type":"pane_zoom"}}';
 
 void main() {
   group('HerdrAdapter.preflight', () {
@@ -343,6 +374,350 @@ void main() {
         client.execCommands.first,
         startsWith('/usr/local/bin/herdr pane read w1:p1'),
       );
+    });
+  });
+
+  group('HerdrAdapter mutation (_execMutation)', () {
+    test('sendText succeeds with empty stdout (R7)', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane send-text'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.sendText('w1:p1', 'hello');
+
+      expect(result.changed, isTrue);
+      expect(result.reason, isNull);
+      expect(result.layout, isNull);
+      expect(
+        client.execCommands,
+        contains("herdr pane send-text w1:p1 'hello'"),
+      );
+    });
+
+    test('sendText passes multi-line unicode through quoted args', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane send-text'] = '';
+
+      final adapter = HerdrAdapter(client);
+      await adapter.sendText('w1:p1', 'line1\nline2 \u3042');
+
+      expect(
+        client.execCommands,
+        contains("herdr pane send-text w1:p1 'line1\nline2 \u3042'"),
+      );
+    });
+
+    test('sendText treats non-JSON stdout with rc=0 as success (R7)', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane send-text'] = 'some diagnostic text';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.sendText('w1:p1', 'x');
+
+      expect(result.changed, isTrue);
+    });
+
+    test('sendKey throws HerdrCommandException with invalid_key code (R9)',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane send-keys'] =
+          '{"error":{"code":"invalid_key","message":"unsupported key Home"},'
+          '"id":"cli:request"}';
+      client.execExitCodes['herdr pane send-keys'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      try {
+        await adapter.sendKey('w1:p1', 'Home');
+        fail('expected HerdrCommandException');
+      } on HerdrCommandException catch (e) {
+        expect(e.errorCode, 'invalid_key');
+        expect(e.exitCode, 1);
+        expect(isHerdrInvalidKey(e), isTrue);
+      }
+    });
+
+    test('focusDirection returns no_neighbor soft failure (S4)', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane focus'] = kFocusNoNeighbor;
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.focusDirection('w5:p1', 'right');
+
+      expect(result.changed, isFalse);
+      expect(result.reason, 'no_neighbor');
+      expect(result.isNoNeighbor, isTrue);
+      expect(result.isUnchanged, isTrue);
+    });
+
+    test('resizePane parses the response layout (T0 実測 4-c)', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane resize'] = kResizeOk;
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.resizePane('w5:p1', 'right', 0.1);
+
+      expect(result.changed, isTrue);
+      expect(result.layout, isNotNull);
+      expect(result.layout!.workspaceId, 'w5');
+      expect(result.layout!.tabId, 'w5:t1');
+      expect(result.layout!.focusedPaneId, 'w5:p1');
+      expect(result.layout!.panes.single.rect.width, 39);
+      expect(
+        client.execCommands,
+        contains('herdr pane resize --direction right --amount 0.1 --pane w5:p1'),
+      );
+    });
+
+    test('edges parses directional booleans alongside layout (T0 実測 5-a)',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane edges'] = kEdgesOk;
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.edges('w5:p1');
+
+      expect(result.changed, isTrue);
+      expect(result.layout, isNotNull);
+      expect(result.layout!.splits.single.ratio, closeTo(0.5, 1e-9));
+    });
+
+    test('zoomPane reads zoom_changed as changed (T0 実測 6-a)', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane zoom'] = kZoomOk;
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.zoomPane('w5:p1', mode: 'on');
+
+      expect(result.changed, isTrue);
+      expect(
+        client.execCommands,
+        contains('herdr pane zoom --pane w5:p1 --on'),
+      );
+    });
+
+    test('closePane throws HerdrTargetNotFoundException on pane_not_found',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane close'] =
+          '{"error":{"code":"pane_not_found","message":"no pane"},'
+          '"id":"cli:pane:close"}';
+      client.execExitCodes['herdr pane close'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.closePane('w5:p1'),
+        throwsA(
+          isA<HerdrTargetNotFoundException>()
+              .having((e) => e.kind, 'kind', HerdrTargetNotFoundKind.pane)
+              .having((e) => e.errorCode, 'errorCode', 'pane_not_found'),
+        ),
+      );
+    });
+
+    test('splitPane passes ratio and cwd and succeeds with empty stdout',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane split'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.splitPane(
+        'w1:p1',
+        'right',
+        ratio: 0.5,
+        cwd: '/tmp',
+      );
+
+      expect(result.changed, isTrue);
+      expect(
+        client.execCommands,
+        contains(
+          "herdr pane split w1:p1 --direction right --ratio 0.5 --cwd '/tmp'",
+        ),
+      );
+    });
+
+    test('mutation throws SshConnectionError when the channel closes '
+        'without exit status or output (server-down 分類へ)', () async {
+      final client = _FakeSshClientNullExit();
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.sendText('w1:p1', 'x'),
+        throwsA(isA<SshConnectionError>()),
+      );
+    });
+
+    test('mutation throws HerdrCommandException on non-zero exit', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane send-text'] = '';
+      client.execExitCodes['herdr pane send-text'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.sendText('w1:p1', 'x'),
+        throwsA(
+          isA<HerdrCommandException>().having((e) => e.exitCode, 'exitCode', 1),
+        ),
+      );
+    });
+  });
+
+  group('HerdrAdapter tab CRUD (T12)', () {
+    test('tabCreate builds the command and succeeds with empty stdout',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr tab create'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.tabCreate('w1', label: 'logs');
+
+      expect(result.changed, isTrue);
+      expect(result.layout, isNull);
+      expect(
+        client.execCommands,
+        contains("herdr tab create --workspace w1 --label 'logs'"),
+      );
+    });
+
+    test('tabCreate passes cwd and focus flags', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr tab create'] = '';
+
+      final adapter = HerdrAdapter(client);
+      await adapter.tabCreate('w1', cwd: '/tmp/work dir', focus: true);
+
+      expect(
+        client.execCommands,
+        contains(
+          "herdr tab create --workspace w1 --cwd '/tmp/work dir' --focus",
+        ),
+      );
+    });
+
+    test('tabClose throws HerdrTargetNotFoundException on tab_not_found',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr tab close'] =
+          '{"error":{"code":"tab_not_found","message":"no tab"},'
+          '"id":"cli:tab:close"}';
+      client.execExitCodes['herdr tab close'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.tabClose('w1:t1'),
+        throwsA(
+          isA<HerdrTargetNotFoundException>()
+              .having((e) => e.kind, 'kind', HerdrTargetNotFoundKind.tab)
+              .having((e) => e.errorCode, 'errorCode', 'tab_not_found'),
+        ),
+      );
+    });
+
+    test('tabRename passes the quoted label', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr tab rename'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.tabRename('w1:t1', 'my tab');
+
+      expect(result.changed, isTrue);
+      expect(
+        client.execCommands,
+        contains("herdr tab rename w1:t1 'my tab'"),
+      );
+    });
+
+    test('tabFocus builds the command', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr tab focus'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.tabFocus('w1:t1');
+
+      expect(result.changed, isTrue);
+      expect(client.execCommands, contains('herdr tab focus w1:t1'));
+    });
+  });
+
+  group('HerdrAdapter workspace CRUD (T12)', () {
+    test('workspaceCreate succeeds and ignores the layout-less response',
+        () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr workspace create'] =
+          '{"id":"cli:workspace:create","result":{"workspace":{'
+          '"workspace_id":"w6","label":"api","number":2,"focused":true},'
+          '"tab":{"tab_id":"w6:t1","workspace_id":"w6","label":"1","number":1},'
+          '"root_pane":{"pane_id":"w6:p1","workspace_id":"w6","tab_id":"w6:t1",'
+          '"cwd":"/tmp"}},"type":"workspace_created"}';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.workspaceCreate(label: 'api');
+
+      expect(result.changed, isTrue);
+      expect(result.layout, isNull);
+      expect(
+        client.execCommands,
+        contains("herdr workspace create --label 'api'"),
+      );
+    });
+
+    test('workspaceCreate passes cwd and focus flags', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr workspace create'] = '';
+
+      final adapter = HerdrAdapter(client);
+      await adapter.workspaceCreate(cwd: '/tmp/work dir', focus: true);
+
+      expect(
+        client.execCommands,
+        contains(
+          "herdr workspace create --cwd '/tmp/work dir' --focus",
+        ),
+      );
+    });
+
+    test('workspaceClose throws HerdrTargetNotFoundException on '
+        'workspace_not_found', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr workspace close'] =
+          '{"error":{"code":"workspace_not_found","message":"no ws"},'
+          '"id":"cli:workspace:close"}';
+      client.execExitCodes['herdr workspace close'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.workspaceClose('w1'),
+        throwsA(
+          isA<HerdrTargetNotFoundException>()
+              .having((e) => e.kind, 'kind', HerdrTargetNotFoundKind.workspace)
+              .having((e) => e.errorCode, 'errorCode', 'workspace_not_found'),
+        ),
+      );
+    });
+
+    test('workspaceRename passes the quoted label', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr workspace rename'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.workspaceRename('w1', 'my ws');
+
+      expect(result.changed, isTrue);
+      expect(
+        client.execCommands,
+        contains("herdr workspace rename w1 'my ws'"),
+      );
+    });
+
+    test('workspaceFocus builds the command', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr workspace focus'] = '';
+
+      final adapter = HerdrAdapter(client);
+      final result = await adapter.workspaceFocus('w1');
+
+      expect(result.changed, isTrue);
+      expect(client.execCommands, contains('herdr workspace focus w1'));
     });
   });
 }

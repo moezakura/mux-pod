@@ -16,11 +16,27 @@ class MultiplexerPane {
   /// プロセスのカレントディレクトリ。
   final String? currentPath;
 
+  /// 表示領域の左端（絶対座標。不明なら 0）。
+  final int left;
+
+  /// 表示領域の上端（絶対座標。不明なら 0）。
+  final int top;
+
+  /// 表示領域の文字幅（不明なら 0）。
+  final int width;
+
+  /// 表示領域の文字高さ（不明なら 0）。
+  final int height;
+
   const MultiplexerPane({
     required this.index,
     required this.id,
     this.active = false,
     this.currentPath,
+    this.left = 0,
+    this.top = 0,
+    this.width = 0,
+    this.height = 0,
   });
 
   MultiplexerPane copyWith({
@@ -28,18 +44,27 @@ class MultiplexerPane {
     String? id,
     bool? active,
     String? currentPath,
+    int? left,
+    int? top,
+    int? width,
+    int? height,
   }) {
     return MultiplexerPane(
       index: index ?? this.index,
       id: id ?? this.id,
       active: active ?? this.active,
       currentPath: currentPath ?? this.currentPath,
+      left: left ?? this.left,
+      top: top ?? this.top,
+      width: width ?? this.width,
+      height: height ?? this.height,
     );
   }
 
   @override
   String toString() =>
-      'MultiplexerPane($index: $id, active: $active, currentPath: $currentPath)';
+      'MultiplexerPane($index: $id, active: $active, currentPath: $currentPath, '
+      'rect: ($left,$top ${width}x$height))';
 
   @override
   bool operator ==(Object other) =>

@@ -1,9 +1,13 @@
 // inventory: HERDR-ADAPTER-000
-/// SSH 経由で herdr CLI を実行する adapter（read-only）。
+/// SSH 経由で herdr CLI を実行する adapter。
 ///
 /// 既存の [BackendAdapter] をラップし、CLI 先行方式で herdr の JSON 返却
-/// コマンドを実行・パースする。mutation コマンドは本 milestone では実装・
-/// 公開しない（socket 直結は次の milestone）。
+/// コマンドを実行・パースする。read 側（snapshot / pane read）に加え、
+/// mutation 実行基盤（[_execMutation] / [HerdrMutationResult]）と mutation
+/// メソッド群（sendText / sendKey / focusDirection / edges / resize /
+/// zoom / rename / close / split / tab CRUD / workspace CRUD）を提供する。
+/// mutation は公開済み（G6 合意#3 改訂: herdr read-only → 全 mutation
+/// 解禁・Q-01 の 1 回リリース）。
 library;
 
 import 'dart:convert';
@@ -16,7 +20,7 @@ import 'herdr_models.dart';
 import 'herdr_parser.dart';
 
 // inventory: HERDR-ADAPTER-001
-/// herdr CLI への read-only アクセスを提供する adapter。
+/// herdr CLI へのアクセスを提供する adapter。
 class HerdrAdapter {
   final BackendAdapter _backend;
   final String? _userExecutablePath;
@@ -80,6 +84,328 @@ class HerdrAdapter {
       timeout: timeout,
     );
     return HerdrPaneContentParser.parse(stdout, ansi: ansi);
+  }
+
+  // ===== mutation（Q-02/Q-03/Q-06/Q-07。公開済み）=====
+
+  // inventory: HERDR-ADAPTER-021
+  /// pane へテキストを送信する（Q-06）。
+  Future<HerdrMutationResult> sendText(
+    String paneId,
+    String text, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.paneSendText(paneId, text), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-022
+  /// pane へキーを送信する（Q-07）。
+  ///
+  /// [keyName] は `PaneKeyMap.mapSpecialKey` で変換済みの herdr キー名を想定
+  /// （受理キーはそのまま・拒否キーは `send-text` 経路へは [sendText] を使う）。
+  Future<HerdrMutationResult> sendKey(
+    String paneId,
+    String keyName, {
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneSendKeys(paneId, keyName),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-023
+  /// 方向 focus（`--pane` 指定）。
+  ///
+  /// 隣接なしは `changed:false` + `reason:"no_neighbor"` の soft 失敗
+  /// （[HerdrMutationResult.isNoNeighbor]）。応答 layout で同期する。
+  Future<HerdrMutationResult> focusDirection(
+    String paneId,
+    String direction, {
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneFocus(paneId, direction),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-024
+  /// 隣接方向の有無を返す（navigableDirections 表示に直結）。
+  Future<HerdrMutationResult> edges(
+    String paneId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.paneEdges(paneId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-025
+  /// 相対分数 resize（Q-04）。
+  ///
+  /// [amount] は現在 ratio への加算・[0.1, 0.9] クランプ。分割境界外は
+  /// `changed:false` + `reason:"unchanged"`（[HerdrMutationResult.isUnchanged]）。
+  Future<HerdrMutationResult> resizePane(
+    String paneId,
+    String direction,
+    double amount, {
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneResize(paneId, direction, amount),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-026
+  /// zoom（Q-02）。
+  ///
+  /// [mode]: `'toggle'` / `'on'` / `'off'`（既定 `'toggle'`）。
+  Future<HerdrMutationResult> zoomPane(
+    String paneId, {
+    String mode = 'toggle',
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneZoom(paneId, mode: mode),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-027
+  /// ラベル変更（Q-02）。
+  Future<HerdrMutationResult> renamePane(
+    String paneId,
+    String label, {
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneRename(paneId, label),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-028
+  /// pane を閉じる（**破壊的 close の唯一経路**・Q-03）。
+  ///
+  /// 対象不在は `pane_not_found` → [HerdrTargetNotFoundException]
+  /// （`isHerdrTargetNotFound` で分類・再解決へ）。
+  Future<HerdrMutationResult> closePane(
+    String paneId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.paneClose(paneId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-029
+  /// pane を分割する（Q-02）。
+  ///
+  /// 応答は layout を含まないため、反映は別途 `snapshot()` で同期する
+  /// （T0 実測 6-a・H5 単一経路）。
+  Future<HerdrMutationResult> splitPane(
+    String paneId,
+    String direction, {
+    double? ratio,
+    String? cwd,
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.paneSplit(paneId, direction, ratio: ratio, cwd: cwd),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-032
+  /// tab を作成する（Q-05）。
+  ///
+  /// [workspaceId]: 作成先の workspace ID（例: "w1"）。
+  /// [label]: 表示ラベル（省略可）。
+  /// [cwd]: ルート pane の開始ディレクトリ（省略可）。
+  /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
+  /// false で `--no-focus`。
+  /// 応答は layout を含まない（`result.tab`）ため、反映は別途 `snapshot()`
+  /// で同期する（T18 単一経路）。対象不在は `workspace_not_found` →
+  /// [HerdrTargetNotFoundException]。
+  Future<HerdrMutationResult> tabCreate(
+    String workspaceId, {
+    String? label,
+    String? cwd,
+    bool? focus,
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.tabCreate(workspaceId, label: label, cwd: cwd, focus: focus),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-033
+  /// tab を閉じる（Q-05）。
+  ///
+  /// workspace の最後の tab を閉じると workspace も連鎖終了する。
+  /// 対象不在は `tab_not_found` → [HerdrTargetNotFoundException]。
+  Future<HerdrMutationResult> tabClose(
+    String tabId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.tabClose(tabId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-034
+  /// tab のラベルを変更する（Q-05）。
+  Future<HerdrMutationResult> tabRename(
+    String tabId,
+    String label, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.tabRename(tabId, label), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-035
+  /// tab へフォーカスする（Q-05）。
+  Future<HerdrMutationResult> tabFocus(
+    String tabId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.tabFocus(tabId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-036
+  /// workspace を作成する（Q-05）。
+  ///
+  /// workspace 作成と同時に最初の tab と root pane も作られる。応答は layout
+  /// を含まない（`result.workspace`）ため、反映は別途 `snapshot()` で同期する
+  /// （T18 単一経路）。
+  /// [label]: 表示ラベル（省略可）。[cwd]: ルート pane の開始ディレクトリ。
+  /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
+  /// false で `--no-focus`。
+  Future<HerdrMutationResult> workspaceCreate({
+    String? label,
+    String? cwd,
+    bool? focus,
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.workspaceCreate(label: label, cwd: cwd, focus: focus),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-037
+  /// workspace を閉じる（Q-05）。
+  ///
+  /// 対象不在は `workspace_not_found` → [HerdrTargetNotFoundException]。
+  Future<HerdrMutationResult> workspaceClose(
+    String workspaceId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.workspaceClose(workspaceId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-038
+  /// workspace のラベルを変更する（Q-05）。
+  Future<HerdrMutationResult> workspaceRename(
+    String workspaceId,
+    String label, {
+    Duration? timeout,
+  }) =>
+      _execMutation(
+        HerdrCommands.workspaceRename(workspaceId, label),
+        timeout: timeout,
+      );
+
+  // inventory: HERDR-ADAPTER-039
+  /// workspace へフォーカスする（Q-05）。
+  Future<HerdrMutationResult> workspaceFocus(
+    String workspaceId, {
+    Duration? timeout,
+  }) =>
+      _execMutation(HerdrCommands.workspaceFocus(workspaceId), timeout: timeout);
+
+  // inventory: HERDR-ADAPTER-030
+  /// mutation コマンドを実行し [HerdrMutationResult] を返す。
+  ///
+  /// - **成功判定は rc + stderr のみ**。stdout が空（send-text / send-keys /
+  ///   rename / close / split 等）でも rc=0 を成功とする（R7）。
+  ///   stdout が非空なら応答 JSON から `changed` / `reason` / `layout` を抽出。
+  /// - 失敗時は [_execChecked] と同じ分類:
+  ///   - target-not-found → [HerdrTargetNotFoundException]
+  ///   - `invalid_key` → errorCode 付き [HerdrCommandException]
+  ///     （[isHerdrInvalidKey] で判定・防御的）
+  ///   - それ以外 → [HerdrCommandException]
+  /// - exitCode null かつ出力が空は SSH/transport 層の異常として
+  ///   [SshConnectionError]（`isServerDownException` の server-down 分類へ）。
+  Future<HerdrMutationResult> _execMutation(
+    String command, {
+    Duration? timeout,
+  }) async {
+    final resolved = _resolve(command);
+    final result = await _backend.execWithExitCode(resolved, timeout: timeout);
+    final stderr = result.stderr.trim();
+    final exitCode = result.exitCode;
+
+    if (exitCode == null && result.stdout.trim().isEmpty && stderr.isEmpty) {
+      throw SshConnectionError(
+        'Command channel closed without exit status or output: $resolved',
+      );
+    }
+
+    if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
+      final errorCode = _extractErrorCode(result);
+      final kind = herdrTargetNotFoundKindForCode(errorCode);
+      if (kind != null) {
+        throw HerdrTargetNotFoundException(
+          kind: kind,
+          message: _buildErrorMessage(result),
+          errorCode: errorCode,
+          exitCode: exitCode,
+        );
+      }
+      throw HerdrCommandException(
+        _buildErrorMessage(result),
+        exitCode: exitCode,
+        errorCode: errorCode,
+      );
+    }
+    return _parseMutationResult(result.stdout);
+  }
+
+  // inventory: HERDR-ADAPTER-031
+  /// mutation 応答の stdout から [HerdrMutationResult] を抽出する。
+  ///
+  /// - stdout 空 → `changed:true` の素の成功（R7）。
+  /// - JSON でない / 想定構造でない stdout → rc=0 を尊重し素の成功。
+  /// - 応答形式（T0 実測 4-c/5-a/5-b/6-a）:
+  ///   `{"result":{"resize":{"changed":..,"reason":..,"layout":{..}},"type":..}}`
+  ///   操作サブオブジェクトは `changed` / `zoom_changed` / `layout` のいずれか
+  ///   を持つものを探す（resize / focus / zoom / edges 共通）。
+  HerdrMutationResult _parseMutationResult(String stdout) {
+    if (stdout.trim().isEmpty) return const HerdrMutationResult();
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(stdout);
+    } catch (_) {
+      return const HerdrMutationResult();
+    }
+    if (decoded is! Map<String, dynamic>) return const HerdrMutationResult();
+    final result = decoded['result'];
+    if (result is! Map<String, dynamic>) return const HerdrMutationResult();
+
+    Map<String, dynamic>? op;
+    for (final entry in result.entries) {
+      final value = entry.value;
+      if (value is Map<String, dynamic> &&
+          (value.containsKey('changed') ||
+              value.containsKey('zoom_changed') ||
+              value.containsKey('layout'))) {
+        op = value;
+        break;
+      }
+    }
+    if (op == null) return const HerdrMutationResult();
+
+    final changedRaw = op['changed'] ?? op['zoom_changed'];
+    final changed = changedRaw is bool ? changedRaw : true;
+    final reasonRaw = op['reason'];
+    HerdrLayout? layout;
+    final layoutRaw = op['layout'];
+    if (layoutRaw is Map<String, dynamic>) {
+      try {
+        layout = HerdrSnapshotParser.parseLayoutMap(layoutRaw);
+      } on FormatException {
+        // 応答 layout の欠損は許容（rc=0 を優先・R7）。
+        layout = null;
+      }
+    }
+    return HerdrMutationResult(
+      changed: changed,
+      reason: reasonRaw is String ? reasonRaw : null,
+      layout: layout,
+    );
   }
 
   /// [command] 先頭の `herdr` をユーザー指定の実行ファイルパスに置換する。
@@ -179,4 +505,41 @@ class HerdrAdapter {
     }
     return null;
   }
+}
+
+// inventory: HERDR-ADAPTER-020
+/// mutation 実行結果。
+///
+/// `changed:false`（分割境界外 resize / 隣接なし focus 等）は失敗ではなく
+/// **soft 失敗**（情報通知）を表す（S4 分類）。
+class HerdrMutationResult {
+  /// 状態が変化したかどうか。
+  ///
+  /// `changed:false`（resize の `reason:"unchanged"` / focus の
+  /// `reason:"no_neighbor"` 等）で false。stdout が空の成功
+  /// （send-text / send-keys / close / split / rename）は true。
+  final bool changed;
+
+  /// 応答の `reason`（`no_neighbor` / `unchanged` 等・無ければ null）。
+  final String? reason;
+
+  /// 応答に含まれるレイアウト（resize/zoom/focus/edges。無ければ null）。
+  final HerdrLayout? layout;
+
+  const HerdrMutationResult({
+    this.changed = true,
+    this.reason,
+    this.layout,
+  });
+
+  /// 隣接 pane が無い（soft 失敗・情報通知）。
+  bool get isNoNeighbor => reason == 'no_neighbor';
+
+  /// 分割境界のため変更なし（soft 失敗・情報通知）。
+  bool get isUnchanged => !changed;
+
+  @override
+  String toString() =>
+      'HerdrMutationResult(changed: $changed, reason: $reason, '
+      'layout: ${layout == null ? 'null' : 'present'})';
 }

@@ -136,6 +136,31 @@ bool isHerdrTargetNotFound(Object e) {
   return false;
 }
 
+// inventory: HERDR-ERR-011
+/// 非対応キー（`invalid_key`）を表す errorCode の集合。
+///
+/// Q-07 の全キー送信経路（`PaneKeyMap`）により通常は発生しないが、万一
+/// `send-keys` が未知のキー名を拒否した場合の**防御的**分類に使う（R9）。
+const Set<String> kHerdrInvalidKeyErrorCodes = {
+  'invalid_key',
+};
+
+// inventory: HERDR-ERR-012
+/// 非対応キーの判定述語。
+///
+/// [HerdrCommandException].errorCode が `invalid_key` のとき true。UI はこの
+/// 述語で「このキーは herdr で送信できませんでした」の防御的 SnackBar 通知に
+/// 分岐する（T19）。target-not-found / server-down とは独立した分類。
+bool isHerdrInvalidKey(Object e) {
+  if (e is HerdrCommandException) {
+    final code = e.errorCode;
+    if (code != null && kHerdrInvalidKeyErrorCodes.contains(code)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// message / stderr 由来のテキストが「接続拒否・socket 不在・server 停止」を
 /// 示すかどうか。
 bool _messageIndicatesServerDown(String message) {

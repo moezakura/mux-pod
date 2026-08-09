@@ -63,8 +63,72 @@ class HerdrSnapshotParser {
       workspaces: workspaces,
       tabs: tabs,
       panes: panes,
+      layouts: _parseLayouts(snapshot),
     );
   }
+
+  // inventory: HERDR-PARSER-LAYOUT-001
+  /// mutation 応答内の `layout` オブジェクトを単体でパースする。
+  ///
+  /// resize/zoom/focus/edges の応答 `result.<op>.layout`（T0 実測⑥）に使う。
+  static HerdrLayout parseLayoutMap(Map<String, dynamic> map) =>
+      _parseLayout(map);
+}
+
+// inventory: HERDR-PARSER-LAYOUT-002
+/// `layouts[]` をパースする（空・欠損許容）。
+///
+/// キー自体が無い / 空配列の場合は空リストを返す（欠損許容）。
+List<HerdrLayout> _parseLayouts(dynamic parent) {
+  return _asListOrEmpty(parent, 'layouts').map(_parseLayout).toList();
+}
+
+// inventory: HERDR-PARSER-LAYOUT-003
+/// layout オブジェクトをパースする（フィールド欠損はデフォルト値で補完）。
+HerdrLayout _parseLayout(dynamic raw) {
+  final map = _requireMap(raw, 'layout');
+  final area = _asMapOrNull(map, 'area');
+  return HerdrLayout(
+    area: area == null ? const HerdrRect() : _parseRect(area),
+    focusedPaneId: _asString(map, 'focused_pane_id'),
+    panes: _asListOrEmpty(map, 'panes').map(_parseLayoutPane).toList(),
+    splits: _asListOrEmpty(map, 'splits').map(_parseLayoutSplit).toList(),
+    tabId: _asString(map, 'tab_id'),
+    workspaceId: _asString(map, 'workspace_id'),
+    zoomed: _asBool(map, 'zoomed'),
+  );
+}
+
+// inventory: HERDR-PARSER-LAYOUT-004
+/// rect オブジェクトをパースする（欠損フィールドは 0）。
+HerdrRect _parseRect(Map<String, dynamic> map) {
+  return HerdrRect(
+    x: _asInt(map, 'x'),
+    y: _asInt(map, 'y'),
+    width: _asInt(map, 'width'),
+    height: _asInt(map, 'height'),
+  );
+}
+
+HerdrLayoutPane _parseLayoutPane(dynamic raw) {
+  final map = _requireMap(raw, 'layout pane');
+  final rect = _asMapOrNull(map, 'rect');
+  return HerdrLayoutPane(
+    paneId: _requireString(map, 'pane_id'),
+    focused: _asBool(map, 'focused'),
+    rect: rect == null ? const HerdrRect() : _parseRect(rect),
+  );
+}
+
+HerdrLayoutSplit _parseLayoutSplit(dynamic raw) {
+  final map = _requireMap(raw, 'layout split');
+  final rect = _asMapOrNull(map, 'rect');
+  return HerdrLayoutSplit(
+    direction: _asString(map, 'direction') ?? '',
+    id: _asString(map, 'id') ?? '',
+    ratio: _asDouble(map, 'ratio'),
+    rect: rect == null ? const HerdrRect() : _parseRect(rect),
+  );
 }
 
 // inventory: HERDR-PARSER-PANE-CONTENT-001
@@ -170,6 +234,22 @@ List<dynamic> _asList(dynamic parent, String key) {
   return value;
 }
 
+/// 欠損・null・空を許容する配列取得（layouts / layout.panes / layout.splits）。
+List<dynamic> _asListOrEmpty(dynamic parent, String key) {
+  final value = (parent is Map<String, dynamic>) ? parent[key] : null;
+  if (value == null) return const [];
+  if (value is List) return value;
+  throw FormatException('Expected "$key" to be a JSON array');
+}
+
+/// 欠損・null を許容するオブジェクト取得（無ければ null）。
+Map<String, dynamic>? _asMapOrNull(dynamic parent, String key) {
+  final value = (parent is Map<String, dynamic>) ? parent[key] : null;
+  if (value == null) return null;
+  if (value is Map<String, dynamic>) return value;
+  throw FormatException('Expected "$key" to be a JSON object');
+}
+
 String? _asString(dynamic parent, String key) {
   final value = (parent is Map<String, dynamic>) ? parent[key] : null;
   if (value == null) return null;
@@ -183,6 +263,13 @@ int _asInt(dynamic parent, String key) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   throw FormatException('Expected "$key" to be an integer');
+}
+
+double _asDouble(dynamic parent, String key) {
+  final value = (parent is Map<String, dynamic>) ? parent[key] : null;
+  if (value == null) return 0;
+  if (value is num) return value.toDouble();
+  throw FormatException('Expected "$key" to be a number');
 }
 
 bool _asBool(dynamic parent, String key) {

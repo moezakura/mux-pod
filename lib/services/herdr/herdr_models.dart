@@ -1,9 +1,11 @@
 // inventory: HERDR-MODELS-000
-/// herdr DTO（read-only 表示用）。
+/// herdr DTO（表示 + mutation 応答用）。
 ///
 /// ID 形式: workspace=`wN` / tab=`wN:tN` / pane=`wN:tN:pN`（G4 実測）。
-/// 本 milestone は read-only 接続のみ公開し、mutation コマンドは実装しない
-/// （G6 合意#3 に基づく公開範囲）。
+/// mutation 対応（send-text / send-keys / focus / split / close / zoom /
+/// resize / rename / tab・workspace CRUD 等）は実装・公開済み
+/// （G6 合意#3 改訂: herdr read-only → 全 mutation 解禁・Q-01 の 1 回
+/// リリース）。read-only 記述は廃止。
 library;
 
 // inventory: HERDR-MODELS-STATUS-001
@@ -162,6 +164,122 @@ class HerdrPane {
   });
 }
 
+// inventory: HERDR-MODELS-RECT-001
+/// 矩形（絶対座標）。
+///
+/// layout の `area` / pane の `rect` / split の `rect` に共通。座標・サイズは
+/// 文字セル単位（T0 実測⑥）。
+class HerdrRect {
+  /// 左端 X（0 始まり）。
+  final int x;
+
+  /// 上端 Y（0 始まり）。
+  final int y;
+
+  /// 幅（文字セル数）。
+  final int width;
+
+  /// 高さ（文字セル数）。
+  final int height;
+
+  const HerdrRect({
+    this.x = 0,
+    this.y = 0,
+    this.width = 0,
+    this.height = 0,
+  });
+}
+
+// inventory: HERDR-MODELS-LAYOUT-PANE-001
+/// layout 内の pane エントリ。
+class HerdrLayoutPane {
+  /// pane ID（例: "w1:p1"）。
+  final String paneId;
+
+  /// フォーカス中かどうか。
+  final bool focused;
+
+  /// 表示領域（絶対座標）。
+  final HerdrRect rect;
+
+  const HerdrLayoutPane({
+    required this.paneId,
+    this.focused = false,
+    this.rect = const HerdrRect(),
+  });
+}
+
+// inventory: HERDR-MODELS-LAYOUT-SPLIT-001
+/// layout 内の split ノード。
+class HerdrLayoutSplit {
+  /// 分割方向（`'right'` / `'down'`）。
+  final String direction;
+
+  /// split ID（例: "split_0_root" / "split_1_0"）。
+  final String id;
+
+  /// 分割比（0.0-1.0。浮動小数のまま保持）。
+  final double ratio;
+
+  /// 分割領域（絶対座標）。
+  final HerdrRect rect;
+
+  const HerdrLayoutSplit({
+    required this.direction,
+    required this.id,
+    this.ratio = 0,
+    this.rect = const HerdrRect(),
+  });
+}
+
+// inventory: HERDR-MODELS-LAYOUT-001
+/// タブ単位のレイアウト。
+///
+/// `herdr api snapshot` の `layouts[]` と、resize/zoom/focus/edges の mutation
+/// 応答内 `layout` に共通で現れる（T0 実測⑥）。zoom on 時は `zoomed` が true に
+/// なるが pane の `rect` 自体は非 zoom 時の値のまま（T0 実測 6-b）。
+class HerdrLayout {
+  /// タブ全体の表示領域。
+  final HerdrRect area;
+
+  /// 当該タブのフォーカス pane ID。
+  final String? focusedPaneId;
+
+  /// pane 一覧（各 pane の絶対座標 rect）。
+  final List<HerdrLayoutPane> panes;
+
+  /// split ツリー。
+  final List<HerdrLayoutSplit> splits;
+
+  /// 属する tab ID（例: "w1:t1"）。
+  final String? tabId;
+
+  /// 属する workspace ID（例: "w1"）。
+  final String? workspaceId;
+
+  /// zoom 状態。
+  final bool zoomed;
+
+  const HerdrLayout({
+    this.area = const HerdrRect(),
+    this.focusedPaneId,
+    this.panes = const [],
+    this.splits = const [],
+    this.tabId,
+    this.workspaceId,
+    this.zoomed = false,
+  });
+
+  // inventory: HERDR-MODELS-LAYOUT-002
+  /// [paneId] の表示領域（無ければ null）。
+  HerdrRect? rectFor(String paneId) {
+    for (final pane in panes) {
+      if (pane.paneId == paneId) return pane.rect;
+    }
+    return null;
+  }
+}
+
 // inventory: HERDR-MODELS-SNAPSHOT-001
 /// `herdr api snapshot` の結果（全階層）。
 class HerdrSnapshot {
@@ -189,6 +307,9 @@ class HerdrSnapshot {
   /// pane 一覧。
   final List<HerdrPane> panes;
 
+  /// tab 単位のレイアウト一覧。
+  final List<HerdrLayout> layouts;
+
   const HerdrSnapshot({
     this.protocol = 0,
     this.version = '',
@@ -198,6 +319,7 @@ class HerdrSnapshot {
     this.workspaces = const [],
     this.tabs = const [],
     this.panes = const [],
+    this.layouts = const [],
   });
 
   // inventory: HERDR-MODELS-SNAPSHOT-002

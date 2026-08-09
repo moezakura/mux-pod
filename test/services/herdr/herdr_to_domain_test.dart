@@ -136,4 +136,80 @@ void main() {
       expect(sessions[1].windows[0].panes, hasLength(1));
     });
   });
+
+  group('HerdrSnapshot.toDomainSessions: layout rect 写像', () {
+    const layout = HerdrLayout(
+      area: HerdrRect(x: 26, y: 1, width: 78, height: 59),
+      focusedPaneId: 'w1:p1',
+      panes: [
+        HerdrLayoutPane(
+          paneId: 'w1:p1',
+          focused: true,
+          rect: HerdrRect(x: 26, y: 1, width: 39, height: 59),
+        ),
+        HerdrLayoutPane(
+          paneId: 'w1:p2',
+          focused: false,
+          rect: HerdrRect(x: 65, y: 1, width: 39, height: 59),
+        ),
+      ],
+      splits: [
+        HerdrLayoutSplit(
+          direction: 'right',
+          id: 'split_0_root',
+          ratio: 0.5,
+          rect: HerdrRect(x: 26, y: 1, width: 78, height: 59),
+        ),
+      ],
+      tabId: 'w1:t1',
+      workspaceId: 'w1',
+      zoomed: false,
+    );
+
+    const snapshot = HerdrSnapshot(
+      workspaces: [HerdrWorkspace(id: 'w1', label: 'ws', tabCount: 1)],
+      tabs: [HerdrTab(id: 'w1:t1', workspaceId: 'w1', number: 1, paneCount: 2)],
+      panes: [
+        HerdrPane(id: 'w1:p1', workspaceId: 'w1', tabId: 'w1:t1', focused: true),
+        HerdrPane(id: 'w1:p2', workspaceId: 'w1', tabId: 'w1:t1'),
+      ],
+      layouts: [layout],
+    );
+
+    test('maps layout rect to MultiplexerPane geometry', () {
+      final sessions = snapshot.toDomainSessions();
+      final panes = sessions.single.windows.single.panes;
+
+      expect(panes, hasLength(2));
+      final p1 = panes.first;
+      expect(p1.id, 'w1:p1');
+      expect(p1.left, 26);
+      expect(p1.top, 1);
+      expect(p1.width, 39);
+      expect(p1.height, 59);
+      expect(p1.active, isTrue);
+
+      final p2 = panes.last;
+      expect(p2.id, 'w1:p2');
+      expect(p2.left, 65);
+      expect(p2.top, 1);
+      expect(p2.width, 39);
+      expect(p2.height, 59);
+    });
+
+    test('pane without a layout rect keeps geometry defaults of 0', () {
+      const noRects = HerdrSnapshot(
+        workspaces: [HerdrWorkspace(id: 'w1', label: 'ws', tabCount: 1)],
+        tabs: [
+          HerdrTab(id: 'w1:t1', workspaceId: 'w1', number: 1, paneCount: 1),
+        ],
+        panes: [HerdrPane(id: 'w1:p9', workspaceId: 'w1', tabId: 'w1:t1')],
+      );
+      final pane = noRects.toDomainSessions().single.windows.single.panes.single;
+      expect(pane.left, 0);
+      expect(pane.top, 0);
+      expect(pane.width, 0);
+      expect(pane.height, 0);
+    });
+  });
 }

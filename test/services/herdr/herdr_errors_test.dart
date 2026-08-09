@@ -219,4 +219,40 @@ void main() {
       expect(herdrTargetNotFoundKindForCode(null), isNull);
     });
   });
+
+  group('isHerdrInvalidKey（R9 防御的分類）', () {
+    test('errorCode が invalid_key なら true', () {
+      expect(kHerdrInvalidKeyErrorCodes, contains('invalid_key'));
+      final e = HerdrCommandException(
+        'herdr command failed: unsupported key Home',
+        exitCode: 1,
+        errorCode: 'invalid_key',
+      );
+      expect(isHerdrInvalidKey(e), isTrue);
+    });
+
+    test('target-not-found / server-down / その他は false', () {
+      expect(
+        isHerdrInvalidKey(
+          HerdrCommandException('boom', errorCode: 'pane_not_found'),
+        ),
+        isFalse,
+      );
+      expect(
+        isHerdrInvalidKey(
+          HerdrCommandException('boom', errorCode: 'server_not_running'),
+        ),
+        isFalse,
+      );
+      expect(
+        isHerdrInvalidKey(HerdrCommandException('boom', exitCode: 1)),
+        isFalse,
+      );
+      expect(isHerdrInvalidKey(HerdrTargetNotFoundException(
+        kind: HerdrTargetNotFoundKind.pane,
+        message: 'no pane',
+      )), isFalse);
+      expect(isHerdrInvalidKey(Exception('other')), isFalse);
+    });
+  });
 }
