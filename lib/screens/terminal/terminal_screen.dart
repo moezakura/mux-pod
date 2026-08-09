@@ -292,13 +292,6 @@ class _BreadcrumbData {
   /// true なら read-only バッジを表示し、window/pane セグメントを省略する。
   final bool readOnlyBadge;
 
-  /// true なら C-c の警告バッジ（herdr で mutation 解禁時）を表示する。
-  ///
-  /// T17（Q-03）: C-c は pane のシェルを終了させ得るため、初回確認ダイアログ
-  /// 以後も警告バッジを維持する（R1）。read-only 時は [readOnlyBadge] に
-  /// 優先させる。
-  final bool ctrlCWarning;
-
   /// セッション/workspace セグメントのタップ（セレクタ表示）。
   final VoidCallback? onSessionTap;
 
@@ -316,7 +309,6 @@ class _BreadcrumbData {
     this.window,
     this.pane,
     this.readOnlyBadge = false,
-    this.ctrlCWarning = false,
     this.onSessionTap,
     this.onWindowTap,
     this.onPaneTap,
@@ -539,7 +531,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // T17（Q-03）: C-c 初回確認ダイアログを表示済みか（SharedPreferences）。
   // herdr の C-c は pane のシェルを終了させ得るため、初回のみ確認し、
-  // 以後は確認なしで送信する（警告バッジを維持・R1）。
+  // 以後は確認なしで送信する（R1）。
   static const String _herdrCtrlCConfirmedKey = 'herdr_ctrl_c_confirmation_seen';
 
   /// 現在のバックエンドが持つ操作能力。
@@ -3306,16 +3298,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         onTap: data.onReadOnlyTap,
                       ),
                     ],
-                    if (data.ctrlCWarning) ...[
-                      // T17（Q-03）: C-c の警告バッジ（初回確認以後も維持・R1）。
-                      _buildBreadcrumbSeparator(),
-                      _buildBreadcrumbItem(
-                        'Ctrl-C 注意',
-                        icon: Icons.warning_amber,
-                        isActive: false,
-                        onTap: null,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -3443,8 +3425,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// herdr 経路: 表示状態（[display]）をブレッドクラム描画用データへ変換する（A9）。
   ///
   /// read-only は呼び出し側明示（[TerminalScreen.readOnly]）のときのみバッジを
-  /// 表示する（T16/H6）。mutation 解禁時（`_canSendSpecialKey`）は C-c の
-  /// 警告バッジを表示する（T17・Q-03）。セレクタ導線は各セグメントのタップ:
+  /// 表示する（T16/H6）。セレクタ導線は各セグメントのタップ:
   /// - session/workspace セグメント → workspace セレクタ（Select Session 相当）
   /// - window/tab セグメント → tab セレクタ（Select Window 相当）
   /// - pane セグメント → pane セレクタ（Select Pane 相当）
@@ -3459,7 +3440,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       window: tabId != null ? (display?.tabLabel ?? tabId) : null,
       pane: paneId != null ? _herdrPaneSegmentLabel(paneId) : null,
       readOnlyBadge: isExplicitReadOnly,
-      ctrlCWarning: !isExplicitReadOnly && _canSendSpecialKey,
       onSessionTap: () => _showHerdrWorkspaceSelector(),
       onWindowTap: () => _showHerdrTabSelector(),
       onPaneTap: () => _showHerdrPaneSelector(),
@@ -5921,7 +5901,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (writer == null || paneId == null) return;
 
     // T17（Q-03）: herdr の C-c は初回のみ確認ダイアログを表示する
-    // （以後は SharedPreferences フラグで確認なし・警告バッジ維持）。
+    // （以後は SharedPreferences フラグで確認なし）。
     // キャンセルされた場合は送信しない。
     if (_backendKind == MultiplexerBackendKind.herdr && tmuxKey == 'C-c') {
       final confirmed = await _confirmFirstCtrlC();
@@ -5948,8 +5928,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 初回のみ「Ctrl-C は pane のシェルを終了させる場合があります。破壊的な
   /// close は Pane メニューの Close を使います」を表示し、確認後は
-  /// SharedPreferences にフラグを保存して以後の確認を省略する（警告バッジ
-  /// は維持・R1）。
+  /// SharedPreferences にフラグを保存して以後の確認を省略する（R1）。
   Future<bool> _confirmFirstCtrlC() async {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool(_herdrCtrlCConfirmedKey) ?? false) return true;
