@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
@@ -10,8 +9,8 @@ import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/terminal_test_scaffold.dart';
 
-// T17（Q-03/R1/R2）: C-c 解禁（初回確認ダイアログのみ・警告バッジは表示
-// しない）・破壊的 close の `pane close` 一本化・連鎖 close 確認（最後の
+// T17（Q-03/R1/R2）: C-c は tmux と完全に同様に確認なしで送信（警告バッジも
+// 表示しない）・破壊的 close の `pane close` 一本化・連鎖 close 確認（最後の
 // pane / tab 判定）。
 
 // G4 実測の snapshot fixture（w1:p1 のみ・単一 tab / 単一 workspace）。
@@ -101,13 +100,9 @@ Future<FakeSshClient> _openHerdrPaneSelector(
 }
 
 void main() {
-  setUp(() {
-    SharedPreferences.setMockInitialValues({});
-  });
-
-  group('T17: C-c 解禁（Q-03/R1）', () {
+  group('T17: C-c 送信（Q-03/R1）', () {
     testWidgets(
-      'C-c 初回は確認ダイアログを表示し、キャンセルでは送信しない',
+      'C-c は確認ダイアログなしで即送信される（tmux と同様）',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -125,35 +120,27 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 50));
 
-        // 初回確認ダイアログ（Q-03 の文言）。
-        expect(find.text('Send Ctrl-C?'), findsOneWidget);
+        // 初回確認ダイアログは表示されない（C-c は tmux と完全に同様）。
+        expect(find.text('Send Ctrl-C?'), findsNothing);
         expect(
           find.textContaining('シェルを終了させる場合があります'),
-          findsOneWidget,
-        );
-        expect(
-          find.textContaining('破壊的な close は Pane メニューの Close'),
-          findsOneWidget,
+          findsNothing,
         );
 
-        // Cancel → send-keys は発行されない。
-        await tester.tap(find.text('Cancel'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+        // 確認なしで PaneKeyMap 経由の send-keys C-c が送信される。
         expect(
-          client.execCommands.any(
-            (c) => c.contains('herdr pane send-keys') && c.contains('C-c'),
-          ),
-          isFalse,
-          reason: 'キャンセル時は C-c を送信しないこと',
+          client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
+          isTrue,
+          reason: 'C-c は確認なしで PaneKeyMap 経由の send-keys が送信されること（Q-07①）',
         );
 
-        await tester.pump(const Duration(milliseconds: 200));
+        // キーオーバーレイの 1500ms タイマーを消化してクリーンに終了。
+        await tester.pump(const Duration(milliseconds: 1500));
       },
     );
 
     testWidgets(
-      'C-c 確認後に送信され、フラグ保存後はダイアログを出さない（一度だけ）',
+      'C-c を連続送信しても毎回確認なしで送信される',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -168,20 +155,17 @@ void main() {
 
         final dynamic state = tester.state(find.byType(TerminalScreen));
 
-        // 1 回目: 確認 → Send で `herdr pane send-keys w1:p1 C-c` が発行される。
+        // 1 回目: 確認なしで `herdr pane send-keys w1:p1 C-c` が発行される。
         state.sendSpecialKeyForTesting('C-c');
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.tap(find.text('Send'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 50));
         expect(
           client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
           isTrue,
-          reason: '確認後は PaneKeyMap 経由で send-keys C-c が送信されること（Q-07①）',
+          reason: '1 回目の C-c は確認なしで送信されること',
         );
 
-        // 2 回目: フラグ保存済みのためダイアログなしで送信される。
+        // 2 回目: フラグ等を挟まず同様に確認なしで送信される。
         final before = client.execCommands.length;
         state.sendSpecialKeyForTesting('C-c');
         await tester.pump();
@@ -190,7 +174,7 @@ void main() {
         expect(
           client.execCommands.length,
           greaterThan(before),
-          reason: '2 回目以降は確認なしで送信されること（SharedPreferences フラグ）',
+          reason: '2 回目以降も確認なしで送信されること（tmux と同様）',
         );
         expect(
           client.execCommands.where((c) => c.contains('C-c')).length,
@@ -218,7 +202,7 @@ void main() {
 
       // 実測で「C-c によるシェル終了（SIGINT）」はターミナル標準挙動（tmux でも
       // 同様）と判明したため、警告バッジは表示しない（tmux と同じ操作感・
-      // ユーザー決定）。初回確認ダイアログは残る。
+      // ユーザー決定）。C-c は確認なしで送信する。
       expect(find.text('Ctrl-C 注意'), findsNothing);
       expect(find.text('Read-only'), findsNothing);
 
