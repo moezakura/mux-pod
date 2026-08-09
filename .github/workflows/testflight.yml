@@ -3,8 +3,9 @@ name: Upload to TestFlight
 on:
   push:
     tags:
-      # 正式版（v0.7.0）とプレリリース（v0.7.0-pre1）の両方を受け付ける
-      - 'v[0-9]+.[0-9]+.[0-9]+(-[0-9A-Za-z]+)?'
+      # release.yml と同じ v* パターン。正式版（v0.7.0）も
+      # プレリリース（v0.7.0-pre1）も発火する
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
