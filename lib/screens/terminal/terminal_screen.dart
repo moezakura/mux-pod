@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../providers/active_session_provider.dart';
@@ -17,7 +18,10 @@ import '../../services/backend/domain/multiplexer_backend.dart';
 import '../../services/backend/domain/multiplexer_pane.dart';
 import '../../services/backend/domain/multiplexer_session.dart';
 import '../../services/backend/domain/multiplexer_window.dart';
+import '../../services/backend/domain/herdr_pane_writer.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/backend/domain/pane_writer.dart';
+import '../../services/backend/domain/tmux_pane_writer.dart';
 import '../../services/herdr/herdr_adapter.dart';
 import '../../services/herdr/herdr_commands.dart'
     show HerdrCommandException, HerdrTargetNotFoundException;
@@ -288,6 +292,13 @@ class _BreadcrumbData {
   /// true なら read-only バッジを表示し、window/pane セグメントを省略する。
   final bool readOnlyBadge;
 
+  /// true なら C-c の警告バッジ（herdr で mutation 解禁時）を表示する。
+  ///
+  /// T17（Q-03）: C-c は pane のシェルを終了させ得るため、初回確認ダイアログ
+  /// 以後も警告バッジを維持する（R1）。read-only 時は [readOnlyBadge] に
+  /// 優先させる。
+  final bool ctrlCWarning;
+
   /// セッション/workspace セグメントのタップ（セレクタ表示）。
   final VoidCallback? onSessionTap;
 
@@ -305,6 +316,7 @@ class _BreadcrumbData {
     this.window,
     this.pane,
     this.readOnlyBadge = false,
+    this.ctrlCWarning = false,
     this.onSessionTap,
     this.onWindowTap,
     this.onPaneTap,
@@ -507,6 +519,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // ペイン内容読み取り（backend 種別で tmux/herdr を選択）
   PaneContentReader? _paneReader;
 
+  // ペイン操作（write 側抽象）。backend 種別で生成する（T8: `TmuxPaneWriter` /
+  // `HerdrPaneWriter`。Phase 0 の仮実装 `_Phase0PaneWriter` は廃止）。呼び出し
+  // 側の明示（`readOnly: true`）・未接続時は null（全 capability false 扱い）。
+  PaneWriter? _paneWriter;
+
   // ポーリング対象 pane ID の取得抽象（tmux=遅延委譲 / herdr=固定 ID）
   _TargetSource? _targetSource;
 
@@ -517,15 +534,61 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // server-down / 終端エラーでポーリングを停止したか（再開まで _scheduleNextPoll を抑止）。
   bool _pollingSuspended = false;
 
-  // backend 種別（herdr は read-only 分岐に使う。接続前は unknown）
+  // backend 種別（`_can` 判定・操作能力の導出に使う。接続前は unknown）
   MultiplexerBackendKind _backendKind = MultiplexerBackendKind.unknown;
 
-  /// read-only モード（mutation 非表示/無効化）。
+  // T17（Q-03）: C-c 初回確認ダイアログを表示済みか（SharedPreferences）。
+  // herdr の C-c は pane のシェルを終了させ得るため、初回のみ確認し、
+  // 以後は確認なしで送信する（警告バッジを維持・R1）。
+  static const String _herdrCtrlCConfirmedKey = 'herdr_ctrl_c_confirmation_seen';
+
+  /// 現在のバックエンドが持つ操作能力。
   ///
-  /// 呼び出し側の明示（[TerminalScreen.readOnly]）または接続の backend 種別
-  /// （herdr）のどちらかが真なら read-only として振る舞う。
-  bool get _isReadOnly =>
-      widget.readOnly || _backendKind == MultiplexerBackendKind.herdr;
+  /// `_paneWriter` が未生成（[TerminalScreen.readOnly] 明示・未接続）の場合は
+  /// 全能力 false（read-only 相当）。Phase 0 では herdr は全能力 false・
+  /// tmux は全 true のため、`!_can` は従来の `_isReadOnly`
+  /// （`widget.readOnly || _backendKind == herdr`）と同値になる（H4 等価性）。
+  PaneCapabilities get _paneCapabilities =>
+      _paneWriter?.capabilities ?? const PaneCapabilities();
+
+  /// 指定した操作能力（[required] に true が立っている能力）が現在の
+  /// バックエンドで有効かどうか。
+  ///
+  /// 判定は純データで副作用なし（L2-1）。UI ガードはすべて `!_can(...)`
+  /// に置換する（`_isReadOnly` の boolean では操作単位の解禁/遮断を表現
+  /// できない・Q-02/H4）。
+  bool _can(PaneCapabilities required) {
+    final caps = _paneCapabilities;
+    return (required.sendText == false || caps.sendText) &&
+        (required.sendKeys == false || caps.sendKeys) &&
+        (required.focus == false || caps.focus) &&
+        (required.split == false || caps.split) &&
+        (required.close == false || caps.close) &&
+        (required.rename == false || caps.rename) &&
+        (required.zoom == false || caps.zoom) &&
+        (required.resize == false || caps.resize) &&
+        (required.paste == false || caps.paste) &&
+        (required.copyMode == false || caps.copyMode) &&
+        (required.imageTransfer == false || caps.imageTransfer) &&
+        (required.workspaceCrud == false || caps.workspaceCrud) &&
+        (required.tabCrud == false || caps.tabCrud) &&
+        (required.absoluteResize == false || caps.absoluteResize);
+  }
+
+  /// テキスト送信（`send-text`）が可能か。
+  bool get _canSendText => _can(const PaneCapabilities(sendText: true));
+
+  /// 特殊キー送信（`send-keys` / エスケープ / 制御文字）が可能か。
+  bool get _canSendSpecialKey => _can(const PaneCapabilities(sendKeys: true));
+
+  /// 方向フォーカス移動（2 本指スワイプ・矢印・navigableDirections）が可能か。
+  bool get _canFocusDirection => _can(const PaneCapabilities(focus: true));
+
+  /// 分割（split）が可能か。
+  bool get _canSplitPane => _can(const PaneCapabilities(split: true));
+
+  /// copy-mode（履歴選択モード）が可能か。
+  bool get _canCopyMode => _can(const PaneCapabilities(copyMode: true));
 
   // 最小監視（A8）: herdr 表示対象切替・server-down 検出・再解決の直近イベントを
   // 記録するリングバッファ。診断用であり、SDK 送信は行わない（プライバシー・最小導線）。
@@ -1098,8 +1161,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// backend 種別に応じてペイン内容読み取りを（再）生成する。
   ///
   /// 再接続時は [SshClient] が作り直されるため、新しいクライアントで
-  /// 読み直す（古いクライアントを保持したままポーリングしない）。
+  /// 読み直す（古いクライアントを保持したままポーリングしない）。操作側
+  /// （[_paneWriter]）も同じタイミングで再生成する。
   void _recreatePaneReader() {
+    _recreatePaneWriter();
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null) return;
     if (widget.paneContentReader != null) {
@@ -1122,12 +1187,41 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
+  /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
+  ///
+  /// 呼び出し側の明示（[TerminalScreen.readOnly]）・未接続・backend 未確定の
+  /// ときは null（全 capability false 扱い = read-only）。T8 で `_Phase0PaneWriter`
+  /// を廃止し、実実装（`TmuxPaneWriter` / `HerdrPaneWriter`）を生成する。
+  /// herdr は Phase 2（T13）で capability がフリップされ mutation が解禁される
+  /// （Q-01: 公開は 1 回のリリース・中間状態は出さない）。
+  void _recreatePaneWriter() {
+    final sshClient = ref.read(sshProvider.notifier).client;
+    if (sshClient == null || widget.readOnly) {
+      _paneWriter = null;
+      return;
+    }
+    _paneWriter = switch (_backendKind) {
+      // herdr: mutation 解禁（Phase 2・T13）。capability は PaneCapabilities 参照。
+      MultiplexerBackendKind.herdr => HerdrPaneWriter(HerdrAdapter(sshClient)),
+      // tmux: 既存 tmuxFacade をラップ（後方互換・コマンド文字列不変）。
+      MultiplexerBackendKind.tmux =>
+        TmuxPaneWriter(tmuxFacade, sshClient.tmuxExecutor),
+      MultiplexerBackendKind.unknown => null,
+    };
+  }
+
   /// herdr の read-only セッションを設定する。
   ///
   /// 表示対象 pane を解決し、ライブポーリングを開始する。mutation 系の
   /// tmux セットアップ（バージョン確認・セッション作成・ツリー取得・
   /// フォーカス送信・自動リサイズ）は一切行わない。
+  ///
+  /// **stale tmuxProvider 対策（T9・R3）**: セッション確立の冒頭で
+  /// `tmuxProvider.clear()` を呼び、接続残骸（activePaneId / currentTarget 等）
+  /// を破棄する。これにより tmux の currentTarget が herdr 操作に混入する経路を
+  /// 根絶する（mutation は必ず herdr の pane_id `wN:pN` を使用する実装規約）。
   Future<void> _setupHerdrSession(SshClient client) async {
+    ref.read(tmuxProvider.notifier).clear();
     _recreatePaneReader();
 
     // 表示対象 pane を解決（直接指定 or スナップショットから）。
@@ -1715,6 +1809,71 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     return snapshot.toDomainSessions();
   }
 
+  // inventory: TERM-MUT-SYNC-001
+  /// **H5/T18 単一経路**: mutation 成功後のツリー同期。
+  ///
+  /// 全 mutation（split / close / zoom / resize / rename / create / focus /
+  /// workspace・tab CRUD）の成功後に呼ぶ**唯一の同期経路**（呼び漏れ・不整合
+  /// 防止）。操作ごとに別個の同期ロジックを書かない。
+  ///
+  /// 1. [HerdrSnapshotCache.get(force: true)] でスナップショットを強制再取得
+  ///    （エポック++。adapter 差し替えは既存 `identical` 検出に委譲・A3改。
+  ///    split/create 等の layout なし応答（T0 実測）も force 再取得で反映）
+  /// 2. [_resolveHerdrTargetFromSessions]（[HerdrTargetResolver] と等価な決定順）
+  ///    でターゲットを再解決（現在表示中の pane を [preferredPaneId] で最優先）
+  /// 3. ターゲット変化時のみ [_switchHerdrTarget] で表示を単一コミット
+  ///    （snapshot 実値の workspaceId / tabId / tabLabel を伝播）
+  /// 4. [_boostPolling] で即時反映
+  ///
+  /// 破壊的操作（close / workspace close）でターゲットが消滅した場合は再解決で
+  /// 別 pane に移る（連鎖 close は確認済みの上で遷移）。再解決不能（全 workspace
+  /// 消滅）は [_notifyHerdrTargetLost] で終端通知（再接続しない・R1）。server-down
+  /// は [_fetchHerdrSessions] の既存ルーティング（ポーリング停止 + 通知 +
+  /// キャッシュ失効）に倒れる。
+  ///
+  /// ポーリング（`pane read`）は既存のまま継続する（TTL 5s + force + エポック
+  /// 照合で snapshot と表示の整合を担保・A3改）。
+  ///
+  /// 戻り値: 表示を継続できる（同一 pane 表示継続 or 切替成功）場合は true。
+  /// server-down / 終端（再解決不能）でポーリング停止 + 通知へ倒した場合は false。
+  Future<bool> _syncAfterHerdrMutation({String eventLabel = 'mutation sync'}) async {
+    // 1. force 再取得（エポック++。server-down は既存ルーティングへ）。
+    final sessions = await _fetchHerdrSessions(
+      force: true,
+      eventLabel: eventLabel,
+      isTerminal: true,
+    );
+    if (sessions == null || !mounted || _isDisposed) return false;
+
+    // 2. ターゲット再解決（現在表示中の pane を最優先・HerdrTargetResolver 等価）。
+    final currentPaneId = _targetSource?.currentPaneId;
+    final resolved = _resolveHerdrTargetFromSessions(
+      sessions,
+      preferredPaneId: currentPaneId,
+    );
+    if (resolved == null) {
+      // 終端: 破壊的操作で全 workspace が消滅した等 → 再接続しない（R1）。
+      _recordHerdrSwitchEvent('$eventLabel: no target remains');
+      _notifyHerdrTargetLost();
+      return false;
+    }
+
+    // 3. ターゲット変化時のみ切替コミット（同一なら表示継続・チラつき防止）。
+    if (resolved.paneId != currentPaneId) {
+      _recordHerdrSwitchEvent('$eventLabel -> ${resolved.paneId}');
+      _switchHerdrTarget(
+        resolved.paneId,
+        workspaceId: resolved.workspaceId,
+        tabId: resolved.tabId,
+        tabLabel: resolved.tabLabel,
+      );
+    }
+
+    // 4. 即時反映（切替コミット内でも boost されるが、同一 pane 時も反映する）。
+    _boostPolling();
+    return true;
+  }
+
   /// 共通 domain ツリー（[_fetchHerdrSessions] の成果物）から表示対象 pane を
   /// 再解決する（T5）。
   ///
@@ -1883,6 +2042,99 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         ),
       ),
     );
+  }
+
+  /// T19/S4: herdr mutation の結果 SnackBar（tmux の `_showErrorSnackBar` を
+  /// 踏襲したプレーン通知。分類別の文言は呼び出し側が組み立てる）。
+  void _showHerdrMutationSnackBar(String message) {
+    if (!mounted || _isDisposed) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  /// T19/S4: target-not-found の通知（SnackBar「対象が消えました。再同期しました」）。
+  void _showHerdrTargetNotFoundSnackBar() {
+    _showHerdrMutationSnackBar('対象が消えました。再同期しました');
+  }
+
+  /// T19/S4: 非対応キー（`invalid_key`）の防御的通知。
+  ///
+  /// Q-07 の全キー送信経路（[PaneKeyMap]）により通常は発生しない（R9）。
+  void _showHerdrInvalidKeySnackBar() {
+    _showHerdrMutationSnackBar('このキーは herdr で送信できませんでした');
+  }
+
+  /// T19/S4: 方向なし / no-op（soft 失敗）の情報通知。
+  ///
+  /// [PaneOperationNoopException.reason] に応じて文言を出し分ける:
+  /// `no_neighbor`（隣接 pane なし）→「その方向に pane はありません」/
+  /// `unchanged`（分割境界外 resize）→「分割境界のため変更なし」。
+  void _showHerdrMutationNoopSnackBar(PaneOperationNoopException e) {
+    final message = switch (e.reason) {
+      'no_neighbor' => 'その方向に pane はありません',
+      'unchanged' => '分割境界のため変更なし',
+      _ => '操作は実行されましたが状態は変わりませんでした',
+    };
+    _showHerdrMutationSnackBar(message);
+  }
+
+  /// T19/S4: herdr mutation の失敗を分類して通知・後続処理を行う。
+  ///
+  /// [PaneWriter] 経由の mutation 呼び出しを try-catch でラップし、この分類に
+  /// 集約する（S4 分類表）:
+  ///
+  /// | 分類 | 判定 | 通知 | 後続処理 |
+  /// |---|---|---|---|
+  /// | target-not-found | [isHerdrTargetNotFound]（`pane_not_found` 等） | 「対象が消えました。再同期しました」 | [HerdrSnapshotCache.get(force:true)] → 再解決（[_syncAfterHerdrMutation]） |
+  /// | 非対応キー（防御的） | [isHerdrInvalidKey]（`invalid_key`） | 「このキーは herdr で送信できませんでした」 | なし（Q-07 の全キー送信経路のフォールバック・R9） |
+  /// | 方向なし / no-op | [PaneOperationNoopException]（`no_neighbor` / `changed:false`） | 情報 SnackBar | なし |
+  /// | server-down | [isServerDownException] | 既存（ポーリング停止 + 通知 + キャッシュ失効） | [_handleHerdrServerDown] |
+  /// | その他通信エラー | — | 既存エラー SnackBar | 必要時は [_attemptReconnect] |
+  Future<void> _handleHerdrMutationError(
+    Object e, {
+    required String operationLabel,
+  }) async {
+    if (!mounted || _isDisposed) return;
+    if (isHerdrTargetNotFound(e)) {
+      // 対象が消えた（他端末での close 等）→ 通知 + 単一経路で再同期。
+      _recordHerdrSwitchEvent(
+        'mutation $operationLabel: target-not-found (${e.runtimeType})',
+      );
+      _showHerdrTargetNotFoundSnackBar();
+      await _syncAfterHerdrMutation(eventLabel: '$operationLabel re-sync');
+    } else if (isHerdrInvalidKey(e)) {
+      // 防御的（通常は発生しない・R9）。
+      _recordHerdrSwitchEvent(
+        'mutation $operationLabel: invalid_key (${e.runtimeType})',
+      );
+      _showHerdrInvalidKeySnackBar();
+    } else if (e is PaneOperationNoopException) {
+      // 方向なし / no-op（soft 失敗・情報通知）。
+      _recordHerdrSwitchEvent(
+        'mutation $operationLabel: no-op (reason: ${e.reason ?? '<null>'})',
+      );
+      _showHerdrMutationNoopSnackBar(e);
+    } else if (isServerDownException(e)) {
+      // server-down: 既存どおりポーリング停止 + 通知 + キャッシュ失効。
+      _recordHerdrSwitchEvent(
+        'mutation $operationLabel: server-down (${e.runtimeType})',
+      );
+      await _handleHerdrServerDown(e);
+    } else {
+      // その他通信エラー: 接続断系は既存の自動再接続、それ以外はエラー通知。
+      _recordHerdrSwitchEvent(
+        'mutation $operationLabel: error (${e.runtimeType})',
+      );
+      if (e is SshConnectionError) {
+        final currentState = ref.read(sshProvider);
+        if (!currentState.isReconnecting) {
+          _attemptReconnect();
+        }
+      } else {
+        _showHerdrMutationSnackBar('$operationLabel failed: $e');
+      }
+    }
   }
 
   /// バッファリングされた更新を適用（スクロールモード終了時に呼び出し）
@@ -2248,11 +2500,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                         .colorScheme
                                         .onSurface
                                         .withValues(alpha: 0.9),
-                                    // read-only（herdr）ではキー入力・スワイプ操作を無効化
+                                    // 操作能力（`_can`）に応じてキー入力・スワイプ操作を無効化
                                     // inventory: TERM-INPUT-001
-                                    onKeyInput: _isReadOnly
-                                        ? null
-                                        : _handleKeyInput,
+                                    onKeyInput: _canSendText
+                                        ? _handleKeyInput
+                                        : null,
                                     onTap: () {
                                       _scrollToBottomKey.currentState?.show();
                                     },
@@ -2268,16 +2520,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                     cursorX: cursor.x,
                                     cursorY: cursor.y,
                                     // inventory: TERM-INPUT-005
-                                    onArrowSwipe: _isReadOnly
-                                        ? null
-                                        : _sendSpecialKeyWithOverlay,
+                                    onArrowSwipe: _canSendSpecialKey
+                                        ? _sendSpecialKeyWithOverlay
+                                        : null,
                                     // inventory: TERM-NAV-007
-                                    onTwoFingerSwipe: _isReadOnly
-                                        ? null
-                                        : _handleTwoFingerSwipe,
-                                    navigableDirections: _isReadOnly
-                                        ? null
-                                        : _getNavigableDirections(),
+                                    onTwoFingerSwipe: _canFocusDirection
+                                        ? _handleTwoFingerSwipe
+                                        : null,
+                                    navigableDirections: _canFocusDirection
+                                        ? _getNavigableDirections()
+                                        : null,
                                   ),
                                 );
                               },
@@ -2334,8 +2586,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   );
                 },
               ),
-              // read-only（herdr）: 特殊キー入力バーを隠し、読み取り専用バナーを表示
-              if (_isReadOnly)
+              // 特殊キー入力バー（`_canSendSpecialKey` が false のときは
+              // 読み取り専用バナーを表示し mutation 導線を隠す）
+              if (!_canSendSpecialKey)
                 _ReadOnlyBanner(isDark: isDark)
               else
                 SpecialKeysBar(
@@ -2421,8 +2674,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// AnsiTextViewからのキー入力を処理
   void _handleKeyInput(KeyInputEvent event) {
-    // read-only（herdr）ではキー入力を無効化
-    if (_isReadOnly) return;
+    // テキスト送信不可（read-only）ではキー入力を無効化
+    if (!_canSendText) return;
     // 特殊キーの場合はtmux形式で送信（オーバーレイ付き）
     if (event.isSpecialKey && event.tmuxKeyName != null) {
       _sendSpecialKeyWithOverlay(event.tmuxKeyName!);
@@ -2433,7 +2686,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// 2本指スワイプによるペイン切り替え
+  ///
+  /// tmux: PaneNavigator（tmuxProvider）で隣接 pane を解決して select-pane を
+  /// 発行する（従来挙動）。herdr: `PaneWriter.focusPaneDirection`
+  /// （`pane focus --direction`）へ配線し（T18）、成功後は H5 単一経路
+  /// （[_syncAfterHerdrMutation]）で表示を更新する。stale tmuxProvider への
+  /// 誤送信はない（R3・backend 分岐）。
   void _handleTwoFingerSwipe(SwipeDirection direction) {
+    // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
+    if (!_canFocusDirection) return;
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      _focusHerdrPaneDirection(direction);
+      return;
+    }
     final tmuxState = ref.read(tmuxProvider);
     final window = tmuxState.activeWindow;
     final activePane = tmuxState.activePane;
@@ -2457,8 +2722,50 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
+  /// herdr の 2 本指スワイプによる方向フォーカス（T18・`pane focus --direction`）。
+  ///
+  /// [PaneWriter.focusPaneDirection]（`HerdrPaneWriter` → `herdr pane focus
+  /// --direction {dir} --pane {id}`）でフォーカスを移動し、成功後は H5/T18
+  /// 単一経路（[_syncAfterHerdrMutation]）で表示対象を同期する。隣接 pane が
+  /// 無い場合（`no_neighbor` / `changed:false` の soft 失敗）は情報通知
+  /// （「その方向に pane はありません」・S4/T19）。
+  Future<void> _focusHerdrPaneDirection(SwipeDirection direction) async {
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
+
+    final directionName = switch (direction) {
+      SwipeDirection.up => 'up',
+      SwipeDirection.down => 'down',
+      SwipeDirection.left => 'left',
+      SwipeDirection.right => 'right',
+    };
+
+    // ポーリング停止（SSH競合回避・mutation 実行中は既存方針）
+    _pollTimer?.cancel();
+    try {
+      await writer.focusPaneDirection(paneId, directionName);
+      if (!mounted || _isDisposed) return;
+      // H5/T18 単一経路: 強制再取得 → 再解決 → ターゲット変化時のみ切替コミット。
+      await _syncAfterHerdrMutation(eventLabel: 'focus sync');
+    } on PaneOperationNoopException catch (e) {
+      // 隣接 pane なし（soft 失敗・情報通知）。
+      _showHerdrMutationNoopSnackBar(e);
+    } catch (e) {
+      // T19/S4: 分類別通知。
+      await _handleHerdrMutationError(e, operationLabel: 'focus');
+    } finally {
+      // ポーリング再開
+      if (mounted && !_isDisposed) _startPolling();
+    }
+  }
+
   /// 現在のペインからナビゲーション可能な方向を取得
   Map<SwipeDirection, bool>? _getNavigableDirections() {
+    // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
+    // herdr では tmuxProvider が clear() されているため null を返し、
+    // スワイプヒントは非表示になる（方向 focus の herdr 配線は T12/T18）。
+    if (!_canFocusDirection) return null;
     final tmuxState = ref.read(tmuxProvider);
     final window = tmuxState.activeWindow;
     final activePane = tmuxState.activePane;
@@ -2481,10 +2788,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     return rawDirections;
   }
 
-  /// キーデータをtmux send-keysで送信
+  /// キーデータを PaneWriter 経由で送信（tmux: send-keys -l / herdr: send-text）
   Future<void> _sendKeyData(String data) async {
-    // read-only（herdr）では送信しない
-    if (_isReadOnly) return;
+    // テキスト送信不可（read-only）では送信しない
+    if (!_canSendText) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 接続が切れている場合はキューに追加
@@ -2502,17 +2809,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       return;
     }
 
-    final target = ref.read(tmuxProvider.notifier).currentTarget;
-    if (target == null) return;
+    // 表示対象は `_TargetSource`（tmux = currentTarget / herdr = 固定 pane ID）。
+    // T8: tmuxFacade 直叩きをやめ PaneWriter へ委譲する（R3）。
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
 
     try {
-      // エスケープシーケンスや特殊キーはリテラルで送信
-      await tmuxFacade.sendKeysNoWait(
-        sshClient.tmuxExecutor,
-        target,
-        data,
-        literal: true,
-      );
+      await writer.sendText(paneId, data);
       _boostPolling();
     } catch (_) {
       // キー送信エラーは静かに無視
@@ -2671,26 +2975,108 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   @visibleForTesting
   void switchHerdrTargetForTesting(String paneId) => _switchHerdrTarget(paneId);
 
+  /// テストフック: H5/T18 単一経路（[_syncAfterHerdrMutation]）を widget テスト
+  /// から直接呼び出すための `@visibleForTesting` メソッド。本番コードからは
+  /// 呼ばない（各 mutation ハンドラが成功後にこの単一経路を呼ぶ）。
+  @visibleForTesting
+  Future<bool> syncAfterHerdrMutationForTesting({
+    String eventLabel = 'test mutation sync',
+  }) =>
+      _syncAfterHerdrMutation(eventLabel: eventLabel);
+
+  /// テストフック: [_splitPane]（herdr 分岐）を widget テストから呼び出すための
+  /// `@visibleForTesting` メソッド。本番コードからは呼ばない（セレクタの
+  /// 分割導線が `_splitPane` を呼ぶ）。
+  @visibleForTesting
+  Future<void> splitPaneForTesting(
+    String paneId,
+    SplitDirection direction,
+  ) =>
+      _splitPane(paneId, direction);
+
+  /// テストフック: [_renameHerdrPane]（herdr 分岐）を widget テストから
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （セレクタの Rename 導線が [_renameHerdrPane] を呼ぶ）。
+  @visibleForTesting
+  Future<void> renameHerdrPaneForTesting(String paneId, String label) =>
+      _renameHerdrPane(paneId, label);
+
+  /// テストフック: [_handleHerdrZoomPane]（herdr 分岐）を widget テストから
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （セレクタの Zoom 導線が [_handleHerdrZoomPane] を呼ぶ）。
+  @visibleForTesting
+  Future<void> zoomHerdrPaneForTesting(String paneId) =>
+      _handleHerdrZoomPane(paneId);
+
+  /// テストフック: [_createHerdrTab]（herdr 分岐）を widget テストから呼び出す
+  /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （tab セレクタの New Tab 導線が [_createHerdrTab] を呼ぶ）。
+  @visibleForTesting
+  Future<void> createHerdrTabForTesting(String workspaceId) =>
+      _createHerdrTab(workspaceId);
+
+  /// テストフック: [_renameHerdrTab]（herdr 分岐）を widget テストから呼び出す
+  /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （tab セレクタの Rename 導線が [_renameHerdrTab] を呼ぶ）。
+  @visibleForTesting
+  Future<void> renameHerdrTabForTesting(String tabId, String label) =>
+      _renameHerdrTab(tabId, label);
+
+  /// テストフック: [_closeHerdrTab]（herdr 分岐）を widget テストから呼び出す
+  /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （tab セレクタの Close 導線が [_closeHerdrTab] を呼ぶ）。
+  @visibleForTesting
+  Future<void> closeHerdrTabForTesting(String tabId) =>
+      _closeHerdrTab(tabId: tabId);
+
+  /// テストフック: herdr の方向フォーカス（[_focusHerdrPaneDirection]）を widget
+  /// テストから呼び出すための `@visibleForTesting` メソッド。本番コードからは
+  /// 呼ばない（`_handleTwoFingerSwipe` が herdr 分岐で呼ぶ）。
+  @visibleForTesting
+  Future<void> focusHerdrPaneDirectionForTesting(SwipeDirection direction) =>
+      _focusHerdrPaneDirection(direction);
+
   /// テストフック: リングバッファ（直近 64 件・`[HerdrSwitch]` プレフィックス付き）
   /// の現在内容を返す。本番コードからは呼ばない（A8 監視は画面ローカル）。
   @visibleForTesting
   List<String> herdrSwitchEventsForTesting() =>
       List.unmodifiable(_herdrSwitchEvents);
 
-  /// ペインを選択
+  /// テストフック: `_can` 判定を widget テストから直接検証する（H4 等価性
+  /// テスト・T4）。本番コードからは呼ばない。
+  @visibleForTesting
+  bool canForTesting(PaneCapabilities required) => _can(required);
+
+  /// テストフック: 現在のバックエンド操作能力を返す（T4 の Phase 0 検証用）。
+  /// 本番コードからは呼ばない。
+  @visibleForTesting
+  PaneCapabilities paneCapabilitiesForTesting() => _paneCapabilities;
+
+  /// テストフック: tmux キー名の特殊キー送信（[_sendSpecialKey] 相当）を widget
+  /// テストから直接検証する（T13: PaneKeyMap の全キー送信経路・防御的
+  /// `invalid_key` 通知）。本番コードからは呼ばない。
+  @visibleForTesting
+  void sendSpecialKeyForTesting(String tmuxKey) {
+    _sendSpecialKey(tmuxKey);
+  }
+
+  /// ペインを選択（T8: PaneWriter 経由。tmux の select-pane 発行 + 状態同期）
   Future<void> _selectPane(String paneId) async {
+    // フォーカス不可（read-only）では送信しない（R3: herdr で tmuxProvider を
+    // 読まない）。herdr は直接アクティブ化 CLI が無いため（OQ1）、セレクタの
+    // pane 選択は表示切替コミット（_switchHerdrTarget）を経由する。
+    if (!_can(const PaneCapabilities(focus: true))) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
 
-    final oldPaneId = ref.read(tmuxProvider).activePaneId;
+    final writer = _paneWriter;
+    if (writer == null) return;
 
     try {
-      // 前のペインにフォーカスアウト + select-pane + 新しいペインにフォーカスイン
-      await tmuxFacade.selectPane(
-        sshClient.tmuxExecutor,
-        paneId,
-        previousPaneId: oldPaneId,
-      );
+      // 表示対象（target）は _TargetSource 側で解決済み。tmux の select-pane +
+      // focus-in は TmuxPaneWriter が委譲する（従来の previousPaneId による
+      // focus-out は PaneWriter interface で表現できないため省略）。
+      await writer.selectPane(paneId);
     } catch (e) {
       // SSH接続が閉じている場合は無視
       debugPrint('[Terminal] Failed to select pane: $e');
@@ -2920,6 +3306,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         onTap: data.onReadOnlyTap,
                       ),
                     ],
+                    if (data.ctrlCWarning) ...[
+                      // T17（Q-03）: C-c の警告バッジ（初回確認以後も維持・R1）。
+                      _buildBreadcrumbSeparator(),
+                      _buildBreadcrumbItem(
+                        'Ctrl-C 注意',
+                        icon: Icons.warning_amber,
+                        isActive: false,
+                        onTap: null,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -3024,10 +3420,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux 経路: [TmuxState] をブレッドクラム描画用データへ変換する（A9）。
   ///
-  /// read-only（呼び出し側明示 [TerminalScreen.readOnly]）の場合はバッジ表示に
-  /// 切り替え、セレクタ tap を無効化する。
+  /// 特殊キー送信不可（read-only）の場合はバッジ表示に切り替え、セレクタ
+  /// tap を無効化する。
   _BreadcrumbData _tmuxToBreadcrumb(TmuxState tmuxState) {
-    final isReadOnly = _isReadOnly;
+    final isReadOnly = !_canSendSpecialKey;
     final activePane = tmuxState.activePane;
     return _BreadcrumbData(
       session: isReadOnly
@@ -3046,24 +3442,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// herdr 経路: 表示状態（[display]）をブレッドクラム描画用データへ変換する（A9）。
   ///
-  /// herdr は常に read-only のため、Read-only バッジ（表示専用・T4）を表示しつつ、
-  /// 現在ターゲット（workspace ラベル / tab / pane）を [_HerdrDisplayData] から
-  /// 表示する（T11）。セレクタ導線はバッジではなく各セグメントのタップに
-  /// 移行する（T4）:
+  /// read-only は呼び出し側明示（[TerminalScreen.readOnly]）のときのみバッジを
+  /// 表示する（T16/H6）。mutation 解禁時（`_canSendSpecialKey`）は C-c の
+  /// 警告バッジを表示する（T17・Q-03）。セレクタ導線は各セグメントのタップ:
   /// - session/workspace セグメント → workspace セレクタ（Select Session 相当）
   /// - window/tab セグメント → tab セレクタ（Select Window 相当）
   /// - pane セグメント → pane セレクタ（Select Pane 相当）
-  /// それぞれ独立シートを開く（選択即閉じ・元 tmux 挙動）。
   _BreadcrumbData _herdrToBreadcrumb(_HerdrDisplayData? display) {
     final paneId = display?.paneId;
     final tabId = display?.tabId;
+    final isExplicitReadOnly = widget.readOnly;
     return _BreadcrumbData(
       session: display?.workspaceLabel ?? widget.sessionName ?? '',
       // M-4: tab セグメントは数字抽出（旧 _herdrTabSegmentLabel）ではなく、
       // snapshot 解決済みの実ラベル（tabLabel = tab.label ?? tab.id 相当）を表示する。
       window: tabId != null ? (display?.tabLabel ?? tabId) : null,
       pane: paneId != null ? _herdrPaneSegmentLabel(paneId) : null,
-      readOnlyBadge: true,
+      readOnlyBadge: isExplicitReadOnly,
+      ctrlCWarning: !isExplicitReadOnly && _canSendSpecialKey,
       onSessionTap: () => _showHerdrWorkspaceSelector(),
       onWindowTap: () => _showHerdrTabSelector(),
       onPaneTap: () => _showHerdrPaneSelector(),
@@ -3114,6 +3510,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在表示中の workspace（[_HerdrDisplayData] から引き当て）の tab 一覧を
   /// 1 階層で表示する。選択するとその tab のフォーカス pane へ
   /// [_switchHerdrTarget] で切替え、シートを即閉じする。
+  ///
+  /// Q-05（tab CRUD 解禁）以降は mutation UI を追加する（tmux の
+  /// [_showWindowSelector] を参照）:
+  /// - ヘッダー: New Tab（[PaneWriter.createTab] = `herdr tab create`）
+  /// - タイル ⋮: Rename Tab（[PaneWriter.renameTab] = `herdr tab rename`）/
+  ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
+  ///   連鎖 close 確認付き・R2）
   void _showHerdrTabSelector() async {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3128,9 +3531,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (workspace == null) return;
 
     final current = _herdrSelectorContext();
+    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+    final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
+    final canRename = _can(const PaneCapabilities(rename: true));
+    final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
       title: 'Select Window',
       icon: Icons.tab,
+      headerActions: [
+        if (canTabCrud && workspace.id != null)
+          IconButton(
+            icon: Icon(Icons.add, color: primary),
+            tooltip: 'New Tab',
+            onPressed: () =>
+                _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
+          ),
+      ],
       children: [
         for (final window in workspace.windows)
           MultiplexerWindowTile(
@@ -3141,6 +3557,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               Navigator.pop(context);
               _herdrSelectTab(sessions, workspace, window);
             },
+            onRename: canRename && window.id != null
+                ? () => _closeSelectorThen(() {
+                      _showHerdrRenameTabDialog(workspace, window);
+                    })
+                : null,
+            onClose: canTabCrud && window.id != null
+                ? () => _closeSelectorThen(() {
+                      // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
+                      // `tab close` を実行する。
+                      _confirmAndCloseHerdrTab(
+                        workspace: workspace,
+                        tab: window,
+                        isLastTab: workspace.windows.length == 1,
+                      );
+                    })
+                : null,
           ),
       ],
     );
@@ -3151,6 +3583,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在表示中の workspace / tab（[_HerdrDisplayData] から引き当て）の pane
   /// 一覧を 1 階層で表示する。pane 表示名は cwd 優先（A10 / [_herdrPaneLabel]）。
   /// 選択すると [_switchHerdrTarget] で切替え、シートを即閉じする。
+  /// mutation 解禁後（T13/T14）はリサイズを有効化する（Q-04: 方向 + ステップ
+  /// UI の [HerdrResizePaneDialog]。絶対値 UI は herdr 非対応のため tmux と
+  /// 経路を分ける）。Q-02（全操作解禁）ではヘッダーに Split / Rename / Zoom を
+  /// 追加する（tmux の [_showPaneSelector] を参照。ヘッダー操作の対象は
+  /// 現在表示中の pane = Resize と同じ導線）:
+  /// - Split: 方向選択ダイアログ（右/下）→ [_splitPane]（`herdr pane split`）
+  /// - Rename: 入力ダイアログ → [_renameHerdrPane]（`herdr pane rename`）
+  /// - Zoom: トグル（[_handleHerdrZoomPane] = `herdr pane zoom --toggle`。
+  ///   zoom 状態は snapshot の layout `zoomed` フラグで表示・可能なら）
   void _showHerdrPaneSelector() async {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3167,9 +3608,64 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (workspace == null || window == null) return;
 
     final current = _herdrSelectorContext();
+    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+    final canResize = _can(const PaneCapabilities(resize: true));
+    final canClose = _can(const PaneCapabilities(close: true));
+    final canSplit = _can(const PaneCapabilities(split: true));
+    final canRename = _can(const PaneCapabilities(rename: true));
+    final canZoom = _can(const PaneCapabilities(zoom: true));
+    final primary = Theme.of(context).colorScheme.primary;
+    // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
+    final currentPaneId = _targetSource?.currentPaneId;
+    final currentPane = currentPaneId == null
+        ? null
+        : _findHerdrPane(sessions, currentPaneId);
+    // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
+    final isZoomed = _isHerdrTabZoomed(display?.tabId);
     _showMultiplexerSheet(
       title: 'Select Pane',
       icon: Icons.terminal,
+      headerActions: [
+        if (canSplit && currentPane != null)
+          IconButton(
+            icon: Icon(Icons.call_split, color: primary),
+            tooltip: 'Split Pane',
+            onPressed: () => _closeSelectorThen(
+              () => _showHerdrSplitDirectionChooser(currentPane),
+            ),
+          ),
+        if (canRename && currentPane != null)
+          IconButton(
+            icon: Icon(Icons.drive_file_rename_outline, color: primary),
+            tooltip: 'Rename Pane',
+            onPressed: () => _closeSelectorThen(
+              () => _showHerdrRenamePaneDialog(currentPane),
+            ),
+          ),
+        if (canZoom && currentPane != null)
+          IconButton(
+            icon: Icon(
+              isZoomed ? Icons.zoom_out : Icons.zoom_in,
+              color: primary,
+            ),
+            tooltip: isZoomed ? 'Unzoom Pane' : 'Zoom Pane',
+            onPressed: () => _closeSelectorThen(
+              () => _handleHerdrZoomPane(currentPane.id),
+            ),
+          ),
+        if (canResize)
+          IconButton(
+            icon: Icon(Icons.open_in_full, color: primary),
+            tooltip: 'Resize Pane',
+            onPressed: () => _closeSelectorThen(() {
+              // ヘッダーの Resize は現在表示中の pane を対象にする。
+              final currentPaneId = _targetSource?.currentPaneId;
+              if (currentPaneId == null) return;
+              final pane = _findHerdrPane(sessions, currentPaneId);
+              if (pane != null) _handleHerdrResizePane(pane);
+            }),
+          ),
+      ],
       children: [
         for (final pane in window.panes)
           MultiplexerPaneTile(
@@ -3181,6 +3677,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               Navigator.pop(context);
               _herdrSelectPane(sessions, workspace, pane);
             },
+            onLongPress: canClose
+                ? () => _closeSelectorThen(() {
+                      // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
+                      // 行い、連鎖 close を確認してから `pane close` を実行する。
+                      _confirmAndKillHerdrPane(
+                        paneId: pane.id,
+                        paneTitle: _herdrPaneLabel(pane),
+                        isLastPane: window.panes.length == 1,
+                        isLastTab: workspace.windows.length == 1,
+                      );
+                    })
+                : null,
+            onResize: canResize
+                ? () => _closeSelectorThen(() => _handleHerdrResizePane(pane))
+                : null,
+            onClose: canClose
+                ? () => _closeSelectorThen(() {
+                      _confirmAndKillHerdrPane(
+                        paneId: pane.id,
+                        paneTitle: _herdrPaneLabel(pane),
+                        isLastPane: window.panes.length == 1,
+                        isLastTab: workspace.windows.length == 1,
+                      );
+                    })
+                : null,
           ),
       ],
     );
@@ -3351,27 +3872,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (session == null) return;
     final domainSession = session.toDomain();
     final current = _selectorContextOf(tmuxState);
-    final canMutate = !_isReadOnly;
+    // mutation アクションは能力単位で有効化（T4: `_isReadOnly` の一括 boolean
+    // を `_can` の各 capability に分解）。
+    final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
+    final canResize = _can(const PaneCapabilities(resize: true));
+    final canRename = _can(const PaneCapabilities(rename: true));
+    final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
       title: 'Select Window',
       icon: Icons.tab,
-      headerActions: canMutate
-          ? [
-              IconButton(
-                icon: Icon(Icons.open_in_full, color: primary),
-                tooltip: 'Resize Window',
-                onPressed: () =>
-                    _closeSelectorThen(() => _showResizeWindowChooser(tmuxState)),
-              ),
-              IconButton(
-                icon: Icon(Icons.add, color: primary),
-                tooltip: 'New Window',
-                onPressed: () =>
-                    _closeSelectorThen(() => _showCreateWindowDialog(session)),
-              ),
-            ]
-          : const [],
+      headerActions: [
+        if (canResize)
+          IconButton(
+            icon: Icon(Icons.open_in_full, color: primary),
+            tooltip: 'Resize Window',
+            onPressed: () =>
+                _closeSelectorThen(() => _showResizeWindowChooser(tmuxState)),
+          ),
+        if (canTabCrud)
+          IconButton(
+            icon: Icon(Icons.add, color: primary),
+            tooltip: 'New Window',
+            onPressed: () =>
+                _closeSelectorThen(() => _showCreateWindowDialog(session)),
+          ),
+      ],
       children: [
         for (final window in domainSession.windows)
           MultiplexerWindowTile(
@@ -3382,7 +3908,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               Navigator.pop(context);
               _selectWindow(session.name, window.index);
             },
-            onRename: canMutate
+            onRename: canRename
                 ? () => _closeSelectorThen(() {
                       final tmuxWindow = _tmuxWindowOf(session, window);
                       if (tmuxWindow != null) {
@@ -3391,11 +3917,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       }
                     })
                 : null,
-            onResize: canMutate
+            onResize: canResize
                 ? () =>
                     _closeSelectorThen(() => _showResizeWindowChooser(tmuxState))
                 : null,
-            onClose: canMutate
+            onClose: canClose
                 ? () => _closeSelectorThen(() {
                       // inventory: TERM-CRUD-007
                       _confirmAndKillWindow(
@@ -3486,22 +4012,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (session == null || window == null) return;
     final domainWindow = window.toDomain();
     final current = _selectorContextOf(tmuxState);
-    final canMutate = !_isReadOnly;
+    // mutation アクションは能力単位で有効化（T4: `_isReadOnly` の一括 boolean
+    // を `_can` の各 capability に分解）。
+    final canResize = _can(const PaneCapabilities(resize: true));
+    final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
       title: 'Select Pane',
       icon: Icons.terminal,
       top: _buildPaneLayoutVisualizer(tmuxState, domainWindow),
-      headerActions: canMutate
-          ? [
-              IconButton(
-                icon: Icon(Icons.open_in_full, color: primary),
-                tooltip: 'Resize Pane',
-                onPressed: () =>
-                    _closeSelectorThen(() => _showResizePaneChooser(tmuxState)),
-              ),
-            ]
-          : const [],
+      headerActions: [
+        if (canResize)
+          IconButton(
+            icon: Icon(Icons.open_in_full, color: primary),
+            tooltip: 'Resize Pane',
+            onPressed: () =>
+                _closeSelectorThen(() => _showResizePaneChooser(tmuxState)),
+          ),
+      ],
       children: [
         for (final pane in domainWindow.panes)
           MultiplexerPaneTile(
@@ -3514,7 +4042,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               Navigator.pop(context);
               _selectPane(pane.id);
             },
-            onLongPress: canMutate
+            onLongPress: canClose
                 ? () => _closeSelectorThen(() {
                       // inventory: TERM-CRUD-004
                       _confirmAndKillPane(
@@ -3525,11 +4053,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       );
                     })
                 : null,
-            onResize: canMutate
+            onResize: canResize
                 ? () =>
                     _closeSelectorThen(() => _showResizePaneChooser(tmuxState))
                 : null,
-            onClose: canMutate
+            onClose: canClose
                 ? () => _closeSelectorThen(() {
                       // inventory: TERM-CRUD-004
                       _confirmAndKillPane(
@@ -3549,8 +4077,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 共通 domain の [MultiplexerWindow] から tmux の [TmuxWindow]（幾何情報を
   /// 含む）を引き当て、[_PaneLayoutVisualizer] を返す。引き当てできない場合は
-  /// null（レイアウト非表示）。read-only（[_isReadOnly]）では split を無効化し
-  /// 選択のみ許可する（H-4）。
+  /// null（レイアウト非表示）。分割不可（`!_canSplitPane`）では split を
+  /// 無効化し選択のみ許可する（H-4）。
   Widget? _buildPaneLayoutVisualizer(
     TmuxState tmuxState,
     MultiplexerWindow window,
@@ -3564,12 +4092,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         Navigator.pop(context);
         _selectPane(paneId);
       },
-      onSplitRequested: _isReadOnly
-          ? null
-          : (paneId, direction) {
+      onSplitRequested: _canSplitPane
+          ? (paneId, direction) {
               Navigator.pop(context);
               _splitPane(paneId, direction);
-            },
+            }
+          : null,
     );
   }
 
@@ -3640,8 +4168,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-CRUD-003
-  /// ペインを分割
+  /// ペインを分割（T8: PaneWriter 経由）
   Future<void> _splitPane(String paneId, SplitDirection direction) async {
+    // 分割不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    if (!_canSplitPane) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
@@ -3652,15 +4182,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       return;
     }
 
+    final writer = _paneWriter;
+    if (writer == null) return;
+
     try {
-      await tmuxFacade.splitPane(
-        sshClient.tmuxExecutor,
-        target: paneId,
-        direction: direction,
-      );
-      await _refreshSessionTree();
+      // PaneWriter の方向名（'right' / 'down'）へ変換して委譲する
+      // （tmux: split-window / herdr: pane split）。
+      final directionName = switch (direction) {
+        SplitDirection.horizontal => 'right',
+        SplitDirection.vertical => 'down',
+      };
+      await writer.splitPane(paneId, directionName);
+      // herdr: H5/T18 単一経路（force 再取得 → 再解決 → ターゲット変化時のみ
+      // 切替）でツリー同期。split 応答は layout を含まないため（T0 実測 6-a）、
+      // force 再取得で snapshot から反映する。
+      // tmux: 従来挙動（_refreshSessionTree・provider 更新）を維持。
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        await _syncAfterHerdrMutation(eventLabel: 'split pane sync');
+      } else {
+        await _refreshSessionTree();
+      }
     } catch (e) {
-      if (mounted) {
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        // T19/S4: 分類別通知（target-not-found → 再同期 / server-down →
+        // ポーリング停止 + 通知 / その他 → エラー通知）。
+        await _handleHerdrMutationError(e, operationLabel: 'split');
+      } else if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to split pane: $e')));
@@ -3675,8 +4222,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     required String paneTitle,
     required bool isLastPane,
     required bool isLastWindow,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  }) {    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -3888,9 +4434,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  /// ペインをリサイズ
+  /// ペインをリサイズ（絶対値 UI。tmux 専用経路・T8 で TmuxPaneWriter へ委譲）
   Future<void> _handleResizePane(TmuxPane pane) async {
     if (_isResizing) return;
+
+    // 絶対値 resize（tmux）のみこの経路。herdr は `absoluteResize` が false
+    // （Q-04: 相対分数のみ）のため capability ガードで到達しない。
+    // PaneWriter の resizePane は相対分数のため、絶対値は TmuxPaneWriter の
+    // tmux 固有メソッドへ委譲する（方向+ステップ UI は T14 で導入）。
+    if (!_can(const PaneCapabilities(resize: true, absoluteResize: true))) {
+      return;
+    }
 
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
@@ -3919,10 +4473,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _isResizing = true;
     _pollTimer?.cancel();
     try {
-      final sshClient = ref.read(sshProvider.notifier).client;
-      if (sshClient == null) return;
-      await tmuxFacade.resizePane(
-        sshClient.tmuxExecutor,
+      // T8: 絶対値 resize は TmuxPaneWriter（tmuxFacade ラップ）へ委譲する。
+      final writer = _paneWriter;
+      if (writer is! TmuxPaneWriter) return;
+      await writer.resizePaneAbsolute(
         pane.id,
         cols: result.cols,
         rows: result.rows,
@@ -3939,6 +4493,53 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           context,
         ).showSnackBar(SnackBar(content: Text('Resize failed: $e')));
       }
+    } finally {
+      _isResizing = false;
+      if (mounted && !_isDisposed) _startPolling();
+    }
+  }
+
+  // inventory: TERM-RESIZE-007
+  /// herdr ペインを「方向 + ステップ」でリサイズする（T14・Q-04）。
+  ///
+  /// herdr は絶対 cols/rows 不可・相対分数のみ（m11/m16 実測）のため、tmux の
+  /// 絶対値 [ResizePaneDialog] は使わず、方向（←→↑↓）+ ステップ量
+  /// （0.05/0.1/0.2 等）の [HerdrResizePaneDialog] を表示する。現在サイズは
+  /// layout の rect（[MultiplexerPane.width]/[height]）から表示する。
+  ///
+  /// 実行は [PaneWriter.resizePane]（`HerdrPaneWriter` → `herdr pane resize
+  /// --direction --amount`）へ委譲する。`changed:false`（分割境界外）は
+  /// [PaneOperationNoopException] として情報通知（S4）し、成功時はスナップ
+  /// ショットを強制再取得してレイアウトを同期する（H5 単一経路の resize 適用）。
+  Future<void> _handleHerdrResizePane(MultiplexerPane pane) async {
+    if (_isResizing) return;
+    // resize 可能（herdr は `absoluteResize` false のため絶対値 UI には到達しない）。
+    if (!_can(const PaneCapabilities(resize: true))) return;
+
+    final result = await showDialog<HerdrResizeResult>(
+      context: context,
+      builder: (context) => HerdrResizePaneDialog(
+        paneId: pane.id,
+        currentWidth: pane.width,
+        currentHeight: pane.height,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    _isResizing = true;
+    _pollTimer?.cancel();
+    try {
+      final writer = _paneWriter;
+      if (writer == null) return;
+      await writer.resizePane(pane.id, result.direction, result.amount);
+      // 成功: H5/T18 単一経路（force 再取得 → 再解決 → ターゲット変化時のみ
+      // 切替）で layout rect と表示対象を同期する。
+      await _syncAfterHerdrMutation(eventLabel: 'resize sync');
+    } on PaneOperationNoopException catch (e) {
+      // 分割境界外（soft 失敗・情報通知）。
+      _showHerdrMutationNoopSnackBar(e);
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'resize');
     } finally {
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
@@ -4013,12 +4614,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  /// ペインを閉じる（SSH経由でkill-pane実行）
+  /// ペインを閉じる（T8: PaneWriter 経由。SSH経由で kill-pane / pane close）
   Future<void> _killPane({
     required String paneId,
     required bool isLastPane,
     required bool isLastWindow,
   }) async {
+    // close 不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    if (!_can(const PaneCapabilities(close: true))) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
@@ -4029,11 +4632,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       return;
     }
 
+    final writer = _paneWriter;
+    if (writer == null) return;
+
     // ポーリング停止（SSH競合回避）
     _pollTimer?.cancel();
 
     try {
-      await tmuxFacade.killPane(sshClient.tmuxExecutor, paneId);
+      // 破壊的 close の唯一経路（Q-03）。tmux: kill-pane / herdr: pane close。
+      await writer.closePane(paneId);
       await _refreshSessionTree();
       if (!mounted || _isDisposed) return;
 
@@ -4258,11 +4865,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           : ScrollModeSource.none;
                     });
                     if (newMode == TerminalMode.scroll) {
-                      // inventory: TERM-COPY-001
-                      _enterTmuxCopyMode();
+                      // T15: copy-mode は tmux のみ（herdr には無い・H7）。
+                      // herdr は `pane read` 履歴ベースのスクロールのみ行う。
+                      if (_canCopyMode) {
+                        // inventory: TERM-COPY-001
+                        _enterTmuxCopyMode();
+                      }
                       _loadHistoryForScroll();
                     } else {
-                      _cancelTmuxCopyMode();
+                      if (_canCopyMode) {
+                        _cancelTmuxCopyMode();
+                      }
                       _applyBufferedUpdate();
                     }
                     Navigator.pop(context);
@@ -4281,10 +4894,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         : ScrollModeSource.manual;
                   });
                   if (newMode == TerminalMode.scroll) {
-                    _enterTmuxCopyMode();
+                    // T15: copy-mode は tmux のみ（herdr には無い・H7）。
+                    // herdr は `pane read` 履歴ベースのスクロールのみ行う。
+                    if (_canCopyMode) {
+                      _enterTmuxCopyMode();
+                    }
                     _loadHistoryForScroll();
                   } else {
-                    _cancelTmuxCopyMode();
+                    if (_canCopyMode) {
+                      _cancelTmuxCopyMode();
+                    }
                     _applyBufferedUpdate();
                   }
                   Navigator.pop(context);
@@ -4599,7 +5218,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Disconnect'),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -4607,11 +5226,431 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
+  // inventory: TERM-CRUD-011
+  /// herdr のペインを閉じる確認ダイアログ（T17・Q-03/R2）。
+  ///
+  /// 最後の pane / 最後の tab（snapshot から判定）を閉じる場合は
+  /// tab → workspace の連鎖終了を警告する。確認後は [_killHerdrPane]
+  /// （`PaneWriter.closePane` = `herdr pane close` の唯一経路）を実行する。
+  void _confirmAndKillHerdrPane({
+    required String paneId,
+    required String paneTitle,
+    required bool isLastPane,
+    required bool isLastTab,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final String message;
+        if (isLastPane && isLastTab) {
+          message =
+              'This is the last pane in the last tab. Closing it will also '
+              'close the tab and the workspace.';
+        } else if (isLastPane) {
+          message =
+              'This is the last pane in this tab. Closing it will also '
+              'close the tab.';
+        } else {
+          message = 'Are you sure you want to close pane "$paneTitle"?';
+        }
+        return AlertDialog(
+          backgroundColor: isDark
+              ? DesignColors.surfaceDark
+              : DesignColors.surfaceLight,
+          title: Text(
+            'Close Pane?',
+            style: TextStyle(
+              color: isDark
+                  ? DesignColors.textPrimary
+                  : DesignColors.textPrimaryLight,
+            ),
+          ),
+          content: Text(
+            message,
+            style: TextStyle(
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                // inventory: TERM-CRUD-010
+                _killHerdrPane(paneId: paneId);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: DesignColors.error,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// herdr のペインを閉じる（T17・Q-03: 破壊的 close は `pane close` に一本化）。
+  ///
+  /// [PaneWriter.closePane]（`HerdrPaneWriter` → `herdr pane close`）を実行し、
+  /// 成功後は H5/T18 単一経路（[PaneWriter] で強制再取得 → 再解決 → ターゲット
+  /// 変化時のみ [_switchHerdrTarget]）でツリーを同期する。連鎖 close（最後の
+  /// pane / 最後の tab）は [_confirmAndKillHerdrPane] で確認済みの前提。
+  ///
+  /// 失敗時は T19/S4 の分類別通知（target-not-found → 通知 + 再同期 /
+  /// server-down → 既存ポーリング停止 + 通知 / その他 → エラー通知）へ倒れる。
+  Future<void> _killHerdrPane({required String paneId}) async {
+    // close 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(close: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+
+    // ポーリング停止（SSH競合回避）
+    _pollTimer?.cancel();
+
+    try {
+      await writer.closePane(paneId);
+      if (!mounted || _isDisposed) return;
+
+      // H5/T18 単一経路: 強制再取得 → 再解決 → ターゲット変化時のみ切替コミット。
+      // 連鎖 close で全 workspace が消滅した場合は _syncAfterHerdrMutation が
+      // 終端通知（再接続しない・R1）まで行う。
+      await _syncAfterHerdrMutation(eventLabel: 'close pane sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'close');
+    } finally {
+      // ポーリング再開
+      if (mounted && !_isDisposed) {
+        _startPolling();
+      }
+    }
+  }
+
+  // inventory: TERM-CRUD-012
+  /// herdr の分割方向選択ダイアログ（Q-02: split 解禁）。
+  ///
+  /// ヘッダーの Split ボタンから現在表示中の pane を対象に開く。右
+  /// （[SplitDirection.horizontal]）/ 下（[SplitDirection.vertical]）の 2 択で
+  /// [_splitPane]（`PaneWriter.splitPane` = `herdr pane split --direction
+  /// right|down`）へ委譲する。成功後は [_splitPane] 内の単一経路
+  /// （[_syncAfterHerdrMutation]）で同期、失敗時は分類別通知
+  /// （[_handleHerdrMutationError]）へ倒れる。
+  void _showHerdrSplitDirectionChooser(MultiplexerPane pane) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textSecondary = isDark
+        ? DesignColors.textSecondary
+        : DesignColors.textSecondaryLight;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: isDark
+            ? DesignColors.surfaceDark
+            : DesignColors.surfaceLight,
+        title: Text(
+          'Split Pane',
+          style: TextStyle(
+            color: isDark
+                ? DesignColors.textPrimary
+                : DesignColors.textPrimaryLight,
+          ),
+        ),
+        content: Text(
+          'Split "${_herdrPaneLabel(pane)}" to the right or down?',
+          style: TextStyle(color: textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.textSecondary
+                    : DesignColors.textSecondaryLight,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _splitPane(pane.id, SplitDirection.horizontal);
+            },
+            child: const Text('Split Right'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _splitPane(pane.id, SplitDirection.vertical);
+            },
+            child: const Text('Split Down'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // inventory: TERM-CRUD-013
+  /// herdr の pane ラベル変更ダイアログ（Q-02: rename 解禁）。
+  ///
+  /// 入力後は [_renameHerdrPane]（`PaneWriter.renamePane` =
+  /// `herdr pane rename`）を実行する。現在のラベルは domain に保持されない
+  /// ため（A10: 表示名は cwd 優先）、初期値は空で新規入力する。
+  void _showHerdrRenamePaneDialog(MultiplexerPane pane) {
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _HerdrLabelInputDialog(
+        title: 'Rename Pane',
+        labelText: 'Pane Label',
+        hintText: 'Enter a label for this pane',
+        confirmLabel: 'Rename',
+      ),
+    ).then((label) {
+      if (label == null || !mounted) return;
+      final trimmed = label.trim();
+      if (trimmed.isEmpty) return;
+      // inventory: TERM-CRUD-013
+      _renameHerdrPane(pane.id, trimmed);
+    });
+  }
+
+  // inventory: TERM-CRUD-014
+  /// herdr の pane ラベル変更（`PaneWriter.renamePane` = `herdr pane rename`）。
+  ///
+  /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
+  /// は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _renameHerdrPane(String paneId, String label) async {
+    // rename 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(rename: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.renamePane(paneId, label);
+      if (!mounted || _isDisposed) return;
+      await _syncAfterHerdrMutation(eventLabel: 'rename pane sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'rename pane');
+    }
+  }
+
+  // inventory: TERM-CRUD-015
+  /// herdr の pane zoom トグル（Q-02: zoom 解禁）。
+  ///
+  /// [PaneWriter.zoomPane]（`HerdrPaneWriter` → `herdr pane zoom --toggle`）を
+  /// 実行し、成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、
+  /// 失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _handleHerdrZoomPane(String paneId) async {
+    // zoom 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(zoom: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.zoomPane(paneId, mode: 'toggle');
+      if (!mounted || _isDisposed) return;
+      await _syncAfterHerdrMutation(eventLabel: 'zoom pane sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'zoom');
+    }
+  }
+
+  /// snapshot の layout `zoomed` フラグから現在 tab の zoom 状態を返す
+  /// （Q-02: zoom 状態表示・可能なら）。
+  ///
+  /// zoom 状態は tab 単位（layout 単位）に保持される（[HerdrLayout.zoomed]。
+  /// T0 実測 6-b）。[HerdrSnapshotCache.cachedSnapshot] は診断用参照のため、
+  /// セレクタのボタン表示向け best-effort とし、snapshot 未取得（null）なら
+  /// false（非 zoom 表示）を返す。
+  bool _isHerdrTabZoomed(String? tabId) {
+    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
+    if (snapshot == null || tabId == null) return false;
+    for (final layout in snapshot.layouts) {
+      if (layout.tabId == tabId) return layout.zoomed;
+    }
+    return false;
+  }
+
+  // inventory: TERM-CRUD-016
+  /// herdr の tab ラベル変更ダイアログ（Q-05: tab CRUD 解禁）。
+  ///
+  /// 入力後は [_renameHerdrTab]（`PaneWriter.renameTab` =
+  /// `herdr tab rename`）を実行する。
+  void _showHerdrRenameTabDialog(
+    MultiplexerSession workspace,
+    MultiplexerWindow tab,
+  ) {
+    final tabId = tab.id;
+    if (tabId == null) return;
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _HerdrLabelInputDialog(
+        title: 'Rename Tab',
+        labelText: 'Tab Label',
+        hintText: 'Enter a label for this tab',
+        initialValue: tab.name,
+        confirmLabel: 'Rename',
+      ),
+    ).then((label) {
+      if (label == null || !mounted) return;
+      final trimmed = label.trim();
+      if (trimmed.isEmpty || trimmed == tab.name) return;
+      // inventory: TERM-CRUD-016
+      _renameHerdrTab(tabId, trimmed);
+    });
+  }
+
+  /// herdr の tab ラベル変更（`PaneWriter.renameTab` = `herdr tab rename`）。
+  ///
+  /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
+  /// は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _renameHerdrTab(String tabId, String label) async {
+    // rename 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(rename: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.renameTab(tabId, label);
+      if (!mounted || _isDisposed) return;
+      await _syncAfterHerdrMutation(eventLabel: 'rename tab sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'rename tab');
+    }
+  }
+
+  // inventory: TERM-CRUD-017
+  /// herdr の tab 作成（Q-05: tab CRUD 解禁）。
+  ///
+  /// [PaneWriter.createTab]（`HerdrPaneWriter` → `herdr tab create --workspace`
+  /// `{workspace_id}`）を実行する。tab create 応答は layout を含まないため
+  /// （T18・`result.tab` のみ）、成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）
+  /// の force 再取得で snapshot から反映する。失敗時は T19/S4 の分類別通知
+  /// （[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _createHerdrTab(String workspaceId) async {
+    // tab CRUD 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(tabCrud: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.createTab(workspaceId);
+      if (!mounted || _isDisposed) return;
+      await _syncAfterHerdrMutation(eventLabel: 'create tab sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'create tab');
+    }
+  }
+
+  // inventory: TERM-CRUD-018
+  /// herdr の tab を閉じる確認ダイアログ（Q-05: tab CRUD・連鎖 close 確認）。
+  ///
+  /// 最後の tab（snapshot から判定）を閉じると workspace も連鎖終了するため、
+  /// 確認文言を出し分ける（pane の連鎖 close 確認 [_confirmAndKillHerdrPane] と
+  /// 同様・R2）。確認後は [_closeHerdrTab]（`PaneWriter.closeTab` =
+  /// `herdr tab close`）を実行する。
+  void _confirmAndCloseHerdrTab({
+    required MultiplexerSession workspace,
+    required MultiplexerWindow tab,
+    required bool isLastTab,
+  }) {
+    final tabId = tab.id;
+    if (tabId == null) return;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final message = isLastTab
+        ? 'This is the last tab in this workspace. Closing it will also '
+            'close the workspace.'
+        : 'Are you sure you want to close tab "${tab.name}"?';
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: isDark
+            ? DesignColors.surfaceDark
+            : DesignColors.surfaceLight,
+        title: Text(
+          'Close Tab?',
+          style: TextStyle(
+            color: isDark
+                ? DesignColors.textPrimary
+                : DesignColors.textPrimaryLight,
+          ),
+        ),
+        content: Text(
+          message,
+          style: TextStyle(
+            color: isDark
+                ? DesignColors.textSecondary
+                : DesignColors.textSecondaryLight,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.textSecondary
+                    : DesignColors.textSecondaryLight,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              // inventory: TERM-CRUD-018
+              _closeHerdrTab(tabId: tabId);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: DesignColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// herdr の tab を閉じる（`PaneWriter.closeTab` = `herdr tab close`）。
+  ///
+  /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
+  /// は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。連鎖 close
+  /// （最後の tab → workspace 消滅）は [_confirmAndCloseHerdrTab] で確認済みの
+  /// 前提。再解決不能（全 workspace 消滅）は [_syncAfterHerdrMutation] が終端
+  /// 通知（再接続しない・R1）まで行う。
+  Future<void> _closeHerdrTab({required String tabId}) async {
+    // tab CRUD 不可（read-only 明示）では送信しない
+    if (!_can(const PaneCapabilities(tabCrud: true))) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.closeTab(tabId);
+      if (!mounted || _isDisposed) return;
+      await _syncAfterHerdrMutation(eventLabel: 'close tab sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'close tab');
+    }
+  }
+
   /// SSH接続を切断して前の画面に戻る
   Future<void> _disconnect() async {
     // ポーリングを停止
     _pollTimer?.cancel();
     _treeRefreshTimer?.cancel();
+
+    // stale tmuxProvider 対策（T9）: 切断時に backend 種別を問わず残骸を破棄
+    // する（herdr の接続残骸・tmux のアクティブ状態が次回接続へ混入しない）。
+    ref.read(tmuxProvider.notifier).clear();
 
     // 切断前にリサイズしたウィンドウを自動サイズへ戻す
     await _restoreResizedWindows();
@@ -4784,13 +5823,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// tmux send-keysでキーを送信
+  /// キーを PaneWriter 経由で送信（T8）
   ///
   /// [key] 送信するキー
-  /// [literal] trueの場合はリテラル送信（-l フラグ）
+  /// [literal] trueの場合はリテラル送信（sendText / tmux send-keys -l）
   Future<void> _sendKey(String key, {bool literal = true}) async {
-    // read-only（herdr）では送信しない
-    if (_isReadOnly) return;
+    // テキスト送信不可（read-only）では送信しない。非リテラル（特殊キー）は
+    // 特殊キー送信能力（sendKeys）で判定する。
+    if (literal ? !_canSendText : !_canSendSpecialKey) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 接続が切れている場合はキューに追加（リテラルの場合のみ）
@@ -4812,17 +5852,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       return;
     }
 
-    final target = ref.read(tmuxProvider.notifier).currentTarget;
-    if (target == null) return;
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
 
     try {
-      await tmuxFacade.sendKeysNoWait(
-        sshClient.tmuxExecutor,
-        target,
-        key,
-        literal: literal,
-      );
+      if (literal) {
+        await writer.sendText(paneId, key);
+      } else {
+        await writer.sendKey(paneId, key);
+      }
       _boostPolling();
+    } on HerdrCommandException catch (e) {
+      // 防御的（Q-07 の全キー送信経路により通常は発生しない・R9）:
+      // `invalid_key` のみ分類通知し、それ以外は従来どおり静かに無視する。
+      if (isHerdrInvalidKey(e)) {
+        _showHerdrInvalidKeySnackBar();
+      }
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
     }
@@ -4830,8 +5876,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeに入る
   Future<void> _enterTmuxCopyMode() async {
-    // read-only（herdr）では copy-mode は使わない（履歴は直接取得する）
-    if (_isReadOnly) return;
+    // copy-mode 不可（read-only）では使わない（履歴は直接取得する）
+    if (!_canCopyMode) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -4844,8 +5890,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeを終了
   Future<void> _cancelTmuxCopyMode() async {
-    // read-only（herdr）では copy-mode は使わない
-    if (_isReadOnly) return;
+    // copy-mode 不可（read-only）では使わない
+    if (!_canCopyMode) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
     final target = ref.read(tmuxProvider.notifier).currentTarget;
@@ -4856,30 +5902,107 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (_) {}
   }
 
-  /// tmux特殊キーを送信（Ctrl+C, Escape等）
+  /// tmux特殊キーを PaneWriter 経由で送信（Ctrl+C, Escape等・T8）
+  ///
+  /// herdr では `HerdrPaneWriter.sendKey` が [PaneKeyMap] の全キー送信経路
+  /// （Q-07: send-keys 受理 / send-text エスケープ / send-text 制御文字）を
+  /// 適用するため、**「送信できないキー」は存在しない**。万一 `invalid_key` が
+  /// 返った場合のみ防御的に SnackBar 通知する（T19・R9。通常は発生しない）。
   Future<void> _sendSpecialKey(String tmuxKey) async {
-    // read-only（herdr）では送信しない
-    if (_isReadOnly) return;
+    // 特殊キー送信不可（read-only）では送信しない
+    if (!_canSendSpecialKey) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
     // 特殊キーは接続が切れている場合は送信しない（キューしない）
     if (sshClient == null || !sshClient.isConnected) return;
 
-    final target = ref.read(tmuxProvider.notifier).currentTarget;
-    if (target == null) return;
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
+
+    // T17（Q-03）: herdr の C-c は初回のみ確認ダイアログを表示する
+    // （以後は SharedPreferences フラグで確認なし・警告バッジ維持）。
+    // キャンセルされた場合は送信しない。
+    if (_backendKind == MultiplexerBackendKind.herdr && tmuxKey == 'C-c') {
+      final confirmed = await _confirmFirstCtrlC();
+      if (!confirmed || !mounted) return;
+    }
 
     try {
-      // 特殊キーはリテラルではなくtmux形式で送信
-      await tmuxFacade.sendKeysNoWait(
-        sshClient.tmuxExecutor,
-        target,
-        tmuxKey,
-        literal: false,
-      );
+      // PaneWriter 経由（tmux: send-keys / herdr: PaneKeyMap の送信経路）
+      await writer.sendKey(paneId, tmuxKey);
       _boostPolling();
+    } on HerdrCommandException catch (e) {
+      // 防御的（Q-07 の全キー送信経路により通常は発生しない・R9）:
+      // `invalid_key` のみ分類通知し、それ以外は従来どおり静かに無視する。
+      if (isHerdrInvalidKey(e)) {
+        _showHerdrInvalidKeySnackBar();
+      }
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
     }
+  }
+
+  // inventory: TERM-RISK-001
+  /// C-c の初回確認ダイアログ（T17・Q-03）。
+  ///
+  /// 初回のみ「Ctrl-C は pane のシェルを終了させる場合があります。破壊的な
+  /// close は Pane メニューの Close を使います」を表示し、確認後は
+  /// SharedPreferences にフラグを保存して以後の確認を省略する（警告バッジ
+  /// は維持・R1）。
+  Future<bool> _confirmFirstCtrlC() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_herdrCtrlCConfirmedKey) ?? false) return true;
+    if (!mounted) return false;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: isDark
+            ? DesignColors.surfaceDark
+            : DesignColors.surfaceLight,
+        title: Text(
+          'Send Ctrl-C?',
+          style: TextStyle(
+            color: isDark
+                ? DesignColors.textPrimary
+                : DesignColors.textPrimaryLight,
+          ),
+        ),
+        content: Text(
+          'Ctrl-C は pane のシェルを終了させる場合があります。'
+          '破壊的な close は Pane メニューの Close を使います。',
+          style: TextStyle(
+            color: isDark
+                ? DesignColors.textSecondary
+                : DesignColors.textSecondaryLight,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDark
+                    ? DesignColors.textSecondary
+                    : DesignColors.textSecondaryLight,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Send'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await prefs.setBool(_herdrCtrlCConfirmedKey, true);
+    }
+    return confirmed == true;
   }
 
   ProviderSubscription? _imageTransferSub;
@@ -4996,27 +6119,34 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// アップロード済み画像のパスをターミナルに注入
+  /// アップロード済み画像のパスをターミナルに注入（T8: PaneWriter 経由）
   Future<void> _injectImagePath(
     String remotePath,
     ImageTransferOptions options,
   ) async {
-    final sshClient = ref.read(sshProvider.notifier).client;
-    if (sshClient == null || !sshClient.isConnected) return;
+    // 画像転送不可（read-only・herdr は Phase 2 まで capability false）では
+    // 送信しない。
+    if (!_can(const PaneCapabilities(imageTransfer: true))) return;
 
-    final activePaneId = ref.read(tmuxProvider).activePaneId;
-    if (activePaneId == null) return;
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
 
     // パスフォーマット適用（optionsから取得）
     final formattedPath = options.pathFormat.replaceAll('{path}', remotePath);
 
-    await tmuxFacade.sendBracketedPaste(
-      sshClient.tmuxExecutor,
-      paneId: activePaneId,
-      path: formattedPath,
-      bracketedPaste: options.bracketedPaste,
-      autoEnter: options.autoEnter,
-    );
+    if (writer is TmuxPaneWriter) {
+      // tmux: 既存の bracketed paste 経路（後方互換・コマンド文字列不変）
+      await writer.sendBracketedPaste(
+        paneId: paneId,
+        path: formattedPath,
+        bracketedPaste: options.bracketedPaste,
+        autoEnter: options.autoEnter,
+      );
+    } else {
+      // herdr: send-text でパス送信（Q-06・Phase 2 で有効化）
+      await writer.pasteText(paneId, formattedPath);
+    }
 
     _boostPolling();
   }
@@ -5047,16 +6177,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     });
   }
 
-  /// Sends multi-line text to the active pane using tmux load-buffer +
-  /// paste-buffer so the entire payload is delivered atomically in one
-  /// SSH round-trip.  Bracketed paste mode (`-p`) tells the receiving
-  /// shell to treat the block as literal data, preventing `\`-continuation
-  /// and prompt-redraw races that plagued the previous per-line approach.
-  Future<void> _sendMultilineText(String text, {bool execute = true}) async {
+  /// Sends multi-line text to the active pane via PaneWriter (T8).
+  ///
+  /// tmux: `load-buffer` + `paste-buffer`（bracketed paste・原子送信）。
+  /// herdr: `send-text`（Q-06・Phase 2 で有効化）。
+  Future<void> _sendMultilineText(String text) async {
     if (text.isEmpty) return;
 
-    final target = ref.read(tmuxProvider.notifier).currentTarget;
-    if (target == null) return;
+    // paste 不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    if (!_can(const PaneCapabilities(paste: true))) return;
+
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
 
     // Pass text as-is: bracketed paste preserves whatever newlines are
     // present. The caller decides whether a trailing Enter is desired.
@@ -5083,12 +6216,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
 
     try {
-      await tmuxFacade.pasteText(
-        sshClient.tmuxExecutor,
-        target: target,
-        text: payload,
-        execute: execute,
-      );
+      await writer.pasteText(paneId, payload);
       _boostPolling();
     } catch (e) {
       debugPrint('[Terminal] paste-buffer send failed: $e');
@@ -5100,12 +6228,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// ペインの実際のサイズ比率に基づいてレイアウトを表示
   ///
-  /// read-only（herdr / 呼び出し側明示 [TerminalScreen.readOnly]）では表示しない。
-  /// タップで [_showPaneSelector] → [_selectPane] / [_splitPane] / [_killPane]
-  /// （mutation 発行）に到達するため、herdr 接続中に stale な tmuxProvider 状態が
-  /// あっても mutation が発行されないよう本メソッド先頭でガードする（M2）。
+  /// 分割不可（`!_canSplitPane`・read-only）では表示しない。タップで
+  /// [_showPaneSelector] → [_selectPane] / [_splitPane] / [_killPane]
+  /// （mutation 発行）に到達するため、herdr 接続中に stale な tmuxProvider
+  /// 状態があっても mutation が発行されないよう本メソッド先頭でガードする
+  /// （M2）。
   Widget _buildPaneIndicator(TmuxState tmuxState) {
-    if (_isReadOnly) return const SizedBox.shrink();
+    if (!_canSplitPane) return const SizedBox.shrink();
 
     final window = tmuxState.activeWindow;
     final panes = window?.panes ?? [];
@@ -5999,6 +7128,131 @@ class _NewWindowDialogState extends State<_NewWindowDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(onPressed: _submit, child: const Text('Create')),
+      ],
+    );
+  }
+}
+
+/// herdr の pane / tab ラベル入力ダイアログ（Q-02/Q-05: rename 解禁）。
+///
+/// tmux の [RenameWindowDialog] と違い、herdr のラベルは自由文字列
+/// （`[a-zA-Z0-9_-]` 制約・重複チェックを持たない）ため、汎用のテキスト入力
+/// ダイアログとして pane（`herdr pane rename`）と tab（`herdr tab rename`）の
+/// 両方で共用する。空入力（trim 後）は無効。
+class _HerdrLabelInputDialog extends StatefulWidget {
+  /// ダイアログタイトル（'Rename Pane' / 'Rename Tab'）。
+  final String title;
+
+  /// 入力欄のラベル（'Pane Label' / 'Tab Label'）。
+  final String labelText;
+
+  /// 入力欄のヒント（任意）。
+  final String? hintText;
+
+  /// 初期値（tab は現在ラベル。pane は domain にラベルが無いため空）。
+  final String initialValue;
+
+  /// 確定ボタンの文言（'Rename'）。
+  final String confirmLabel;
+
+  const _HerdrLabelInputDialog({
+    required this.title,
+    required this.labelText,
+    this.hintText,
+    this.initialValue = '',
+    required this.confirmLabel,
+  });
+
+  @override
+  State<_HerdrLabelInputDialog> createState() => _HerdrLabelInputDialogState();
+}
+
+class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  String? _validateLabel(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Label cannot be empty';
+    }
+    if (value.length > 100) {
+      return 'Label must be 100 characters or less';
+    }
+    return null;
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      Navigator.pop(context, _nameController.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text(
+        widget.title,
+        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+      ),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _nameController,
+          autofocus: true,
+          maxLength: 100,
+          decoration: InputDecoration(
+            labelText: widget.labelText,
+            hintText: widget.hintText,
+            hintStyle: GoogleFonts.jetBrainsMono(
+              fontSize: 14,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
+            ),
+            filled: true,
+            fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: colorScheme.primary),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: DesignColors.error),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: DesignColors.error),
+            ),
+          ),
+          style: GoogleFonts.jetBrainsMono(fontSize: 14),
+          validator: _validateLabel,
+          onFieldSubmitted: (_) => _submit(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
     );
   }
