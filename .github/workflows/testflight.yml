@@ -84,13 +84,10 @@ jobs:
             exit 1
           fi
 
-          # ビルド番号は x.y.z の数値部分のみから算出する（-suffix は無視）。
-          BUILD_CORE=$(echo "$BUILD_NAME" | sed 's/-.*$//')
-          MAJOR=$(echo "$BUILD_CORE" | cut -d. -f1)
-          MINOR=$(echo "$BUILD_CORE" | cut -d. -f2)
-          PATCH=$(echo "$BUILD_CORE" | cut -d. -f3)
-          # 既存の release-ios.yml と同じ採番規則
-          BUILD_NUMBER=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          # ビルド番号は GitHub Actions の run_number（リポジトリ全体で単調増加・一意）を使う。
+          # バージョン（x.y.z[-suffix]）から機械算出すると、プレリリースと正式版が
+          # 同じビルド番号になり TestFlight で衝突するため、バージョン非依存の連番とする。
+          BUILD_NUMBER="${{ github.run_number }}"
 
           echo "build_name=$BUILD_NAME"     >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
