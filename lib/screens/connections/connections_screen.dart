@@ -504,15 +504,14 @@ class ConnectionsScreen extends ConsumerWidget {
             sessionId: sessionId,
           );
     }
-    final isHerdr = connection.multiplexer.backend == BackendType.herdr;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => TerminalScreen(
           connectionId: connection.id,
           sessionName: sessionName,
           sessionId: sessionId,
-          // herdr は read-only 表示（mutation 非表示）
-          readOnly: isHerdr,
+          // T16（Q-05）: herdr も mutation 可能。readOnly は呼び出し側明示の
+          // opt-in としてのみ渡す（herdr による自動付与は廃止・H6）。
         ),
       ),
     );
@@ -545,7 +544,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   List<TmuxSession> _sessions = [];
   String? _sessionError;
 
-  /// herdr 接続のスナップショット（read-only 表示用）。
+  /// herdr 接続のスナップショット（T16/Q-05: workspace 一覧表示 + mutation 後同期用）。
   HerdrSnapshot? _herdrSnapshot;
 
   @override
@@ -794,9 +793,17 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         );
   }
 
-  /// tmuxセッションをkillする（確認ダイアログ付き）。
+  /// セッション / workspace を kill する（確認ダイアログ付き）。
+  ///
+  /// tmux: `kill-session` / herdr: `workspace close`（連鎖 close の警告）。
   /// kill と一覧再取得を同一接続で行い、SSH往復を1回に抑える。
-  Future<void> _killSession(String sessionName) async {
+  Future<void> _killSession(MultiplexerSession session) async {
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      await _killHerdrWorkspace(session);
+      return;
+    }
+
+    final sessionName = session.name;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -848,32 +855,110 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     }
   }
 
+  /// herdr workspace を閉じる（Q-05: `herdr workspace close`）。
+  ///
+  /// workspace 内の全 tab / pane が連鎖終了するため、確認ダイアログで
+  /// 明示した上で実行する（R2: 連鎖 close の破壊）。閉鎖後の一覧は
+  /// スナップショット再取得で同期する。
+  Future<void> _killHerdrWorkspace(MultiplexerSession workspace) async {
+    final workspaceId = workspace.id;
+    if (workspaceId == null || workspaceId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot close workspace without an ID')),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Close Workspace?'),
+        content: Text(
+          'Close herdr workspace "${workspace.name}"? '
+          'All tabs and panes in this workspace will be terminated.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _isLoadingSessions = true;
+      _sessionError = null;
+    });
+
+    SshClient? client;
+    try {
+      client = await _connectSsh();
+      final adapter = HerdrAdapter(client);
+      await adapter.workspaceClose(workspaceId);
+      final snapshot = await adapter.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _herdrSnapshot = snapshot;
+        _isLoadingSessions = false;
+      });
+      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            connectionId: widget.connection.id,
+            connectionName: widget.connection.name,
+            host: widget.connection.host,
+            sessions: snapshot.toDomainSessions(),
+            backend: MultiplexerBackendKind.herdr,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Workspace ${workspace.name} closed')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSessions = false;
+        _sessionError = e.toString();
+      });
+    } finally {
+      await client?.disconnect();
+    }
+  }
+
   Widget _buildExpandedContent(
       List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
     // Tmux/Herdr を共通 domain モデル（MultiplexerSession）で表示する。
-    // herdr は read-only のため、Kill / New Session を非表示にする。
-    final readOnly = _backendKind == MultiplexerBackendKind.herdr;
-    final sessions = readOnly
+    // T16（Q-05）: herdr も workspace 操作（New/Kill）を有効化するため
+    // read-only 分岐は撤廃する。
+    final sessions = _backendKind == MultiplexerBackendKind.herdr
         ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
         : _sessions.map((s) => s.toDomain()).toList();
     return _buildDomainExpandedContent(
       sessions: sessions,
       isDark: isDark,
       colorScheme: colorScheme,
-      readOnly: readOnly,
       activeSessions: activeSessions,
     );
   }
 
   /// 共通 domain モデルによる展開コンテンツ。
   ///
-  /// [readOnly]（herdr）の場合、Kill / New Session を非表示にし、
-  /// 各行のバッジを「READ ONLY」、タップ遷移を無効化する。
+  /// Kill / New Session は tmux / herdr とも表示し、backend 別の
+  /// mutation（tmux: kill-session / herdr: workspace close・create）を
+  /// 実行する（Q-05）。
   Widget _buildDomainExpandedContent({
     required List<MultiplexerSession> sessions,
     required bool isDark,
     required ColorScheme colorScheme,
-    required bool readOnly,
     required List<ActiveSession> activeSessions,
   }) {
     return Container(
@@ -944,7 +1029,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
-                readOnly ? 'No herdr workspaces found' : 'No tmux sessions found',
+                _backendKind == MultiplexerBackendKind.herdr
+                    ? 'No herdr workspaces found'
+                    : 'No tmux sessions found',
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
                   color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -955,30 +1042,32 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
             // セッションリスト（共通 domain モデルを表示）
             ..._buildDomainSessionItems(
               sessions,
-              readOnly: readOnly,
               activeSessions: activeSessions,
               isDark: isDark,
               colorScheme: colorScheme,
             ),
-          // New Session Button（read-only の場合は非表示）
-          if (!readOnly)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: OutlinedButton.icon(
-                onPressed: _showNewSessionDialog,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('New Session'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
-                  side: BorderSide(
-                    color: colorScheme.primary.withValues(alpha: 0.3),
-                    style: BorderStyle.solid,
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  minimumSize: const Size(double.infinity, 0),
+          // New Session / New Workspace ボタン（Q-05: herdr でも有効化）
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: OutlinedButton.icon(
+              onPressed: _showNewSessionDialog,
+              icon: const Icon(Icons.add, size: 16),
+              label: Text(
+                _backendKind == MultiplexerBackendKind.herdr
+                    ? 'New Workspace'
+                    : 'New Session',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
+                side: BorderSide(
+                  color: colorScheme.primary.withValues(alpha: 0.3),
+                  style: BorderStyle.solid,
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                minimumSize: const Size(double.infinity, 0),
               ),
             ),
+          ),
           Divider(color: isDark ? DesignColors.borderDark : DesignColors.borderLight, height: 1),
           // Action Buttons
           Padding(
@@ -1014,89 +1103,101 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   }
 
   Future<void> _showNewSessionDialog() async {
+    // tmux: セッション名 / herdr: workspace 名。既存名で重複チェックする。
+    final existingSessionNames =
+        _backendKind == MultiplexerBackendKind.herdr
+        ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
+              .map((s) => s.name)
+              .toList()
+        : _sessions.map((s) => s.name).toList();
+
     final sessionName = await showDialog<String>(
       context: context,
       builder: (context) => _NewSessionDialog(
-        existingSessionNames: _sessions.map((s) => s.name).toList(),
+        existingSessionNames: existingSessionNames,
       ),
     );
 
-    if (sessionName != null && sessionName.isNotEmpty) {
+    if (sessionName == null || sessionName.isEmpty) return;
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      // Q-05: herdr は workspace を作成する。
+      await _createHerdrWorkspace(sessionName);
+    } else {
       widget.onConnect(sessionName);
     }
   }
 
-  /// READ ONLY バッジ。
-  Widget _buildReadOnlyBadge(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: isDark
-            ? DesignColors.connectingCardDark.withValues(alpha: 0.5)
-            : DesignColors.connectingCardLight,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: isDark
-              ? DesignColors.connectingCardBorderDark.withValues(alpha: 0.7)
-              : DesignColors.connectingCardBorderLight,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.lock_outline,
-            size: 10,
-            color: isDark
-                ? DesignColors.connectedCardTextDark
-                : DesignColors.connectedCardTextLight,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            'READ ONLY',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: isDark
-                  ? DesignColors.connectedCardTextDark
-                  : DesignColors.connectedCardTextLight,
-            ),
-          ),
-        ],
-      ),
-    );
+  /// herdr workspace を作成する（Q-05: `herdr workspace create`）。
+  ///
+  /// 作成とスナップショット再取得を同一 SSH 接続で行い、一覧と
+  /// アクティブセッションを更新する。
+  Future<void> _createHerdrWorkspace(String label) async {
+    setState(() {
+      _isLoadingSessions = true;
+      _sessionError = null;
+    });
+
+    SshClient? client;
+    try {
+      client = await _connectSsh();
+      final adapter = HerdrAdapter(client);
+      await adapter.workspaceCreate(label: label);
+      final snapshot = await adapter.snapshot();
+      if (!mounted) return;
+      setState(() {
+        _herdrSnapshot = snapshot;
+        _isLoadingSessions = false;
+      });
+      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            connectionId: widget.connection.id,
+            connectionName: widget.connection.name,
+            host: widget.connection.host,
+            sessions: snapshot.toDomainSessions(),
+            backend: MultiplexerBackendKind.herdr,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Workspace $label created')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSessions = false;
+        _sessionError = e.toString();
+      });
+    } finally {
+      await client?.disconnect();
+    }
   }
 
   /// 共通 domain のセッション行リスト。
   ///
   /// 既存の tmux 表示（terminal アイコン・名前・window 数・
-  /// Attached/Detached バッジ・Kill ボタン）を再現する。
-  /// [readOnly] の場合、Kill ボタン非表示・バッジ「READ ONLY」・タップ無効。
+  /// Attached/Detached バッジ・Kill ボタン）を再現する。T16（Q-05）:
+  /// herdr も workspace 操作を有効化するため read-only 分岐は撤廃する。
   List<Widget> _buildDomainSessionItems(
     List<MultiplexerSession> sessions, {
-    required bool readOnly,
     required List<ActiveSession> activeSessions,
     required bool isDark,
     required ColorScheme colorScheme,
   }) {
     if (sessions.isEmpty) return [];
-    // tmux では provider の最新ウィンドウ数を優先（ターミナルでの
+    // tmux / herdr とも provider の最新ウィンドウ数を優先（ターミナルでの
     // ウィンドウ作成/削除後もカウンタが追従するようにする）。
     // キーは sessionId ?? sessionName（ID 優先）で、同名ラベル（herdr の
     // "tmp" w3/w4）によるカウント混線を防ぐ。
-    final liveWindowCounts = readOnly
-        ? const <String, int>{}
-        : {
-            for (final a in activeSessions) a.sessionId ?? a.sessionName: a.windowCount,
-          };
+    final liveWindowCounts = {
+      for (final a in activeSessions) a.sessionId ?? a.sessionName: a.windowCount,
+    };
 
     return sessions.map((session) {
       final isAttached = session.attached;
       final windowCount =
           liveWindowCounts[session.id ?? session.name] ?? session.windowCount;
       return InkWell(
-        // read-only（herdr）も Terminal を開く（TerminalScreen 側で
-        // read-only 表示になるため、タップ遷移は常に許可する）
+        // タップで Terminal を開く（tmux / herdr とも mutation 可能な
+        // TerminalScreen に遷移する・Q-05）
         onTap: () => widget.onConnect(session.name, sessionId: session.id),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1130,51 +1231,48 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   ],
                 ),
               ),
-              // Status Badge（read-only の場合は「READ ONLY」を表示）
-              if (readOnly)
-                _buildReadOnlyBadge(isDark)
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
+              // Status Badge（Attached / Detached）
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isAttached
+                      ? (isDark ? DesignColors.connectedCardDark.withValues(alpha: 0.5) : DesignColors.connectedCardLight)
+                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
                     color: isAttached
-                        ? (isDark ? DesignColors.connectedCardDark.withValues(alpha: 0.5) : DesignColors.connectedCardLight)
+                        ? (isDark ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7) : DesignColors.connectedCardBorderLight)
                         : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color: isAttached
-                          ? (isDark ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7) : DesignColors.connectedCardBorderLight)
-                          : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
-                    ),
-                  ),
-                  child: Text(
-                    isAttached ? 'Attached' : 'Detached',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: isAttached
-                          ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
-                          : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
-                    ),
                   ),
                 ),
-              // Kill ボタン（read-only の場合は非表示）
-              if (!readOnly) ...[
-                const SizedBox(width: 4),
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    iconSize: 16,
-                    icon: const Icon(Icons.delete, color: DesignColors.error),
-                    onPressed: _isLoadingSessions
-                        ? null
-                        : () => _killSession(session.name),
-                    tooltip: 'Kill session',
+                child: Text(
+                  isAttached ? 'Attached' : 'Detached',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: isAttached
+                        ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
+                        : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
                   ),
                 ),
-              ],
+              ),
+              // Kill ボタン（tmux: Kill Session / herdr: Kill Workspace・Q-05）
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  icon: const Icon(Icons.delete, color: DesignColors.error),
+                  onPressed: _isLoadingSessions
+                      ? null
+                      : () => _killSession(session),
+                  tooltip: _backendKind == MultiplexerBackendKind.herdr
+                      ? 'Kill workspace'
+                      : 'Kill session',
+                ),
+              ),
             ],
           ),
         ),
