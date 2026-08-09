@@ -1,0 +1,159 @@
+KEY	RC	ERROR
+F1	0	
+F2	0	
+F3	0	
+F4	0	
+F5	0	
+F6	0	
+F7	0	
+F8	0	
+F9	0	
+F10	0	
+F11	0	
+F12	0	
+Enter	0	
+Tab	0	
+Space	0	
+Backspace	0	
+Escape	0	
+Home	1	{"error":{"code":"invalid_key","message":"unsupported key Home"},"id":"cli:request"}
+End	1	{"error":{"code":"invalid_key","message":"unsupported key End"},"id":"cli:request"}
+PageUp	1	{"error":{"code":"invalid_key","message":"unsupported key PageUp"},"id":"cli:request"}
+PageDown	1	{"error":{"code":"invalid_key","message":"unsupported key PageDown"},"id":"cli:request"}
+Delete	1	{"error":{"code":"invalid_key","message":"unsupported key Delete"},"id":"cli:request"}
+Insert	1	{"error":{"code":"invalid_key","message":"unsupported key Insert"},"id":"cli:request"}
+Up	0	
+Down	0	
+Left	0	
+Right	0	
+PgUp	1	{"error":{"code":"invalid_key","message":"unsupported key PgUp"},"id":"cli:request"}
+PgDn	1	{"error":{"code":"invalid_key","message":"unsupported key PgDn"},"id":"cli:request"}
+Prior	1	{"error":{"code":"invalid_key","message":"unsupported key Prior"},"id":"cli:request"}
+Next	1	{"error":{"code":"invalid_key","message":"unsupported key Next"},"id":"cli:request"}
+Del	1	{"error":{"code":"invalid_key","message":"unsupported key Del"},"id":"cli:request"}
+Ins	1	{"error":{"code":"invalid_key","message":"unsupported key Ins"},"id":"cli:request"}
+BS	0	
+C-a	1	{"error":{"code":"invalid_key","message":"unsupported key C-a"},"id":"cli:request"}
+C-b	1	{"error":{"code":"invalid_key","message":"unsupported key C-b"},"id":"cli:request"}
+C-c	0	
+C-d	1	{"error":{"code":"invalid_key","message":"unsupported key C-d"},"id":"cli:request"}
+C-e	1	{"error":{"code":"invalid_key","message":"unsupported key C-e"},"id":"cli:request"}
+C-f	1	{"error":{"code":"invalid_key","message":"unsupported key C-f"},"id":"cli:request"}
+C-g	1	{"error":{"code":"invalid_key","message":"unsupported key C-g"},"id":"cli:request"}
+C-h	1	{"error":{"code":"invalid_key","message":"unsupported key C-h"},"id":"cli:request"}
+C-i	1	{"error":{"code":"invalid_key","message":"unsupported key C-i"},"id":"cli:request"}
+C-j	1	{"error":{"code":"invalid_key","message":"unsupported key C-j"},"id":"cli:request"}
+C-k	1	{"error":{"code":"invalid_key","message":"unsupported key C-k"},"id":"cli:request"}
+C-l	1	{"error":{"code":"invalid_key","message":"unsupported key C-l"},"id":"cli:request"}
+C-m	1	{"error":{"code":"invalid_key","message":"unsupported key C-m"},"id":"cli:request"}
+C-n	1	{"error":{"code":"invalid_key","message":"unsupported key C-n"},"id":"cli:request"}
+C-o	1	{"error":{"code":"invalid_key","message":"unsupported key C-o"},"id":"cli:request"}
+C-p	1	{"error":{"code":"invalid_key","message":"unsupported key C-p"},"id":"cli:request"}
+C-q	1	{"error":{"code":"invalid_key","message":"unsupported key C-q"},"id":"cli:request"}
+C-r	1	{"error":{"code":"invalid_key","message":"unsupported key C-r"},"id":"cli:request"}
+C-s	1	{"error":{"code":"invalid_key","message":"unsupported key C-s"},"id":"cli:request"}
+C-t	1	{"error":{"code":"invalid_key","message":"unsupported key C-t"},"id":"cli:request"}
+C-u	1	{"error":{"code":"invalid_key","message":"unsupported key C-u"},"id":"cli:request"}
+C-v	1	{"error":{"code":"invalid_key","message":"unsupported key C-v"},"id":"cli:request"}
+C-w	1	{"error":{"code":"invalid_key","message":"unsupported key C-w"},"id":"cli:request"}
+C-x	1	{"error":{"code":"invalid_key","message":"unsupported key C-x"},"id":"cli:request"}
+C-y	1	{"error":{"code":"invalid_key","message":"unsupported key C-y"},"id":"cli:request"}
+C-z	1	{"error":{"code":"invalid_key","message":"unsupported key C-z"},"id":"cli:request"}
+C-Space	1	{"error":{"code":"invalid_key","message":"unsupported key C-Space"},"id":"cli:request"}
+C-Tab	1	{"error":{"code":"invalid_key","message":"unsupported key C-Tab"},"id":"cli:request"}
+C-Enter	1	{"error":{"code":"invalid_key","message":"unsupported key C-Enter"},"id":"cli:request"}
+C-Backspace	1	{"error":{"code":"invalid_key","message":"unsupported key C-Backspace"},"id":"cli:request"}
+C-Delete	1	{"error":{"code":"invalid_key","message":"unsupported key C-Delete"},"id":"cli:request"}
+C-Home	1	{"error":{"code":"invalid_key","message":"unsupported key C-Home"},"id":"cli:request"}
+C-End	1	{"error":{"code":"invalid_key","message":"unsupported key C-End"},"id":"cli:request"}
+C-Left	1	{"error":{"code":"invalid_key","message":"unsupported key C-Left"},"id":"cli:request"}
+C-Right	1	{"error":{"code":"invalid_key","message":"unsupported key C-Right"},"id":"cli:request"}
+C-Up	1	{"error":{"code":"invalid_key","message":"unsupported key C-Up"},"id":"cli:request"}
+C-Down	1	{"error":{"code":"invalid_key","message":"unsupported key C-Down"},"id":"cli:request"}
+C-PageUp	1	{"error":{"code":"invalid_key","message":"unsupported key C-PageUp"},"id":"cli:request"}
+C-PageDown	1	{"error":{"code":"invalid_key","message":"unsupported key C-PageDown"},"id":"cli:request"}
+C-Insert	1	{"error":{"code":"invalid_key","message":"unsupported key C-Insert"},"id":"cli:request"}
+C-@	1	{"error":{"code":"invalid_key","message":"unsupported key C-@"},"id":"cli:request"}
+C-[	1	{"error":{"code":"invalid_key","message":"unsupported key C-["},"id":"cli:request"}
+C- C-]	1	{"error":{"code":"invalid_key","message":"unsupported key C- C-]"},"id":"cli:request"}
+C-^	1	{"error":{"code":"invalid_key","message":"unsupported key C-^"},"id":"cli:request"}
+C-_	1	{"error":{"code":"invalid_key","message":"unsupported key C-_"},"id":"cli:request"}
+C-?	1	{"error":{"code":"invalid_key","message":"unsupported key C-?"},"id":"cli:request"}
+S-Up	1	{"error":{"code":"invalid_key","message":"unsupported key S-Up"},"id":"cli:request"}
+S-Down	1	{"error":{"code":"invalid_key","message":"unsupported key S-Down"},"id":"cli:request"}
+S-Left	1	{"error":{"code":"invalid_key","message":"unsupported key S-Left"},"id":"cli:request"}
+S-Right	1	{"error":{"code":"invalid_key","message":"unsupported key S-Right"},"id":"cli:request"}
+S-Home	1	{"error":{"code":"invalid_key","message":"unsupported key S-Home"},"id":"cli:request"}
+S-End	1	{"error":{"code":"invalid_key","message":"unsupported key S-End"},"id":"cli:request"}
+S-PageUp	1	{"error":{"code":"invalid_key","message":"unsupported key S-PageUp"},"id":"cli:request"}
+S-PageDown	1	{"error":{"code":"invalid_key","message":"unsupported key S-PageDown"},"id":"cli:request"}
+S-Delete	1	{"error":{"code":"invalid_key","message":"unsupported key S-Delete"},"id":"cli:request"}
+S-Insert	1	{"error":{"code":"invalid_key","message":"unsupported key S-Insert"},"id":"cli:request"}
+S-Tab	1	{"error":{"code":"invalid_key","message":"unsupported key S-Tab"},"id":"cli:request"}
+S-Space	1	{"error":{"code":"invalid_key","message":"unsupported key S-Space"},"id":"cli:request"}
+S-Enter	1	{"error":{"code":"invalid_key","message":"unsupported key S-Enter"},"id":"cli:request"}
+S-Backspace	1	{"error":{"code":"invalid_key","message":"unsupported key S-Backspace"},"id":"cli:request"}
+S-F1	1	{"error":{"code":"invalid_key","message":"unsupported key S-F1"},"id":"cli:request"}
+S-F2	1	{"error":{"code":"invalid_key","message":"unsupported key S-F2"},"id":"cli:request"}
+S-F3	1	{"error":{"code":"invalid_key","message":"unsupported key S-F3"},"id":"cli:request"}
+S-F4	1	{"error":{"code":"invalid_key","message":"unsupported key S-F4"},"id":"cli:request"}
+S-F5	1	{"error":{"code":"invalid_key","message":"unsupported key S-F5"},"id":"cli:request"}
+S-F6	1	{"error":{"code":"invalid_key","message":"unsupported key S-F6"},"id":"cli:request"}
+S-F7	1	{"error":{"code":"invalid_key","message":"unsupported key S-F7"},"id":"cli:request"}
+S-F8	1	{"error":{"code":"invalid_key","message":"unsupported key S-F8"},"id":"cli:request"}
+S-F9	1	{"error":{"code":"invalid_key","message":"unsupported key S-F9"},"id":"cli:request"}
+S-F10	1	{"error":{"code":"invalid_key","message":"unsupported key S-F10"},"id":"cli:request"}
+S-F11	1	{"error":{"code":"invalid_key","message":"unsupported key S-F11"},"id":"cli:request"}
+S-F12	1	{"error":{"code":"invalid_key","message":"unsupported key S-F12"},"id":"cli:request"}
+M-a	1	{"error":{"code":"invalid_key","message":"unsupported key M-a"},"id":"cli:request"}
+M-b	1	{"error":{"code":"invalid_key","message":"unsupported key M-b"},"id":"cli:request"}
+M-c	1	{"error":{"code":"invalid_key","message":"unsupported key M-c"},"id":"cli:request"}
+M-d	1	{"error":{"code":"invalid_key","message":"unsupported key M-d"},"id":"cli:request"}
+M-e	1	{"error":{"code":"invalid_key","message":"unsupported key M-e"},"id":"cli:request"}
+M-f	1	{"error":{"code":"invalid_key","message":"unsupported key M-f"},"id":"cli:request"}
+M-g	1	{"error":{"code":"invalid_key","message":"unsupported key M-g"},"id":"cli:request"}
+M-h	1	{"error":{"code":"invalid_key","message":"unsupported key M-h"},"id":"cli:request"}
+M-i	1	{"error":{"code":"invalid_key","message":"unsupported key M-i"},"id":"cli:request"}
+M-j	1	{"error":{"code":"invalid_key","message":"unsupported key M-j"},"id":"cli:request"}
+M-k	1	{"error":{"code":"invalid_key","message":"unsupported key M-k"},"id":"cli:request"}
+M-l	1	{"error":{"code":"invalid_key","message":"unsupported key M-l"},"id":"cli:request"}
+M-m	1	{"error":{"code":"invalid_key","message":"unsupported key M-m"},"id":"cli:request"}
+M-n	1	{"error":{"code":"invalid_key","message":"unsupported key M-n"},"id":"cli:request"}
+M-o	1	{"error":{"code":"invalid_key","message":"unsupported key M-o"},"id":"cli:request"}
+M-p	1	{"error":{"code":"invalid_key","message":"unsupported key M-p"},"id":"cli:request"}
+M-q	1	{"error":{"code":"invalid_key","message":"unsupported key M-q"},"id":"cli:request"}
+M-r	1	{"error":{"code":"invalid_key","message":"unsupported key M-r"},"id":"cli:request"}
+M-s	1	{"error":{"code":"invalid_key","message":"unsupported key M-s"},"id":"cli:request"}
+M-t	1	{"error":{"code":"invalid_key","message":"unsupported key M-t"},"id":"cli:request"}
+M-u	1	{"error":{"code":"invalid_key","message":"unsupported key M-u"},"id":"cli:request"}
+M-v	1	{"error":{"code":"invalid_key","message":"unsupported key M-v"},"id":"cli:request"}
+M-w	1	{"error":{"code":"invalid_key","message":"unsupported key M-w"},"id":"cli:request"}
+M-x	1	{"error":{"code":"invalid_key","message":"unsupported key M-x"},"id":"cli:request"}
+M-y	1	{"error":{"code":"invalid_key","message":"unsupported key M-y"},"id":"cli:request"}
+M-z	1	{"error":{"code":"invalid_key","message":"unsupported key M-z"},"id":"cli:request"}
+M-Up	1	{"error":{"code":"invalid_key","message":"unsupported key M-Up"},"id":"cli:request"}
+M-Down	1	{"error":{"code":"invalid_key","message":"unsupported key M-Down"},"id":"cli:request"}
+M-Left	1	{"error":{"code":"invalid_key","message":"unsupported key M-Left"},"id":"cli:request"}
+M-Right	1	{"error":{"code":"invalid_key","message":"unsupported key M-Right"},"id":"cli:request"}
+M-Home	1	{"error":{"code":"invalid_key","message":"unsupported key M-Home"},"id":"cli:request"}
+M-End	1	{"error":{"code":"invalid_key","message":"unsupported key M-End"},"id":"cli:request"}
+M-PageUp	1	{"error":{"code":"invalid_key","message":"unsupported key M-PageUp"},"id":"cli:request"}
+M-PageDown	1	{"error":{"code":"invalid_key","message":"unsupported key M-PageDown"},"id":"cli:request"}
+M-Delete	1	{"error":{"code":"invalid_key","message":"unsupported key M-Delete"},"id":"cli:request"}
+M-Insert	1	{"error":{"code":"invalid_key","message":"unsupported key M-Insert"},"id":"cli:request"}
+M-Tab	1	{"error":{"code":"invalid_key","message":"unsupported key M-Tab"},"id":"cli:request"}
+M-Space	1	{"error":{"code":"invalid_key","message":"unsupported key M-Space"},"id":"cli:request"}
+M-Enter	1	{"error":{"code":"invalid_key","message":"unsupported key M-Enter"},"id":"cli:request"}
+M-Backspace	1	{"error":{"code":"invalid_key","message":"unsupported key M-Backspace"},"id":"cli:request"}
+M-F1	1	{"error":{"code":"invalid_key","message":"unsupported key M-F1"},"id":"cli:request"}
+M-F2	1	{"error":{"code":"invalid_key","message":"unsupported key M-F2"},"id":"cli:request"}
+M-F3	1	{"error":{"code":"invalid_key","message":"unsupported key M-F3"},"id":"cli:request"}
+M-F4	1	{"error":{"code":"invalid_key","message":"unsupported key M-F4"},"id":"cli:request"}
+M-F5	1	{"error":{"code":"invalid_key","message":"unsupported key M-F5"},"id":"cli:request"}
+M-F6	1	{"error":{"code":"invalid_key","message":"unsupported key M-F6"},"id":"cli:request"}
+M-F7	1	{"error":{"code":"invalid_key","message":"unsupported key M-F7"},"id":"cli:request"}
+M-F8	1	{"error":{"code":"invalid_key","message":"unsupported key M-F8"},"id":"cli:request"}
+M-F9	1	{"error":{"code":"invalid_key","message":"unsupported key M-F9"},"id":"cli:request"}
+M-F10	1	{"error":{"code":"invalid_key","message":"unsupported key M-F10"},"id":"cli:request"}
+M-F11	1	{"error":{"code":"invalid_key","message":"unsupported key M-F11"},"id":"cli:request"}
+M-F12	1	{"error":{"code":"invalid_key","message":"unsupported key M-F12"},"id":"cli:request"}
