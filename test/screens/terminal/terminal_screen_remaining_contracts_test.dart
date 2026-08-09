@@ -166,7 +166,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Disconnect?'), findsOneWidget);
       expect(notifier.client, isNotNull);
-      await tester.tap(find.text('Disconnect').last);
+      await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
       expect(notifier.client, isNull);
     });

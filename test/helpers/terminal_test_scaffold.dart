@@ -122,6 +122,7 @@ class TerminalTestScaffold {
     Map<String, String> execOutputs = const {},
     Map<String, int> execExitCodes = const {},
     Map<String, List<String>> execOutputQueues = const {},
+    Map<String, Exception> execExceptions = const {},
     FakeImageTransferNotifier? imageTransferNotifier,
     Connection? connection,
     Map<String, String>? secureStorageValues,
@@ -129,6 +130,9 @@ class TerminalTestScaffold {
     bool readOnly = false,
     String? initialPaneId,
     PaneContentReader? paneContentReader,
+    // tmuxProvider の初期状態（T9: stale tmuxProvider が herdr セッション確立
+    // 時に clear() されることを検証するテスト用。未指定なら空状態）
+    TmuxState tmuxInitialState = const TmuxState(),
     // ライブポーリングが動く間は pumpAndSettle が終わらないため
     // herdr 系テストでは false にして手動 pump する
     bool settle = true,
@@ -157,6 +161,7 @@ class TerminalTestScaffold {
       ...execOutputs,
     };
     client.execExitCodes = execExitCodes;
+    client.execExceptions = execExceptions;
     client.execOutputQueues.addAll({
       for (final entry in execOutputQueues.entries)
         entry.key: List<String>.of(entry.value),
@@ -173,7 +178,7 @@ class TerminalTestScaffold {
           ),
           sshProvider.overrideWith(() => FakeSshNotifier(client: client)),
           tmuxProvider.overrideWith(
-            () => FakeTmuxNotifier(initialState: const TmuxState()),
+            () => FakeTmuxNotifier(initialState: tmuxInitialState),
           ),
           activeSessionsProvider.overrideWith(
             () => _FakeActiveSessionsNotifier(),
