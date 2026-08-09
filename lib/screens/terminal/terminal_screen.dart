@@ -5,7 +5,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../providers/active_session_provider.dart';
@@ -528,11 +527,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // backend 種別（`_can` 判定・操作能力の導出に使う。接続前は unknown）
   MultiplexerBackendKind _backendKind = MultiplexerBackendKind.unknown;
-
-  // T17（Q-03）: C-c 初回確認ダイアログを表示済みか（SharedPreferences）。
-  // herdr の C-c は pane のシェルを終了させ得るため、初回のみ確認し、
-  // 以後は確認なしで送信する（R1）。
-  static const String _herdrCtrlCConfirmedKey = 'herdr_ctrl_c_confirmation_seen';
 
   /// 現在のバックエンドが持つ操作能力。
   ///
@@ -5900,14 +5894,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final paneId = _targetSource?.currentPaneId;
     if (writer == null || paneId == null) return;
 
-    // T17（Q-03）: herdr の C-c は初回のみ確認ダイアログを表示する
-    // （以後は SharedPreferences フラグで確認なし）。
-    // キャンセルされた場合は送信しない。
-    if (_backendKind == MultiplexerBackendKind.herdr && tmuxKey == 'C-c') {
-      final confirmed = await _confirmFirstCtrlC();
-      if (!confirmed || !mounted) return;
-    }
-
     try {
       // PaneWriter 経由（tmux: send-keys / herdr: PaneKeyMap の送信経路）
       await writer.sendKey(paneId, tmuxKey);
@@ -5921,67 +5907,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (_) {
       // キー送信エラーは静かに無視（ポーリングで状態は更新される）
     }
-  }
-
-  // inventory: TERM-RISK-001
-  /// C-c の初回確認ダイアログ（T17・Q-03）。
-  ///
-  /// 初回のみ「Ctrl-C は pane のシェルを終了させる場合があります。破壊的な
-  /// close は Pane メニューの Close を使います」を表示し、確認後は
-  /// SharedPreferences にフラグを保存して以後の確認を省略する（R1）。
-  Future<bool> _confirmFirstCtrlC() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_herdrCtrlCConfirmedKey) ?? false) return true;
-    if (!mounted) return false;
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: isDark
-            ? DesignColors.surfaceDark
-            : DesignColors.surfaceLight,
-        title: Text(
-          'Send Ctrl-C?',
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.textPrimary
-                : DesignColors.textPrimaryLight,
-          ),
-        ),
-        content: Text(
-          'Ctrl-C は pane のシェルを終了させる場合があります。'
-          '破壊的な close は Pane メニューの Close を使います。',
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.textSecondary
-                : DesignColors.textSecondaryLight,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(
-                color: isDark
-                    ? DesignColors.textSecondary
-                    : DesignColors.textSecondaryLight,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Send'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await prefs.setBool(_herdrCtrlCConfirmedKey, true);
-    }
-    return confirmed == true;
   }
 
   ProviderSubscription? _imageTransferSub;
