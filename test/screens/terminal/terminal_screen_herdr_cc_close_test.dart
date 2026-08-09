@@ -10,8 +10,9 @@ import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/terminal_test_scaffold.dart';
 
-// T17（Q-03/R1/R2）: C-c 解禁（初回確認ダイアログ + 警告バッジ）・破壊的
-// close の `pane close` 一本化・連鎖 close 確認（最後の pane / tab 判定）。
+// T17（Q-03/R1/R2）: C-c 解禁（初回確認ダイアログのみ・警告バッジは表示
+// しない）・破壊的 close の `pane close` 一本化・連鎖 close 確認（最後の
+// pane / tab 判定）。
 
 // G4 実測の snapshot fixture（w1:p1 のみ・単一 tab / 単一 workspace）。
 const kHerdrSnapshotFixture =
@@ -201,7 +202,7 @@ void main() {
       },
     );
 
-    testWidgets('mutation 解禁時は C-c 警告バッジがブレッドクラムに表示される', (
+    testWidgets('mutation 解禁時も C-c 警告バッジは表示されない（tmux と同様）', (
       tester,
     ) async {
       await TerminalTestScaffold.pumpTerminalScreen(
@@ -215,14 +216,16 @@ void main() {
         settle: false,
       );
 
-      // T17（Q-03）: 初回確認以後も警告バッジを維持する（R1）。
-      expect(find.text('Ctrl-C 注意'), findsOneWidget);
+      // 実測で「C-c によるシェル終了（SIGINT）」はターミナル標準挙動（tmux でも
+      // 同様）と判明したため、警告バッジは表示しない（tmux と同じ操作感・
+      // ユーザー決定）。初回確認ダイアログは残る。
+      expect(find.text('Ctrl-C 注意'), findsNothing);
       expect(find.text('Read-only'), findsNothing);
 
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('readOnly 明示時は C-c 警告バッジではなく Read-only バッジ', (
+    testWidgets('readOnly 明示時は Read-only バッジ', (
       tester,
     ) async {
       await TerminalTestScaffold.pumpTerminalScreen(
