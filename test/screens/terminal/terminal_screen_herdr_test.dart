@@ -10,6 +10,7 @@ import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
@@ -46,11 +47,7 @@ class _ReResolvePropagationReader implements PaneContentReader {
   bool failNextPoll = false;
 
   @override
-  Future<MultiplexerPaneSnapshot> readPane({
-    required String paneId,
-    int? historyLines,
-    String source = 'recent',
-  }) async {
+  Future<MultiplexerPaneSnapshot> readPane(PaneReadRequest request) async {
     if (failNextPoll) {
       failNextPoll = false;
       throw const HerdrTargetNotFoundException(

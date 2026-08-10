@@ -19,6 +19,8 @@ import '../../services/backend/domain/multiplexer_session.dart';
 import '../../services/backend/domain/multiplexer_window.dart';
 import '../../services/backend/domain/herdr_pane_writer.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/backend/domain/pane_history_policy.dart';
+import '../../services/backend/domain/pane_read.dart';
 import '../../services/backend/domain/pane_writer.dart';
 import '../../services/backend/domain/tmux_pane_writer.dart';
 import '../../services/herdr/herdr_adapter.dart';
@@ -1510,9 +1512,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // PaneContentReader 経由で capture-pane + カーソル + モード（tmux）または
       // pane read（herdr）を一括取得する。表示コア（AnsiTextView /
       // ValueNotifier / ポーリングループ）は backend 非依存のためそのまま。
+      // ライブポーリングは read intent（LiveTail）で要求する（バグ4 根本対応:
+      // 行数の符号・大小による暗黙の意味判定を廃止）。
       final snapshot = await reader.readPane(
-        paneId: paneId,
-        historyLines: -120,
+        PaneReadRequest.live(paneId: paneId),
       );
 
       final endTime = DateTime.now();
@@ -1525,12 +1528,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       // カーソル位置とペインサイズを更新
       // herdr は snapshot にサイズが含まれないため、snapshot cache の layout から
-      // 文字セル単位の pane サイズを解決する（tmux の snapshot.width/height 更新と対称）。
+      // 文字セル単位の pane サイズを解決する（tmux の snapshot 経由と対称。
+      // 表示層の backend 分岐は PaneFrameReader 化で解消予定）。
       // zoom 時は pane rect が非 zoom 値のまま（herdr_models.dart）のため
       // layout.area（タブ全面）を使う。rect が取得できない場合は従来どおり
-      // width/height=0 のままスキップし、既定の 80x24（spec.md:75）に落ちる。
-      var w = snapshot.width;
-      var h = snapshot.height;
+      // geometry 無しのままスキップし、既定の 80x24（spec.md:75）に落ちる。
+      final geometry = snapshot.geometry;
+      var w = geometry?.width ?? 0;
+      var h = geometry?.height ?? 0;
       if (_backendKind == MultiplexerBackendKind.herdr && (w <= 0 || h <= 0)) {
         final rect = _resolveHerdrPaneRect(paneId);
         if (rect != null) {
@@ -2167,15 +2172,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // A3改: 深い履歴 read 開始前に表示対象同一性を記録（完了時に照合）。
     final herdrIdentity = _captureHerdrTarget();
     try {
-      // スクロールバック全体を一括取得（大きな負値でヒストリ全体をキャプチャ）。
-      // tmux は履歴上限（setHistoryLimit = scrollbackLines）までにクランプ、
-      // herdr は行数で要求する。herdr ではユーザー設定 scrollbackLines を直接
-      // 要求行数に反映する（バグ4: ライブポーリングの取得行数とスクロール
-      // モード時の深い履歴取得の整合。tmux の setHistoryLimit と対称）。
-      final deepHistoryLines = _deepHistoryLineCount();
+      // スクロールバック全体を一括取得（read intent = Scrollback で要求する）。
+      // 行数は backend ポリシー（PaneHistoryPolicy）が解決する（バグ4 根本対応:
+      // 設定解決を表示層から分離・魔法数 -100000/-120 の暗黙判定を廃止）。
+      final policy = PaneHistoryPolicyResolver.forBackend(
+        _backendKind,
+        configuredScrollbackLines: ref.read(settingsProvider).scrollbackLines,
+      );
       final snapshot = await reader.readPane(
-        paneId: paneId,
-        historyLines: -deepHistoryLines,
+        PaneReadRequest.scrollback(
+          paneId: paneId,
+          maxLines: policy.scrollbackLimit,
+        ),
       );
       if (!mounted || _isDisposed) return;
       // A3改: await 完了後に表示対象を照合。不一致（await 中に切替・再解決・
@@ -5522,23 +5530,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (rect != null) return layout.zoomed ? layout.area : rect;
     }
     return null;
-  }
-
-  /// 深い履歴（スクロールバック全体）の取得行数を返す（バグ4）。
-  ///
-  /// - tmux: 100000 を要求し、サーバ側の history-limit（接続時に
-  ///   [TmuxFacade.setHistoryLimit] = ユーザー設定 scrollbackLines を設定）で
-  ///   クランプされる（既存ペインには遡らない制約あり）。
-  /// - herdr: サーバ側に履歴上限の設定が無いため、ユーザー設定 scrollbackLines
-  ///   （クランプ [200, 20000]・tmux の setHistoryLimit と同じクランプ）を
-  ///   そのまま要求行数に使う。これによりライブポーリング（-120）とスクロール
-  ///   モードの深い履歴取得の行数が設定値と整合する。
-  int _deepHistoryLineCount() {
-    if (_backendKind == MultiplexerBackendKind.herdr) {
-      final scrollback = ref.read(settingsProvider).scrollbackLines;
-      return scrollback.clamp(200, 20000);
-    }
-    return 100000;
   }
 
   // inventory: TERM-CRUD-016

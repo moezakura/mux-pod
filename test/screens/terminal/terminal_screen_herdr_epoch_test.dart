@@ -7,6 +7,7 @@ import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 
@@ -62,25 +63,20 @@ class _GatedHerdrPaneContentReader implements PaneContentReader {
   final List<String> requestedPaneIds = [];
 
   @override
-  Future<MultiplexerPaneSnapshot> readPane({
-    required String paneId,
-    int? historyLines,
-    String source = 'recent',
-  }) async {
-    requestedPaneIds.add(paneId);
-    if (paneId == 'w1:p1') return gate.future;
+  Future<MultiplexerPaneSnapshot> readPane(PaneReadRequest request) async {
+    requestedPaneIds.add(request.paneId);
+    if (request.paneId == 'w1:p1') return gate.future;
     return const MultiplexerPaneSnapshot(content: 'fresh p2 content\n');
   }
 }
 
-/// ポーリング / 深い履歴の応答をスクリプト制御する reader。
+/// ポーリング / スクロールバックの応答をスクリプト制御する reader。
 ///
-/// - ポーリング read（historyLines: -120）は [pollContent] を返す。
-/// - 深い履歴 read（historyLines が -120 より深い＝既定 scrollbackLines -10000）
-///   は [deepContent] を返す。
-/// - [gate] が非 null のとき、次のポーリング read を 1 回だけ保留する
+/// - ライブ read（[PaneReadPurpose.live]）は [pollContent] を返す。
+/// - スクロールバック read（[PaneReadPurpose.scrollback]）は [deepContent] を返す。
+/// - [gate] が非 null のとき、次のライブ read を 1 回だけ保留する
 ///   （バッファ書き込みを確定させる in-flight ウィンドウ）。
-/// - [failNextPoll] が true のとき、次のポーリング read を
+/// - [failNextPoll] が true のとき、次のライブ read を
 ///   target-not-found で失敗させる（再解決 = 強制再取得 → エポック++ のトリガ）。
 class _ScriptedHerdrPaneContentReader implements PaneContentReader {
   String pollContent = 'live-1\n';
@@ -89,14 +85,9 @@ class _ScriptedHerdrPaneContentReader implements PaneContentReader {
   Completer<void>? gate;
 
   @override
-  Future<MultiplexerPaneSnapshot> readPane({
-    required String paneId,
-    int? historyLines,
-    String source = 'recent',
-  }) async {
-    // 深い履歴はライブ窓（-120）より深い要求（既定 scrollbackLines の
-    // -10000）で識別する（バグ4: herdr の深い履歴要求行数は設定値と整合）。
-    if (historyLines != null && historyLines < -120) {
+  Future<MultiplexerPaneSnapshot> readPane(PaneReadRequest request) async {
+    // スクロールバックはライブとは別応答（read intent で識別・バグ4 根本対応）。
+    if (request.purpose == PaneReadPurpose.scrollback) {
       return MultiplexerPaneSnapshot(content: deepContent);
     }
     final g = gate;
@@ -117,7 +108,7 @@ class _ScriptedHerdrPaneContentReader implements PaneContentReader {
   }
 }
 
-/// 深い履歴 read を [gate] で保留する reader（_loadHistoryForScroll の破棄検証用）。
+/// スクロールバック read を [gate] で保留する reader（_loadHistoryForScroll の破棄検証用）。
 class _GatedDeepHistoryReader implements PaneContentReader {
   _GatedDeepHistoryReader(this.gate);
 
@@ -126,13 +117,9 @@ class _GatedDeepHistoryReader implements PaneContentReader {
   final String pollContent = 'live-1\n';
 
   @override
-  Future<MultiplexerPaneSnapshot> readPane({
-    required String paneId,
-    int? historyLines,
-    String source = 'recent',
-  }) async {
-    // 深い履歴（ライブ窓 -120 より深い要求＝既定 scrollbackLines -10000）。
-    if (historyLines != null && historyLines < -120) return gate.future;
+  Future<MultiplexerPaneSnapshot> readPane(PaneReadRequest request) async {
+    // スクロールバック read（read intent で識別）。
+    if (request.purpose == PaneReadPurpose.scrollback) return gate.future;
     if (failNextPoll) {
       failNextPoll = false;
       throw const HerdrTargetNotFoundException(
