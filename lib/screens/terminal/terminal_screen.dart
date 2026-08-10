@@ -456,13 +456,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // バッファ時に記録し、適用時（_applyBufferedUpdate → _applyUpdate）に照合する。
   _HerdrTargetIdentity? _bufferedTargetIdentity;
 
-  // herdr セレクタ（workspace/tab/pane）の開手中フラグ（バグ3: ボトムシート
-  // 即閉じ防止）。`_fetchHerdrSessions` の遅延中にユーザーが再タップすると、
-  // 開いた直後のシートの barrier に当たり `isDismissible: true` で即閉じする
-  // ため、シート表示までの間に再タップを無効化する。シートが閉じるまで true
-  // を維持する（モーダル barrier はシート表示中の再タップを本来吸収する）。
-  bool _herdrSelectorOpening = false;
-
   // 深い履歴（全スクロールバック）の自動ロード用
   bool _isLoadingDeepHistory = false;
 
@@ -3499,40 +3492,39 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// するとその workspace の表示対象 pane を解決して [_switchHerdrTarget]
   /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。read-only（A6）
   /// のため mutation UI は持たない。
-  void _showHerdrWorkspaceSelector() async {
+  void _showHerdrWorkspaceSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
-    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
-    if (_herdrSelectorOpening) return;
-    _herdrSelectorOpening = true;
-    try {
-      final sessions = await _fetchHerdrSessions(
-        eventLabel: 'selector snapshot',
-        isTerminal: false,
-      );
-      if (sessions == null || !mounted || _isDisposed) return;
-
-      final current = _herdrSelectorContext();
-      await _showMultiplexerSheet(
-        title: 'Select Session',
-        icon: Icons.folder,
-        children: [
-          for (final session in sessions)
-            MultiplexerSessionTile(
-              key: ValueKey('mux-sel-session-${session.name}'),
-              session: session,
-              isActive: _isCurrentSession(session, current),
-              onTap: () {
-                Navigator.pop(context);
-                _herdrSelectWorkspace(sessions, session);
-              },
-            ),
-        ],
-      );
-    } finally {
-      _herdrSelectorOpening = false;
-    }
+    // バグ3 根本対応: シートを即時 open し、asyncChildren で非同期取得して
+    // loading → data/error と表示する。fetch 完了を待たないため、遅延中に
+    // 再タップしてもシートは既に open されており、以後のタップは modal
+    // barrier に吸収される（app の共有 boolean ガードは不要）。
+    _showMultiplexerSheet(
+      title: 'Select Session',
+      icon: Icons.folder,
+      asyncContent: () async {
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
+        final current = _herdrSelectorContext();
+        return _SelectorContent(
+          children: [
+            for (final session in sessions)
+              MultiplexerSessionTile(
+                key: ValueKey('mux-sel-session-${session.name}'),
+                session: session,
+                isActive: _isCurrentSession(session, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectWorkspace(sessions, session);
+                },
+              ),
+          ],
+        );
+      },
+    );
   }
 
   /// herdr の tab セレクタ（Select Window 相当・選択即閉じ・T10 / A6 / T4）。
@@ -3547,35 +3539,36 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// - タイル ⋮: Rename Tab（[PaneWriter.renameTab] = `herdr tab rename`）/
   ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
   ///   連鎖 close 確認付き・R2）
-  void _showHerdrTabSelector() async {
+  void _showHerdrTabSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
-    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
-    if (_herdrSelectorOpening) return;
-    _herdrSelectorOpening = true;
-    try {
-      final sessions = await _fetchHerdrSessions(
-        eventLabel: 'selector snapshot',
-        isTerminal: false,
-      );
-      if (sessions == null || !mounted || _isDisposed) return;
+    // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
+    // loading → data/error と表示する（再タップは modal barrier が吸収）。
+    _showMultiplexerSheet(
+      title: 'Select Window',
+      icon: Icons.tab,
+      asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
 
-      final workspace = _herdrFindWorkspace(
-        sessions,
-        _herdrDisplayNotifier.value,
-      );
-      if (workspace == null) return;
+        final workspace = _herdrFindWorkspace(
+          sessions,
+          _herdrDisplayNotifier.value,
+        );
+        if (workspace == null) throw StateError('No workspace found');
 
-      final current = _herdrSelectorContext();
-      // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-      final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
-      final canRename = _can(const PaneCapabilities(rename: true));
-      final primary = Theme.of(context).colorScheme.primary;
-      await _showMultiplexerSheet(
-        title: 'Select Window',
-        icon: Icons.tab,
-        headerActions: [
+        final current = _herdrSelectorContext();
+        // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+        final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
+        final canRename = _can(const PaneCapabilities(rename: true));
+        // New Tab（Q-05）はデータロード後に workspace.id が確定するため、
+        // headerActions を loader で返す（tooltip 付き IconButton）。
+        final headerActions = [
           if (canTabCrud && workspace.id != null)
             IconButton(
               icon: Icon(Icons.add, color: primary),
@@ -3583,39 +3576,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               onPressed: () =>
                   _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
             ),
-        ],
-        children: [
-          for (final window in workspace.windows)
-            MultiplexerWindowTile(
-              key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
-              window: window,
-              isActive: _isCurrentWindow(window, current),
-              onTap: () {
-                Navigator.pop(context);
-                _herdrSelectTab(sessions, workspace, window);
-              },
-              onRename: canRename && window.id != null
-                  ? () => _closeSelectorThen(() {
-                        _showHerdrRenameTabDialog(workspace, window);
-                      })
-                  : null,
-              onClose: canTabCrud && window.id != null
-                  ? () => _closeSelectorThen(() {
-                        // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
-                        // `tab close` を実行する。
-                        _confirmAndCloseHerdrTab(
-                          workspace: workspace,
-                          tab: window,
-                          isLastTab: workspace.windows.length == 1,
-                        );
-                      })
-                  : null,
-            ),
-        ],
-      );
-    } finally {
-      _herdrSelectorOpening = false;
-    }
+        ];
+        return _SelectorContent(
+          headerActions: headerActions,
+          children: [
+            for (final window in workspace.windows)
+              MultiplexerWindowTile(
+                key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
+                window: window,
+                isActive: _isCurrentWindow(window, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectTab(sessions, workspace, window);
+                },
+                onRename: canRename && window.id != null
+                    ? () => _closeSelectorThen(() {
+                          _showHerdrRenameTabDialog(workspace, window);
+                        })
+                    : null,
+                onClose: canTabCrud && window.id != null
+                    ? () => _closeSelectorThen(() {
+                          // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
+                          // `tab close` を実行する。
+                          _confirmAndCloseHerdrTab(
+                            workspace: workspace,
+                            tab: window,
+                            isLastTab: workspace.windows.length == 1,
+                          );
+                        })
+                    : null,
+              ),
+          ],
+        );
+      },
+    );
   }
 
   /// herdr の pane セレクタ（Select Pane 相当・選択即閉じ・T10 / A6 / T4）。
@@ -3632,44 +3626,46 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// - Rename: 入力ダイアログ → [_renameHerdrPane]（`herdr pane rename`）
   /// - Zoom: トグル（[_handleHerdrZoomPane] = `herdr pane zoom --toggle`。
   ///   zoom 状態は snapshot の layout `zoomed` フラグで表示・可能なら）
-  void _showHerdrPaneSelector() async {
+  void _showHerdrPaneSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
-    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
-    if (_herdrSelectorOpening) return;
-    _herdrSelectorOpening = true;
-    try {
-      final sessions = await _fetchHerdrSessions(
-        eventLabel: 'selector snapshot',
-        isTerminal: false,
-      );
-      if (sessions == null || !mounted || _isDisposed) return;
+    // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
+    // loading → data/error と表示する（再タップは modal barrier が吸収）。
+    _showMultiplexerSheet(
+      title: 'Select Pane',
+      icon: Icons.terminal,
+      asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
 
-      final display = _herdrDisplayNotifier.value;
-      final workspace = _herdrFindWorkspace(sessions, display);
-      final window = _herdrFindWindow(workspace, display);
-      if (workspace == null || window == null) return;
+        final display = _herdrDisplayNotifier.value;
+        final workspace = _herdrFindWorkspace(sessions, display);
+        final window = _herdrFindWindow(workspace, display);
+        if (workspace == null || window == null) {
+          throw StateError('No workspace/tab found');
+        }
 
-      final current = _herdrSelectorContext();
-      // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-      final canResize = _can(const PaneCapabilities(resize: true));
-      final canClose = _can(const PaneCapabilities(close: true));
-      final canSplit = _can(const PaneCapabilities(split: true));
-      final canRename = _can(const PaneCapabilities(rename: true));
-      final canZoom = _can(const PaneCapabilities(zoom: true));
-      final primary = Theme.of(context).colorScheme.primary;
-      // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
-      final currentPaneId = _targetSource?.currentPaneId;
-      final currentPane = currentPaneId == null
-          ? null
-          : _findHerdrPane(sessions, currentPaneId);
-      // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
-      final isZoomed = _isHerdrTabZoomed(display?.tabId);
-      await _showMultiplexerSheet(
-        title: 'Select Pane',
-        icon: Icons.terminal,
-        headerActions: [
+        final current = _herdrSelectorContext();
+        // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+        final canResize = _can(const PaneCapabilities(resize: true));
+        final canClose = _can(const PaneCapabilities(close: true));
+        final canSplit = _can(const PaneCapabilities(split: true));
+        final canRename = _can(const PaneCapabilities(rename: true));
+        final canZoom = _can(const PaneCapabilities(zoom: true));
+        // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
+        final currentPaneId = _targetSource?.currentPaneId;
+        final currentPane = currentPaneId == null
+            ? null
+            : _findHerdrPane(sessions, currentPaneId);
+        // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
+        final isZoomed = _isHerdrTabZoomed(display?.tabId);
+        // ヘッダー mutation（Q-02）はデータロード後に確定するため loader で返す。
+        final headerActions = [
           if (canSplit && currentPane != null)
             IconButton(
               icon: Icon(Icons.call_split, color: primary),
@@ -3703,55 +3699,57 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               tooltip: 'Resize Pane',
               onPressed: () => _closeSelectorThen(() {
                 // ヘッダーの Resize は現在表示中の pane を対象にする。
-                final currentPaneId = _targetSource?.currentPaneId;
-                if (currentPaneId == null) return;
-                final pane = _findHerdrPane(sessions, currentPaneId);
+                final id = _targetSource?.currentPaneId;
+                if (id == null) return;
+                final pane = _findHerdrPane(sessions, id);
                 if (pane != null) _handleHerdrResizePane(pane);
               }),
             ),
-        ],
-        children: [
-          for (final pane in window.panes)
-            MultiplexerPaneTile(
-              key: ValueKey('mux-sel-pane-${pane.id}'),
-              pane: pane,
-              paneTitle: _herdrPaneLabel(pane),
-              isActive: _isCurrentPane(pane, current),
-              onTap: () {
-                Navigator.pop(context);
-                _herdrSelectPane(sessions, workspace, pane);
-              },
-              onLongPress: canClose
-                  ? () => _closeSelectorThen(() {
-                        // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
-                        // 行い、連鎖 close を確認してから `pane close` を実行する。
-                        _confirmAndKillHerdrPane(
-                          paneId: pane.id,
-                          paneTitle: _herdrPaneLabel(pane),
-                          isLastPane: window.panes.length == 1,
-                          isLastTab: workspace.windows.length == 1,
-                        );
-                      })
-                  : null,
-              onResize: canResize
-                  ? () => _closeSelectorThen(() => _handleHerdrResizePane(pane))
-                  : null,
-              onClose: canClose
-                  ? () => _closeSelectorThen(() {
-                        _confirmAndKillHerdrPane(
-                          paneId: pane.id,
-                          paneTitle: _herdrPaneLabel(pane),
-                          isLastPane: window.panes.length == 1,
-                          isLastTab: workspace.windows.length == 1,
-                        );
-                      })
-                  : null,
-            ),
-        ],
-      );
-    } finally {
-      _herdrSelectorOpening = false;
-    }
+        ];
+        return _SelectorContent(
+          headerActions: headerActions,
+          children: [
+            for (final pane in window.panes)
+              MultiplexerPaneTile(
+                key: ValueKey('mux-sel-pane-${pane.id}'),
+                pane: pane,
+                paneTitle: _herdrPaneLabel(pane),
+                isActive: _isCurrentPane(pane, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectPane(sessions, workspace, pane);
+                },
+                onLongPress: canClose
+                    ? () => _closeSelectorThen(() {
+                          // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
+                          // 行い、連鎖 close を確認してから `pane close` を実行する。
+                          _confirmAndKillHerdrPane(
+                            paneId: pane.id,
+                            paneTitle: _herdrPaneLabel(pane),
+                            isLastPane: window.panes.length == 1,
+                            isLastTab: workspace.windows.length == 1,
+                          );
+                        })
+                    : null,
+                onResize: canResize
+                    ? () =>
+                        _closeSelectorThen(() => _handleHerdrResizePane(pane))
+                    : null,
+                onClose: canClose
+                    ? () => _closeSelectorThen(() {
+                          _confirmAndKillHerdrPane(
+                            paneId: pane.id,
+                            paneTitle: _herdrPaneLabel(pane),
+                            isLastPane: window.panes.length == 1,
+                            isLastTab: workspace.windows.length == 1,
+                          );
+                        })
+                    : null,
+              ),
+          ],
+        );
+      },
+    );
   }
 
   /// herdr の現在位置（H-1: ハイライト導出用）を [_SelectorContext] で返す。
@@ -4004,12 +4002,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// [top] は一覧の上部に表示するウィジェット（tmux pane シートのレイアウト
   /// ビジュアライザ）。シートが閉じた後は [_scrollToBottomKey] を表示する
   /// （既存 3 段セレクタと同じライフサイクル）。
+  ///
+  /// [asyncContent] を指定すると、**シートを即時 open して loading を表示**し、
+  /// 非同期で取得完了後に一覧を表示する（バグ3 根本対応: fetch 後の open では
+  /// 遅延中に再タップが barrier に当たり即閉じする問題を解消）。
+  /// 戻り値の `_SelectorContent` に children と headerActions の両方を含める
+  /// ことで、データロード後にヘッダーの mutation ボタンも確定できる。
+  /// [retry] を指定すると、取得失敗時に Retry ボタンを表示する。
+  /// [children] が指定されている場合は従来どおり同期的に表示する。
   Future<void> _showMultiplexerSheet({
     required String title,
     required IconData icon,
     Widget? top,
     List<Widget> children = const [],
     List<Widget> headerActions = const [],
+    Future<_SelectorContent> Function()? asyncContent,
+    VoidCallback? retry,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -4026,6 +4034,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             icon: icon,
             top: top,
             headerActions: headerActions,
+            asyncContent: asyncContent,
+            retry: retry,
             children: children,
           ),
         );
@@ -7820,7 +7830,7 @@ bool _isCurrentPane(MultiplexerPane pane, _SelectorContext? current) =>
 /// 呼び出し側が構築）。[top] は一覧の上部に表示するウィジェット（tmux pane
 /// シートの [_PaneLayoutVisualizer]）。ハイライト（H-1）は [_SelectorContext]
 /// から呼び出し側がタイルへ渡す。
-class _MultiplexerSelectorSheet extends StatelessWidget {
+class _MultiplexerSelectorSheet extends StatefulWidget {
   /// シートのタイトル（'Select Session' / 'Select Window' / 'Select Pane'）。
   final String title;
 
@@ -7836,61 +7846,188 @@ class _MultiplexerSelectorSheet extends StatelessWidget {
   /// 一覧の上部に表示するウィジェット（無ければ null）。
   final Widget? top;
 
+  /// 非同期で一覧を取得する（バグ3 根本対応: 即時 open + loading/data/error）。
+  ///
+  /// 戻り値は (children, headerActions) のペア。データロード後にヘッダーの
+  /// mutation ボタン（New Tab / Split / Rename / Zoom / Resize）も確定させる
+  /// ため、headerActions も同時に返す（tooltip を維持・バグ3 根本対応）。
+  final Future<_SelectorContent> Function()? asyncContent;
+
+  /// 取得失敗時の Retry コールバック（無ければ null）。
+  final VoidCallback? retry;
+
   const _MultiplexerSelectorSheet({
     required this.title,
     required this.icon,
-    required this.children,
     this.headerActions = const [],
     this.top,
+    this.asyncContent,
+    this.retry,
+    required this.children,
   });
+
+  @override
+  State<_MultiplexerSelectorSheet> createState() =>
+      _MultiplexerSelectorSheetState();
+}
+
+/// 非同期ロードされたセレクタの内容（一覧 + ヘッダー action）。
+class _SelectorContent {
+  final List<Widget> children;
+  final List<Widget> headerActions;
+  const _SelectorContent({
+    this.children = const [],
+    this.headerActions = const [],
+  });
+}
+
+class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
+  /// ロード結果（null なら loading・エラーは [_loadError] で表現）。
+  _SelectorContent? _content;
+  Object? _loadError;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.asyncContent != null) {
+      _load();
+    }
+  }
+
+  void _load() {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+      _content = null;
+    });
+    widget.asyncContent!().then(
+      (content) {
+        if (!mounted) return;
+        setState(() {
+          _content = content;
+          _loading = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _loadError = e;
+          _loading = false;
+        });
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // pane 段でレイアウトビジュアライザを表示する場合は高めの最大高を使う
-    // （既存 pane セレクタの 0.7 相当）。
-    final hasTop = top != null;
+    final hasTop = widget.top != null;
     final maxHeight =
         MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
 
+    final loader = widget.asyncContent;
+    if (loader != null) {
+      final headerActions = _content?.headerActions ?? widget.headerActions;
+      final body = _loading
+          ? const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _loadError != null
+              ? _buildError(context, colorScheme)
+              : ListView(
+                  shrinkWrap: true,
+                  children: _content?.children ?? const <Widget>[],
+                );
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(context, colorScheme, headerActions),
+            Divider(height: 1, color: colorScheme.outline),
+            if (widget.top != null) ...[
+              widget.top!,
+              Divider(height: 1, color: colorScheme.outline),
+            ],
+            Flexible(child: body),
+            const SizedBox(height: 16),
+          ],
+        ),
+      );
+    }
+
+    // 従来の同期 children 表示。
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(icon, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                if (headerActions.isNotEmpty) ...[
-                  const Spacer(),
-                  ...headerActions,
-                ],
-              ],
-            ),
-          ),
+          _buildHeader(context, colorScheme, widget.headerActions),
           Divider(height: 1, color: colorScheme.outline),
-          if (top != null) ...[
-            top!,
+          if (widget.top != null) ...[
+            widget.top!,
             Divider(height: 1, color: colorScheme.outline),
           ],
           Flexible(
             child: ListView(
               shrinkWrap: true,
-              children: children,
+              children: widget.children,
             ),
           ),
           const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<Widget> headerActions,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Icon(widget.icon, color: colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            widget.title,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          if (headerActions.isNotEmpty) ...[
+            const Spacer(),
+            ...headerActions,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, color: colorScheme.error),
+          const SizedBox(height: 8),
+          Text('Failed to load', style: TextStyle(color: colorScheme.onSurface)),
+          const SizedBox(height: 8),
+          if (widget.retry != null)
+            FilledButton(
+              onPressed: () {
+                widget.retry!();
+                _load();
+              },
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );
