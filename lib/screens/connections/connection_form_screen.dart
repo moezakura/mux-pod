@@ -560,26 +560,6 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             color: mutedColor.withValues(alpha: 0.7),
           ),
         ),
-        if (isHerdr) ...[
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.lock_outline, size: 14, color: mutedColor),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Read-only: you can view workspaces, tabs and panes, '
-                  'but not modify them.',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 11,
-                    color: mutedColor.withValues(alpha: 0.9),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -1081,7 +1061,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         );
       } else if (_backend == BackendType.herdr) {
         final message = herdrReady
-            ? 'Connection successful! Herdr is available (read-only).'
+            ? 'Connection successful! Herdr is available.'
             : 'Connection successful! Warning: '
                 '${herdrWarning ?? 'herdr not found'}.';
         ScaffoldMessenger.of(context).showSnackBar(

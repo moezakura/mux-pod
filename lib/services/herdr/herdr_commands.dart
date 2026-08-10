@@ -27,7 +27,7 @@ class HerdrCommands {
   static String preflightCommand() => 'herdr status --json';
 
   // inventory: HERDR-CMD-005
-  /// pane の内容を読み取る（read-only 表示用）。
+  /// pane の内容を読み取る（表示用）。
   ///
   /// コマンド形式:
   /// `herdr pane read <pane_id> --source <source> [--lines N] [--raw]`

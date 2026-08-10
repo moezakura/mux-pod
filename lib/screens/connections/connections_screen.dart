@@ -679,7 +679,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     );
   }
 
-  /// 接続の backend 種別（表示側の read-only 分岐用）。
+  /// 接続の backend 種別（表示側の backend 固有分岐用）。
   MultiplexerBackendKind get _backendKind {
     return switch (widget.connection.multiplexer.backend) {
       BackendType.tmux => MultiplexerBackendKind.tmux,
@@ -746,7 +746,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     try {
       client = await _connectSsh();
       if (_backendKind == MultiplexerBackendKind.herdr) {
-        // herdr: read-only スナップショットを取得して共通 domain に変換する。
+        // herdr: スナップショットを取得して共通 domain に変換する。
         final adapter = HerdrAdapter(client);
         final snapshot = await adapter.snapshot();
         if (!mounted) return;

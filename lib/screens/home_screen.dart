@@ -397,7 +397,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
 
           final isHerdr = connection.multiplexer.backend == BackendType.herdr;
           if (isHerdr) {
-            // herdr: read-only スナップショットを共通 domain に変換して登録
+            // herdr: スナップショットを共通 domain に変換して登録
             final adapter = HerdrAdapter(sshClient);
             final snapshot = await adapter.snapshot();
             ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
