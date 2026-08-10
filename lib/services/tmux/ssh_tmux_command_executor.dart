@@ -13,6 +13,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../command/command_request.dart';
+import '../command/command_result.dart';
 import 'tmux_backend.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_executable_resolver.dart';
@@ -95,6 +97,25 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
     await _ensureDetected();
     final resolved = _resolver.resolve(command);
     return _backend.execWithExitCode(resolved, timeout: timeout);
+  }
+
+  @override
+  // inventory: TMUX-SSH-EXEC-016
+  /// [CommandExecutor] 実装。
+  ///
+  /// tmux executable の検出後、command を resolver で置換し、transport /
+  /// timeout / output 要件は変えずに [_backend] へ委譲する。
+  Future<CommandResult> execute(CommandRequest request) async {
+    await _ensureDetected();
+    final resolved = _resolver.resolve(request.command);
+    return _backend.execute(
+      CommandRequest(
+        command: resolved,
+        transport: request.transport,
+        output: request.output,
+        timeout: request.timeout,
+      ),
+    );
   }
 
   @override

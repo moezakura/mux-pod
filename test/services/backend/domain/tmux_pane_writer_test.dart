@@ -1,5 +1,7 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/tmux_pane_writer.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart'
     show SplitDirection;
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
@@ -258,6 +260,13 @@ class _FakeExecutor implements TmuxCommandExecutor {
     String command, {
     Duration? timeout,
   }) async => (stdout: '', stderr: '', exitCode: 0);
+
+  @override
+  Future<CommandResult> execute(CommandRequest request) async =>
+      const CommandResult(
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
 
   @override
   Future<void> sendKeysCommand(String command) async {}

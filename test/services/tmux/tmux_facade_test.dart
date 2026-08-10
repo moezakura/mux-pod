@@ -1,3 +1,5 @@
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_facade.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +37,18 @@ class _FakeExecutor implements TmuxCommandExecutor {
   }) async {
     commands.add(command);
     return (stdout: await exec(command), stderr: '', exitCode: 0);
+  }
+
+  @override
+  Future<CommandResult> execute(CommandRequest request) async {
+    final stdout = await exec(request.command);
+    return CommandResult(
+      stdout: stdout,
+      stderr: '',
+      exitCode: 0,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: CommandTransport.ephemeral,
+    );
   }
 
   @override

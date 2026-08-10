@@ -151,20 +151,22 @@ class FakeSshClient extends SshClient
 
   @override
   Future<CommandResult> execute(CommandRequest request) async {
-    // persistent 要求は execPersistentCommands に記録する（テスト観測性）。
-    // 実際のルーティングは execPersistentWithExitCode / execWithExitCode へ
-    // 委譲し、fixture 応答を返す。
-    if (request.transport == CommandTransportPreference.persistentPreferred ||
-        request.transport == CommandTransportPreference.persistentOnly) {
-      execPersistentCommands.add(request.command);
-    }
-    final result = await execPersistentWithExitCode(request.command);
+    // persistent 要求のみ execPersistentCommands に記録する（テスト観測性）。
+    // それ以外（ephemeral）は execCommands 側で記録される。
+    final usePersistent =
+        request.transport == CommandTransportPreference.persistentPreferred ||
+            request.transport == CommandTransportPreference.persistentOnly;
+    final result = usePersistent
+        ? await execPersistentWithExitCode(request.command)
+        : await execWithExitCode(request.command);
     return CommandResult(
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
       outputSeparation: CommandOutputSeparation.separated,
-      actualTransport: CommandTransport.ephemeral,
+      actualTransport: usePersistent
+          ? CommandTransport.persistent
+          : CommandTransport.ephemeral,
     );
   }
 
