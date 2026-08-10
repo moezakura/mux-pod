@@ -412,12 +412,13 @@ void main() {
 
         // herdr には copy-mode が無い（H7）: tmux copy-mode コマンドは出ない。
         expect(client.sendKeysCommands, isEmpty);
-        // 履歴は pane read（既存）で取得する。
+        // 履歴は pane read（既存）で取得する。要求行数はユーザー設定
+        // scrollbackLines（既定 10000・バグ4）と整合する。
         expect(
           client.execCommands.any(
             (c) =>
                 c.startsWith('herdr pane read w1:p1') &&
-                c.contains('--lines 100000'),
+                c.contains('--lines 10000'),
           ),
           isTrue,
           reason: 'Scroll & Select は herdr では pane read 履歴ベースのみ（H7）',

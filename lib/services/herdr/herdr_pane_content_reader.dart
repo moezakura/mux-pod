@@ -18,11 +18,13 @@ import 'herdr_adapter.dart';
 class HerdrPaneContentReader implements PaneContentReader {
   /// 深い履歴と判定する履歴行数の閾値。
   ///
-  /// tmux の [TmuxPaneContentReader.deepHistoryThreshold]（-32768）に合わせる。
-  /// この値より深い要求（スクロールモード・オーバースクロール時の
-  /// -100000 等）は exec チャネルで取得し、ホットパス（ライブポーリング）
-  /// を塞がない。
-  static const int deepHistoryThreshold = -32768;
+  /// ライブポーリングは常に `historyLines = -120`（terminal_screen の
+  /// `_pollPaneContent`）で呼ばれ、深い履歴はスクロールモード・オーバースクロール
+  /// 時の [_loadHistoryForScroll] が「ユーザー設定 scrollbackLines」分（クランプ
+  /// [200, 20000]・バグ4）を要求する。よって「-120 より深い要求」は深い履歴と
+  /// 判定し、大量出力を exec チャネル（`viaPersistent: false`）で取得する
+  /// （バグ2: tmux の capturePane（exec）対比・ホットパスを塞がない）。
+  static const int deepHistoryThreshold = -120;
 
   final HerdrAdapter _adapter;
 

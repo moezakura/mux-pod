@@ -2155,7 +2155,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-LIFE-020
-  /// スクロール＆選択モード開始時に履歴を一度だけ取得して表示する。
+  /// スクロール&選択モード開始時に履歴を一度だけ取得して表示する。
   /// ライブポーリングは軽量な直近行のままなので性能は落ちない。深い履歴は
   /// ポーリングとは別のexecチャネルで取得し、ホットパスに影響しない。
   Future<void> _loadHistoryForScroll({bool preservePosition = false}) async {
@@ -2168,10 +2168,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final herdrIdentity = _captureHerdrTarget();
     try {
       // スクロールバック全体を一括取得（大きな負値でヒストリ全体をキャプチャ）。
-      // tmux は履歴上限までにクランプ、herdr は行数で要求する。
+      // tmux は履歴上限（setHistoryLimit = scrollbackLines）までにクランプ、
+      // herdr は行数で要求する。herdr ではユーザー設定 scrollbackLines を直接
+      // 要求行数に反映する（バグ4: ライブポーリングの取得行数とスクロール
+      // モード時の深い履歴取得の整合。tmux の setHistoryLimit と対称）。
+      final deepHistoryLines = _deepHistoryLineCount();
       final snapshot = await reader.readPane(
         paneId: paneId,
-        historyLines: -100000,
+        historyLines: -deepHistoryLines,
       );
       if (!mounted || _isDisposed) return;
       // A3改: await 完了後に表示対象を照合。不一致（await 中に切替・再解決・
@@ -5518,6 +5522,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (rect != null) return layout.zoomed ? layout.area : rect;
     }
     return null;
+  }
+
+  /// 深い履歴（スクロールバック全体）の取得行数を返す（バグ4）。
+  ///
+  /// - tmux: 100000 を要求し、サーバ側の history-limit（接続時に
+  ///   [TmuxFacade.setHistoryLimit] = ユーザー設定 scrollbackLines を設定）で
+  ///   クランプされる（既存ペインには遡らない制約あり）。
+  /// - herdr: サーバ側に履歴上限の設定が無いため、ユーザー設定 scrollbackLines
+  ///   （クランプ [200, 20000]・tmux の setHistoryLimit と同じクランプ）を
+  ///   そのまま要求行数に使う。これによりライブポーリング（-120）とスクロール
+  ///   モードの深い履歴取得の行数が設定値と整合する。
+  int _deepHistoryLineCount() {
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      final scrollback = ref.read(settingsProvider).scrollbackLines;
+      return scrollback.clamp(200, 20000);
+    }
+    return 100000;
   }
 
   // inventory: TERM-CRUD-016

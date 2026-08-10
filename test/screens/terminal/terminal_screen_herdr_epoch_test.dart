@@ -76,7 +76,8 @@ class _GatedHerdrPaneContentReader implements PaneContentReader {
 /// ポーリング / 深い履歴の応答をスクリプト制御する reader。
 ///
 /// - ポーリング read（historyLines: -120）は [pollContent] を返す。
-/// - 深い履歴 read（historyLines: -100000）は [deepContent] を返す。
+/// - 深い履歴 read（historyLines が -120 より深い＝既定 scrollbackLines -10000）
+///   は [deepContent] を返す。
 /// - [gate] が非 null のとき、次のポーリング read を 1 回だけ保留する
 ///   （バッファ書き込みを確定させる in-flight ウィンドウ）。
 /// - [failNextPoll] が true のとき、次のポーリング read を
@@ -93,7 +94,9 @@ class _ScriptedHerdrPaneContentReader implements PaneContentReader {
     int? historyLines,
     String source = 'recent',
   }) async {
-    if (historyLines == -100000) {
+    // 深い履歴はライブ窓（-120）より深い要求（既定 scrollbackLines の
+    // -10000）で識別する（バグ4: herdr の深い履歴要求行数は設定値と整合）。
+    if (historyLines != null && historyLines < -120) {
       return MultiplexerPaneSnapshot(content: deepContent);
     }
     final g = gate;
@@ -128,7 +131,8 @@ class _GatedDeepHistoryReader implements PaneContentReader {
     int? historyLines,
     String source = 'recent',
   }) async {
-    if (historyLines == -100000) return gate.future;
+    // 深い履歴（ライブ窓 -120 より深い要求＝既定 scrollbackLines -10000）。
+    if (historyLines != null && historyLines < -120) return gate.future;
     if (failNextPoll) {
       failNextPoll = false;
       throw const HerdrTargetNotFoundException(

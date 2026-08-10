@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_muxpod/providers/connection_provider.dart';
+import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
@@ -322,8 +323,8 @@ void main() {
     );
 
     testWidgets(
-      '深い履歴（--lines 100000）は exec チャネル経由で取得される'
-      '（tmux の capturePane 対比・バグ2）',
+      '深い履歴は exec チャネル経由で取得され、行数は scrollbackLines と整合する'
+      '（tmux の capturePane 対比・バグ2 / バグ4）',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -333,7 +334,8 @@ void main() {
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read': 'content\n',
-            'herdr pane read w1:p1 --source recent --lines 100000 --raw':
+            // 既定 scrollbackLines=10000 の要求行数（バグ4: 設定値と整合）。
+            'herdr pane read w1:p1 --source recent --lines 10000 --raw':
                 'deep-0\ndeep-1\n',
           },
           settle: false,
@@ -345,15 +347,17 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 500));
 
-        // 深い履歴は exec チャネル（execWithExitCode → execCommands）で取得される。
+        // 深い履歴は exec チャネル（execWithExitCode → execCommands）で取得され、
+        // 要求行数はユーザー設定 scrollbackLines（既定 10000）と整合する。
         expect(
           client.execCommands.any(
             (c) =>
                 c.contains('herdr pane read w1:p1 --source recent') &&
-                c.contains('--lines 100000'),
+                c.contains('--lines 10000'),
           ),
           isTrue,
-          reason: 'バグ2: 深い履歴は大量出力のため exec チャネルで取得されること',
+          reason: 'バグ2: 深い履歴は大量出力のため exec チャネルで取得されること'
+              'バグ4: 深い履歴の要求行数は scrollbackLines と整合すること',
         );
       },
     );
@@ -1931,6 +1935,85 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.text('Select Session'), findsOneWidget,
             reason: 'シートを閉じた後は再度セレクタを開けること');
+      },
+    );
+  });
+
+  group('TerminalScreen herdr スクロールバック (bug4)', () {
+    testWidgets(
+      '深い履歴の要求行数はユーザー設定 scrollbackLines と整合する',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          settings: const AppSettings(
+            keepScreenOn: false,
+            scrollbackLines: 2000,
+          ),
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+            'herdr pane read w1:p1 --source recent --lines 2000 --raw':
+                'deep-0\ndeep-1\n',
+          },
+          settle: false,
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        state.loadHistoryForScrollForTesting();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(
+          client.execCommands.any(
+            (c) =>
+                c.contains('herdr pane read w1:p1 --source recent') &&
+                c.contains('--lines 2000'),
+          ),
+          isTrue,
+          reason: 'バグ4: herdr の深い履歴は scrollbackLines（2000）で要求されること',
+        );
+      },
+    );
+
+    testWidgets(
+      'scrollbackLines が最小値未満でもクランプされ、最大値超過でもクランプされる',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          // 20000 超過（例: 99999）→ クランプして 20000 で要求される。
+          settings: const AppSettings(
+            keepScreenOn: false,
+            scrollbackLines: 99999,
+          ),
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+            'herdr pane read w1:p1 --source recent --lines 20000 --raw':
+                'deep-0\ndeep-1\n',
+          },
+          settle: false,
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        state.loadHistoryForScrollForTesting();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(
+          client.execCommands.any(
+            (c) =>
+                c.contains('herdr pane read w1:p1 --source recent') &&
+                c.contains('--lines 20000'),
+          ),
+          isTrue,
+          reason: 'バグ4: scrollbackLines は [200, 20000] にクランプされること',
+        );
       },
     );
   });
