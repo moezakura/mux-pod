@@ -19,6 +19,7 @@ import '../../services/backend/domain/multiplexer_session.dart';
 import '../../services/backend/domain/multiplexer_window.dart';
 import '../../services/backend/domain/herdr_pane_writer.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/backend/domain/pane_frame_reader.dart';
 import '../../services/backend/domain/pane_history_policy.dart';
 import '../../services/backend/domain/pane_read.dart';
 import '../../services/backend/domain/pane_writer.dart';
@@ -29,6 +30,7 @@ import '../../services/herdr/herdr_commands.dart'
 import '../../services/herdr/herdr_errors.dart';
 import '../../services/herdr/herdr_models.dart';
 import '../../services/herdr/herdr_pane_content_reader.dart';
+import '../../services/herdr/herdr_pane_frame_reader.dart';
 import '../../services/herdr/herdr_snapshot_cache.dart';
 import '../../services/herdr/herdr_target_resolver.dart';
 import '../../services/herdr/herdr_to_domain.dart';
@@ -518,6 +520,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   // ペイン内容読み取り（backend 種別で tmux/herdr を選択）
   PaneContentReader? _paneReader;
+
+  // ペイン表示フレーム合成（content + geometry・バグ1 根本対応）。
+  // herdr は content と layout を合成する。tmux は PaneFrameReader を使わず
+  // 従来の PaneContentReader（poll で geometry 込み）をそのまま使う。
+  PaneFrameReader? _frameReader;
 
   // ペイン操作（write 側抽象）。backend 種別で生成する（T8: `TmuxPaneWriter` /
   // `HerdrPaneWriter`。Phase 0 の仮実装 `_Phase0PaneWriter` は廃止）。呼び出し
@@ -1164,6 +1171,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null) return;
     if (widget.paneContentReader != null) {
       _paneReader = widget.paneContentReader;
+      _frameReader = null; // テスト注入 reader は content のみ（geometry は解決しない）
       // herdr: スナップショット読み取りは content reader とは独立に cache
       // （唯一の read chokepoint・A5 / A3改）経由にする。テスト注入 reader でも
       // cache を生成してエポック照合を有効にする（バックエンドは client 由来）。
@@ -1177,8 +1185,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // スナップショット読み取りは cache（唯一の read chokepoint・A5）経由に
       // する。adapter 差し替え（再接続・SSH client 再生成）は cache を作り直して追随。
       _herdrSnapshotCache = HerdrSnapshotCache(() => adapter);
+      // content + geometry の合成（バグ1 根本対応: 表示層の backend 分岐と
+      // 診断 getter の表示利用を除去）。cache.get() の TTL/single-flight/epoch
+      // 契約を守る PaneLayoutResolver を使う。
+      _frameReader = HerdrPaneFrameReader(
+        adapter,
+        HerdrPaneLayoutResolver(_herdrSnapshotCache!),
+      );
     } else {
       _paneReader = TmuxPaneContentReader(sshClient.tmuxExecutor);
+      _frameReader = null;
     }
   }
 
@@ -1495,9 +1511,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return;
       }
 
-      // ペイン内容読み取り（PaneContentReader）からターゲットを取得
+      // ペイン内容読み取りからターゲットを取得
       final paneId = _targetSource?.currentPaneId;
       final reader = _paneReader;
+      final frameReader = _frameReader;
       if (paneId == null || reader == null) {
         _isPolling = false;
         return;
@@ -1509,14 +1526,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       final startTime = DateTime.now();
 
-      // PaneContentReader 経由で capture-pane + カーソル + モード（tmux）または
-      // pane read（herdr）を一括取得する。表示コア（AnsiTextView /
-      // ValueNotifier / ポーリングループ）は backend 非依存のためそのまま。
-      // ライブポーリングは read intent（LiveTail）で要求する（バグ4 根本対応:
-      // 行数の符号・大小による暗黙の意味判定を廃止）。
-      final snapshot = await reader.readPane(
-        PaneReadRequest.live(paneId: paneId),
-      );
+      // ペイン表示フレームを取得する。herdr は content + geometry を
+      // PaneFrameReader が合成し（バグ1 根本対応: 表示層の backend 分岐と
+      // 診断 getter の表示利用を除去）、tmux / テスト注入 reader は従来の
+      // PaneContentReader を使う。ライブポーリングは read intent（LiveTail）で
+      // 要求する（バグ4 根本対応: 行数の符号・大小による暗黙の意味判定を廃止）。
+      final snapshot = frameReader != null
+          ? (await frameReader.read(PaneFrameRequest(
+              PaneReadRequest.live(paneId: paneId),
+            ))).toSnapshot()
+          : await reader.readPane(PaneReadRequest.live(paneId: paneId));
 
       final endTime = DateTime.now();
 
@@ -1527,22 +1546,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (!_isCurrentHerdrTarget(herdrIdentity)) return;
 
       // カーソル位置とペインサイズを更新
-      // herdr は snapshot にサイズが含まれないため、snapshot cache の layout から
-      // 文字セル単位の pane サイズを解決する（tmux の snapshot 経由と対称。
-      // 表示層の backend 分岐は PaneFrameReader 化で解消予定）。
-      // zoom 時は pane rect が非 zoom 値のまま（herdr_models.dart）のため
-      // layout.area（タブ全面）を使う。rect が取得できない場合は従来どおり
-      // geometry 無しのままスキップし、既定の 80x24（spec.md:75）に落ちる。
+      // tmux は snapshot（poll）経由で geometry を得る。herdr は PaneFrameReader
+      // が layout から合成済み。zoom 時は pane rect が非 zoom 値のまま
+      // （herdr_models.dart）のため layout.area（タブ全面）を解決済み。
+      // rect が取得できない場合は従来どおり geometry 無しのままスキップし、
+      // 既定の 80x24（spec.md:75）に落ちる。
       final geometry = snapshot.geometry;
-      var w = geometry?.width ?? 0;
-      var h = geometry?.height ?? 0;
-      if (_backendKind == MultiplexerBackendKind.herdr && (w <= 0 || h <= 0)) {
-        final rect = _resolveHerdrPaneRect(paneId);
-        if (rect != null) {
-          w = rect.width;
-          h = rect.height;
-        }
-      }
+      final w = geometry?.width ?? 0;
+      final h = geometry?.height ?? 0;
       if (w > 0 && h > 0) {
         if (w != _viewNotifier.value.paneWidth ||
             h != _viewNotifier.value.paneHeight) {
@@ -2168,6 +2179,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) return;
     final paneId = _targetSource?.currentPaneId;
     final reader = _paneReader;
+    final frameReader = _frameReader;
     if (paneId == null || reader == null) return;
     // A3改: 深い履歴 read 開始前に表示対象同一性を記録（完了時に照合）。
     final herdrIdentity = _captureHerdrTarget();
@@ -2179,12 +2191,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _backendKind,
         configuredScrollbackLines: ref.read(settingsProvider).scrollbackLines,
       );
-      final snapshot = await reader.readPane(
-        PaneReadRequest.scrollback(
-          paneId: paneId,
-          maxLines: policy.scrollbackLimit,
-        ),
+      final request = PaneReadRequest.scrollback(
+        paneId: paneId,
+        maxLines: policy.scrollbackLimit,
       );
+      final snapshot = frameReader != null
+          ? (await frameReader.read(PaneFrameRequest(request))).toSnapshot()
+          : await reader.readPane(request);
       if (!mounted || _isDisposed) return;
       // A3改: await 完了後に表示対象を照合。不一致（await 中に切替・再解決・
       // 再接続が発生）なら破棄し、ライブ表示のままにする。
@@ -5514,22 +5527,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (layout.tabId == tabId) return layout.zoomed;
     }
     return false;
-  }
-
-  /// herdr: snapshot cache の layout から pane の表示サイズ（文字セル単位）を解決する。
-  ///
-  /// [paneId] の pane を持つ layout の rect を返す。**zoom 時は pane rect が
-  /// 非 zoom 値のまま**（herdr_models.dart の zoom 注意・T0 実測 6-b）のため、
-  /// タブ全面（[HerdrLayout.area]）を返す。snapshot 未取得 / pane が layout に
-  /// 無い場合は null（表示側は既定 80 へフォールバック・spec.md:75）。
-  HerdrRect? _resolveHerdrPaneRect(String paneId) {
-    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
-    if (snapshot == null) return null;
-    for (final layout in snapshot.layouts) {
-      final rect = layout.rectFor(paneId);
-      if (rect != null) return layout.zoomed ? layout.area : rect;
-    }
-    return null;
   }
 
   // inventory: TERM-CRUD-016
