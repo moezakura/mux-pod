@@ -119,6 +119,17 @@ class _FakePersistentShell extends PersistentShell {
   }
 
   @override
+  Future<({String output, int? exitCode})> execWithExitCode(
+    String command, {
+    Duration? timeout,
+  }) async {
+    commands.add(command);
+    final failure = error;
+    if (failure != null) throw failure;
+    return (output: 'ping', exitCode: 0);
+  }
+
+  @override
   void sendNoWait(String command) {}
 
   @override
@@ -510,6 +521,77 @@ void main() {
         await client.disconnect();
         expect(socket.closed, isTrue);
         expect(shells.every((shell) => shell.disposed), isTrue);
+      },
+    );
+
+    test(
+      'execPersistentWithExitCode uses the persistent shell and returns exit code',
+      () async {
+        final rawClient = _FakeRawSshClient();
+        final shells = <_FakePersistentShell>[];
+        final client = SshClient(
+          connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: _FakeSocket(), client: rawClient);
+          },
+          persistentShellFactory: (raw) async {
+            final shell = _FakePersistentShell(raw);
+            shells.add(shell);
+            return shell;
+          },
+        );
+
+        await client.connect(
+          host: 'host',
+          port: 22,
+          username: 'user',
+          options: SshConnectOptions(password: 'pw'),
+        );
+
+        final result = await client.execPersistentWithExitCode('echo hi');
+
+        expect(shells, hasLength(2));
+        expect(shells.first.commands, ['echo hi']);
+        expect(result.stdout, 'ping');
+        expect(result.exitCode, 0);
+        await client.disconnect();
+      },
+    );
+
+    test(
+      'execPersistentWithExitCode restarts the shell and retries when closed',
+      () async {
+        final rawClient = _FakeRawSshClient();
+        final shells = <_FakePersistentShell>[];
+        final client = SshClient(
+          connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: _FakeSocket(), client: rawClient);
+          },
+          persistentShellFactory: (raw) async {
+            final shell = _FakePersistentShell(raw);
+            shells.add(shell);
+            return shell;
+          },
+        );
+
+        await client.connect(
+          host: 'host',
+          port: 22,
+          username: 'user',
+          options: SshConnectOptions(password: 'pw'),
+        );
+
+        // 最初のシェルを切断状態にして再起動を誘発する
+        shells.first.error = PersistentShellError('Shell session closed');
+        final result = await client.execPersistentWithExitCode('echo hi');
+
+        expect(shells, hasLength(3)); // 初期2 + 再起動1
+        expect(result.stdout, 'ping');
+        expect(result.exitCode, 0);
+        await client.disconnect();
       },
     );
 

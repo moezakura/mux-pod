@@ -3038,6 +3038,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   List<String> herdrSwitchEventsForTesting() =>
       List.unmodifiable(_herdrSwitchEvents);
 
+  /// テストフック: 深い履歴のロード（[_loadHistoryForScroll]）を widget テスト
+  /// から直接呼び出すための `@visibleForTesting` メソッド。本番コードからは
+  /// 呼ばない（オーバースクロール / スクロールモード遷移が呼ぶ）。
+  @visibleForTesting
+  Future<void> loadHistoryForScrollForTesting() =>
+      _loadHistoryForScroll();
+
   /// テストフック: `_can` 判定を widget テストから直接検証する（H4 等価性
   /// テスト・T4）。本番コードからは呼ばない。
   @visibleForTesting

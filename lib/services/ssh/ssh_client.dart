@@ -916,6 +916,52 @@ class SshClient implements BackendAdapter {
     }
   }
 
+  /// 持続的シェル経由でコマンドを実行し、終了コードも取得する。
+  ///
+  /// [execPersistent]（stdout のみ）と [execWithExitCode]（毎回チャネル開閉 +
+  /// `_withExecLock` 直列化）の両立を図る拡張（バグ2: 描画遅延の修正）。
+  /// 持続的シェルが利用できない場合は [execWithExitCode] にフォールバックする
+  /// （[execPersistent] と同じ方針）。stderr は persistent shell（PTY）では
+  /// stdout に混ざるため空で返し、呼び出し側（herdr adapter 等）の
+  /// exit code + stdout 由来のエラー分類に委ねる。
+  @override
+  Future<({String stdout, String stderr, int? exitCode})>
+  execPersistentWithExitCode(String command, {Duration? timeout}) async {
+    if (!isConnected || _client == null) {
+      throw SshConnectionError('Not connected');
+    }
+
+    // 持続的シェルが利用できない場合は従来の execWithExitCode にフォールバック
+    if (_persistentShell == null || !_persistentShell!.isStarted) {
+      return execWithExitCode(command, timeout: timeout);
+    }
+
+    try {
+      final result = await _persistentShell!.execWithExitCode(
+        command,
+        timeout: timeout,
+      );
+      return (stdout: result.output, stderr: '', exitCode: result.exitCode);
+    } on PersistentShellError catch (e) {
+      // シェルセッションが切断された場合は再起動を試みる
+      if (e.message.contains('closed') || e.message.contains('disposed')) {
+        try {
+          await restartPersistentShell();
+          final result = await _persistentShell!.execWithExitCode(
+            command,
+            timeout: timeout,
+          );
+          return (stdout: result.output, stderr: '', exitCode: result.exitCode);
+        } catch (_) {
+          // 再起動も失敗した場合は従来の execWithExitCode にフォールバック
+          return execWithExitCode(command, timeout: timeout);
+        }
+      }
+      // その他のエラーは従来の execWithExitCode にフォールバック
+      return execWithExitCode(command, timeout: timeout);
+    }
+  }
+
   /// コマンドを実行して終了コードを取得する
   ///
   /// [command] 実行コマンド

@@ -42,6 +42,16 @@ class PersistentShell implements TmuxInputTransport {
   late final String _printfStartMarker = r'\x01###START_' '$_markerId' r'###\x01';
   late final String _printfEndMarker = r'\x01###END_' '$_markerId' r'###\x01';
 
+  /// RC（終了コード）エコーのマーカー（printf用・文字列版）。
+  ///
+  /// `\x01###RC_<markerId>###:<code>\n` の形で出力される。マーカー内に
+  /// ランダムな [markerId] を含めることで、コマンド出力に偶然現れる
+  /// リテラル文字列との衝突を防ぐ（START/END マーカーと同じ方針）。
+  late final String _printfRcMarker = r'\x01###RC_' '$_markerId' r'###:';
+
+  /// RC エコーを出力から抽出するための文字列版マーカー。
+  late final String _rcMarker = '\x01###RC_$_markerId###:';
+
   /// マーカー間出力を O(n) で抽出するインクリメンタルスキャナ
   late final ShellMarkerScanner _scanner = ShellMarkerScanner(
     startMarker: utf8.encode(_startMarker),
@@ -50,6 +60,15 @@ class PersistentShell implements TmuxInputTransport {
 
   /// コマンド実行中のCompleter
   Completer<String>? _pendingCommand;
+
+  /// [execWithExitCode] 用: 最後に実行したコマンドの終了コード（未捕捉なら null）。
+  int? _lastExitCode;
+
+  /// [execWithExitCode] 用: 今回のコマンドで終了コードを捕捉するか。
+  ///
+  /// true のときコマンド末尾に RC エコー（`\x01###RC_<markerId>###:N`）を
+  /// 付与し、[_onData] が出力から抽出して [_lastExitCode] に格納する。
+  bool _captureExitCode = false;
 
   // inventory: SHELL-005
   /// シェルが開始されているかどうか
@@ -134,6 +153,44 @@ class PersistentShell implements TmuxInputTransport {
   /// [timeout] タイムアウト（デフォルト: 5秒）
   /// 戻り値: コマンドの標準出力
   Future<String> exec(String command, {Duration? timeout}) async {
+    final result = await _execFramed(
+      command,
+      timeout: timeout,
+      captureExitCode: false,
+    );
+    return result.output;
+  }
+
+  /// コマンドを実行し、終了コードも取得する。
+  ///
+  /// [exec] と同じマーカー方式で、コマンド末尾に終了コードの RC エコーを
+  /// 付与して捕捉する。herdr は [BackendAdapter.execWithExitCode] の代替として
+  /// exit code と stderr でエラー分類（target-not-found / server-down）を
+  /// 行うため、persistent shell 経由でも終了コードを失わない必要がある
+  /// （バグ2: 描画遅延の修正。チャネル再利用 + エラー分類の両立）。
+  ///
+  /// 戻り値: マーカー間の標準出力（RC エコーは除去済み）と終了コード。
+  /// stderr は persistent shell（PTY）では stdout に混ざるため分離せず、
+  /// 呼び出し側（[SshClient.execPersistentWithExitCode]）が分類を担う。
+  Future<({String output, int? exitCode})> execWithExitCode(
+    String command, {
+    Duration? timeout,
+  }) async {
+    return _execFramed(command, timeout: timeout, captureExitCode: true);
+  }
+
+  /// [exec] / [execWithExitCode] の共通実装。
+  ///
+  /// [captureExitCode] が true のとき、コマンド直後に
+  /// `; printf '\x01###RC_<markerId>###:%d\n' "$?"` を付与して終了コードを
+  /// マーカー内に埋め込み、[_onData] が出力から抽出する。false のときは
+  /// 従来の [exec] と同じラップ（RC エコーなし）を維持する（tmux の
+  /// 既存 [exec] 利用者に影響を与えない）。
+  Future<({String output, int? exitCode})> _execFramed(
+    String command, {
+    Duration? timeout,
+    required bool captureExitCode,
+  }) async {
     if (_session == null) {
       throw PersistentShellError('Shell not started');
     }
@@ -148,21 +205,29 @@ class PersistentShell implements TmuxInputTransport {
 
     _pendingCommand = Completer<String>();
     _scanner.reset();
+    _captureExitCode = captureExitCode;
+    _lastExitCode = null;
 
     // printfでマーカーを出力（\x01バイトを含む）
     // echoではなくprintfを使用: シェルのエコーバック内ではリテラル'\x01'（4文字）が
     // 表示されるが、printfの実出力はバイト0x01を含む。
     // これによりエコーバック内のマーカーと実出力のマーカーを確実に区別できる。
+    final rcEcho = captureExitCode
+        ? "; __muxpod_rc=\$?; printf '$_printfRcMarker%d\\n' \"\$__muxpod_rc\""
+        : '';
     final commandWithMarkers =
-        "printf '$_printfStartMarker\\n'; $command; printf '$_printfEndMarker\\n'\n";
+        "printf '$_printfStartMarker\\n'; $command$rcEcho; printf '$_printfEndMarker\\n'\n";
     _session!.write(utf8.encode(commandWithMarkers));
 
     // タイムアウト付きで結果を待機
     final effectiveTimeout = timeout ?? const Duration(seconds: 5);
     try {
-      return await _pendingCommand!.future.timeout(effectiveTimeout);
+      final output = await _pendingCommand!.future.timeout(effectiveTimeout);
+      _captureExitCode = false;
+      return (output: output, exitCode: _lastExitCode);
     } on TimeoutException {
       _pendingCommand = null;
+      _captureExitCode = false;
       throw PersistentShellError('Command execution timed out');
     }
   }
@@ -230,6 +295,25 @@ class PersistentShell implements TmuxInputTransport {
     // 事実: macOS PTYではnewlines=0, CRs=19（\nが\rに変換されている）
     result = result.replaceAll(RegExp(r'\r\n?'), '\n');
 
+    // execWithExitCode 用: 末尾の RC エコー（\x01###RC_<id>###:<code>\x01\n）を抽出する。
+    // エコーは必ずコマンド出力の最後に付くため、最後の出現位置から終了コードを
+    // 取り出して出力から除去する（コードは次の \x01 または改行まで）。
+    if (_captureExitCode) {
+      final rcIndex = result.lastIndexOf(_rcMarker);
+      if (rcIndex >= 0) {
+        final codeText = result.substring(rcIndex + _rcMarker.length);
+        final terminator = codeText.indexOf('\x01');
+        final codeEnd = terminator >= 0 ? terminator : codeText.indexOf('\n');
+        final code = codeEnd >= 0 ? codeText.substring(0, codeEnd) : codeText;
+        _lastExitCode = int.tryParse(code.trim());
+        // RC エコー行を除去（\x01 終端と直前の改行も含める）
+        result = result.substring(0, rcIndex);
+        if (result.endsWith('\n')) {
+          result = result.substring(0, result.length - 1);
+        }
+      }
+    }
+
     // 先頭と末尾の改行を削除
     if (result.startsWith('\n')) {
       result = result.substring(1);
@@ -246,6 +330,7 @@ class PersistentShell implements TmuxInputTransport {
   /// セッション終了時の処理
   void _onDone() {
     _isClosed = true;
+    _captureExitCode = false;
     if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
       _pendingCommand!.completeError(PersistentShellError('Shell session closed'));
     }
@@ -254,6 +339,7 @@ class PersistentShell implements TmuxInputTransport {
   /// エラー発生時の処理
   void _onError(Object error) {
     _isClosed = true;
+    _captureExitCode = false;
     if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
       _pendingCommand!.completeError(PersistentShellError('Shell error: $error'));
     }
@@ -274,6 +360,7 @@ class PersistentShell implements TmuxInputTransport {
   /// リソースを解放
   Future<void> dispose() async {
     _isClosed = true;
+    _captureExitCode = false;
 
     if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
       _pendingCommand!.completeError(PersistentShellError('Shell disposed'));

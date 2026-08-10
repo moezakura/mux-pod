@@ -43,6 +43,21 @@ abstract interface class BackendAdapter {
   /// 持続的シェル経由でコマンドを実行する。
   Future<String> execPersistent(String command, {Duration? timeout});
 
+  /// 持続的シェル経由でコマンドを実行し、標準出力・標準エラー・終了コードを
+  /// 取得する。
+  ///
+  /// [execPersistent] は stdout のみ返すため、終了コードでエラー分類を行う
+  /// backend（herdr: target-not-found / server-down）には不十分。チャネル
+  /// 再利用（[execPersistent]）とエラー分類（[execWithExitCode]）を両立する
+  /// ための拡張（バグ2: 描画遅延の修正）。
+  ///
+  /// 持続的シェルが利用できない場合は [execWithExitCode] にフォールバックする
+  /// （[execPersistent] と同じ方針）。
+  Future<({String stdout, String stderr, int? exitCode})> execPersistentWithExitCode(
+    String command, {
+    Duration? timeout,
+  });
+
   /// コマンドを実行して標準出力・標準エラー・終了コードを取得する。
   Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
     String command, {

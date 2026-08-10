@@ -289,6 +289,76 @@ void main() {
     });
 
     testWidgets(
+      'ライブポーリングは持続的シェル経由（execPersistentCommands）で取得される'
+      '（バグ2: 描画遅延の修正）',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        // ライブポーリング（--lines 120）は execPersistentWithExitCode 経由
+        // （FakeSshClient は execPersistentCommands に記録）。
+        expect(
+          client.execPersistentCommands.any(
+            (c) => c.contains('herdr pane read w1:p1 --source recent --lines 120'),
+          ),
+          isTrue,
+          reason: 'バグ2: herdr のライブポーリングは persistent shell 経由で取得されること',
+        );
+        // 内容は表示される（persistent 経由でも例外分類が維持される）
+        expect(find.textContaining('hello'), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      '深い履歴（--lines 100000）は exec チャネル経由で取得される'
+      '（tmux の capturePane 対比・バグ2）',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+            'herdr pane read w1:p1 --source recent --lines 100000 --raw':
+                'deep-0\ndeep-1\n',
+          },
+          settle: false,
+        );
+
+        // スクロールモードに入れて深い履歴をロードする
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        state.loadHistoryForScrollForTesting();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        // 深い履歴は exec チャネル（execWithExitCode → execCommands）で取得される。
+        expect(
+          client.execCommands.any(
+            (c) =>
+                c.contains('herdr pane read w1:p1 --source recent') &&
+                c.contains('--lines 100000'),
+          ),
+          isTrue,
+          reason: 'バグ2: 深い履歴は大量出力のため exec チャネルで取得されること',
+        );
+      },
+    );
+
+    testWidgets(
       'sessionId disambiguates same-label workspaces (tmp w3/w4 pattern)',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(

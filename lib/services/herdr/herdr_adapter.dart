@@ -10,6 +10,7 @@
 /// 解禁・Q-01 の 1 回リリース）。
 library;
 
+import 'dart:async';
 import 'dart:convert';
 
 import '../backend/backend_adapter.dart';
@@ -72,16 +73,23 @@ class HerdrAdapter {
   /// [source]: `'visible'`（可視領域）または `'recent'`（履歴含む）。
   /// [lines]: 読み取る行数（null なら全量）。
   /// [ansi]: true なら `--raw` で ANSI エスケープ付きの出力を取得する。
+  /// [viaPersistent]: true なら持続的シェル経由（[execPersistentWithExitCode]）
+  /// で実行し、チャネル開閉と exec ロック直列化を回避する（バグ2: 描画遅延の
+  /// 修正。tmux の `execPersistent` 経由ポーリングと対称）。デフォルト false
+  /// （従来の [execWithExitCode]）で、深い履歴など低頻度・大量出力の取得は
+  /// exec チャネルのままにする（tmux の `capturePane` 対比）。
   Future<HerdrPaneContent> paneRead(
     String paneId, {
     String source = 'recent',
     int? lines,
     bool ansi = false,
+    bool viaPersistent = false,
     Duration? timeout,
   }) async {
     final stdout = await _execChecked(
       HerdrCommands.paneRead(paneId, source: source, lines: lines, ansi: ansi),
       timeout: timeout,
+      viaPersistent: viaPersistent,
     );
     return HerdrPaneContentParser.parse(stdout, ansi: ansi);
   }
@@ -90,27 +98,60 @@ class HerdrAdapter {
 
   // inventory: HERDR-ADAPTER-021
   /// pane へテキストを送信する（Q-06）。
+  ///
+  /// fire-and-forget 化（バグ2: 描画遅延の修正）: 入力専用の持続的シェル
+  /// （[BackendAdapter.inputTransport]）が利用可能なら [sendNoWait] で即時送信
+  /// し、exec ロック直列化・チャネル開閉を回避する（tmux の
+  /// `sendKeysNoWait` → `inputTransport.sendNoWait` と対称）。入力シェルが
+  /// 無い・送信失敗時は従来どおり [_execMutation]（exec チャネル・応答待ち）
+  /// にフォールバックする。
   Future<HerdrMutationResult> sendText(
     String paneId,
     String text, {
     Duration? timeout,
-  }) =>
-      _execMutation(HerdrCommands.paneSendText(paneId, text), timeout: timeout);
+  }) {
+    final command = HerdrCommands.paneSendText(paneId, text);
+    if (_trySendNoWait(command)) {
+      return Future.value(const HerdrMutationResult());
+    }
+    return _execMutation(command, timeout: timeout);
+  }
 
   // inventory: HERDR-ADAPTER-022
   /// pane へキーを送信する（Q-07）。
   ///
   /// [keyName] は `PaneKeyMap.mapSpecialKey` で変換済みの herdr キー名を想定
   /// （受理キーはそのまま・拒否キーは `send-text` 経路へは [sendText] を使う）。
+  /// [sendText] と同様に fire-and-forget 化（入力シェルがあれば [sendNoWait]）。
   Future<HerdrMutationResult> sendKey(
     String paneId,
     String keyName, {
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.paneSendKeys(paneId, keyName),
-        timeout: timeout,
-      );
+  }) {
+    final command = HerdrCommands.paneSendKeys(paneId, keyName);
+    if (_trySendNoWait(command)) {
+      return Future.value(const HerdrMutationResult());
+    }
+    return _execMutation(command, timeout: timeout);
+  }
+
+  /// 入力専用の持続的シェルへコマンドを fire-and-forget 送信する。
+  ///
+  /// 入力シェルが無い・開始前・送信失敗（[BackendTransportException]・シェル
+  /// 切断）の場合は false を返す。送信失敗時は [_backend.restartInputTransport]
+  /// で回復を試みる（tmux の `sendKeysCommand` と同じ方針）。
+  /// 成功（true）の場合、呼び出し側は exec フォールバックをしない。
+  bool _trySendNoWait(String command) {
+    final input = _backend.inputTransport;
+    if (input == null || !input.isStarted) return false;
+    try {
+      input.sendNoWait(_resolve(command));
+      return true;
+    } on BackendTransportException {
+      unawaited(_backend.restartInputTransport());
+      return false;
+    }
+  }
 
   // inventory: HERDR-ADAPTER-023
   /// 方向 focus（`--pane` 指定）。
@@ -415,7 +456,8 @@ class HerdrAdapter {
     return command.replaceFirst(RegExp(r'^herdr\b'), path);
   }
 
-  /// [BackendAdapter.execWithExitCode] でコマンドを実行し、
+  /// [BackendAdapter.execWithExitCode]（または [viaPersistent] なら
+  /// [BackendAdapter.execPersistentWithExitCode]）でコマンドを実行し、
   /// 非 0 終了・stderr 出力を例外に変換する。
   ///
   /// target-not-found 系 errorCode（`pane_not_found` / `tab_not_found` /
@@ -431,9 +473,20 @@ class HerdrAdapter {
   ///
   /// exitCode null でも stdout が非空の場合は「出力は得られたが終了コードが
   /// 欠落した」とみなし、stdout を返す（後段のパーサが検証する）。
-  Future<String> _execChecked(String command, {Duration? timeout}) async {
+  ///
+  /// [viaPersistent] は persistent shell 経由（チャネル再利用 + exec ロック
+  /// 回避・バグ2）。persistent shell は exit code を捕捉できるが stderr は
+  /// PTY で stdout に混ざるため空で返る。エラー分類は exit code + stdout
+  /// 由来の errorCode 抽出で維持される（target-not-found / server-down）。
+  Future<String> _execChecked(
+    String command, {
+    Duration? timeout,
+    bool viaPersistent = false,
+  }) async {
     final resolved = _resolve(command);
-    final result = await _backend.execWithExitCode(resolved, timeout: timeout);
+    final result = viaPersistent
+        ? await _backend.execPersistentWithExitCode(resolved, timeout: timeout)
+        : await _backend.execWithExitCode(resolved, timeout: timeout);
     final stderr = result.stderr.trim();
     final exitCode = result.exitCode;
 

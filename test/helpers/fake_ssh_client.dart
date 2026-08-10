@@ -148,6 +148,13 @@ class FakeSshClient extends SshClient
   }
 
   @override
+  Future<({String stdout, String stderr, int? exitCode})>
+  execPersistentWithExitCode(String command, {Duration? timeout}) async {
+    execPersistentCommands.add(command);
+    return execWithExitCode(command, timeout: timeout);
+  }
+
+  @override
   Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
     String command, {
     Duration? timeout,

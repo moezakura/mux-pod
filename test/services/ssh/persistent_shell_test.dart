@@ -253,4 +253,90 @@ void main() {
       );
     });
   });
+
+  group('PersistentShell.execWithExitCode', () {
+    test('execWithExitCode returns output and exit code', () async {
+      final client = _FakeSSHClient();
+      final shell = PersistentShell(client);
+      await shell.start();
+
+      final resultFuture = shell.execWithExitCode('whoami');
+      final command = String.fromCharCodes(client._session.written.last);
+      final markerId = RegExp(
+        r'START_([0-9a-f]{16})',
+      ).firstMatch(command)!.group(1)!;
+      // RC エコーがコマンド末尾に付与される（終了コード捕捉用）
+      expect(
+        command,
+        contains("printf '\\x01###RC_$markerId###:%d\\n' \"\$__muxpod_rc\""),
+      );
+
+      client._session.emitStdout(
+        '\x01###START_$markerId###\x01\nalice\r\n'
+        '\x01###RC_$markerId###:0\x01\n'
+        '\x01###END_$markerId###\x01\r\n',
+      );
+
+      final result = await resultFuture;
+      expect(result.output, 'alice');
+      expect(result.exitCode, 0);
+      await shell.dispose();
+    });
+
+    test('execWithExitCode captures a non-zero exit code', () async {
+      final client = _FakeSSHClient();
+      final shell = PersistentShell(client);
+      await shell.start();
+
+      final resultFuture = shell.execWithExitCode('exit 3');
+      final command = String.fromCharCodes(client._session.written.last);
+      final markerId = RegExp(
+        r'START_([0-9a-f]{16})',
+      ).firstMatch(command)!.group(1)!;
+
+      client._session.emitStdout(
+        '\x01###START_$markerId###\x01\n'
+        '\x01###RC_$markerId###:3\x01\n'
+        '\x01###END_$markerId###\x01\n',
+      );
+
+      final result = await resultFuture;
+      expect(result.output, '');
+      expect(result.exitCode, 3);
+      await shell.dispose();
+    });
+
+    test('exec (RC エコーなし) は exitCode を返さない', () async {
+      final client = _FakeSSHClient();
+      final shell = PersistentShell(client);
+      await shell.start();
+
+      final resultFuture = shell.exec('whoami');
+      final command = String.fromCharCodes(client._session.written.last);
+      final markerId = RegExp(
+        r'START_([0-9a-f]{16})',
+      ).firstMatch(command)!.group(1)!;
+      // exec は RC エコーを付与しない（tmux 既存利用者に影響させない）
+      expect(
+        command,
+        isNot(contains("printf '\\x01###RC_$markerId###:%d\\n'")),
+      );
+
+      client._session.emitStdout(
+        '\x01###START_$markerId###\x01\nalice\r\n'
+        '\x01###END_$markerId###\x01\r\n',
+      );
+
+      expect(await resultFuture, 'alice');
+      await shell.dispose();
+    });
+
+    test('execWithExitCode throws before start', () async {
+      final shell = PersistentShell(_FakeSSHClient());
+      await expectLater(
+        shell.execWithExitCode('whoami'),
+        throwsA(isA<PersistentShellError>()),
+      );
+    });
+  });
 }
