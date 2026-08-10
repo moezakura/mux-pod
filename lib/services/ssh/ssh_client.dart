@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../backend/multiplexer_config.dart';
+import '../command/command_executor.dart';
+import '../command/command_request.dart';
+import '../command/command_result.dart';
 import '../connection_error.dart';
 import '../keychain/secure_storage.dart';
 import '../tmux/tmux_backend.dart';
@@ -960,6 +963,131 @@ class SshClient implements BackendAdapter {
       // その他のエラーは従来の execWithExitCode にフォールバック
       return execWithExitCode(command, timeout: timeout);
     }
+  }
+
+  /// 汎用コマンド実行（[CommandExecutor] 実装）。
+  ///
+  /// [CommandRequest.transport] / [CommandRequest.output] に基づいて
+  /// ephemeral（毎回チャネル開閉）または persistent（持続的シェル）を
+  /// ルーティングする。既存の `exec` / `execPersistent` / `execWithExitCode` /
+  /// `execPersistentWithExitCode` の直積を統合した新契約（Codex 根本設計
+  /// レビュー・バグ2 根本対応）。
+  ///
+  /// - `persistentPreferred + separatedOutput` は最初から ephemeral に
+  ///   ルーティングする（PTY では分離できないため）。
+  /// - `persistentOnly` は shell が利用不能なら例外を投げる。
+  /// - timeout は `execute()` 全体の deadline。timeout 後の自動再実行はしない。
+  Future<CommandResult> execute(CommandRequest request) async {
+    if (!isConnected || _client == null) {
+      throw SshConnectionError('Not connected');
+    }
+    if (!request.isValid) {
+      throw ArgumentError(
+        'Invalid CommandRequest: persistentOnly + separatedOutput is impossible '
+        '(PTY cannot separate stdout/stderr): $request',
+      );
+    }
+
+    final useEphemeral =
+        request.output == CommandOutputRequirement.separatedOutput ||
+            request.transport == CommandTransportPreference.ephemeralOnly;
+
+    if (useEphemeral) {
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
+    }
+
+    // persistent 経路（outputOnly / exitCode・PTY では merged になる）。
+    if (_persistentShell == null || !_persistentShell!.isStarted) {
+      if (request.transport == CommandTransportPreference.persistentOnly) {
+        throw SshConnectionError('Persistent shell is not available');
+      }
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
+    }
+
+    final captureExitCode =
+        request.output == CommandOutputRequirement.exitCode;
+    try {
+      final result = captureExitCode
+          ? await _persistentShell!.execWithExitCode(
+              request.command,
+              timeout: request.timeout,
+            )
+          : (
+              output: await _persistentShell!.exec(
+                request.command,
+                timeout: request.timeout,
+              ),
+              exitCode: null,
+            );
+      return CommandResult(
+        mergedOutput: result.output,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.merged,
+        actualTransport: CommandTransport.persistent,
+      );
+    } on PersistentShellError catch (e) {
+      // シェルセッションが切断された場合のみ再起動して再試行する。
+      // timeout（stale frame 混入防止で shell が破棄された）は自動再実行
+      // しない（実行結果が不明のため・mutation の二重適用防止）。
+      if (e.message.contains('closed') || e.message.contains('disposed')) {
+        if (request.transport == CommandTransportPreference.persistentOnly) {
+          await restartPersistentShell();
+          final result = captureExitCode
+              ? await _persistentShell!.execWithExitCode(
+                  request.command,
+                  timeout: request.timeout,
+                )
+              : (
+                  output: await _persistentShell!.exec(
+                    request.command,
+                    timeout: request.timeout,
+                  ),
+                  exitCode: null,
+                );
+          return CommandResult(
+            mergedOutput: result.output,
+            exitCode: result.exitCode,
+            outputSeparation: CommandOutputSeparation.merged,
+            actualTransport: CommandTransport.persistent,
+          );
+        }
+        await restartPersistentShell();
+      }
+      // persistent が利用不能（persistentPreferred）なら ephemeral へ
+      // フォールバック。persistentOnly はフォールバックしない。
+      if (request.transport == CommandTransportPreference.persistentOnly) {
+        rethrow;
+      }
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
+    }
+  }
+
+  /// ephemeral（毎回チャネル開閉 + exec ロック直列化）でコマンドを実行する。
+  Future<({String stdout, String stderr, int? exitCode})> _executeEphemeral(
+    CommandRequest request,
+  ) async {
+    return execWithExitCode(request.command, timeout: request.timeout);
   }
 
   /// コマンドを実行して終了コードを取得する

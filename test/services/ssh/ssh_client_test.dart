@@ -5,6 +5,8 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/services/ssh/persistent_shell.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
@@ -43,6 +45,10 @@ class _FakeInteractiveSession implements SSHSession {
   void emitData(List<int> bytes) => _stdout.add(Uint8List.fromList(bytes));
   void emitError(Object error) => _stdout.addError(error);
   Future<void> finish() => _stdout.close();
+  Future<void> finishAll() async {
+    await _stdout.close();
+    await _stderr.close();
+  }
 
   @override
   Stream<Uint8List> get stdout => _stdout.stream;
@@ -75,6 +81,7 @@ class _FakeInteractiveSession implements SSHSession {
 class _FakeRawSshClient implements SSHClient {
   final Completer<void> authentication = Completer<void>();
   final interactiveSession = _FakeInteractiveSession();
+  final execSessions = <_FakeInteractiveSession>[];
   bool closed = false;
   SSHPtyConfig? lastPty;
 
@@ -88,6 +95,17 @@ class _FakeRawSshClient implements SSHClient {
   }) async {
     lastPty = pty;
     return interactiveSession;
+  }
+
+  @override
+  Future<SSHSession> execute(
+    String command, {
+    SSHPtyConfig? pty,
+    Map<String, String>? environment,
+  }) async {
+    final session = _FakeInteractiveSession();
+    execSessions.add(session);
+    return session;
   }
 
   @override
@@ -591,6 +609,89 @@ void main() {
         expect(shells, hasLength(3)); // 初期2 + 再起動1
         expect(result.stdout, 'ping');
         expect(result.exitCode, 0);
+        await client.disconnect();
+      },
+    );
+
+    test(
+      'execute: ephemeralOnly + separatedOutput returns separated result',
+      () async {
+        final rawClient = _FakeRawSshClient();
+        final client = SshClient(
+          connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: _FakeSocket(), client: rawClient);
+          },
+          persistentShellFactory: (raw) async {
+            final shell = _FakePersistentShell(raw);
+            return shell;
+          },
+        );
+
+        await client.connect(
+          host: 'host',
+          port: 22,
+          username: 'user',
+          options: SshConnectOptions(password: 'pw'),
+        );
+
+        final future = client.execute(
+          const CommandRequest(
+            command: 'echo hi',
+            transport: CommandTransportPreference.ephemeralOnly,
+            output: CommandOutputRequirement.separatedOutput,
+          ),
+        );
+
+        // exec チャネルの stdout/stderr を閉じて結果を確定させる。
+        final session = rawClient.execSessions.single;
+        await session.finishAll();
+
+        final result = await future;
+        expect(result.outputSeparation, CommandOutputSeparation.separated);
+        expect(result.actualTransport, CommandTransport.ephemeral);
+        await client.disconnect();
+      },
+    );
+
+    test(
+      'execute: persistentPreferred + exitCode routes to persistent shell',
+      () async {
+        final rawClient = _FakeRawSshClient();
+        final shells = <_FakePersistentShell>[];
+        final client = SshClient(
+          connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: _FakeSocket(), client: rawClient);
+          },
+          persistentShellFactory: (raw) async {
+            final shell = _FakePersistentShell(raw);
+            shells.add(shell);
+            return shell;
+          },
+        );
+
+        await client.connect(
+          host: 'host',
+          port: 22,
+          username: 'user',
+          options: SshConnectOptions(password: 'pw'),
+        );
+
+        final result = await client.execute(
+          const CommandRequest(
+            command: 'herdr pane read w1:p1',
+            transport: CommandTransportPreference.persistentPreferred,
+            output: CommandOutputRequirement.exitCode,
+          ),
+        );
+
+        expect(result.outputSeparation, CommandOutputSeparation.merged);
+        expect(result.actualTransport, CommandTransport.persistent);
+        expect(result.mergedOutput, 'ping');
+        expect(shells.first.commands, contains('herdr pane read w1:p1'));
         await client.disconnect();
       },
     );
