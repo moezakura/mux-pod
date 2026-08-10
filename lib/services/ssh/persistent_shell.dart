@@ -53,22 +53,23 @@ class PersistentShell implements TmuxInputTransport {
   late final String _rcMarker = '\x01###RC_$_markerId###:';
 
   /// マーカー間出力を O(n) で抽出するインクリメンタルスキャナ
-  late final ShellMarkerScanner _scanner = ShellMarkerScanner(
+  ///
+  /// shell インスタンス単位で共有するのではなく、コマンド実行ごとに新しく
+  /// 生成する（[PendingShellCommand.scanner]）。timeout 後に旧コマンドの
+  /// 遅延フレームが届いても、新コマンドの scanner には影響しない（バグ2
+  /// 根本対応: stale frame 混入防止）。
+  late final ShellMarkerScanner _sharedScanner = ShellMarkerScanner(
     startMarker: utf8.encode(_startMarker),
     endMarker: utf8.encode(_endMarker),
   );
 
-  /// コマンド実行中のCompleter
-  Completer<String>? _pendingCommand;
-
-  /// [execWithExitCode] 用: 最後に実行したコマンドの終了コード（未捕捉なら null）。
-  int? _lastExitCode;
-
-  /// [execWithExitCode] 用: 今回のコマンドで終了コードを捕捉するか。
+  /// 実行中のコマンド（per-command の状態）。
   ///
-  /// true のときコマンド末尾に RC エコー（`\x01###RC_<markerId>###:N`）を
-  /// 付与し、[_onData] が出力から抽出して [_lastExitCode] に格納する。
-  bool _captureExitCode = false;
+  /// 従来は shell 全体の可変フィールド（`_pendingCommand` / `_captureExitCode` /
+  /// `_lastExitCode` / `_scanner`）で管理していたが、実行単位に集約する
+  /// （Codex 根本設計レビュー）。timeout 時に [close] で shell を破棄するため、
+  /// 旧コマンドの遅延フレームが新コマンドに混入しない。
+  PendingShellCommand? _pendingCommand;
 
   // inventory: SHELL-005
   /// シェルが開始されているかどうか
@@ -78,6 +79,10 @@ class PersistentShell implements TmuxInputTransport {
 
   /// セッション切断検知用
   bool _isClosed = false;
+
+  /// 実行中のコマンドが存在するか（再入検出用）。
+  bool get hasPendingCommand =>
+      _pendingCommand != null && !_pendingCommand!.isCompleted;
 
   /// stdoutサブスクリプション
   StreamSubscription<Uint8List>? _stdoutSubscription;
@@ -142,7 +147,7 @@ class PersistentShell implements TmuxInputTransport {
     await Future.delayed(const Duration(milliseconds: 100));
 
     // バッファをクリア（初期化出力を破棄）
-    _scanner.reset();
+    _sharedScanner.reset();
   }
 
   // inventory: SHELL-009
@@ -186,6 +191,11 @@ class PersistentShell implements TmuxInputTransport {
   /// マーカー内に埋め込み、[_onData] が出力から抽出する。false のときは
   /// 従来の [exec] と同じラップ（RC エコーなし）を維持する（tmux の
   /// 既存 [exec] 利用者に影響を与えない）。
+  ///
+  /// **timeout 時は shell を破棄・再起動する**（stale frame 混入防止）:
+  /// 遅延して届いた旧コマンドの START/END フレームが、次のコマンド結果として
+  /// 扱われるのを防ぐため、timeout したコマンドの自動再実行はしない
+  /// （実行結果が不明のため・mutation の二重適用防止）。
   Future<({String output, int? exitCode})> _execFramed(
     String command, {
     Duration? timeout,
@@ -199,14 +209,18 @@ class PersistentShell implements TmuxInputTransport {
       throw PersistentShellError('Shell session is closed');
     }
 
-    if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
+    if (hasPendingCommand) {
       throw PersistentShellError('Another command is already running');
     }
 
-    _pendingCommand = Completer<String>();
-    _scanner.reset();
-    _captureExitCode = captureExitCode;
-    _lastExitCode = null;
+    final pending = PendingShellCommand(
+      captureExitCode: captureExitCode,
+      scannerFactory: () => ShellMarkerScanner(
+        startMarker: utf8.encode(_startMarker),
+        endMarker: utf8.encode(_endMarker),
+      ),
+    );
+    _pendingCommand = pending;
 
     // printfでマーカーを出力（\x01バイトを含む）
     // echoではなくprintfを使用: シェルのエコーバック内ではリテラル'\x01'（4文字）が
@@ -222,14 +236,40 @@ class PersistentShell implements TmuxInputTransport {
     // タイムアウト付きで結果を待機
     final effectiveTimeout = timeout ?? const Duration(seconds: 5);
     try {
-      final output = await _pendingCommand!.future.timeout(effectiveTimeout);
-      _captureExitCode = false;
-      return (output: output, exitCode: _lastExitCode);
-    } on TimeoutException {
+      final output = await pending.completer.future.timeout(effectiveTimeout);
       _pendingCommand = null;
-      _captureExitCode = false;
+      return (output: output, exitCode: pending.exitCode);
+    } on TimeoutException {
+      // timeout 後は shell を破棄して再起動する（stale frame 混入防止）。
+      // 破棄のため pending はエラーで完了し、次回 exec は再起動後に受付ける。
+      await _poisonAfterTimeout();
       throw PersistentShellError('Command execution timed out');
     }
+  }
+
+  /// timeout 発生時の shell 破棄処理。
+  ///
+  /// pending をエラーで完了し、stdout 購読を解除して session を閉じ、
+  /// 再起動可能な状態にする。旧 session の遅延フレームが新 session に
+  /// 届くことはない（subscription 解除 + session close で物理的に遮断）。
+  /// timeout したコマンドの自動再実行はしない。
+  Future<void> _poisonAfterTimeout() async {
+    final pending = _pendingCommand;
+    if (pending != null && !pending.isCompleted) {
+      pending.completer.completeError(
+        PersistentShellError('Command execution timed out'),
+      );
+    }
+    _pendingCommand = null;
+    _isClosed = true;
+
+    await _stdoutSubscription?.cancel();
+    _stdoutSubscription = null;
+
+    _session?.close();
+    _session = null;
+
+    _sharedScanner.reset();
   }
 
   // inventory: SHELL-010
@@ -283,7 +323,7 @@ class PersistentShell implements TmuxInputTransport {
     }());
 
     // マーカー間の出力をインクリメンタルに抽出（O(n)スキャン）
-    final between = _scanner.feed(data);
+    final between = pending.scanner.feed(data);
     if (between == null) {
       return;
     }
@@ -298,14 +338,14 @@ class PersistentShell implements TmuxInputTransport {
     // execWithExitCode 用: 末尾の RC エコー（\x01###RC_<id>###:<code>\x01\n）を抽出する。
     // エコーは必ずコマンド出力の最後に付くため、最後の出現位置から終了コードを
     // 取り出して出力から除去する（コードは次の \x01 または改行まで）。
-    if (_captureExitCode) {
+    if (pending.captureExitCode) {
       final rcIndex = result.lastIndexOf(_rcMarker);
       if (rcIndex >= 0) {
         final codeText = result.substring(rcIndex + _rcMarker.length);
         final terminator = codeText.indexOf('\x01');
         final codeEnd = terminator >= 0 ? terminator : codeText.indexOf('\n');
         final code = codeEnd >= 0 ? codeText.substring(0, codeEnd) : codeText;
-        _lastExitCode = int.tryParse(code.trim());
+        pending.exitCode = int.tryParse(code.trim());
         // RC エコー行を除去（\x01 終端と直前の改行も含める）
         result = result.substring(0, rcIndex);
         if (result.endsWith('\n')) {
@@ -324,25 +364,27 @@ class PersistentShell implements TmuxInputTransport {
 
     // Completerを先にnullにしてから完了（再入防止）
     _pendingCommand = null;
-    pending.complete(result);
+    pending.completer.complete(result);
   }
 
   /// セッション終了時の処理
   void _onDone() {
     _isClosed = true;
-    _captureExitCode = false;
-    if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
-      _pendingCommand!.completeError(PersistentShellError('Shell session closed'));
+    final pending = _pendingCommand;
+    if (pending != null && !pending.isCompleted) {
+      pending.completer.completeError(PersistentShellError('Shell session closed'));
     }
+    _pendingCommand = null;
   }
 
   /// エラー発生時の処理
   void _onError(Object error) {
     _isClosed = true;
-    _captureExitCode = false;
-    if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
-      _pendingCommand!.completeError(PersistentShellError('Shell error: $error'));
+    final pending = _pendingCommand;
+    if (pending != null && !pending.isCompleted) {
+      pending.completer.completeError(PersistentShellError('Shell error: $error'));
     }
+    _pendingCommand = null;
   }
 
   // inventory: SHELL-014
@@ -360,10 +402,10 @@ class PersistentShell implements TmuxInputTransport {
   /// リソースを解放
   Future<void> dispose() async {
     _isClosed = true;
-    _captureExitCode = false;
 
-    if (_pendingCommand != null && !_pendingCommand!.isCompleted) {
-      _pendingCommand!.completeError(PersistentShellError('Shell disposed'));
+    final pending = _pendingCommand;
+    if (pending != null && !pending.isCompleted) {
+      pending.completer.completeError(PersistentShellError('Shell disposed'));
     }
     _pendingCommand = null;
 
@@ -373,8 +415,35 @@ class PersistentShell implements TmuxInputTransport {
     _session?.close();
     _session = null;
 
-    _scanner.reset();
+    _sharedScanner.reset();
   }
+}
+
+/// 実行中のコマンドの状態（per-command・immutable な設定 + 可変の進捗）。
+///
+/// 従来 shell 全体で持っていた `_pendingCommand` / `_captureExitCode` /
+/// `_lastExitCode` / `_scanner` を実行単位に集約する（Codex 根本設計レビュー・
+/// バグ2 根本対応）。[scanner] はコマンドごとに新しく生成し、timeout 後に
+/// 旧コマンドの遅延フレームが新コマンドに混入するのを防ぐ。
+final class PendingShellCommand {
+  PendingShellCommand({
+    required this.captureExitCode,
+    required ShellMarkerScanner Function() scannerFactory,
+  }) : scanner = scannerFactory();
+
+  /// 終了コードを捕捉するか（RC エコーを付与したか）。
+  final bool captureExitCode;
+
+  /// このコマンドの結果を待つ completer。
+  final Completer<String> completer = Completer<String>();
+
+  /// このコマンド用のマーカースキャナ。
+  final ShellMarkerScanner scanner;
+
+  /// 捕捉した終了コード（未捕捉なら null）。
+  int? exitCode;
+
+  bool get isCompleted => completer.isCompleted;
 }
 
 // inventory: SHELL-016

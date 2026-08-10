@@ -55,9 +55,13 @@ class _FakeSSHSession implements SSHSession {
 }
 
 class _FakeSSHClient implements SSHClient {
-  final _session = _FakeSSHSession();
+  _FakeSSHClient();
+
+  final sessions = <_FakeSSHSession>[_FakeSSHSession()];
   int shellCalls = 0;
   SSHPtyConfig? lastPty;
+
+  _FakeSSHSession get _session => sessions.last;
 
   @override
   Future<SSHSession> shell({
@@ -66,6 +70,10 @@ class _FakeSSHClient implements SSHClient {
   }) async {
     shellCalls++;
     lastPty = pty;
+    // 再起動（timeout 後の再作成）時は新しい session を返す。
+    if (shellCalls > sessions.length) {
+      sessions.add(_FakeSSHSession());
+    }
     return _session;
   }
 
@@ -337,6 +345,73 @@ void main() {
         shell.execWithExitCode('whoami'),
         throwsA(isA<PersistentShellError>()),
       );
+    });
+  });
+
+  group('PersistentShell timeout safety', () {
+    test('timeout poisons the shell and no stale frame leaks to next command',
+        () async {
+      final client = _FakeSSHClient();
+      final shell = PersistentShell(client);
+      await shell.start();
+      final firstSession = client._session;
+
+      // 第1コマンド: 応答が返らず timeout する。
+      await expectLater(
+        shell.exec('slow-command', timeout: const Duration(milliseconds: 50)),
+        throwsA(isA<PersistentShellError>()),
+      );
+
+      // timeout 後は shell が破棄され、旧 session は閉じられる。
+      expect(shell.isStarted, isFalse,
+          reason: 'timeout 後は shell が破棄されること（stale frame 混入防止）');
+      expect(firstSession.closed, isTrue,
+          reason: '旧 session は閉じられ、遅延フレームを読まないこと');
+
+      // 再起動すると新しい session になる。
+      await shell.start();
+      expect(client.shellCalls, 2);
+      expect(shell.isStarted, isTrue);
+
+      // 新 session でコマンドが正常に実行できる。
+      final resultFuture = shell.exec('whoami');
+      final command = String.fromCharCodes(client._session.written.last);
+      final markerId = RegExp(
+        r'START_([0-9a-f]{16})',
+      ).firstMatch(command)!.group(1)!;
+      client._session.emitStdout(
+        '\x01###START_$markerId###\x01\nalice\r\n'
+        '\x01###END_$markerId###\x01\r\n',
+      );
+      expect(await resultFuture, 'alice');
+      await shell.dispose();
+    });
+
+    test('timeout command is not auto-retried', () async {
+      final client = _FakeSSHClient();
+      final shell = PersistentShell(client);
+      await shell.start();
+
+      final beforeTimeout = client._session.written.length;
+      await expectLater(
+        shell.exec('slow-command', timeout: const Duration(milliseconds: 50)),
+        throwsA(isA<PersistentShellError>()),
+      );
+
+      // timeout したコマンドは shell 側で自動再実行されない。
+      // （旧 session は閉じられ、新 session には初期化以外は書かれていない）
+      await shell.start();
+      final newSession = client._session;
+      final newWrites = newSession.written.where(
+        (w) => !String.fromCharCodes(w).contains('HISTFILE=/dev/null'),
+      );
+      expect(
+        newWrites,
+        isEmpty,
+        reason: 'timeout コマンドの自動再実行が無いこと',
+      );
+      expect(beforeTimeout, greaterThanOrEqualTo(0));
+      await shell.dispose();
     });
   });
 }
