@@ -977,6 +977,7 @@ class SshClient implements BackendAdapter {
   ///   ルーティングする（PTY では分離できないため）。
   /// - `persistentOnly` は shell が利用不能なら例外を投げる。
   /// - timeout は `execute()` 全体の deadline。timeout 後の自動再実行はしない。
+  @override
   Future<CommandResult> execute(CommandRequest request) async {
     if (!isConnected || _client == null) {
       throw SshConnectionError('Not connected');

@@ -1,3 +1,5 @@
+import '../command/command_executor.dart';
+
 /// backend 入力トランスポートの回復可能な失敗。
 ///
 /// [BackendInputTransport.sendNoWait] 等で発生し、呼出側が再起動や
@@ -33,32 +35,37 @@ abstract interface class BackendInputTransport {
 ///
 /// [SshClient] は [BackendAdapter]（互換名 [TmuxBackend]）としてこのインターフェースを
 /// 実装する。backend 層は具象型ではなくこの抽象に依存する。
-abstract interface class BackendAdapter {
+///
+/// [CommandExecutor] を実装し、コマンド実行は [CommandRequest] / [CommandResult]
+/// ベースで行う（Codex 根本設計レビュー・バグ2 根本対応）。旧 `exec` /
+/// `execPersistent` / `execWithExitCode` / `execPersistentWithExitCode` は
+/// deprecated の互換 API（呼び出し移行後に削除予定）。
+abstract interface class BackendAdapter implements CommandExecutor {
   /// 接続中かどうか。
   bool get isConnected;
 
   /// コマンドを実行して結果を取得する。
+  ///
+  /// deprecated: [CommandExecutor.execute] を使う。
   Future<String> exec(String command, {Duration? timeout});
 
   /// 持続的シェル経由でコマンドを実行する。
+  ///
+  /// deprecated: [CommandExecutor.execute] を使う。
   Future<String> execPersistent(String command, {Duration? timeout});
 
   /// 持続的シェル経由でコマンドを実行し、標準出力・標準エラー・終了コードを
   /// 取得する。
   ///
-  /// [execPersistent] は stdout のみ返すため、終了コードでエラー分類を行う
-  /// backend（herdr: target-not-found / server-down）には不十分。チャネル
-  /// 再利用（[execPersistent]）とエラー分類（[execWithExitCode]）を両立する
-  /// ための拡張（バグ2: 描画遅延の修正）。
-  ///
-  /// 持続的シェルが利用できない場合は [execWithExitCode] にフォールバックする
-  /// （[execPersistent] と同じ方針）。
+  /// deprecated: [CommandExecutor.execute] を使う。
   Future<({String stdout, String stderr, int? exitCode})> execPersistentWithExitCode(
     String command, {
     Duration? timeout,
   });
 
   /// コマンドを実行して標準出力・標準エラー・終了コードを取得する。
+  ///
+  /// deprecated: [CommandExecutor.execute] を使う。
   Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
     String command, {
     Duration? timeout,

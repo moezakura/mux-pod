@@ -1,6 +1,8 @@
 import 'package:flutter_muxpod/services/backend/backend_adapter.dart';
 import 'package:flutter_muxpod/services/backend/domain/herdr_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -345,6 +347,20 @@ class _FakeBackend implements BackendAdapter {
 
   @override
   Future<void> restartInputTransport() async {}
+
+  @override
+  Future<CommandResult> execute(CommandRequest request) async {
+    commands.add(request.command);
+    final result = execWithExitCodeResult ??
+        (stdout: '', stderr: '', exitCode: 0);
+    return CommandResult(
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: CommandTransport.ephemeral,
+    );
+  }
 
   @override
   Future<String> exec(String command, {Duration? timeout}) async {
