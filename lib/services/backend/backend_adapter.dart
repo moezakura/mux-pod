@@ -37,39 +37,10 @@ abstract interface class BackendInputTransport {
 /// 実装する。backend 層は具象型ではなくこの抽象に依存する。
 ///
 /// [CommandExecutor] を実装し、コマンド実行は [CommandRequest] / [CommandResult]
-/// ベースで行う（Codex 根本設計レビュー・バグ2 根本対応）。旧 `exec` /
-/// `execPersistent` / `execWithExitCode` / `execPersistentWithExitCode` は
-/// deprecated の互換 API（呼び出し移行後に削除予定）。
+/// ベースで行う（Codex 根本設計レビュー・バグ2 根本対応）。
 abstract interface class BackendAdapter implements CommandExecutor {
   /// 接続中かどうか。
   bool get isConnected;
-
-  /// コマンドを実行して結果を取得する。
-  ///
-  /// deprecated: [CommandExecutor.execute] を使う。
-  Future<String> exec(String command, {Duration? timeout});
-
-  /// 持続的シェル経由でコマンドを実行する。
-  ///
-  /// deprecated: [CommandExecutor.execute] を使う。
-  Future<String> execPersistent(String command, {Duration? timeout});
-
-  /// 持続的シェル経由でコマンドを実行し、標準出力・標準エラー・終了コードを
-  /// 取得する。
-  ///
-  /// deprecated: [CommandExecutor.execute] を使う。
-  Future<({String stdout, String stderr, int? exitCode})> execPersistentWithExitCode(
-    String command, {
-    Duration? timeout,
-  });
-
-  /// コマンドを実行して標準出力・標準エラー・終了コードを取得する。
-  ///
-  /// deprecated: [CommandExecutor.execute] を使う。
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  });
 
   /// データを書き込む。
   void write(String data);

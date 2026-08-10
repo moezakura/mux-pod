@@ -695,9 +695,13 @@ class SshClient implements BackendAdapter {
       // 持続的シェル経由でkeep-alive（高速）
       // inventory: SSH-033
       // inventory: LEGACY-0159
-      await execPersistent(
-        'echo ping',
-        timeout: Duration(seconds: _keepAliveTimeoutSeconds),
+      await execute(
+        CommandRequest(
+          command: 'echo ping',
+          transport: CommandTransportPreference.persistentPreferred,
+          output: CommandOutputRequirement.outputOnly,
+          timeout: Duration(seconds: _keepAliveTimeoutSeconds),
+        ),
       );
       _adjustKeepAliveInterval(success: true);
     } catch (e) {
@@ -809,169 +813,11 @@ class SshClient implements BackendAdapter {
     }
   }
 
-  /// コマンドを実行して結果を取得する
-  ///
-  /// [command] 実行コマンド
-  /// [timeout] タイムアウト時間
-  /// 戻り値: コマンド出力
-  // inventory: SSH-032
-  @override
-  // inventory: LEGACY-0158
-  Future<String> exec(String command, {Duration? timeout}) async {
-    if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
-    }
-
-    try {
-      final resolvedCommand = command;
-      return await _withExecLock(() async {
-        // ignore: avoid_init_to_null
-        SSHSession? session = null;
-        try {
-          session = await _client!.execute(resolvedCommand);
-
-          // 出力を収集（バイト列として収集し、最後にデコード）
-          final stdoutBytes = <int>[];
-          final stderrBytes = <int>[];
-
-          final stdoutCompleter = Completer<void>();
-          final stderrCompleter = Completer<void>();
-
-          session.stdout.listen(
-            (data) => stdoutBytes.addAll(data),
-            onDone: () => stdoutCompleter.complete(),
-            onError: (e) => stdoutCompleter.completeError(e),
-          );
-
-          session.stderr.listen(
-            (data) => stderrBytes.addAll(data),
-            onDone: () => stderrCompleter.complete(),
-            onError: (e) => stderrCompleter.completeError(e),
-          );
-
-          // タイムアウト付きで完了を待機
-          if (timeout != null) {
-            await Future.wait([
-              stdoutCompleter.future,
-              stderrCompleter.future,
-            ]).timeout(timeout);
-          } else {
-            await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
-          }
-
-          // バイト列をUTF-8デコード（不正なバイトは置換文字に）
-          final stdout = utf8.decode(stdoutBytes, allowMalformed: true);
-          final stderr = utf8.decode(stderrBytes, allowMalformed: true);
-
-          // stderrがあればエラーとして扱う（オプション）
-          if (stderr.isNotEmpty) {
-            return stdout + stderr;
-          }
-
-          return stdout;
-        } finally {
-          session?.close();
-        }
-      });
-    } on TimeoutException {
-      debugPrint('exec: timed out');
-      throw SshConnectionError('Command execution timed out');
-    } catch (e) {
-      debugPrint('exec: error=$e');
-      throw SshConnectionError('Failed to execute command: $e', e);
-    }
-  }
-
-  /// 持続的シェル経由でコマンドを実行（高速）
-  ///
-  /// チャネル開閉のオーバーヘッドを排除し、1 RTT程度で実行可能。
-  /// ポーリングなど高頻度のコマンド実行に適している。
-  ///
-  /// [command] 実行コマンド
-  /// [timeout] タイムアウト時間
-  /// 戻り値: コマンド出力
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async {
-    if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
-    }
-
-    // 持続的シェルが利用できない場合は従来のexec()にフォールバック
-    if (_persistentShell == null || !_persistentShell!.isStarted) {
-      return exec(command, timeout: timeout);
-    }
-
-    try {
-      return await _persistentShell!.exec(command, timeout: timeout);
-    } on PersistentShellError catch (e) {
-      // シェルセッションが切断された場合は再起動を試みる
-      if (e.message.contains('closed') || e.message.contains('disposed')) {
-        try {
-          await restartPersistentShell();
-          return await _persistentShell!.exec(command, timeout: timeout);
-        } catch (_) {
-          // 再起動も失敗した場合は従来のexec()にフォールバック
-          return exec(command, timeout: timeout);
-        }
-      }
-      // その他のエラーは従来のexec()にフォールバック
-      return exec(command, timeout: timeout);
-    }
-  }
-
-  /// 持続的シェル経由でコマンドを実行し、終了コードも取得する。
-  ///
-  /// [execPersistent]（stdout のみ）と [execWithExitCode]（毎回チャネル開閉 +
-  /// `_withExecLock` 直列化）の両立を図る拡張（バグ2: 描画遅延の修正）。
-  /// 持続的シェルが利用できない場合は [execWithExitCode] にフォールバックする
-  /// （[execPersistent] と同じ方針）。stderr は persistent shell（PTY）では
-  /// stdout に混ざるため空で返し、呼び出し側（herdr adapter 等）の
-  /// exit code + stdout 由来のエラー分類に委ねる。
-  @override
-  Future<({String stdout, String stderr, int? exitCode})>
-  execPersistentWithExitCode(String command, {Duration? timeout}) async {
-    if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
-    }
-
-    // 持続的シェルが利用できない場合は従来の execWithExitCode にフォールバック
-    if (_persistentShell == null || !_persistentShell!.isStarted) {
-      return execWithExitCode(command, timeout: timeout);
-    }
-
-    try {
-      final result = await _persistentShell!.execWithExitCode(
-        command,
-        timeout: timeout,
-      );
-      return (stdout: result.output, stderr: '', exitCode: result.exitCode);
-    } on PersistentShellError catch (e) {
-      // シェルセッションが切断された場合は再起動を試みる
-      if (e.message.contains('closed') || e.message.contains('disposed')) {
-        try {
-          await restartPersistentShell();
-          final result = await _persistentShell!.execWithExitCode(
-            command,
-            timeout: timeout,
-          );
-          return (stdout: result.output, stderr: '', exitCode: result.exitCode);
-        } catch (_) {
-          // 再起動も失敗した場合は従来の execWithExitCode にフォールバック
-          return execWithExitCode(command, timeout: timeout);
-        }
-      }
-      // その他のエラーは従来の execWithExitCode にフォールバック
-      return execWithExitCode(command, timeout: timeout);
-    }
-  }
-
   /// 汎用コマンド実行（[CommandExecutor] 実装）。
   ///
   /// [CommandRequest.transport] / [CommandRequest.output] に基づいて
   /// ephemeral（毎回チャネル開閉）または persistent（持続的シェル）を
-  /// ルーティングする。既存の `exec` / `execPersistent` / `execWithExitCode` /
-  /// `execPersistentWithExitCode` の直積を統合した新契約（Codex 根本設計
-  /// レビュー・バグ2 根本対応）。
+  /// ルーティングする（Codex 根本設計レビュー・バグ2 根本対応）。
   ///
   /// - `persistentPreferred + separatedOutput` は最初から ephemeral に
   ///   ルーティングする（PTY では分離できないため）。
@@ -1045,31 +891,27 @@ class SshClient implements BackendAdapter {
       // timeout（stale frame 混入防止で shell が破棄された）は自動再実行
       // しない（実行結果が不明のため・mutation の二重適用防止）。
       if (e.message.contains('closed') || e.message.contains('disposed')) {
-        if (request.transport == CommandTransportPreference.persistentOnly) {
-          await restartPersistentShell();
-          final result = captureExitCode
-              ? await _persistentShell!.execWithExitCode(
+        await restartPersistentShell();
+        final result = captureExitCode
+            ? await _persistentShell!.execWithExitCode(
+                request.command,
+                timeout: request.timeout,
+              )
+            : (
+                output: await _persistentShell!.exec(
                   request.command,
                   timeout: request.timeout,
-                )
-              : (
-                  output: await _persistentShell!.exec(
-                    request.command,
-                    timeout: request.timeout,
-                  ),
-                  exitCode: null,
-                );
-          return CommandResult(
-            mergedOutput: result.output,
-            exitCode: result.exitCode,
-            outputSeparation: CommandOutputSeparation.merged,
-            actualTransport: CommandTransport.persistent,
-          );
-        }
-        await restartPersistentShell();
+                ),
+                exitCode: null,
+              );
+        return CommandResult(
+          mergedOutput: result.output,
+          exitCode: result.exitCode,
+          outputSeparation: CommandOutputSeparation.merged,
+          actualTransport: CommandTransport.persistent,
+        );
       }
-      // persistent が利用不能（persistentPreferred）なら ephemeral へ
-      // フォールバック。persistentOnly はフォールバックしない。
+      // その他の persistent エラー（persistentOnly はフォールバック不可）。
       if (request.transport == CommandTransportPreference.persistentOnly) {
         rethrow;
       }
@@ -1088,25 +930,12 @@ class SshClient implements BackendAdapter {
   Future<({String stdout, String stderr, int? exitCode})> _executeEphemeral(
     CommandRequest request,
   ) async {
-    return execWithExitCode(request.command, timeout: request.timeout);
-  }
-
-  /// コマンドを実行して終了コードを取得する
-  ///
-  /// [command] 実行コマンド
-  /// 戻り値: (stdout, stderr, exitCode)
-  // inventory: SSH-034
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
     if (!isConnected || _client == null) {
       throw SshConnectionError('Not connected');
     }
 
     try {
-      final resolvedCommand = command;
+      final resolvedCommand = request.command;
       return await _withExecLock(() async {
         // ignore: avoid_init_to_null
         SSHSession? session = null;
@@ -1132,11 +961,11 @@ class SshClient implements BackendAdapter {
             onError: (e) => stderrCompleter.completeError(e),
           );
 
-          if (timeout != null) {
+          if (request.timeout != null) {
             await Future.wait([
               stdoutCompleter.future,
               stderrCompleter.future,
-            ]).timeout(timeout);
+            ]).timeout(request.timeout!);
           } else {
             await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
           }

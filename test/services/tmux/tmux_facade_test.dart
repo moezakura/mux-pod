@@ -18,30 +18,12 @@ class _FakeExecutor implements TmuxCommandExecutor {
   String? get tmuxPath => null;
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async {
-    commands.add(command);
-    for (final entry in outputs.entries) {
-      if (command.contains(entry.key)) return entry.value;
-    }
-    return '';
-  }
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async =>
-      exec(command);
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    commands.add(command);
-    return (stdout: await exec(command), stderr: '', exitCode: 0);
-  }
-
-  @override
   Future<CommandResult> execute(CommandRequest request) async {
-    final stdout = await exec(request.command);
+    commands.add(request.command);
+    final stdout = outputs.entries
+        .where((e) => request.command.contains(e.key))
+        .map((e) => e.value)
+        .firstOrNull ?? '';
     return CommandResult(
       stdout: stdout,
       stderr: '',

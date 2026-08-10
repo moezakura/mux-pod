@@ -310,26 +310,16 @@ void main() {
       await expectLater(client.openSftp(), throwsA(isA<SshConnectionError>()));
     });
 
-    test('exec throws when not connected', () async {
+    test('execute throws when not connected', () async {
       final client = createSshClient();
       await expectLater(
-        client.exec('whoami'),
-        throwsA(isA<SshConnectionError>()),
-      );
-    });
-
-    test('execPersistent throws when not connected', () async {
-      final client = createSshClient();
-      await expectLater(
-        client.execPersistent('whoami'),
-        throwsA(isA<SshConnectionError>()),
-      );
-    });
-
-    test('execWithExitCode throws when not connected', () async {
-      final client = createSshClient();
-      await expectLater(
-        client.execWithExitCode('whoami'),
+        client.execute(
+          const CommandRequest(
+            command: 'whoami',
+            transport: CommandTransportPreference.ephemeralOnly,
+            output: CommandOutputRequirement.outputOnly,
+          ),
+        ),
         throwsA(isA<SshConnectionError>()),
       );
     });
@@ -543,7 +533,7 @@ void main() {
     );
 
     test(
-      'execPersistentWithExitCode uses the persistent shell and returns exit code',
+      'execute: persistentPreferred + exitCode uses the persistent shell',
       () async {
         final rawClient = _FakeRawSshClient();
         final shells = <_FakePersistentShell>[];
@@ -567,18 +557,25 @@ void main() {
           options: SshConnectOptions(password: 'pw'),
         );
 
-        final result = await client.execPersistentWithExitCode('echo hi');
+        final result = await client.execute(
+          const CommandRequest(
+            command: 'echo hi',
+            transport: CommandTransportPreference.persistentPreferred,
+            output: CommandOutputRequirement.exitCode,
+          ),
+        );
 
         expect(shells, hasLength(2));
         expect(shells.first.commands, ['echo hi']);
-        expect(result.stdout, 'ping');
+        expect(result.outputSeparation, CommandOutputSeparation.merged);
+        expect(result.mergedOutput, 'ping');
         expect(result.exitCode, 0);
         await client.disconnect();
       },
     );
 
     test(
-      'execPersistentWithExitCode restarts the shell and retries when closed',
+      'execute: persistentPreferred restarts the shell and retries when closed',
       () async {
         final rawClient = _FakeRawSshClient();
         final shells = <_FakePersistentShell>[];
@@ -604,10 +601,17 @@ void main() {
 
         // 最初のシェルを切断状態にして再起動を誘発する
         shells.first.error = PersistentShellError('Shell session closed');
-        final result = await client.execPersistentWithExitCode('echo hi');
+        final result = await client.execute(
+          const CommandRequest(
+            command: 'echo hi',
+            transport: CommandTransportPreference.persistentPreferred,
+            output: CommandOutputRequirement.exitCode,
+          ),
+        );
 
         expect(shells, hasLength(3)); // 初期2 + 再起動1
-        expect(result.stdout, 'ping');
+        expect(result.outputSeparation, CommandOutputSeparation.merged);
+        expect(result.mergedOutput, 'ping');
         expect(result.exitCode, 0);
         await client.disconnect();
       },

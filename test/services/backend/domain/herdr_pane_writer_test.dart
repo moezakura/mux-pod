@@ -363,34 +363,6 @@ class _FakeBackend implements BackendAdapter {
   }
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})>
-  execPersistentWithExitCode(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
-  }
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    commands.add(command);
-    return execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
-  }
-
-  @override
   void write(String data) {}
 }
 

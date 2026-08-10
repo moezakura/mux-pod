@@ -143,7 +143,6 @@ class FakeSshClient extends SshClient
     return _lookupOutput(command);
   }
 
-  @override
   Future<String> execPersistent(String command, {Duration? timeout}) async {
     execPersistentCommands.add(command);
     return exec(command, timeout: timeout);
@@ -170,7 +169,6 @@ class FakeSshClient extends SshClient
     );
   }
 
-  @override
   Future<({String stdout, String stderr, int? exitCode})>
   execPersistentWithExitCode(String command, {Duration? timeout}) async {
     execPersistentCommands.add(command);
