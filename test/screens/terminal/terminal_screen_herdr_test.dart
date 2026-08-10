@@ -1893,4 +1893,45 @@ void main() {
       },
     );
   });
+
+  group('TerminalScreen herdr セレクタ再タップガード (bug3)', () {
+    testWidgets(
+      'セレクタ開手中の再タップは無視され、シートが多重起動しない',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoWorkspaceSnapshotFixture,
+            'herdr pane read w1:p1': 'content from p1\n',
+            'herdr pane read w2:p1': 'content from p2\n',
+          },
+          settle: false,
+        );
+
+        // workspace セグメント（lab-ws1）を連続タップ。
+        // 1回目のタップで _herdrSelectorOpening=true になり、2回目以降は
+        // ガードで無視される（シートが多重起動しない・バグ3）。
+        await tester.tap(find.text('lab-ws1'));
+        await tester.tap(find.text('lab-ws1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // シートは1つだけ表示される（多重起動しない・バグ3）。
+        expect(find.text('Select Session'), findsOneWidget);
+
+        // シートを閉じるとフラグがリセットされ、再度開ける。
+        await tester.tapAt(const Offset(10, 10));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('lab-ws1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Select Session'), findsOneWidget,
+            reason: 'シートを閉じた後は再度セレクタを開けること');
+      },
+    );
+  });
 }

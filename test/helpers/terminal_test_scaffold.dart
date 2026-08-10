@@ -126,6 +126,9 @@ class TerminalTestScaffold {
     FakeImageTransferNotifier? imageTransferNotifier,
     Connection? connection,
     Map<String, String>? secureStorageValues,
+    // テスト用に FakeSshClient を差し替える（遅延・特殊応答の再現）。
+    // 指定が無ければ内部で生成する。
+    FakeSshClient Function()? clientFactory,
     // herdr（read-only）向け
     bool readOnly = false,
     String? initialPaneId,
@@ -152,7 +155,7 @@ class TerminalTestScaffold {
     SecureStorageService.setTestValues(secureStorageValues ?? const {});
     addTearDown(() => SecureStorageService.setTestValues(null));
 
-    final client = FakeSshClient();
+    final client = clientFactory != null ? clientFactory() : FakeSshClient();
     client.execOutputs = {
       'tmux -V': 'tmux 3.4',
       'list-panes -a': kFullTreeOutput,

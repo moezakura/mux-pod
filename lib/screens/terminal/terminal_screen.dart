@@ -452,6 +452,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // バッファ時に記録し、適用時（_applyBufferedUpdate → _applyUpdate）に照合する。
   _HerdrTargetIdentity? _bufferedTargetIdentity;
 
+  // herdr セレクタ（workspace/tab/pane）の開手中フラグ（バグ3: ボトムシート
+  // 即閉じ防止）。`_fetchHerdrSessions` の遅延中にユーザーが再タップすると、
+  // 開いた直後のシートの barrier に当たり `isDismissible: true` で即閉じする
+  // ため、シート表示までの間に再タップを無効化する。シートが閉じるまで true
+  // を維持する（モーダル barrier はシート表示中の再タップを本来吸収する）。
+  bool _herdrSelectorOpening = false;
+
   // 深い履歴（全スクロールバック）の自動ロード用
   bool _isLoadingDeepHistory = false;
 
@@ -3470,30 +3477,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _showHerdrWorkspaceSelector() async {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
+    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
+    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
+    if (_herdrSelectorOpening) return;
+    _herdrSelectorOpening = true;
+    try {
+      final sessions = await _fetchHerdrSessions(
+        eventLabel: 'selector snapshot',
+        isTerminal: false,
+      );
+      if (sessions == null || !mounted || _isDisposed) return;
 
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
-
-    final current = _herdrSelectorContext();
-    _showMultiplexerSheet(
-      title: 'Select Session',
-      icon: Icons.folder,
-      children: [
-        for (final session in sessions)
-          MultiplexerSessionTile(
-            key: ValueKey('mux-sel-session-${session.name}'),
-            session: session,
-            isActive: _isCurrentSession(session, current),
-            onTap: () {
-              Navigator.pop(context);
-              _herdrSelectWorkspace(sessions, session);
-            },
-          ),
-      ],
-    );
+      final current = _herdrSelectorContext();
+      await _showMultiplexerSheet(
+        title: 'Select Session',
+        icon: Icons.folder,
+        children: [
+          for (final session in sessions)
+            MultiplexerSessionTile(
+              key: ValueKey('mux-sel-session-${session.name}'),
+              session: session,
+              isActive: _isCurrentSession(session, current),
+              onTap: () {
+                Navigator.pop(context);
+                _herdrSelectWorkspace(sessions, session);
+              },
+            ),
+        ],
+      );
+    } finally {
+      _herdrSelectorOpening = false;
+    }
   }
 
   /// herdr の tab セレクタ（Select Window 相当・選択即閉じ・T10 / A6 / T4）。
@@ -3511,62 +3525,72 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _showHerdrTabSelector() async {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
+    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
+    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
+    if (_herdrSelectorOpening) return;
+    _herdrSelectorOpening = true;
+    try {
+      final sessions = await _fetchHerdrSessions(
+        eventLabel: 'selector snapshot',
+        isTerminal: false,
+      );
+      if (sessions == null || !mounted || _isDisposed) return;
 
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
+      final workspace = _herdrFindWorkspace(
+        sessions,
+        _herdrDisplayNotifier.value,
+      );
+      if (workspace == null) return;
 
-    final workspace = _herdrFindWorkspace(sessions, _herdrDisplayNotifier.value);
-    if (workspace == null) return;
-
-    final current = _herdrSelectorContext();
-    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-    final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
-    final canRename = _can(const PaneCapabilities(rename: true));
-    final primary = Theme.of(context).colorScheme.primary;
-    _showMultiplexerSheet(
-      title: 'Select Window',
-      icon: Icons.tab,
-      headerActions: [
-        if (canTabCrud && workspace.id != null)
-          IconButton(
-            icon: Icon(Icons.add, color: primary),
-            tooltip: 'New Tab',
-            onPressed: () =>
-                _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
-          ),
-      ],
-      children: [
-        for (final window in workspace.windows)
-          MultiplexerWindowTile(
-            key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
-            window: window,
-            isActive: _isCurrentWindow(window, current),
-            onTap: () {
-              Navigator.pop(context);
-              _herdrSelectTab(sessions, workspace, window);
-            },
-            onRename: canRename && window.id != null
-                ? () => _closeSelectorThen(() {
-                      _showHerdrRenameTabDialog(workspace, window);
-                    })
-                : null,
-            onClose: canTabCrud && window.id != null
-                ? () => _closeSelectorThen(() {
-                      // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
-                      // `tab close` を実行する。
-                      _confirmAndCloseHerdrTab(
-                        workspace: workspace,
-                        tab: window,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
-                : null,
-          ),
-      ],
-    );
+      final current = _herdrSelectorContext();
+      // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+      final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
+      final canRename = _can(const PaneCapabilities(rename: true));
+      final primary = Theme.of(context).colorScheme.primary;
+      await _showMultiplexerSheet(
+        title: 'Select Window',
+        icon: Icons.tab,
+        headerActions: [
+          if (canTabCrud && workspace.id != null)
+            IconButton(
+              icon: Icon(Icons.add, color: primary),
+              tooltip: 'New Tab',
+              onPressed: () =>
+                  _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
+            ),
+        ],
+        children: [
+          for (final window in workspace.windows)
+            MultiplexerWindowTile(
+              key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
+              window: window,
+              isActive: _isCurrentWindow(window, current),
+              onTap: () {
+                Navigator.pop(context);
+                _herdrSelectTab(sessions, workspace, window);
+              },
+              onRename: canRename && window.id != null
+                  ? () => _closeSelectorThen(() {
+                        _showHerdrRenameTabDialog(workspace, window);
+                      })
+                  : null,
+              onClose: canTabCrud && window.id != null
+                  ? () => _closeSelectorThen(() {
+                        // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
+                        // `tab close` を実行する。
+                        _confirmAndCloseHerdrTab(
+                          workspace: workspace,
+                          tab: window,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                  : null,
+            ),
+        ],
+      );
+    } finally {
+      _herdrSelectorOpening = false;
+    }
   }
 
   /// herdr の pane セレクタ（Select Pane 相当・選択即閉じ・T10 / A6 / T4）。
@@ -3586,116 +3610,123 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _showHerdrPaneSelector() async {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
+    // バグ3: シート表示までの遅延中に再タップされると、開いた直後の barrier
+    // に当たり isDismissible: true で即閉じするため、開手中の再タップを無視する。
+    if (_herdrSelectorOpening) return;
+    _herdrSelectorOpening = true;
+    try {
+      final sessions = await _fetchHerdrSessions(
+        eventLabel: 'selector snapshot',
+        isTerminal: false,
+      );
+      if (sessions == null || !mounted || _isDisposed) return;
 
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
+      final display = _herdrDisplayNotifier.value;
+      final workspace = _herdrFindWorkspace(sessions, display);
+      final window = _herdrFindWindow(workspace, display);
+      if (workspace == null || window == null) return;
 
-    final display = _herdrDisplayNotifier.value;
-    final workspace = _herdrFindWorkspace(sessions, display);
-    final window = _herdrFindWindow(workspace, display);
-    if (workspace == null || window == null) return;
-
-    final current = _herdrSelectorContext();
-    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-    final canResize = _can(const PaneCapabilities(resize: true));
-    final canClose = _can(const PaneCapabilities(close: true));
-    final canSplit = _can(const PaneCapabilities(split: true));
-    final canRename = _can(const PaneCapabilities(rename: true));
-    final canZoom = _can(const PaneCapabilities(zoom: true));
-    final primary = Theme.of(context).colorScheme.primary;
-    // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
-    final currentPaneId = _targetSource?.currentPaneId;
-    final currentPane = currentPaneId == null
-        ? null
-        : _findHerdrPane(sessions, currentPaneId);
-    // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
-    final isZoomed = _isHerdrTabZoomed(display?.tabId);
-    _showMultiplexerSheet(
-      title: 'Select Pane',
-      icon: Icons.terminal,
-      headerActions: [
-        if (canSplit && currentPane != null)
-          IconButton(
-            icon: Icon(Icons.call_split, color: primary),
-            tooltip: 'Split Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _showHerdrSplitDirectionChooser(currentPane),
+      final current = _herdrSelectorContext();
+      // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+      final canResize = _can(const PaneCapabilities(resize: true));
+      final canClose = _can(const PaneCapabilities(close: true));
+      final canSplit = _can(const PaneCapabilities(split: true));
+      final canRename = _can(const PaneCapabilities(rename: true));
+      final canZoom = _can(const PaneCapabilities(zoom: true));
+      final primary = Theme.of(context).colorScheme.primary;
+      // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
+      final currentPaneId = _targetSource?.currentPaneId;
+      final currentPane = currentPaneId == null
+          ? null
+          : _findHerdrPane(sessions, currentPaneId);
+      // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
+      final isZoomed = _isHerdrTabZoomed(display?.tabId);
+      await _showMultiplexerSheet(
+        title: 'Select Pane',
+        icon: Icons.terminal,
+        headerActions: [
+          if (canSplit && currentPane != null)
+            IconButton(
+              icon: Icon(Icons.call_split, color: primary),
+              tooltip: 'Split Pane',
+              onPressed: () => _closeSelectorThen(
+                () => _showHerdrSplitDirectionChooser(currentPane),
+              ),
             ),
-          ),
-        if (canRename && currentPane != null)
-          IconButton(
-            icon: Icon(Icons.drive_file_rename_outline, color: primary),
-            tooltip: 'Rename Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _showHerdrRenamePaneDialog(currentPane),
+          if (canRename && currentPane != null)
+            IconButton(
+              icon: Icon(Icons.drive_file_rename_outline, color: primary),
+              tooltip: 'Rename Pane',
+              onPressed: () => _closeSelectorThen(
+                () => _showHerdrRenamePaneDialog(currentPane),
+              ),
             ),
-          ),
-        if (canZoom && currentPane != null)
-          IconButton(
-            icon: Icon(
-              isZoomed ? Icons.zoom_out : Icons.zoom_in,
-              color: primary,
+          if (canZoom && currentPane != null)
+            IconButton(
+              icon: Icon(
+                isZoomed ? Icons.zoom_out : Icons.zoom_in,
+                color: primary,
+              ),
+              tooltip: isZoomed ? 'Unzoom Pane' : 'Zoom Pane',
+              onPressed: () => _closeSelectorThen(
+                () => _handleHerdrZoomPane(currentPane.id),
+              ),
             ),
-            tooltip: isZoomed ? 'Unzoom Pane' : 'Zoom Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _handleHerdrZoomPane(currentPane.id),
+          if (canResize)
+            IconButton(
+              icon: Icon(Icons.open_in_full, color: primary),
+              tooltip: 'Resize Pane',
+              onPressed: () => _closeSelectorThen(() {
+                // ヘッダーの Resize は現在表示中の pane を対象にする。
+                final currentPaneId = _targetSource?.currentPaneId;
+                if (currentPaneId == null) return;
+                final pane = _findHerdrPane(sessions, currentPaneId);
+                if (pane != null) _handleHerdrResizePane(pane);
+              }),
             ),
-          ),
-        if (canResize)
-          IconButton(
-            icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Pane',
-            onPressed: () => _closeSelectorThen(() {
-              // ヘッダーの Resize は現在表示中の pane を対象にする。
-              final currentPaneId = _targetSource?.currentPaneId;
-              if (currentPaneId == null) return;
-              final pane = _findHerdrPane(sessions, currentPaneId);
-              if (pane != null) _handleHerdrResizePane(pane);
-            }),
-          ),
-      ],
-      children: [
-        for (final pane in window.panes)
-          MultiplexerPaneTile(
-            key: ValueKey('mux-sel-pane-${pane.id}'),
-            pane: pane,
-            paneTitle: _herdrPaneLabel(pane),
-            isActive: _isCurrentPane(pane, current),
-            onTap: () {
-              Navigator.pop(context);
-              _herdrSelectPane(sessions, workspace, pane);
-            },
-            onLongPress: canClose
-                ? () => _closeSelectorThen(() {
-                      // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
-                      // 行い、連鎖 close を確認してから `pane close` を実行する。
-                      _confirmAndKillHerdrPane(
-                        paneId: pane.id,
-                        paneTitle: _herdrPaneLabel(pane),
-                        isLastPane: window.panes.length == 1,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
-                : null,
-            onResize: canResize
-                ? () => _closeSelectorThen(() => _handleHerdrResizePane(pane))
-                : null,
-            onClose: canClose
-                ? () => _closeSelectorThen(() {
-                      _confirmAndKillHerdrPane(
-                        paneId: pane.id,
-                        paneTitle: _herdrPaneLabel(pane),
-                        isLastPane: window.panes.length == 1,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
-                : null,
-          ),
-      ],
-    );
+        ],
+        children: [
+          for (final pane in window.panes)
+            MultiplexerPaneTile(
+              key: ValueKey('mux-sel-pane-${pane.id}'),
+              pane: pane,
+              paneTitle: _herdrPaneLabel(pane),
+              isActive: _isCurrentPane(pane, current),
+              onTap: () {
+                Navigator.pop(context);
+                _herdrSelectPane(sessions, workspace, pane);
+              },
+              onLongPress: canClose
+                  ? () => _closeSelectorThen(() {
+                        // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
+                        // 行い、連鎖 close を確認してから `pane close` を実行する。
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                  : null,
+              onResize: canResize
+                  ? () => _closeSelectorThen(() => _handleHerdrResizePane(pane))
+                  : null,
+              onClose: canClose
+                  ? () => _closeSelectorThen(() {
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                  : null,
+            ),
+        ],
+      );
+    } finally {
+      _herdrSelectorOpening = false;
+    }
   }
 
   /// herdr の現在位置（H-1: ハイライト導出用）を [_SelectorContext] で返す。
