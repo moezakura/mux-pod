@@ -14,6 +14,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../backend/backend_adapter.dart';
+import '../command/command_request.dart';
+import '../command/command_result.dart';
 import '../connection_error.dart';
 import 'herdr_commands.dart';
 import 'herdr_errors.dart';
@@ -365,7 +367,14 @@ class HerdrAdapter {
     Duration? timeout,
   }) async {
     final resolved = _resolve(command);
-    final result = await _backend.execWithExitCode(resolved, timeout: timeout);
+    final result = await _backend.execute(
+      CommandRequest(
+        command: resolved,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.separatedOutput,
+        timeout: timeout,
+      ),
+    );
     final stderr = result.stderr.trim();
     final exitCode = result.exitCode;
 
@@ -376,18 +385,18 @@ class HerdrAdapter {
     }
 
     if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
-      final errorCode = _extractErrorCode(result);
+      final errorCode = _extractErrorCodeFrom(result);
       final kind = herdrTargetNotFoundKindForCode(errorCode);
       if (kind != null) {
         throw HerdrTargetNotFoundException(
           kind: kind,
-          message: _buildErrorMessage(result),
+          message: _buildErrorMessageFrom(result),
           errorCode: errorCode,
           exitCode: exitCode,
         );
       }
       throw HerdrCommandException(
-        _buildErrorMessage(result),
+        _buildErrorMessageFrom(result),
         exitCode: exitCode,
         errorCode: errorCode,
       );
@@ -456,80 +465,92 @@ class HerdrAdapter {
     return command.replaceFirst(RegExp(r'^herdr\b'), path);
   }
 
-  /// [BackendAdapter.execWithExitCode]（または [viaPersistent] なら
-  /// [BackendAdapter.execPersistentWithExitCode]）でコマンドを実行し、
-  /// 非 0 終了・stderr 出力を例外に変換する。
+  /// [CommandExecutor.execute] でコマンドを実行し、非 0 終了・エラー出力を
+  /// 例外に変換する。
   ///
   /// target-not-found 系 errorCode（`pane_not_found` / `tab_not_found` /
   /// `workspace_not_found`）なら [HerdrTargetNotFoundException] を、
   /// それ以外の失敗は [HerdrCommandException] を投げる。
   ///
-  /// **exitCode null かつ stdout/stderr が空** の結果は「herdr コマンド失敗」
+  /// **exitCode null かつ出力が空** の結果は「herdr コマンド失敗」
   /// ではなく SSH/transport 層の異常（チャネルが終了コードも出力も返さず
   /// 閉じた・接続断等）として [SshConnectionError] を投げる。これは
   /// [isServerDownException] で server-down に分類され、呼び出し側の再接続 /
   /// 通知ロジックに流れる。従来の「exitCode null → HerdrCommandException →
   /// No herdr pane found」と誤って swallow されるのを防ぐ（TERM-HERDR 診断）。
   ///
-  /// exitCode null でも stdout が非空の場合は「出力は得られたが終了コードが
-  /// 欠落した」とみなし、stdout を返す（後段のパーサが検証する）。
+  /// exitCode null でも出力が非空の場合は「出力は得られたが終了コードが
+  /// 欠落した」とみなし、出力を返す（後段のパーサが検証する）。
   ///
   /// [viaPersistent] は persistent shell 経由（チャネル再利用 + exec ロック
-  /// 回避・バグ2）。persistent shell は exit code を捕捉できるが stderr は
-  /// PTY で stdout に混ざるため空で返る。エラー分類は exit code + stdout
-  /// 由来の errorCode 抽出で維持される（target-not-found / server-down）。
+  /// 回避・バグ2）で実行する。persistent 経路の結果は merged（PTY）で、
+  /// エラー分類は exit code + [CommandResult.primaryOutput] 由来の errorCode
+  /// 抽出で維持される（target-not-found / server-down）。ephemeral 経路は
+  /// separated（stdout/stderr 分離）でエラー分類する。
   Future<String> _execChecked(
     String command, {
     Duration? timeout,
     bool viaPersistent = false,
   }) async {
     final resolved = _resolve(command);
-    final result = viaPersistent
-        ? await _backend.execPersistentWithExitCode(resolved, timeout: timeout)
-        : await _backend.execWithExitCode(resolved, timeout: timeout);
+    final result = await _backend.execute(
+      CommandRequest(
+        command: resolved,
+        transport: viaPersistent
+            ? CommandTransportPreference.persistentPreferred
+            : CommandTransportPreference.ephemeralOnly,
+        output: viaPersistent
+            ? CommandOutputRequirement.exitCode
+            : CommandOutputRequirement.separatedOutput,
+        timeout: timeout,
+      ),
+    );
     final stderr = result.stderr.trim();
     final exitCode = result.exitCode;
+    final primary = result.primaryOutput;
 
-    if (exitCode == null && result.stdout.trim().isEmpty && stderr.isEmpty) {
+    if (exitCode == null && primary.trim().isEmpty && stderr.isEmpty) {
       throw SshConnectionError(
         'Command channel closed without exit status or output: $resolved',
       );
     }
 
     if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
-      final errorCode = _extractErrorCode(result);
+      final errorCode = _extractErrorCodeFrom(result);
       final kind = herdrTargetNotFoundKindForCode(errorCode);
       if (kind != null) {
         throw HerdrTargetNotFoundException(
           kind: kind,
-          message: _buildErrorMessage(result),
+          message: _buildErrorMessageFrom(result),
           errorCode: errorCode,
           exitCode: exitCode,
         );
       }
       throw HerdrCommandException(
-        _buildErrorMessage(result),
+        _buildErrorMessageFrom(result),
         exitCode: exitCode,
         errorCode: errorCode,
       );
     }
-    return result.stdout;
+    return primary;
   }
 
-  String _buildErrorMessage(
-    ({String stdout, String stderr, int? exitCode}) result,
-  ) {
+  /// [CommandResult] からエラーメッセージを組み立てる。
+  ///
+  /// merged 経路では stderr が primaryOutput に混ざるため、stderr 単独で
+  /// なく primaryOutput も対象にする（バグ2 根本対応）。
+  String _buildErrorMessageFrom(CommandResult result) {
     final stderr = result.stderr.trim();
     if (stderr.isNotEmpty) return 'herdr command failed: $stderr';
-    final errorCode = _extractErrorCode(result);
+    final errorCode = _extractErrorCodeFrom(result);
     if (errorCode != null) {
       return 'herdr command failed: $errorCode (exit code: ${result.exitCode})';
     }
-    // 診断: stdout が空かどうか・何バイトあったかを付与する（コマンドは
+    // 診断: 出力が空かどうか・何バイトあったかを付与する（コマンドは
     // 出力したが終了コードが異常・欠落したケースの判別用）。A8 のプライバシー
     // 規則に従い、出力の内容（snapshot JSON 等）は含めずバイト数のみ記録する。
-    final stdout = result.stdout.trim();
-    final preview = stdout.isEmpty ? '' : ', stdout(${stdout.length}b)';
+    final primary = result.primaryOutput.trim();
+    final preview = primary.isEmpty ? '' : ', stdout(${primary.length}b)';
     return 'herdr command failed (exit code: ${result.exitCode}$preview)';
   }
 
@@ -539,10 +560,15 @@ class HerdrAdapter {
   /// 出力形式（G4 実測）:
   /// `{"error":{"code":"workspace_not_found","message":"..."},"id":"cli:pane:get"}`
   /// CLI がエラーを stderr に書く実装もあるため、両方を対象にする。
-  String? _extractErrorCode(
-    ({String stdout, String stderr, int? exitCode}) result,
-  ) {
-    for (final text in [result.stdout, result.stderr]) {
+  /// merged 経路では primaryOutput にエラー JSON が混ざるため、それも対象
+  /// にする（バグ2 根本対応）。
+  String? _extractErrorCodeFrom(CommandResult result) {
+    final candidates = <String>[
+      result.stdout,
+      result.stderr,
+      result.primaryOutput,
+    ];
+    for (final text in candidates) {
       try {
         final decoded = jsonDecode(text);
         if (decoded is Map<String, dynamic>) {
