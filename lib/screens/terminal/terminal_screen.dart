@@ -1517,10 +1517,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (!_isCurrentHerdrTarget(herdrIdentity)) return;
 
       // カーソル位置とペインサイズを更新
-      // （herdr はサイズ不明のため width/height=0 になり、このブロックは
-      //   スキップされて既定の 80x24 が維持される。カーソルも 0 固定フォールバック）
-      final w = snapshot.width;
-      final h = snapshot.height;
+      // herdr は snapshot にサイズが含まれないため、snapshot cache の layout から
+      // 文字セル単位の pane サイズを解決する（tmux の snapshot.width/height 更新と対称）。
+      // zoom 時は pane rect が非 zoom 値のまま（herdr_models.dart）のため
+      // layout.area（タブ全面）を使う。rect が取得できない場合は従来どおり
+      // width/height=0 のままスキップし、既定の 80x24（spec.md:75）に落ちる。
+      var w = snapshot.width;
+      var h = snapshot.height;
+      if (_backendKind == MultiplexerBackendKind.herdr && (w <= 0 || h <= 0)) {
+        final rect = _resolveHerdrPaneRect(paneId);
+        if (rect != null) {
+          w = rect.width;
+          h = rect.height;
+        }
+      }
       if (w > 0 && h > 0) {
         if (w != _viewNotifier.value.paneWidth ||
             h != _viewNotifier.value.paneHeight) {
@@ -5454,6 +5464,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (layout.tabId == tabId) return layout.zoomed;
     }
     return false;
+  }
+
+  /// herdr: snapshot cache の layout から pane の表示サイズ（文字セル単位）を解決する。
+  ///
+  /// [paneId] の pane を持つ layout の rect を返す。**zoom 時は pane rect が
+  /// 非 zoom 値のまま**（herdr_models.dart の zoom 注意・T0 実測 6-b）のため、
+  /// タブ全面（[HerdrLayout.area]）を返す。snapshot 未取得 / pane が layout に
+  /// 無い場合は null（表示側は既定 80 へフォールバック・spec.md:75）。
+  HerdrRect? _resolveHerdrPaneRect(String paneId) {
+    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
+    if (snapshot == null) return null;
+    for (final layout in snapshot.layouts) {
+      final rect = layout.rectFor(paneId);
+      if (rect != null) return layout.zoomed ? layout.area : rect;
+    }
+    return null;
   }
 
   // inventory: TERM-CRUD-016

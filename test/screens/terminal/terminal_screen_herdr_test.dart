@@ -6,6 +6,7 @@ import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
@@ -79,9 +80,52 @@ const kHerdrSnapshotFixture =
     '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
     '"type":"session_snapshot"}}';
 
-// 再解決後（pane 差し替え後）の snapshot fixture: pane は w1:p2 のみ。
-const kHerdrSnapshotPane2Fixture =
+// layout 付き snapshot fixture（バグ1 AutoFit 用）: pane w1:p1 の rect が
+// 幅 120 x 高さ 24（文字セル単位・T0 実測⑥）。AutoFit がこの幅で計算される
+// ことを検証する（従来は layout が空のため width/height=0 → 既定 80 のまま）。
+const kHerdrSnapshotWithLayoutFixture =
     '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[{"area":{"height":24,"width":120,'
+    '"x":0,"y":0},"focused_pane_id":"w1:p1","panes":[{"focused":true,'
+    '"pane_id":"w1:p1","rect":{"height":24,"width":120,"x":0,"y":0}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// zoom 中 snapshot fixture（バグ1 AutoFit 用）: zoomed=true のとき pane 表示は
+// タブ全面（layout.area）になる（T0 実測 6-b）。pane rect は非 zoom 値
+// （width 40）のままでも、AutoFit は area の幅 120 を使うことを検証する。
+const kHerdrSnapshotZoomedFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[{"area":{"height":24,"width":120,'
+    '"x":0,"y":0},"focused_pane_id":"w1:p1","panes":[{"focused":true,'
+    '"pane_id":"w1:p1","rect":{"height":24,"width":40,"x":0,"y":0}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":true}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// 再解決後（pane 差し替え後）の snapshot fixture: pane は w1:p2 のみ。
+const kHerdrSnapshotPane2Fixture =    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
     '"focused_pane_id":"w1:p2","focused_tab_id":"w1:t1",'
     '"focused_workspace_id":"w1","layouts":[],'
     '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
@@ -1678,6 +1722,104 @@ void main() {
         // SnackBar の自動クローズ（4s）まで進めて pending timer を消化する。
         await tester.pump(const Duration(seconds: 4));
         await tester.pump(const Duration(milliseconds: 750));
+      },
+    );
+  });
+
+  group('TerminalScreen herdr AutoFit (bug1)', () {
+    testWidgets(
+      'layout の pane rect から paneWidth が解決され AutoFit に反映される',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        // ポーリングで snapshot cache の layout rect（120x24）が解決され、
+        // _viewNotifier の paneWidth / paneHeight が更新される。
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final terminal = tester.widget<AnsiTextView>(
+          find.byType(AnsiTextView),
+        );
+        expect(
+          terminal.paneWidth,
+          120,
+          reason: 'herdr の snapshot layout rect から paneWidth が解決されること',
+        );
+        expect(
+          terminal.paneHeight,
+          24,
+          reason: 'herdr の snapshot layout rect から paneHeight が解決されること',
+        );
+      },
+    );
+
+    testWidgets(
+      'zoom 中は pane rect でなく layout.area（タブ全面）の幅で AutoFit が計算される',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotZoomedFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final terminal = tester.widget<AnsiTextView>(
+          find.byType(AnsiTextView),
+        );
+        // pane rect は非 zoom 値（width 40）だが、表示はタブ全面（area 120）。
+        expect(
+          terminal.paneWidth,
+          120,
+          reason: 'zoom 中は pane rect でなく layout.area の幅が使われること',
+        );
+      },
+    );
+
+    testWidgets(
+      'layout が無い（rect 取得不能）場合は既定 80 のまま（spec.md:75 フォールバック）',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final terminal = tester.widget<AnsiTextView>(
+          find.byType(AnsiTextView),
+        );
+        // _viewNotifier の既定値は paneWidth 80（_TerminalViewData 既定）。
+        expect(
+          terminal.paneWidth,
+          80,
+          reason: 'rect 取得不能時は既定 80 幅で AutoFit が計算される',
+        );
       },
     );
   });
