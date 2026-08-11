@@ -258,6 +258,14 @@ void main() {
       expect(backend.commands.single, 'herdr tab create --workspace w1');
     });
 
+    test('createTab: label と focus を tab create へ透過する（Q-05）', () async {
+      await writer.createTab('w1', label: 'logs', focus: true);
+      expect(
+        backend.commands.single,
+        "herdr tab create --workspace w1 --label 'logs' --focus",
+      );
+    });
+
     test('closeTab: tab close へ委譲する（Q-05）', () async {
       await writer.closeTab('w1:t1');
       expect(backend.commands.single, 'herdr tab close w1:t1');

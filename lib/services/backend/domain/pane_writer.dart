@@ -237,7 +237,14 @@ abstract interface class PaneWriter {
   Future<void> resizePane(String paneId, String direction, double amount);
 
   /// [workspaceId] に tab を作成する。
-  Future<void> createTab(String workspaceId);
+  ///
+  /// [label] と [focus] は **herdr 専用**のオプション（tmux は window 作成を
+  /// `createWindow` 別経路で行うため、両引数は使用しない）:
+  /// - [label]: 新規 tab の表示ラベル。null なら herdr 既定のデフォルト名
+  ///   （`herdr tab create --label` を省略）。
+  /// - [focus]: true で `--focus`（作成後に新 tab へフォーカス移動）・false で
+  ///   `--no-focus`・null なら省略（herdr 既定: フォーカス不変）。
+  Future<void> createTab(String workspaceId, {String? label, bool? focus});
 
   /// [tabId] を閉じる。
   Future<void> closeTab(String tabId);

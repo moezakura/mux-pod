@@ -167,9 +167,17 @@ class HerdrPaneWriter implements PaneWriter {
   Future<void> selectPane(String paneId) => _unsupported('selectPane');
 
   /// tab を作成する（`herdr tab create`・Q-05）。
+  ///
+  /// [label] と [focus] は [HerdrAdapter.tabCreate] へそのまま透過する
+  /// （label は snapshot の `tabs[].label` に反映される表示名・focus は作成後の
+  /// フォーカス移動を制御）。
   @override
-  Future<void> createTab(String workspaceId) async {
-    await _adapter.tabCreate(workspaceId);
+  Future<void> createTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
+    await _adapter.tabCreate(workspaceId, label: label, focus: focus);
   }
 
   /// tab を閉じる（`herdr tab close`・Q-05。対象不在は
