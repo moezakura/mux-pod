@@ -3527,6 +3527,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
+  /// タブ resize 可否の共有判定（M-1: ヘッダー/タイル/ハンドラで完全共有）。
+  ///
+  /// herdr は相対分数 resize のみ（Q-04）のため、単一 pane タブの resize は
+  /// no-op になる（意図的差分①・🤝#2）。よって「resize 能力があり、かつ
+  /// pane 数 > 1」のときのみ resize 導線を表示する。pane 数は解決データ
+  /// （[MultiplexerWindow.panes]）から判定する（表示用 `paneCount` は使用しない）。
+  bool _canResizeTab(MultiplexerWindow tab) =>
+      _can(const PaneCapabilities(resize: true)) && tab.panes.length > 1;
+
   /// herdr の tab セレクタ（Select Window 相当・選択即閉じ・T10 / A6 / T4）。
   ///
   /// 現在表示中の workspace（[_HerdrDisplayData] から引き当て）の tab 一覧を
@@ -3535,10 +3544,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// Q-05（tab CRUD 解禁）以降は mutation UI を追加する（tmux の
   /// [_showWindowSelector] を参照）:
-  /// - ヘッダー: New Tab（[PaneWriter.createTab] = `herdr tab create`）
+  /// - ヘッダー: New Tab（[PaneWriter.createTab] = `herdr tab create`）/
+  ///   Resize Tab（現在表示タブのアクティブ pane を対象・下記 [_canResizeTab]）
   /// - タイル ⋮: Rename Tab（[PaneWriter.renameTab] = `herdr tab rename`）/
+  ///   Resize Tab（[PaneWriter.resizePane] 経由・タブのアクティブ pane 対象）/
   ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
   ///   連鎖 close 確認付き・R2）
+  ///
+  /// タブ resize（タスク①・🤝#1・案A）: herdr はタブ単位の resize コマンドが
+  /// 存在しないため（Q-04）、「タブのアクティブ pane の相対分数 resize」として
+  /// 提供する。単一 pane タブの resize は no-op になるため（意図的差分①・🤝#2）、
+  /// ヘッダー/タイル両導線とも [_canResizeTab] でガードする。
   void _showHerdrTabSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3566,9 +3582,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
         final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
         final canRename = _can(const PaneCapabilities(rename: true));
+        // ヘッダー Resize Tab の対象は「現在表示中のタブ」（pane セレクタの
+        // 現在表示 pane と同型・H-2）。解決不能なら導線を出さない（防御）。
+        final currentWindow = _herdrFindWindow(
+          workspace,
+          _herdrDisplayNotifier.value,
+        );
         // New Tab（Q-05）はデータロード後に workspace.id が確定するため、
         // headerActions を loader で返す（tooltip 付き IconButton）。
         final headerActions = [
+          if (currentWindow != null && _canResizeTab(currentWindow))
+            IconButton(
+              icon: Icon(Icons.open_in_full, color: primary),
+              tooltip: 'Resize Tab',
+              onPressed: () => _closeSelectorThen(
+                () => _handleHerdrResizeTabPane(currentWindow),
+              ),
+            ),
           if (canTabCrud && workspace.id != null)
             IconButton(
               icon: Icon(Icons.add, color: primary),
@@ -3594,6 +3624,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           _showHerdrRenameTabDialog(workspace, window);
                         })
                     : null,
+                onResize: _canResizeTab(window)
+                    ? () => _closeSelectorThen(
+                          () => _handleHerdrResizeTabPane(window),
+                        )
+                    : null,
+                resizeLabel: 'Resize Tab',
                 onClose: canTabCrud && window.id != null
                     ? () => _closeSelectorThen(() {
                           // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
@@ -4601,6 +4637,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
     }
+  }
+
+  // inventory: TERM-RESIZE-008
+  /// herdr の tab resize（タスク①・🤝#1・案A）。
+  ///
+  /// herdr のタブ（window）は独立したサイズ属性を持たないため（H-1・Q-04）、
+  /// タブの**アクティブ pane** を対象に既存の [_handleHerdrResizePane]
+  /// （`herdr pane resize` 相対分数）へ委譲する。単一 pane タブの resize は
+  /// no-op になるため [_canResizeTab] ガードで弾く（意図的差分①・🤝#2）。
+  /// アクティブ pane が解決できない場合は沈黙 return（安全側フォールバック）。
+  /// `_isResizing` / ダイアログ / 4-way エラー処理は委譲先の既存フローを流用する。
+  Future<void> _handleHerdrResizeTabPane(MultiplexerWindow tab) async {
+    if (!_canResizeTab(tab)) return;
+    final pane = tab.panes.where((p) => p.active).firstOrNull ??
+        tab.panes.firstOrNull;
+    if (pane == null) return;
+    await _handleHerdrResizePane(pane);
   }
 
   /// ウィンドウをリサイズ

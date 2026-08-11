@@ -50,6 +50,7 @@ class MultiplexerWindowTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onRename;
   final VoidCallback? onResize;
+  final String? resizeLabel;
   final VoidCallback? onClose;
 
   const MultiplexerWindowTile({
@@ -59,6 +60,7 @@ class MultiplexerWindowTile extends StatelessWidget {
     this.onTap,
     this.onRename,
     this.onResize,
+    this.resizeLabel,
     this.onClose,
   });
 
@@ -103,7 +105,7 @@ class MultiplexerWindowTile extends StatelessWidget {
                         Icon(Icons.aspect_ratio, size: 18,
                             color: colorScheme.onSurface),
                         const SizedBox(width: 8),
-                        const Text('Resize Window'),
+                        Text(resizeLabel ?? 'Resize Window'),
                       ],
                     ),
                   ),
