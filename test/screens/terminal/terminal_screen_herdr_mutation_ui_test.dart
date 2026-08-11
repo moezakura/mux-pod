@@ -83,10 +83,11 @@ const kPaneNotFoundZoomFixture =
     '{"error":{"code":"pane_not_found","message":"no pane"},'
     '"id":"cli:pane:zoom"}';
 
-// multi-tab fixture（テスト#1/#2/#3 用）: 1 workspace・2 tab・うち w1:t1 は 2 pane。
+// multi-tab fixture（テスト#1/#3 用）: 1 workspace・2 tab・うち w1:t1 は 2 pane。
 // - w1:t1（label '1'・focused・pane_count 2）: w1:p1（focused）/ w1:p2、layout rect 付き
 // - w1:t2（label '2'・非フォーカス・pane_count 1）: w1:p3
-// focused_pane_id: w1:p1 → 現在表示タブ = w1:t1（2 pane）→ Resize Tab 導線が有効。
+// focused_pane_id: w1:p1 → 現在表示タブ = w1:t1（2 pane）→ セッションセレクタの
+// ヘッダー Resize が有効。
 const kHerdrMultiTabSnapshotFixture =
     '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
     '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
@@ -124,7 +125,7 @@ const kHerdrMultiTabSnapshotFixture =
 
 // multi-tab fixture のフォーカス切替版（テスト#3 用）: 現在表示タブが単一 pane。
 // focused_pane_id: w1:p3 / focused_tab_id: w1:t2 → 現在表示タブ = w1:t2（1 pane）
-// → ヘッダー Resize Tab が出ない + w1:t2 のタイル ⋮ に 'Resize Tab' が出ない。
+// → セッションセレクタのヘッダー Resize が出ない。
 const kHerdrMultiTabSinglePaneFocusedSnapshotFixture =
     '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
     '"focused_pane_id":"w1:p3","focused_tab_id":"w1:t2",'
@@ -242,6 +243,32 @@ Future<FakeSshClient> _pumpHerdrAndOpenTabSelector(
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
   expect(find.text('Select Window'), findsOneWidget);
+  return client;
+}
+
+/// herdr（mutation 解禁）のターミナルを起動し、workspace セレクタ
+/// （Select Session 相当）を開く。コマンド検証用に [FakeSshClient] を返す。
+Future<FakeSshClient> _pumpHerdrAndOpenWorkspaceSelector(
+  WidgetTester tester, {
+  Map<String, String> execOutputs = const {},
+}) async {
+  final client = await TerminalTestScaffold.pumpTerminalScreen(
+    tester,
+    connection: _herdrConnection(),
+    sessionName: 'lab-ws1',
+    execOutputs: {
+      'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+      'herdr pane read': 'hello\n',
+      ...execOutputs,
+    },
+    settle: false,
+  );
+
+  // workspace セグメント（ラベル 'lab-ws1'）タップ → workspace セレクタ。
+  await tester.tap(find.text('lab-ws1'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  expect(find.text('Select Session'), findsOneWidget);
   return client;
 }
 
@@ -973,26 +1000,20 @@ void main() {
     );
   });
 
-  group('タスク①: herdr tab resize 導線（Resize Tab）', () {
+  group('タスク①: herdr workspace セレクタの resize 導線（Select Session）', () {
     testWidgets(
-      'ヘッダーの Resize Tab で現在表示タブのアクティブ pane を resize する',
+      'セッションセレクタのヘッダー Resize で現在表示 workspace のアクティブタブの'
+      'アクティブ pane を resize する',
       (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(
+        final client = await _pumpHerdrAndOpenWorkspaceSelector(
           tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
           execOutputs: {
             'herdr api snapshot': kHerdrMultiTabSnapshotFixture,
-            'herdr pane read': 'hello\n',
           },
-          settle: false,
         );
 
-        // 現在表示タブ（w1:t1・2 pane）→ ヘッダーに Resize Tab が出る。
-        await tester.tap(find.text('1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Window'), findsOneWidget);
+        // 現在表示 workspace（w1・アクティブタブ w1:t1 = 2 pane）→ ヘッダーに
+        // Resize Tab が出る。
         expect(find.byTooltip('Resize Tab'), findsOneWidget);
 
         await tester.tap(find.byTooltip('Resize Tab'));
@@ -1013,7 +1034,7 @@ void main() {
                 c == 'herdr pane resize --direction right --amount 0.1 --pane w1:p1',
           ),
           isTrue,
-          reason: 'Resize Tab は現在表示タブのアクティブ pane（w1:p1）を対象に pane resize を発行する',
+          reason: 'セッションセレクタの Resize は現在表示 workspace のアクティブタブのアクティブ pane（w1:p1）を対象に pane resize を発行する',
         );
 
         await tester.pump(const Duration(milliseconds: 200));
@@ -1021,82 +1042,19 @@ void main() {
     );
 
     testWidgets(
-      'タイル ⋮ → Resize Tab でそのタブのアクティブ pane を resize する',
+      '現在表示タブが単一 pane の workspace ではセッションセレクタに'
+      'Resize が出ない',
       (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(
+        await _pumpHerdrAndOpenWorkspaceSelector(
           tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrMultiTabSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
-
-        await tester.tap(find.text('1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Window'), findsOneWidget);
-
-        // 2 pane タブ（w1:t1・先頭）の ⋮ → Resize Tab。
-        await tester.tap(find.byIcon(Icons.more_vert).at(0));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Resize Tab'), findsOneWidget);
-        await tester.tap(find.text('Resize Tab'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(find.text('Resize Pane'), findsOneWidget);
-        await tester.tap(find.byTooltip('Right'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(
-          client.execCommands.any(
-            (c) =>
-                c == 'herdr pane resize --direction right --amount 0.1 --pane w1:p1',
-          ),
-          isTrue,
-          reason: 'タイル Resize Tab はそのタブのアクティブ pane（w1:p1）で pane resize を発行する',
-        );
-
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
-
-    testWidgets(
-      '単一 pane タブでは resize 導線が出ない（ヘッダー Resize Tab + タイル ⋮ とも）',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
           execOutputs: {
             'herdr api snapshot': kHerdrMultiTabSinglePaneFocusedSnapshotFixture,
-            'herdr pane read': 'hello\n',
           },
-          settle: false,
         );
 
-        // 現在表示タブは単一 pane（w1:t2）→ ヘッダー Resize Tab は出ない。
-        await tester.tap(find.text('2'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Window'), findsOneWidget);
+        // 現在表示タブは単一 pane（w1:t2）→ ヘッダー Resize Tab は出ない
+        // （意図的差分①・単一 pane ガード）。
         expect(find.byTooltip('Resize Tab'), findsNothing);
-
-        // 単一 pane タブ（w1:t2・2 番目）のタイル ⋮ に 'Resize Tab' は出ない
-        // （'Rename Window' は出る）。
-        await tester.tap(find.byIcon(Icons.more_vert).at(1));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Resize Tab'), findsNothing);
-        expect(find.text('Rename Window'), findsOneWidget);
 
         await tester.pump(const Duration(milliseconds: 200));
       },

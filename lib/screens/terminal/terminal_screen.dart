@@ -3085,7 +3085,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// テストフック: [_handleHerdrResizeTabPane]（herdr 分岐）を widget テストから
   /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （tab セレクタの Resize Tab 導線が [_handleHerdrResizeTabPane] を呼ぶ）。
+  /// （workspace セレクタの Resize Tab 導線が [_handleHerdrResizeTabPane] を呼ぶ）。
   @visibleForTesting
   Future<void> handleHerdrResizeTabPaneForTesting(MultiplexerWindow tab) =>
       _handleHerdrResizeTabPane(tab);
@@ -3544,8 +3544,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （唯一の read chokepoint・A5）経由で取得した snapshot を `toDomainSessions()`
   /// で共通 domain ツリーへ変換したもの。workspace 一覧を 1 階層で表示し、選択
   /// するとその workspace の表示対象 pane を解決して [_switchHerdrTarget]
-  /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。read-only（A6）
-  /// のため mutation UI は持たない。
+  /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。
+  ///
+  /// **Resize 導線（ユーザー指示: Resize Window 相当を Select Session へ移動）**:
+  /// herdr には workspace 単位の resize コマンドが存在しないため（Q-04）、
+  /// 「現在表示中の workspace のアクティブタブのアクティブ pane の相対分数
+  /// resize」として提供する（[_handleHerdrResizeTabPane] 再利用）。タブセレクタ
+  /// （Select Window 相当）にあった Resize Tab 導線はここへ移動した。
   void _showHerdrWorkspaceSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3557,13 +3562,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       title: 'Select Session',
       icon: Icons.folder,
       asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
         final sessions = await _fetchHerdrSessions(
           eventLabel: 'selector snapshot',
           isTerminal: false,
         );
         if (sessions == null) throw StateError('Failed to load herdr tree');
         final current = _herdrSelectorContext();
+        // ヘッダー Resize の対象は「現在表示中の workspace のアクティブタブ」
+        // （pane セレクタのヘッダーが現在表示中の pane を対象にするのと同型）。
+        // workspace / tab が解決不能なら導線を出さない（防御）。
+        final canResize = _can(const PaneCapabilities(resize: true));
+        final currentWorkspace = _herdrFindWorkspace(
+          sessions,
+          _herdrDisplayNotifier.value,
+        );
+        final currentTab = currentWorkspace == null
+            ? null
+            : _herdrFindWindow(
+                currentWorkspace,
+                _herdrDisplayNotifier.value,
+              );
+        final headerActions = [
+          if (canResize && currentTab != null && _canResizeTab(currentTab))
+            IconButton(
+              icon: Icon(Icons.open_in_full, color: primary),
+              tooltip: 'Resize Tab',
+              onPressed: () => _closeSelectorThen(
+                () => _handleHerdrResizeTabPane(currentTab),
+              ),
+            ),
+        ];
         return _SelectorContent(
+          headerActions: headerActions,
           children: [
             for (final session in sessions)
               MultiplexerSessionTile(
@@ -3581,7 +3613,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// タブ resize 可否の共有判定（M-1: ヘッダー/タイル/ハンドラで完全共有）。
+  /// タブ resize 可否の共有判定（M-1: セッションセレクタ ヘッダー / ハンドラで
+  /// 完全共有）。
   ///
   /// herdr は相対分数 resize のみ（Q-04）のため、単一 pane タブの resize は
   /// no-op になる（意図的差分①・🤝#2）。よって「resize 能力があり、かつ
@@ -3598,17 +3631,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// Q-05（tab CRUD 解禁）以降は mutation UI を追加する（tmux の
   /// [_showWindowSelector] を参照）:
-  /// - ヘッダー: New Tab（[PaneWriter.createTab] = `herdr tab create`）/
-  ///   Resize Tab（現在表示タブのアクティブ pane を対象・下記 [_canResizeTab]）
+  /// - ヘッダー: New Tab（[PaneWriter.createTab] = `herdr tab create`）
   /// - タイル ⋮: Rename Tab（[PaneWriter.renameTab] = `herdr tab rename`）/
-  ///   Resize Tab（[PaneWriter.resizePane] 経由・タブのアクティブ pane 対象）/
   ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
   ///   連鎖 close 確認付き・R2）
   ///
-  /// タブ resize（タスク①・🤝#1・案A）: herdr はタブ単位の resize コマンドが
-  /// 存在しないため（Q-04）、「タブのアクティブ pane の相対分数 resize」として
-  /// 提供する。単一 pane タブの resize は no-op になるため（意図的差分①・🤝#2）、
-  /// ヘッダー/タイル両導線とも [_canResizeTab] でガードする。
+  /// ※ Resize Tab 導線はユーザー指示により **Select Session（Select Session 相当 =
+  /// [_showHerdrWorkspaceSelector]）へ移動**した。resize の対象解決・ガードは
+  /// [_canResizeTab] / [_handleHerdrResizeTabPane] を共有し、現在表示中の
+  /// workspace のアクティブタブを対象に動作する。
   void _showHerdrTabSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3636,23 +3667,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
         final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
         final canRename = _can(const PaneCapabilities(rename: true));
-        // ヘッダー Resize Tab の対象は「現在表示中のタブ」（pane セレクタの
-        // 現在表示 pane と同型・H-2）。解決不能なら導線を出さない（防御）。
-        final currentWindow = _herdrFindWindow(
-          workspace,
-          _herdrDisplayNotifier.value,
-        );
         // New Tab（Q-05）はデータロード後に workspace.id が確定するため、
         // headerActions を loader で返す（tooltip 付き IconButton）。
         final headerActions = [
-          if (currentWindow != null && _canResizeTab(currentWindow))
-            IconButton(
-              icon: Icon(Icons.open_in_full, color: primary),
-              tooltip: 'Resize Tab',
-              onPressed: () => _closeSelectorThen(
-                () => _handleHerdrResizeTabPane(currentWindow),
-              ),
-            ),
           if (canTabCrud && workspace.id != null)
             IconButton(
               icon: Icon(Icons.add, color: primary),
@@ -3679,12 +3696,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           _showHerdrRenameTabDialog(workspace, window);
                         })
                     : null,
-                onResize: _canResizeTab(window)
-                    ? () => _closeSelectorThen(
-                          () => _handleHerdrResizeTabPane(window),
-                        )
-                    : null,
-                resizeLabel: 'Resize Tab',
                 onClose: canTabCrud && window.id != null
                     ? () => _closeSelectorThen(() {
                           // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
