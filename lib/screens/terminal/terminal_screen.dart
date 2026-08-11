@@ -3083,13 +3083,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }) =>
       _createHerdrTab(workspaceId, label: label, focus: focus);
 
-  /// テストフック: [_handleHerdrResizeTabPane]（herdr 分岐）を widget テストから
-  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （workspace セレクタの Resize Tab 導線が [_handleHerdrResizeTabPane] を呼ぶ）。
-  @visibleForTesting
-  Future<void> handleHerdrResizeTabPaneForTesting(MultiplexerWindow tab) =>
-      _handleHerdrResizeTabPane(tab);
-
   /// テストフック: [_renameHerdrTab]（herdr 分岐）を widget テストから呼び出す
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
   /// （tab セレクタの Rename 導線が [_renameHerdrTab] を呼ぶ）。
@@ -3546,11 +3539,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// するとその workspace の表示対象 pane を解決して [_switchHerdrTarget]
   /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。
   ///
-  /// **Resize 導線（ユーザー指示: Resize Window 相当を Select Session へ移動）**:
-  /// herdr には workspace 単位の resize コマンドが存在しないため（Q-04）、
-  /// 「現在表示中の workspace のアクティブタブのアクティブ pane の相対分数
-  /// resize」として提供する（[_handleHerdrResizeTabPane] 再利用）。タブセレクタ
-  /// （Select Window 相当）にあった Resize Tab 導線はここへ移動した。
+  /// **Resize 導線（ユーザー指示: Resize Window 相当を Select Session へ）**:
+  /// tmux の Resize Window（`resize-window -x cols -y rows`）と同じく、**ターミナル
+  /// 全体の絶対サイズ変更**を提供する（[_handleHerdrResizeTerminal]）。herdr では
+  /// ターミナル全体のサイズは SSH PTY サイズに追従し、PTY resize（SSH
+  /// window-change）で herdr daemon が全タブ・全 pane を自動再レイアウトする。
+  /// （pane 分割比の `herdr pane resize` は本導線とは無関係。pane 単位の resize は
+  /// pane セレクタの Resize Pane が従来どおり担当する。）
   void _showHerdrWorkspaceSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3570,27 +3565,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         );
         if (sessions == null) throw StateError('Failed to load herdr tree');
         final current = _herdrSelectorContext();
-        // ヘッダー Resize の対象は「現在表示中の workspace のアクティブタブ」
-        // （pane セレクタのヘッダーが現在表示中の pane を対象にするのと同型）。
-        // workspace / tab が解決不能なら導線を出さない（防御）。
+        // ターミナル全体 resize は pane 数・タブ数に依存しないため、resize
+        // 能力があるときは常に表示する（tmux の Resize Window と同様）。
         final canResize = _can(const PaneCapabilities(resize: true));
-        final currentWorkspace = _herdrFindWorkspace(
-          sessions,
-          _herdrDisplayNotifier.value,
-        );
-        final currentTab = currentWorkspace == null
-            ? null
-            : _herdrFindWindow(
-                currentWorkspace,
-                _herdrDisplayNotifier.value,
-              );
         final headerActions = [
-          if (canResize && currentTab != null && _canResizeTab(currentTab))
+          if (canResize)
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
-              tooltip: 'Resize Tab',
+              tooltip: 'Resize Terminal',
               onPressed: () => _closeSelectorThen(
-                () => _handleHerdrResizeTabPane(currentTab),
+                () => _handleHerdrResizeTerminal(),
               ),
             ),
         ];
@@ -3613,16 +3597,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// タブ resize 可否の共有判定（M-1: セッションセレクタ ヘッダー / ハンドラで
-  /// 完全共有）。
-  ///
-  /// herdr は相対分数 resize のみ（Q-04）のため、単一 pane タブの resize は
-  /// no-op になる（意図的差分①・🤝#2）。よって「resize 能力があり、かつ
-  /// pane 数 > 1」のときのみ resize 導線を表示する。pane 数は解決データ
-  /// （[MultiplexerWindow.panes]）から判定する（表示用 `paneCount` は使用しない）。
-  bool _canResizeTab(MultiplexerWindow tab) =>
-      _can(const PaneCapabilities(resize: true)) && tab.panes.length > 1;
-
   /// herdr の tab セレクタ（Select Window 相当・選択即閉じ・T10 / A6 / T4）。
   ///
   /// 現在表示中の workspace（[_HerdrDisplayData] から引き当て）の tab 一覧を
@@ -3636,10 +3610,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
   ///   連鎖 close 確認付き・R2）
   ///
-  /// ※ Resize Tab 導線はユーザー指示により **Select Session（Select Session 相当 =
-  /// [_showHerdrWorkspaceSelector]）へ移動**した。resize の対象解決・ガードは
-  /// [_canResizeTab] / [_handleHerdrResizeTabPane] を共有し、現在表示中の
-  /// workspace のアクティブタブを対象に動作する。
+  /// ※ Resize 導線はユーザー指示により **Select Session（[_showHerdrWorkspaceSelector]）
+  /// へ移動**した。ターミナル全体の絶対サイズ変更（PTY resize）として
+  /// [_handleHerdrResizeTerminal] が担当する（pane 分割比の resize ではない）。
   void _showHerdrTabSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -4732,20 +4705,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-RESIZE-008
-  /// herdr の tab resize（タスク①・🤝#1・案A）。
+  /// herdr のターミナル全体 resize（Select Session の Resize 導線・ユーザー指示）。
   ///
-  /// herdr のタブ（window）は独立したサイズ属性を持たないため（H-1・Q-04）、
-  /// タブの**アクティブ pane** を対象に既存の [_handleHerdrResizePane]
-  /// （`herdr pane resize` 相対分数）へ委譲する。単一 pane タブの resize は
-  /// no-op になるため [_canResizeTab] ガードで弾く（意図的差分①・🤝#2）。
-  /// アクティブ pane が解決できない場合は沈黙 return（安全側フォールバック）。
-  /// `_isResizing` / ダイアログ / 4-way エラー処理は委譲先の既存フローを流用する。
-  Future<void> _handleHerdrResizeTabPane(MultiplexerWindow tab) async {
-    if (!_canResizeTab(tab)) return;
-    final pane = tab.panes.where((p) => p.active).firstOrNull ??
-        tab.panes.firstOrNull;
-    if (pane == null) return;
-    await _handleHerdrResizePane(pane);
+  /// tmux の Resize Window（`resize-window -x cols -y rows`）と同じく、**ターミナル
+  /// 全体の絶対サイズ変更**を行う。herdr ではターミナル全体のサイズは SSH PTY
+  /// サイズに追従するため、[SshNotifier.resize]（→ SSH window-change →
+  /// herdr daemon が全タブ・全 pane を自動再レイアウト）を呼ぶ。pane 分割比の
+  /// `herdr pane resize`（[_handleHerdrResizePane]）は本操作とは無関係。
+  ///
+  /// [_HerdrResizeTerminalDialog]（プリセット: 80x24 / 120x40 / 160x50 /
+  /// Match Screen）で cols/rows を選び、成功後は H5/T18 単一経路
+  /// （[_syncAfterHerdrMutation]）で snapshot を再取得して pane 数・レイアウトを
+  /// 反映する。失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）。
+  Future<void> _handleHerdrResizeTerminal() async {
+    if (_isResizing) return;
+
+    final displayState = ref.read(terminalDisplayProvider);
+    final settings = ref.read(settingsProvider);
+
+    final result = await showDialog<ResizeResult>(
+      context: context,
+      builder: (context) => _HerdrResizeTerminalDialog(
+        screenWidth: displayState.screenWidth,
+        screenHeight: displayState.screenHeight,
+        fontSize: displayState.calculatedFontSize,
+        fontFamily: settings.fontFamily,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    _isResizing = true;
+    _pollTimer?.cancel();
+    try {
+      // herdr: ターミナル全体サイズは SSH PTY サイズに追従する。PTY resize
+      // （SSH window-change）で herdr daemon が全タブ・全 pane を自動再レイアウト。
+      // client 経由で resize する（SshNotifier.resize は private _client 参照の
+      // ため、テストスタブ（FakeSshNotifier の client オーバーライド）に届かない。
+      // 既存 _createWindow / _handleResizeWindow と同じ client 取得パターン）。
+      final sshClient = ref.read(sshProvider.notifier).client;
+      if (sshClient == null) {
+        // 接続断時は静かに戻らず SnackBar で通知する（_killPane と同型）。
+        if (mounted && !_isDisposed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('SSH connection is not available')),
+          );
+        }
+        return;
+      }
+      sshClient.resize(result.cols, result.rows);
+      if (!mounted || _isDisposed) return;
+      // H5/T18 単一経路: force 再取得 → 再解決 → ターゲット変化時のみ切替。
+      await _syncAfterHerdrMutation(eventLabel: 'resize terminal sync');
+    } catch (e) {
+      await _handleHerdrMutationError(e, operationLabel: 'resize terminal');
+    } finally {
+      _isResizing = false;
+      if (mounted && !_isDisposed) _startPolling();
+    }
   }
 
   /// ウィンドウをリサイズ
@@ -7302,6 +7318,135 @@ class _NewWindowDialogState extends State<_NewWindowDialog> {
       ],
     );
   }
+}
+
+/// herdr のターミナル全体 resize ダイアログ（Select Session の Resize 導線用）。
+///
+/// tmux の [ResizeWindowDialog] はウィンドウグリッドプレビュー等の tmux 固有
+/// 引数（window / panes）を必須とするため herdr では流用不可。herdr では対象
+/// window が存在せず「ターミナル全体 = SSH PTY サイズ」を変更するため、プリ
+/// セット選択のみの最小ダイアログとして定義する。プリセットタップで
+/// [ResizeResult] を返して即確定する（[HerdrResizePaneDialog] の方向ボタンと
+/// 同型の即確定パターン）。
+class _HerdrResizeTerminalDialog extends StatefulWidget {
+  /// 画面の論理幅（Match Screen プリセットの算出用）。
+  final double screenWidth;
+
+  /// 画面の論理高さ（Match Screen プリセットの算出用）。
+  final double screenHeight;
+
+  /// 現在のフォントサイズ（Match Screen プリセットの算出用）。
+  final double fontSize;
+
+  /// 現在のフォントファミリー（Match Screen プリセットの算出用）。
+  final String fontFamily;
+
+  const _HerdrResizeTerminalDialog({
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.fontSize,
+    required this.fontFamily,
+  });
+
+  @override
+  State<_HerdrResizeTerminalDialog> createState() =>
+      _HerdrResizeTerminalDialogState();
+}
+
+class _HerdrResizeTerminalDialogState
+    extends State<_HerdrResizeTerminalDialog> {
+  List<_HerdrResizePreset> get _presets {
+    final matchCols = FontCalculator.calculateMaxCols(
+      screenWidth: widget.screenWidth,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    final matchRows = FontCalculator.calculateMaxRows(
+      screenHeight: widget.screenHeight,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    return [
+      const _HerdrResizePreset('80x24 (Standard)', 80, 24),
+      const _HerdrResizePreset('120x40 (Wide)', 120, 40),
+      const _HerdrResizePreset('160x50 (Full HD)', 160, 50),
+      _HerdrResizePreset(
+        'Match Screen ($matchCols x $matchRows)',
+        matchCols,
+        matchRows,
+      ),
+    ];
+  }
+
+  void _submit(int cols, int rows) {
+    Navigator.pop(context, ResizeResult(cols: cols, rows: rows));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: DesignColors.surfaceDark,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: const Text(
+        'Resize Terminal',
+        style: TextStyle(color: DesignColors.textPrimary),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Terminal size (cols x rows)',
+            style: TextStyle(
+              fontSize: 12,
+              color: DesignColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final preset in _presets)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: ActionChip(
+                label: Text(
+                  preset.label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: DesignColors.textPrimary,
+                  ),
+                ),
+                backgroundColor: DesignColors.keyBackground,
+                side: const BorderSide(color: DesignColors.borderDark),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                onPressed: () => _submit(preset.cols, preset.rows),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Applies to the whole terminal (all tabs and panes).',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+/// ターミナル全体 resize のプリセット（表示ラベル + cols/rows）。
+class _HerdrResizePreset {
+  final String label;
+  final int cols;
+  final int rows;
+
+  const _HerdrResizePreset(this.label, this.cols, this.rows);
 }
 
 /// herdr の pane / tab ラベル入力ダイアログ（Q-02/Q-05: rename 解禁）。
