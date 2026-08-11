@@ -522,6 +522,144 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
 }
 
 // ====================================================================
+// HerdrResizeTerminalDialog
+// ====================================================================
+
+/// herdr のターミナル全体 resize ダイアログ（Select Session の Resize 導線用）。
+///
+/// tmux の [ResizeWindowDialog] と同一の操作フロー（サイズ入力行 + プリセット
+/// チップ + Cancel/Resize ボタン）を提供する。herdr はターミナル全体 = SSH PTY
+/// サイズを変更するため、ウィンドウグリッドプレビュー（window / panes）は
+/// 不要（ユーザー決定: グリッドプレビュー省略）。タイトルは 'Resize Terminal'
+/// （ユーザー決定: 文言変更しない）。
+///
+/// プリセットタップ / サイズ入力で [_cols] / [_rows] を更新し、Resize ボタンで
+/// [ResizeResult] を返して閉じる。共通ビルダー（[_buildSizeInputRow] /
+/// [_buildPresetChips] / [_SizePreset]）を [ResizeWindowDialog] と共用する。
+class HerdrResizeTerminalDialog extends StatefulWidget {
+  /// 現在のターミナルサイズ（cols・文字セル単位）。初期値に使う。
+  final int currentCols;
+
+  /// 現在のターミナルサイズ（rows・文字セル単位）。初期値に使う。
+  final int currentRows;
+
+  /// 画面の論理幅（Match Screen プリセットの算出用）。
+  final double screenWidth;
+
+  /// 画面の論理高さ（Match Screen プリセットの算出用）。
+  final double screenHeight;
+
+  /// 現在のフォントサイズ（Match Screen プリセットの算出用）。
+  final double fontSize;
+
+  /// 現在のフォントファミリー（Match Screen プリセットの算出用）。
+  final String fontFamily;
+
+  const HerdrResizeTerminalDialog({
+    super.key,
+    required this.currentCols,
+    required this.currentRows,
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.fontSize,
+    required this.fontFamily,
+  });
+
+  @override
+  State<HerdrResizeTerminalDialog> createState() =>
+      _HerdrResizeTerminalDialogState();
+}
+
+class _HerdrResizeTerminalDialogState
+    extends State<HerdrResizeTerminalDialog> {
+  late int _cols;
+  late int _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _cols = widget.currentCols;
+    _rows = widget.currentRows;
+  }
+
+  List<_SizePreset> get _presets {
+    final matchCols = FontCalculator.calculateMaxCols(
+      screenWidth: widget.screenWidth,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    final matchRows = FontCalculator.calculateMaxRows(
+      screenHeight: widget.screenHeight,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    return [
+      const _SizePreset('80x24 (Standard)', 80, 24),
+      const _SizePreset('120x40 (Wide)', 120, 40),
+      const _SizePreset('160x50 (Full HD)', 160, 50),
+      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: DesignColors.surfaceDark,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: const Text(
+        'Resize Terminal',
+        style: TextStyle(color: DesignColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.8,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildSizeInputRow(
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Applies to the whole terminal (all tabs and panes).',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
+          style: FilledButton.styleFrom(
+            backgroundColor: DesignColors.primary,
+          ),
+          child: const Text('Resize'),
+        ),
+      ],
+    );
+  }
+}
+
+// ====================================================================
 // 共通ビルダー（トップレベル関数）
 // ====================================================================
 

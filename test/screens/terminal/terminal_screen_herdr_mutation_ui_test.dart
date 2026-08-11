@@ -942,14 +942,18 @@ void main() {
         await tester.pump(const Duration(milliseconds: 250));
         await tester.pump(const Duration(milliseconds: 100));
 
-        // プリセット選択ダイアログ（ResizeWindowDialog は tmux 固有引数
-        // window/panes を必須とするため、herdr 用の最小ダイアログ
-        // _HerdrResizeTerminalDialog を表示する）。
+        // tmux の ResizeWindowDialog と同一構成（サイズ入力行 + プリセット +
+        // Cancel/Resize ボタン・グリッドプレビュー省略）。
         expect(find.text('Resize Terminal'), findsOneWidget);
+        expect(find.text('Cols'), findsOneWidget);
+        expect(find.text('Rows'), findsOneWidget);
         expect(find.text('80x24 (Standard)'), findsOneWidget);
         expect(find.text('120x40 (Wide)'), findsOneWidget);
 
+        // プリセット選択 → Resize ボタンで確定。
         await tester.tap(find.text('120x40 (Wide)'));
+        await tester.pump();
+        await tester.tap(find.text('Resize'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 300));

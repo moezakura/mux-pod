@@ -4713,8 +4713,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// herdr daemon が全タブ・全 pane を自動再レイアウト）を呼ぶ。pane 分割比の
   /// `herdr pane resize`（[_handleHerdrResizePane]）は本操作とは無関係。
   ///
-  /// [_HerdrResizeTerminalDialog]（プリセット: 80x24 / 120x40 / 160x50 /
-  /// Match Screen）で cols/rows を選び、成功後は H5/T18 単一経路
+  /// [HerdrResizeTerminalDialog]（サイズ入力行 + プリセット: 80x24 / 120x40 /
+  /// 160x50 / Match Screen・tmux の [ResizeWindowDialog] と同一構成・グリッド
+  /// プレビューは省略）で cols/rows を選び、成功後は H5/T18 単一経路
   /// （[_syncAfterHerdrMutation]）で snapshot を再取得して pane 数・レイアウトを
   /// 反映する。失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）。
   Future<void> _handleHerdrResizeTerminal() async {
@@ -4723,9 +4724,26 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
 
+    // 現在のターミナルサイズ（文字セル単位）は herdr snapshot の layout.area
+    // （タブ全体の表示領域）から取得する（_isHerdrTabZoomed と同じ
+    // cachedSnapshot 参照パターン）。取得不能なら 80x24 へフォールバック
+    // （SSH PTY の既定サイズ・ShellOptions デフォルトと整合）。
+    int terminalCols = 80;
+    int terminalRows = 24;
+    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
+    if (snapshot != null && snapshot.layouts.isNotEmpty) {
+      final area = snapshot.layouts.first.area;
+      if (area.width > 0 && area.height > 0) {
+        terminalCols = area.width;
+        terminalRows = area.height;
+      }
+    }
+
     final result = await showDialog<ResizeResult>(
       context: context,
-      builder: (context) => _HerdrResizeTerminalDialog(
+      builder: (context) => HerdrResizeTerminalDialog(
+        currentCols: terminalCols,
+        currentRows: terminalRows,
         screenWidth: displayState.screenWidth,
         screenHeight: displayState.screenHeight,
         fontSize: displayState.calculatedFontSize,
@@ -7318,135 +7336,6 @@ class _NewWindowDialogState extends State<_NewWindowDialog> {
       ],
     );
   }
-}
-
-/// herdr のターミナル全体 resize ダイアログ（Select Session の Resize 導線用）。
-///
-/// tmux の [ResizeWindowDialog] はウィンドウグリッドプレビュー等の tmux 固有
-/// 引数（window / panes）を必須とするため herdr では流用不可。herdr では対象
-/// window が存在せず「ターミナル全体 = SSH PTY サイズ」を変更するため、プリ
-/// セット選択のみの最小ダイアログとして定義する。プリセットタップで
-/// [ResizeResult] を返して即確定する（[HerdrResizePaneDialog] の方向ボタンと
-/// 同型の即確定パターン）。
-class _HerdrResizeTerminalDialog extends StatefulWidget {
-  /// 画面の論理幅（Match Screen プリセットの算出用）。
-  final double screenWidth;
-
-  /// 画面の論理高さ（Match Screen プリセットの算出用）。
-  final double screenHeight;
-
-  /// 現在のフォントサイズ（Match Screen プリセットの算出用）。
-  final double fontSize;
-
-  /// 現在のフォントファミリー（Match Screen プリセットの算出用）。
-  final String fontFamily;
-
-  const _HerdrResizeTerminalDialog({
-    required this.screenWidth,
-    required this.screenHeight,
-    required this.fontSize,
-    required this.fontFamily,
-  });
-
-  @override
-  State<_HerdrResizeTerminalDialog> createState() =>
-      _HerdrResizeTerminalDialogState();
-}
-
-class _HerdrResizeTerminalDialogState
-    extends State<_HerdrResizeTerminalDialog> {
-  List<_HerdrResizePreset> get _presets {
-    final matchCols = FontCalculator.calculateMaxCols(
-      screenWidth: widget.screenWidth,
-      fontSize: widget.fontSize,
-      fontFamily: widget.fontFamily,
-    );
-    final matchRows = FontCalculator.calculateMaxRows(
-      screenHeight: widget.screenHeight,
-      fontSize: widget.fontSize,
-      fontFamily: widget.fontFamily,
-    );
-    return [
-      const _HerdrResizePreset('80x24 (Standard)', 80, 24),
-      const _HerdrResizePreset('120x40 (Wide)', 120, 40),
-      const _HerdrResizePreset('160x50 (Full HD)', 160, 50),
-      _HerdrResizePreset(
-        'Match Screen ($matchCols x $matchRows)',
-        matchCols,
-        matchRows,
-      ),
-    ];
-  }
-
-  void _submit(int cols, int rows) {
-    Navigator.pop(context, ResizeResult(cols: cols, rows: rows));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: DesignColors.surfaceDark,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Terminal',
-        style: TextStyle(color: DesignColors.textPrimary),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Terminal size (cols x rows)',
-            style: TextStyle(
-              fontSize: 12,
-              color: DesignColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final preset in _presets)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: ActionChip(
-                label: Text(
-                  preset.label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textPrimary,
-                  ),
-                ),
-                backgroundColor: DesignColors.keyBackground,
-                side: const BorderSide(color: DesignColors.borderDark),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                onPressed: () => _submit(preset.cols, preset.rows),
-              ),
-            ),
-          const SizedBox(height: 8),
-          const Text(
-            'Applies to the whole terminal (all tabs and panes).',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-      ],
-    );
-  }
-}
-
-/// ターミナル全体 resize のプリセット（表示ラベル + cols/rows）。
-class _HerdrResizePreset {
-  final String label;
-  final int cols;
-  final int rows;
-
-  const _HerdrResizePreset(this.label, this.cols, this.rows);
 }
 
 /// herdr の pane / tab ラベル入力ダイアログ（Q-02/Q-05: rename 解禁）。
