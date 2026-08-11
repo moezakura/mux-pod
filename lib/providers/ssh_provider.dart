@@ -96,6 +96,11 @@ class SshNotifier extends Notifier<SshState> {
   // 再接続タイマー
   Timer? _reconnectTimer;
 
+  // 再接続の single-flight（Codex B3）: timer callback と reconnectNow の同時
+  // 実行を防ぎ、進行中の結果を共有する。
+  bool _reconnectInFlight = false;
+  Completer<bool>? _reconnectInFlightResult;
+
   // 切断検知コールバック（外部から設定可能）
   void Function()? onDisconnectDetected;
 
@@ -381,24 +386,37 @@ class SshNotifier extends Notifier<SshState> {
   }
 
   /// 実際の再接続処理
+  ///
+  /// **single-flight（Codex B3）**: timer callback（[reconnect]）と
+  /// [reconnectNow] の両方から同時に呼ばれ得るため、実行中は重複実行せず
+  /// 進行中の結果を共有する（古い完了結果による state 上書きも発生しない）。
   Future<bool> _doReconnect() async {
-    if (_lastConnection == null || _lastOptions == null) {
-      return false;
+    if (_reconnectInFlight) {
+      return _reconnectInFlightResult?.future ?? false;
     }
-
-    // ネットワークがオフラインの場合は中断
-    if (!state.isNetworkAvailable) {
-      state = state.copyWith(isPaused: true);
-      return false;
-    }
-
+    _reconnectInFlight = true;
+    final completer = Completer<bool>();
+    _reconnectInFlightResult = completer;
     try {
+      if (_lastConnection == null || _lastOptions == null) {
+        completer.complete(false);
+        return false;
+      }
+
+      // ネットワークがオフラインの場合は中断
+      if (!state.isNetworkAvailable) {
+        state = state.copyWith(isPaused: true);
+        completer.complete(false);
+        return false;
+      }
+
       // 既存の接続状態監視をキャンセル
       await _connectionStateSubscription?.cancel();
       _connectionStateSubscription = null;
 
-      // 古いクライアントをクリーンアップ
-      _client?.dispose();
+      // 古いクライアントをクリーンアップ（await: 旧 managed PTY / TUI が
+      // 閉じる前に新クライアントで起動しないことを保証・Codex B3）。
+      await _client?.dispose();
       _client = SshClient();
 
       // 接続状態のストリームを監視（切断検知の高速化）
@@ -425,6 +443,7 @@ class SshNotifier extends Notifier<SshState> {
       // 再接続成功コールバック
       onReconnectSuccess?.call();
 
+      completer.complete(true);
       return true;
     } catch (e) {
       // 再接続失敗、次の試行をスケジュール
@@ -434,12 +453,17 @@ class SshNotifier extends Notifier<SshState> {
       );
 
       // 自動で次の試行をスケジュール（無制限リトライの場合）
-      if (_maxReconnectAttempts == 0 || state.reconnectAttempt < _maxReconnectAttempts) {
+      if (_maxReconnectAttempts == 0 ||
+          state.reconnectAttempt < _maxReconnectAttempts) {
         // 非同期で次の再接続をスケジュール
         Future.microtask(() => reconnect());
       }
 
+      completer.complete(false);
       return false;
+    } finally {
+      _reconnectInFlight = false;
+      _reconnectInFlightResult = null;
     }
   }
 

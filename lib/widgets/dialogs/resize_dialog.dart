@@ -633,7 +633,9 @@ class _HerdrResizeTerminalDialogState
               ),
               const SizedBox(height: 8),
               const Text(
-                'Applies to the whole terminal (all tabs and panes).',
+                'PTY（ターミナル全体）の要求サイズを変更します。herdr の表示設定'
+                '（サイドバー幅・タブ行等）は含みません。全 workspace / tab / pane'
+                'と接続中の他クライアントの表示に影響します。',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
               ),

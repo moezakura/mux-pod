@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/image_transfer_provider.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
+import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 
 import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/terminal_test_scaffold.dart';
@@ -31,6 +33,29 @@ const kHerdrSnapshotWithLayoutFixture =
     '"focused_pane_id":"w1:p1",'
     '"panes":[{"pane_id":"w1:p1","focused":true,'
     '"rect":{"x":0,"y":0,"width":80,"height":24}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// hidden TUI resize 収束確認用: PTY 120x40 → 実測変換式で area 94x39 の fixture。
+// （kHerdrSnapshotWithLayoutFixture の area / rect を 94x39 にした版）
+const kHerdrResizedSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1",'
+    '"layouts":[{"area":{"x":26,"y":1,"width":94,"height":39},'
+    '"focused_pane_id":"w1:p1",'
+    '"panes":[{"pane_id":"w1:p1","focused":true,'
+    '"rect":{"x":26,"y":1,"width":94,"height":39}}],'
     '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
     '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
     '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
@@ -175,9 +200,52 @@ Future<FakeSshClient> _pumpHerdrAndOpenTabSelector(
 
 /// herdr（mutation 解禁）のターミナルを起動し、workspace セレクタ
 /// （Select Session 相当）を開く。コマンド検証用に [FakeSshClient] を返す。
+/// [ManagedPtyProcess] の UI テスト用 fake（成功経路の bridge 検証）。
+class _UiFakeManagedPty implements ManagedPtyProcess {
+  final StreamController<void> _doneController =
+      StreamController<void>.broadcast();
+  final List<(int, int)> resizes = [];
+
+  @override
+  Stream<void> get done => _doneController.stream;
+
+  @override
+  int? get exitCode => null;
+
+  @override
+  String? get exitSignalName => null;
+
+  @override
+  String get stderrTail => '';
+
+  @override
+  void resize(int cols, int rows) => resizes.add((cols, rows));
+
+  @override
+  Future<void> close() async {}
+}
+
+/// [SshClient.startManagedPty] を成功させる fake（hidden TUI 起動を模擬）。
+class _StartPtyResizeClient extends FakeSshClient {
+  final List<_UiFakeManagedPty> managedProcesses = [];
+
+  @override
+  Future<ManagedPtyProcess> startManagedPty(
+    String command, {
+    required int cols,
+    required int rows,
+  }) async {
+    final p = _UiFakeManagedPty();
+    managedProcesses.add(p);
+    return p;
+  }
+}
+
 Future<FakeSshClient> _pumpHerdrAndOpenWorkspaceSelector(
   WidgetTester tester, {
   Map<String, String> execOutputs = const {},
+  Map<String, List<String>> execOutputQueues = const {},
+  FakeSshClient Function()? clientFactory,
 }) async {
   final client = await TerminalTestScaffold.pumpTerminalScreen(
     tester,
@@ -188,6 +256,8 @@ Future<FakeSshClient> _pumpHerdrAndOpenWorkspaceSelector(
       'herdr pane read': 'hello\n',
       ...execOutputs,
     },
+    execOutputQueues: execOutputQueues,
+    clientFactory: clientFactory,
     settle: false,
   );
 
@@ -929,9 +999,64 @@ void main() {
 
   group('タスク①: herdr ターミナル全体 resize（Select Session）', () {
     testWidgets(
-      'セッションセレクタの Resize でターミナル全体のサイズを変更する（PTY resize）',
+      'セッションセレクタの Resize で PTY 要求サイズ変更が成功すると hidden TUI 経由で同期される',
       (tester) async {
-        final client = await _pumpHerdrAndOpenWorkspaceSelector(tester);
+        final client = await _pumpHerdrAndOpenWorkspaceSelector(
+          tester,
+          clientFactory: () => _StartPtyResizeClient(),
+          execOutputs: {
+            // queue 尽きた後のフォールバック（収束確認の再ポーリング・同期）も
+            // 94x39（実測変換式 cols-26 / rows-1 の期待値）を返す。
+            'herdr api snapshot': kHerdrResizedSnapshotFixture,
+          },
+          execOutputQueues: {
+            'herdr api snapshot': [
+              kHerdrSnapshotWithLayoutFixture, // 接続時: area 80x24
+              kHerdrSnapshotWithLayoutFixture, // ダイアログ初期値（currentPtySize）
+              kHerdrSnapshotWithLayoutFixture, // ensureStarted の currentPtySize
+              kHerdrResizedSnapshotFixture, // 収束確認: area 94x39（= 120-26 / 40-1）
+              kHerdrResizedSnapshotFixture, // _syncAfterHerdrMutation
+            ],
+          },
+        );
+
+        await tester.tap(find.byTooltip('Resize Terminal'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // プリセット選択 → Resize ボタンで確定（hidden TUI ブリッジ経由）。
+        await tester.tap(find.text('120x40 (Wide)'));
+        await tester.pump();
+        await tester.tap(find.text('Resize'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 成功: fail closed SnackBar は出ない。
+        expect(
+          find.textContaining('Resize が反映されませんでした'),
+          findsNothing,
+          reason: '収束確認が成功した場合は fail closed 通知を出さない',
+        );
+        // hidden TUI の managed PTY が lazy start され、120x40 が送られた。
+        final managed = (client as _StartPtyResizeClient).managedProcesses;
+        expect(managed, isNotEmpty, reason: 'lazy start で hidden TUI が起動される');
+        expect(
+          managed.last.resizes,
+          contains((120, 40)),
+          reason: 'PTY 要求サイズ 120x40 が managed PTY の window-change で送られる',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'セッションセレクタの Resize で PTY 要求サイズ変更を試みる'
+      '（hidden TUI ブリッジ・fail closed 通知）',
+      (tester) async {
+        await _pumpHerdrAndOpenWorkspaceSelector(tester);
 
         // ターミナル全体 resize は pane 数に依存しないため、resize 能力が
         // あれば常に表示される。
@@ -943,14 +1068,19 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
 
         // tmux の ResizeWindowDialog と同一構成（サイズ入力行 + プリセット +
-        // Cancel/Resize ボタン・グリッドプレビュー省略）。
+        // Cancel/Resize ボタン・グリッドプレビュー省略）+ PTY 要求サイズの文言。
         expect(find.text('Resize Terminal'), findsOneWidget);
+        expect(
+          find.textContaining('PTY（ターミナル全体）の要求サイズを変更します'),
+          findsOneWidget,
+          reason: 'ユーザー決定: PTY 要求サイズ + デフォルト表示設定前提の趣旨を記載する',
+        );
         expect(find.text('Cols'), findsOneWidget);
         expect(find.text('Rows'), findsOneWidget);
         expect(find.text('80x24 (Standard)'), findsOneWidget);
         expect(find.text('120x40 (Wide)'), findsOneWidget);
 
-        // プリセット選択 → Resize ボタンで確定。
+        // プリセット選択 → Resize ボタンで確定（hidden TUI ブリッジ経由）。
         await tester.tap(find.text('120x40 (Wide)'));
         await tester.pump();
         await tester.tap(find.text('Resize'));
@@ -958,29 +1088,24 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 300));
 
-        // ターミナル全体 resize = SSH PTY サイズ変更（resize(cols, rows) →
-        // window-change → herdr daemon が全タブ・全 pane を再レイアウト）。
+        // FakeSshClient では hidden TUI（managed PTY）を起動できないため、
+        // HerdrResizeBridge が start 失敗 → fail closed の SnackBar を表示する。
         expect(
-          client.resizes.any((r) => r.$1 == 120 && r.$2 == 40),
-          isTrue,
-          reason: 'ターミナル全体 resize は SshClient.resize（PTY window-change）で 120x40 を送る',
-        );
-        // H5/T18 単一経路で snapshot を再取得（pane 数・レイアウト反映）。
-        expect(
-          client.execCommands.where((c) => c.contains('herdr api snapshot'))
-              .length,
-          greaterThanOrEqualTo(2),
-          reason: 'resize 後は _syncAfterHerdrMutation（force 再取得）が走ること',
+          find.textContaining('Resize が反映されませんでした'),
+          findsOneWidget,
+          reason: 'resize 不達（他クライアント競合 or 表示設定不一致）は fail closed 通知',
         );
 
-        await tester.pump(const Duration(milliseconds: 200));
+        // SnackBar の自動クローズ（4s）まで進めて pending timer を消化する。
+        await tester.pump(const Duration(seconds: 4));
+        await tester.pump(const Duration(milliseconds: 750));
       },
     );
 
     testWidgets(
-      'Resize Terminal ダイアログのキャンセルは resize を送らない',
+      'Resize Terminal ダイアログのキャンセルは resize を試みない',
       (tester) async {
-        final client = await _pumpHerdrAndOpenWorkspaceSelector(tester);
+        await _pumpHerdrAndOpenWorkspaceSelector(tester);
 
         await tester.tap(find.byTooltip('Resize Terminal'));
         await tester.pump();
@@ -992,10 +1117,11 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
+        // キャンセルは hidden TUI を起動せず resize しない（通知もなし）。
         expect(
-          client.resizes,
-          isEmpty,
-          reason: 'キャンセルは resize を送らない（mounted ガード）',
+          find.textContaining('Resize が反映されませんでした'),
+          findsNothing,
+          reason: 'キャンセルは bridge を起動しない（mounted ガード）',
         );
 
         await tester.pump(const Duration(milliseconds: 200));

@@ -40,6 +40,7 @@ class _FakeSocket implements SSHSocket {
 class _FakeInteractiveSession implements SSHSession {
   final _stdout = StreamController<Uint8List>();
   final _stderr = StreamController<Uint8List>();
+  final _done = Completer<void>();
   final writes = <Uint8List>[];
 
   void emitData(List<int> bytes) => _stdout.add(Uint8List.fromList(bytes));
@@ -57,7 +58,7 @@ class _FakeInteractiveSession implements SSHSession {
   Stream<Uint8List> get stderr => _stderr.stream;
 
   @override
-  Future<void> get done => Completer<void>().future;
+  Future<void> get done => _done.future;
 
   @override
   int? get exitCode => 0;
@@ -72,6 +73,7 @@ class _FakeInteractiveSession implements SSHSession {
   void close() {
     if (!_stdout.isClosed) unawaited(_stdout.close());
     if (!_stderr.isClosed) unawaited(_stderr.close());
+    if (!_done.isCompleted) _done.complete();
   }
 
   @override
@@ -835,5 +837,82 @@ void main() {
         await client.disconnect();
       },
     );
+  });
+
+  group('SshClient managed PTY（hidden herdr TUI ホスト）', () {
+    Future<(SshClient, _FakeRawSshClient)> connectedClient() async {
+      final rawClient = _FakeRawSshClient();
+      final client = SshClient(
+        connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+          onAuthenticated();
+          return (socket: _FakeSocket(), client: rawClient);
+        },
+      );
+      // connect は認証完了を待つため、先に開始（await しない）してから
+      // authentication を complete する（既存テストと同じ順序）。
+      final connecting = client.connect(
+        host: 'host',
+        port: 22,
+        username: 'user',
+        options: SshConnectOptions(password: 'pw'),
+        lightweight: true,
+      );
+      await Future<void>.delayed(Duration.zero);
+      rawClient.authentication.complete();
+      await connecting;
+      expect(client.state, SshConnectionState.connected);
+      return (client, rawClient);
+    }
+
+    test('startManagedPty は PTY 付き exec を実行し ManagedPtyProcess を返す', () async {
+      final (client, rawClient) = await connectedClient();
+
+      final process = await client.startManagedPty('herdr', cols: 100, rows: 30);
+      expect(rawClient.execSessions, hasLength(1));
+      expect(process, isNotNull);
+
+      // resize は throw せず呼べる（SSHSession.resizeTerminal 委譲）。
+      process.resize(120, 40);
+
+      // stdout を emitData しても例外なし（明示 discard）。
+      rawClient.execSessions.single.emitData([1, 2, 3]);
+
+      // stderrTail は空のまま（エラー未出力）。
+      expect(process.stderrTail, isEmpty);
+      expect(process.exitCode, 0);
+
+      await client.disconnect();
+    });
+
+    test('二重 startManagedPty は前の managed session を close する', () async {
+      final (client, rawClient) = await connectedClient();
+
+      final first = await client.startManagedPty('herdr', cols: 80, rows: 24);
+      final second = await client.startManagedPty('herdr', cols: 90, rows: 30);
+      expect(rawClient.execSessions, hasLength(2));
+      expect(second, isNotNull);
+      expect(first, isNot(same(second)));
+
+      await client.disconnect();
+    });
+
+    test('disconnect（dispose）で managed PTY の session も close される', () async {
+      final (client, rawClient) = await connectedClient();
+
+      await client.startManagedPty('herdr', cols: 80, rows: 24);
+      expect(rawClient.execSessions, hasLength(1));
+
+      await client.disconnect();
+      // ManagedPtyProcess.close が _FakeInteractiveSession.close を呼ぶ
+      // （close 後は stdout/stderr が閉じる）。例外なしで完了すること。
+    });
+
+    test('未接続で startManagedPty は throw する', () async {
+      final client = SshClient();
+      expect(
+        () => client.startManagedPty('herdr', cols: 80, rows: 24),
+        throwsA(isA<Exception>()),
+      );
+    });
   });
 }

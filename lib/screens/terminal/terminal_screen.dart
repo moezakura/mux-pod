@@ -31,6 +31,7 @@ import '../../services/herdr/herdr_errors.dart';
 import '../../services/herdr/herdr_models.dart';
 import '../../services/herdr/herdr_pane_content_reader.dart';
 import '../../services/herdr/herdr_pane_frame_reader.dart';
+import '../../services/herdr/herdr_resize_bridge.dart';
 import '../../services/herdr/herdr_snapshot_cache.dart';
 import '../../services/herdr/herdr_target_resolver.dart';
 import '../../services/herdr/herdr_to_domain.dart';
@@ -548,6 +549,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // herdr スナップショットキャッシュ（A5: 唯一の read chokepoint）。
   // 再接続で adapter が差し替わるときは `_recreatePaneReader` で作り直す。
   HerdrSnapshotCache? _herdrSnapshotCache;
+
+  /// herdr のターミナル全体 resize を実現する hidden TUI 常駐ブリッジ。
+  ///
+  /// [HerdrResizeBridge]（lazy start）: 最初の Resize 操作時に起動し、SSH 接続中
+  /// のみ常駐する。接続時には起動しない（他クライアントのサイズを勝手に上書き
+  /// しない・Codex 方針）。再接続時は [_recreatePaneReader] が新インスタンスを
+  /// 生成し、古いブリッジの managed PTY は旧 SshClient の dispose（await）で終了する。
+  HerdrResizeBridge? _herdrResizeBridge;
 
   // server-down / 終端エラーでポーリングを停止したか（再開まで _scheduleNextPoll を抑止）。
   bool _pollingSuspended = false;
@@ -1203,14 +1212,33 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         adapter,
         HerdrPaneLayoutResolver(_herdrSnapshotCache!),
       );
+      // hidden TUI 常駐ブリッジ（ターミナル全体 resize 用・lazy start）。
+      // 古いブリッジは旧 client の dispose（await）で managed PTY が終了するため、
+      // ここでは新しい client / cache に紐づくブリッジに置き換える。
+      _herdrResizeBridge = HerdrResizeBridge(
+        client: sshClient,
+        cache: _herdrSnapshotCache!,
+        executablePath: _herdrExecutablePath(sshClient),
+        tabIdProvider: () => _herdrDisplayNotifier.value?.tabId,
+      );
     } else {
       _paneReader = TmuxPaneContentReader(sshClient.tmuxExecutor);
       _frameReader = null;
     }
   }
 
-  /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
+  /// hidden herdr TUI の起動コマンド用 executablePath を POSIX shell quote する。
   ///
+  /// 接続設定（[SshClient.userExecutablePath] / MultiplexerConfig.executablePath）が
+  /// 無ければ `herdr`（PATH 依存）を使用する。SSH exec はリモートシェル経由のため、
+  /// スペースやシングルクォートを含むパスを安全に渡す（承認条件 7）。
+  String _herdrExecutablePath(SshClient sshClient) {
+    final raw = sshClient.userExecutablePath?.trim();
+    final path = (raw == null || raw.isEmpty) ? 'herdr' : raw;
+    return "'${path.replaceAll("'", r"'\''")}'";
+  }
+
+  /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
   /// 呼び出し側の明示（[TerminalScreen.readOnly]）・未接続・backend 未確定の
   /// ときは null（全 capability false 扱い = read-only）。T8 で `_Phase0PaneWriter`
   /// を廃止し、実実装（`TmuxPaneWriter` / `HerdrPaneWriter`）を生成する。
@@ -2439,6 +2467,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void dispose() {
     // まず_isDisposedをセットして非同期処理を停止
     _isDisposed = true;
+    // hidden herdr TUI ブリッジを終了（managed PTY close・fire-and-forget。
+    // SSH 切断時は SshClient.dispose 側でも閉じる・承認条件 9）。
+    unawaited(_herdrResizeBridge?.reset());
+    _herdrResizeBridge = null;
     WidgetsBinding.instance.removeObserver(this);
     // WakeLockを無効化
     WakelockPlus.disable();
@@ -4709,41 +4741,47 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// tmux の Resize Window（`resize-window -x cols -y rows`）と同じく、**ターミナル
   /// 全体の絶対サイズ変更**を行う。herdr ではターミナル全体のサイズは SSH PTY
-  /// サイズに追従するため、[SshNotifier.resize]（→ SSH window-change →
-  /// herdr daemon が全タブ・全 pane を自動再レイアウト）を呼ぶ。pane 分割比の
+  /// サイズに追従するため、[HerdrResizeBridge]（hidden TUI 常駐・lazy start）
+  /// 経由で PTY resize（SSH window-change → SIGWINCH → TUI → ClientMessage::Resize
+  /// → herdr daemon が全タブ・全 pane を自動再レイアウト）を行う。pane 分割比の
   /// `herdr pane resize`（[_handleHerdrResizePane]）は本操作とは無関係。
   ///
   /// [HerdrResizeTerminalDialog]（サイズ入力行 + プリセット: 80x24 / 120x40 /
   /// 160x50 / Match Screen・tmux の [ResizeWindowDialog] と同一構成・グリッド
-  /// プレビューは省略）で cols/rows を選び、成功後は H5/T18 単一経路
-  /// （[_syncAfterHerdrMutation]）で snapshot を再取得して pane 数・レイアウトを
-  /// 反映する。失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）。
+  /// プレビューは省略）で PTY 要求サイズを選ぶ。ダイアログ初期値は
+  /// [HerdrResizeBridge.currentPtySize]（Bridge が保持する現在の PTY 要求サイズ・
+  /// Codex B1 の自己縮小バグ回避）。確定後は bridge が収束確認（fresh snapshot の
+  /// layout.area == 実測変換式の期待値）を行い、不達（他クライアント競合・
+  /// 非デフォルト表示設定）は SnackBar で通知する（fail closed）。
+  /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）で snapshot を再取得する。
   Future<void> _handleHerdrResizeTerminal() async {
     if (_isResizing) return;
+
+    final bridge = _herdrResizeBridge;
+    if (bridge == null) {
+      // 接続断・bridge 未生成時は通知（_killPane と同型）。
+      if (mounted && !_isDisposed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SSH connection is not available')),
+        );
+      }
+      return;
+    }
 
     final displayState = ref.read(terminalDisplayProvider);
     final settings = ref.read(settingsProvider);
 
-    // 現在のターミナルサイズ（文字セル単位）は herdr snapshot の layout.area
-    // （タブ全体の表示領域）から取得する（_isHerdrTabZoomed と同じ
-    // cachedSnapshot 参照パターン）。取得不能なら 80x24 へフォールバック
-    // （SSH PTY の既定サイズ・ShellOptions デフォルトと整合）。
-    int terminalCols = 80;
-    int terminalRows = 24;
-    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
-    if (snapshot != null && snapshot.layouts.isNotEmpty) {
-      final area = snapshot.layouts.first.area;
-      if (area.width > 0 && area.height > 0) {
-        terminalCols = area.width;
-        terminalRows = area.height;
-      }
-    }
+    // ダイアログ初期値は Bridge が保持する「現在の PTY 要求サイズ」。
+    // （layout.area から毎回逆算すると、非デフォルト表示設定で自己縮小する
+    // バグを避ける・Codex B1・ユーザー決定）
+    final current = await bridge.currentPtySize();
+    if (!mounted || _isDisposed) return;
 
     final result = await showDialog<ResizeResult>(
       context: context,
       builder: (context) => HerdrResizeTerminalDialog(
-        currentCols: terminalCols,
-        currentRows: terminalRows,
+        currentCols: current.cols,
+        currentRows: current.rows,
         screenWidth: displayState.screenWidth,
         screenHeight: displayState.screenHeight,
         fontSize: displayState.calculatedFontSize,
@@ -4755,26 +4793,28 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _isResizing = true;
     _pollTimer?.cancel();
     try {
-      // herdr: ターミナル全体サイズは SSH PTY サイズに追従する。PTY resize
-      // （SSH window-change）で herdr daemon が全タブ・全 pane を自動再レイアウト。
-      // client 経由で resize する（SshNotifier.resize は private _client 参照の
-      // ため、テストスタブ（FakeSshNotifier の client オーバーライド）に届かない。
-      // 既存 _createWindow / _handleResizeWindow と同じ client 取得パターン）。
-      final sshClient = ref.read(sshProvider.notifier).client;
-      if (sshClient == null) {
-        // 接続断時は静かに戻らず SnackBar で通知する（_killPane と同型）。
+      // hidden TUI を lazy start し、PTY 要求サイズを変更して収束を確認する。
+      final ok = await bridge.resize(result.cols, result.rows);
+      if (!ok) {
+        // 収束不達（他クライアントとのフォアグラウンド競合 or 非デフォルト
+        // 表示設定）→ fail closed として通知。
         if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SSH connection is not available')),
+            const SnackBar(
+              content: Text(
+                'Resize が反映されませんでした。接続中の他クライアントとの競合や '
+                'herdr の表示設定（サイドバー幅・タブ行）との不一致が考えられます',
+              ),
+            ),
           );
         }
         return;
       }
-      sshClient.resize(result.cols, result.rows);
       if (!mounted || _isDisposed) return;
       // H5/T18 単一経路: force 再取得 → 再解決 → ターゲット変化時のみ切替。
       await _syncAfterHerdrMutation(eventLabel: 'resize terminal sync');
     } catch (e) {
+      // resize 後の同期失敗は T19/S4 の分類別通知へ委譲（未処理例外を防ぐ）。
       await _handleHerdrMutationError(e, operationLabel: 'resize terminal');
     } finally {
       _isResizing = false;
