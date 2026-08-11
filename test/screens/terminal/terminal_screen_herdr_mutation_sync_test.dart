@@ -85,6 +85,53 @@ const kHerdrEmptySnapshotFixture =
     '"layouts":[],"panes":[],"protocol":17,"tabs":[],"version":"0.7.5",'
     '"workspaces":[]},"type":"session_snapshot"}}';
 
+// S0 実測形状: create --focus 後の snapshot（旧 tab は残存しつつ新タブが focused）。
+// 旧 tab w1:t1（w1:p1）が残っていても、focused_tab_id / focused_pane_id /
+// active_tab_id の 3 点で新タブ w1:t8（w1:p2）を指す。テスト#10（作成後の自動
+// 切替）で「旧 pane 残存でも followBackendFocus が新 pane を優先する」ことを検証。
+const kHerdrSnapshotNewTabFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p2","focused_tab_id":"w1:t8",'
+    '"focused_workspace_id":"w1","layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":false,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t8",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":false,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","focused":true,"label":"2","number":2,'
+    '"pane_count":1,"tab_id":"w1:t8","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t8",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":2,"tab_count":2,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// focused 情報欠落（全 tab / pane が非フォーカス）の snapshot fixture。
+// followBackendFocus では「フォーカス tab → フォーカス pane」が解決できないため
+// sticky へフォールバックし、現在表示（w1:p1）を維持することを検証する
+// （Codex 観点 4: focused 情報欠落 => 現在の tab を維持）。
+const kHerdrSnapshotNoFocusInfoFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":null,"focused_tab_id":null,"focused_workspace_id":null,'
+    '"layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":false,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":false,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":false,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
 // 構造化エラー JSON（target-not-found 分類用）。
 const kPaneNotFoundErrorFixture =
     '{"error":{"code":"pane_not_found","message":"no pane"},'
@@ -403,20 +450,27 @@ void main() {
     );
 
     testWidgets(
-      'create tab 成功後は単一経路（force 再取得）で同期される（Q-05）',
+      'create tab（label + --focus）成功後は単一経路（force 再取得）で同期され、'
+      '新タブの表示へ自動切替わる（Q-05・タスク②）',
       (tester) async {
         final client = await _pumpHerdrTerminal(
           tester,
+          // 接続時: w1:t1（w1:p1）/ create --focus 後の force 再取得: 旧 tab は
+          // 残存しつつ新タブ w1:t8（w1:p2）が focused（S0 実測形状）。
           execOutputQueues: {
             'herdr api snapshot': [
               kHerdrSnapshotFixture,
-              kHerdrSnapshotFixture,
+              kHerdrSnapshotNewTabFixture,
             ],
           },
         );
 
         final dynamic state = tester.state(find.byType(TerminalScreen));
-        final future = state.createHerdrTabForTesting('w1');
+        final future = state.createHerdrTabForTesting(
+          'w1',
+          label: 'logs',
+          focus: true,
+        );
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         await future;
@@ -424,10 +478,10 @@ void main() {
 
         expect(
           client.execCommands.any(
-            (c) => c == 'herdr tab create --workspace w1',
+            (c) => c == "herdr tab create --workspace w1 --label 'logs' --focus",
           ),
           isTrue,
-          reason: 'tab 作成は PaneWriter.createTab（herdr tab create --workspace）で実行されること',
+          reason: 'tab 作成は PaneWriter.createTab（herdr tab create --label --focus）で実行されること',
         );
         expect(
           client.execCommands.where((c) => c.contains('herdr api snapshot'))
@@ -435,6 +489,177 @@ void main() {
           greaterThanOrEqualTo(2),
           reason: 'create tab 応答は layout なしのため force 再取得で反映すること（T18）',
         );
+        // アプリ契約（作成後自動切替）: 旧 pane（w1:p1）が snapshot に残存しても、
+        // followBackendFocus で新タブの focused pane（w1:p2）へ表示が切り替わる。
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('create tab sync -> w1:p2')),
+          isTrue,
+          reason: 'create 後は _syncAfterHerdrMutation（create tab sync）が走ること',
+        );
+        expect(
+          events.any((e) => e.contains('switch target -> w1:p2')),
+          isTrue,
+          reason: '--focus 付き create は snapshot の focused pane へ表示を追従すること',
+        );
+        expect(find.text('Pane 2'), findsOneWidget);
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      '空欄ラベル（null / 空文字）は --label なし + --focus で作成される（Q-05・タスク②）',
+      (tester) async {
+        final client = await _pumpHerdrTerminal(
+          tester,
+          execOutputQueues: {
+            'herdr api snapshot': [
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+            ],
+          },
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+
+        // label: null → --label なし + --focus。
+        var future = state.createHerdrTabForTesting('w1', focus: true);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+        expect(
+          client.execCommands.any(
+            (c) => c == 'herdr tab create --workspace w1 --focus',
+          ),
+          isTrue,
+          reason: 'label null は --label なし（デフォルト名）で --focus 付き作成になる',
+        );
+
+        // label: 空文字 → 同様に --label なし + --focus。
+        future = state.createHerdrTabForTesting('w1', label: '', focus: true);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+        expect(
+          client.execCommands.any(
+            (c) => c == 'herdr tab create --workspace w1 --focus',
+          ),
+          isTrue,
+          reason: '空文字ラベルも --label なし（デフォルト名）で --focus 付き作成になる',
+        );
+        // --label を含む create が発行されていないこと（透過・正規化の回帰防止）。
+        expect(
+          client.execCommands
+              .where((c) => c.startsWith('herdr tab create'))
+              .any((c) => c.contains('--label')),
+          isFalse,
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'ラベル付き create は focus の有無で --focus 付与と表示追従が分岐する'
+      '（Q-05・タスク②）',
+      (tester) async {
+        final client = await _pumpHerdrTerminal(
+          tester,
+          execOutputQueues: {
+            'herdr api snapshot': [
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotFixture,
+            ],
+          },
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+
+        // focus: true → --focus 付与。
+        var future = state.createHerdrTabForTesting(
+          'w1',
+          label: 'logs',
+          focus: true,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+        expect(
+          client.execCommands.any(
+            (c) => c == "herdr tab create --workspace w1 --label 'logs' --focus",
+          ),
+          isTrue,
+          reason: 'focus: true は --focus を付与する',
+        );
+
+        // focus: null → --focus なし（フォーカス不変・herdr 既定）+ 表示追従しない。
+        future = state.createHerdrTabForTesting('w1', label: 'logs');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+        expect(
+          client.execCommands.any(
+            (c) => c == "herdr tab create --workspace w1 --label 'logs'",
+          ),
+          isTrue,
+          reason: 'focus: null は --focus を付与しない',
+        );
+        // 同一 fixture（フォーカス pane = 現在 pane）ではいずれも切替なし
+        // （sticky 維持・Codex 観点 ②）。
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('switch target')),
+          isFalse,
+          reason: 'focus なし create は現在の tab を維持する（切替コミットなし）',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'followBackendFocus でも focused 情報が欠落していれば現在表示を維持する'
+      '（タスク②・Codex 観点 ④）',
+      (tester) async {
+        await _pumpHerdrTerminal(
+          tester,
+          // 接続時: w1:p1（フォーカス）/ force 再取得: 全 tab・pane が非フォーカス
+          // （focused 情報欠落）→ followBackendFocus は null を返し sticky に
+          // フォールバックして現在表示（w1:p1）を維持する。
+          execOutputQueues: {
+            'herdr api snapshot': [
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotNoFocusInfoFixture,
+            ],
+          },
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        final future = state.syncAfterHerdrMutationForTesting(
+          eventLabel: 'test mutation sync',
+          policy: HerdrSyncTargetPolicy.followBackendFocus,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('switch target')),
+          isFalse,
+          reason: 'focused 情報欠落時は sticky へフォールバックして現在表示を維持すること',
+        );
+        expect(find.text('Pane 1'), findsOneWidget);
 
         await tester.pump(const Duration(milliseconds: 200));
       },

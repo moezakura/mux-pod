@@ -78,6 +78,24 @@ enum ScrollModeSource {
   tmux,
 }
 
+// inventory: TERM-ENUM-002
+/// mutation 後同期（[_syncAfterHerdrMutation]）のターゲット解決ポリシー。
+///
+/// アプリ契約: Herdr の mutation は原則として現在表示中の pane を維持する
+/// （[preserveCurrent]・sticky）。ただし、バックエンドのフォーカス移動を伴う
+/// 操作（`--focus` 付き tab create 等）が成功した場合は、その操作に限り
+/// バックエンドの focused pane へ表示を移動する（[followBackendFocus]）。
+/// tmux 側の同契約: [_createWindow]（active=1 検出 → 自動切替）。
+enum HerdrSyncTargetPolicy {
+  /// 現在表示中の pane を最優先で維持する（既定。split/rename/zoom/close 等）。
+  preserveCurrent,
+
+  /// 現在 workspace のフォーカス tab → フォーカス pane を優先して解決する。
+  /// focused 情報が欠落している場合は null を返し、呼び出し側が
+  /// [preserveCurrent]（sticky）へフォールバックする（`--focus` 付き create 用）。
+  followBackendFocus,
+}
+
 // inventory: TERM-SCREEN-002
 /// ポーリングで頻繁に更新されるターミナル表示データ
 ///
@@ -1831,11 +1849,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 1. [HerdrSnapshotCache.get(force: true)] でスナップショットを強制再取得
   ///    （エポック++。adapter 差し替えは既存 `identical` 検出に委譲・A3改。
   ///    split/create 等の layout なし応答（T0 実測）も force 再取得で反映）
-  /// 2. [_resolveHerdrTargetFromSessions]（[HerdrTargetResolver] と等価な決定順）
-  ///    でターゲットを再解決（現在表示中の pane を [preferredPaneId] で最優先）
+  /// 2. [policy] に従ってターゲットを再解決（既定 [HerdrSyncTargetPolicy.preserveCurrent]
+  ///    は現在表示中の pane を [preferredPaneId] で最優先。
+  ///    [HerdrSyncTargetPolicy.followBackendFocus] は現在 workspace のフォーカス
+  ///    pane を優先し、解決できない場合は preserveCurrent へフォールバック）
   /// 3. ターゲット変化時のみ [_switchHerdrTarget] で表示を単一コミット
   ///    （snapshot 実値の workspaceId / tabId / tabLabel を伝播）
   /// 4. [_boostPolling] で即時反映
+  ///
+  /// [policy] は操作のアプリ契約から決まる。**アプリ契約: 作成操作は作成した
+  /// 新規タブへ表示を自動移動する（作成後自動切替・tmux [_createWindow] の
+  /// active=1 検出と同一仕様）。** Herdr では `--focus` 付き create が成功した
+  /// 場合のみ [HerdrSyncTargetPolicy.followBackendFocus] で snapshot の focused
+  /// pane へ追従し、それ以外の mutation は [HerdrSyncTargetPolicy.preserveCurrent]
+  /// （現在表示維持）とする。focused pane が解決できない場合は現在表示へ
+  /// フォールバックする（focused 情報欠落時に誤って別タブへ跳ねない）。
   ///
   /// 破壊的操作（close / workspace close）でターゲットが消滅した場合は再解決で
   /// 別 pane に移る（連鎖 close は確認済みの上で遷移）。再解決不能（全 workspace
@@ -1848,7 +1876,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 戻り値: 表示を継続できる（同一 pane 表示継続 or 切替成功）場合は true。
   /// server-down / 終端（再解決不能）でポーリング停止 + 通知へ倒した場合は false。
-  Future<bool> _syncAfterHerdrMutation({String eventLabel = 'mutation sync'}) async {
+  Future<bool> _syncAfterHerdrMutation({
+    String eventLabel = 'mutation sync',
+    HerdrSyncTargetPolicy policy = HerdrSyncTargetPolicy.preserveCurrent,
+  }) async {
     // 1. force 再取得（エポック++。server-down は既存ルーティングへ）。
     final sessions = await _fetchHerdrSessions(
       force: true,
@@ -1857,9 +1888,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
     if (sessions == null || !mounted || _isDisposed) return false;
 
-    // 2. ターゲット再解決（現在表示中の pane を最優先・HerdrTargetResolver 等価）。
+    // 2. ターゲット再解決（ポリシーにより決定順が変わる）。
     final currentPaneId = _targetSource?.currentPaneId;
-    final resolved = _resolveHerdrTargetFromSessions(
+    var resolved = switch (policy) {
+      HerdrSyncTargetPolicy.preserveCurrent => _resolveHerdrTargetFromSessions(
+        sessions,
+        preferredPaneId: currentPaneId,
+      ),
+      HerdrSyncTargetPolicy.followBackendFocus =>
+        _resolveFocusedPaneFromSessions(sessions),
+    };
+    // followBackendFocus でも focused pane が解決できない場合（workspace 不在・
+    // focused 情報欠落）は preserveCurrent（sticky）へフォールバックして
+    // 現在表示を維持する。
+    resolved ??= _resolveHerdrTargetFromSessions(
       sessions,
       preferredPaneId: currentPaneId,
     );
@@ -3002,8 +3044,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   @visibleForTesting
   Future<bool> syncAfterHerdrMutationForTesting({
     String eventLabel = 'test mutation sync',
+    HerdrSyncTargetPolicy policy = HerdrSyncTargetPolicy.preserveCurrent,
   }) =>
-      _syncAfterHerdrMutation(eventLabel: eventLabel);
+      _syncAfterHerdrMutation(eventLabel: eventLabel, policy: policy);
 
   /// テストフック: [_splitPane]（herdr 分岐）を widget テストから呼び出すための
   /// `@visibleForTesting` メソッド。本番コードからは呼ばない（セレクタの
@@ -3033,8 +3076,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
   /// （tab セレクタの New Tab 導線が [_createHerdrTab] を呼ぶ）。
   @visibleForTesting
-  Future<void> createHerdrTabForTesting(String workspaceId) =>
-      _createHerdrTab(workspaceId);
+  Future<void> createHerdrTabForTesting(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) =>
+      _createHerdrTab(workspaceId, label: label, focus: focus);
+
+  /// テストフック: [_handleHerdrResizeTabPane]（herdr 分岐）を widget テストから
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
+  /// （tab セレクタの Resize Tab 導線が [_handleHerdrResizeTabPane] を呼ぶ）。
+  @visibleForTesting
+  Future<void> handleHerdrResizeTabPaneForTesting(MultiplexerWindow tab) =>
+      _handleHerdrResizeTabPane(tab);
 
   /// テストフック: [_renameHerdrTab]（herdr 分岐）を widget テストから呼び出す
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
@@ -3603,8 +3657,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             IconButton(
               icon: Icon(Icons.add, color: primary),
               tooltip: 'New Tab',
-              onPressed: () =>
-                  _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
+              onPressed: () => _closeSelectorThen(
+                () => _showHerdrCreateTabDialog(workspace),
+              ),
             ),
         ];
         return _SelectorContent(
@@ -3847,6 +3902,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       return _herdrResolvedTargetOf(sessions, workspacePanes.first);
     }
     return null;
+  }
+
+  /// [HerdrSyncTargetPolicy.followBackendFocus] 用のターゲット解決。
+  ///
+  /// 現在表示中の workspace（display 基準・[_herdrFindWorkspace]）の
+  /// 「フォーカス tab → フォーカス pane」を解決する。focused 情報が欠落
+  /// （フォーカス tab / pane が無い）の場合は null を返し、呼び出し側が
+  /// [_syncAfterHerdrMutation] 内で [HerdrSyncTargetPolicy.preserveCurrent]
+  /// （sticky）へフォールバックすることで「focused 情報欠落 => 現在の tab を
+  /// 維持」を保証する。
+  ///
+  /// [_herdrResolveWorkspaceTarget] は「先頭 tab → 先頭 pane」へフォールバック
+  /// するため、追従はフォーカスが明示された場合に限定する（focused 情報欠落時
+  /// に誤って別タブへ跳ねない）。
+  _HerdrResolvedTarget? _resolveFocusedPaneFromSessions(
+    List<MultiplexerSession> sessions,
+  ) {
+    final workspace = _herdrFindWorkspace(sessions, _herdrDisplayNotifier.value);
+    if (workspace == null) return null;
+    final focusedTab = workspace.windows.where((w) => w.active).firstOrNull;
+    final focusedPane = focusedTab?.panes.where((p) => p.active).firstOrNull;
+    if (focusedPane == null) return null;
+    // フォーカス存在確認の後に既存解決を再利用（同一のフォーカス pane へ解決される）。
+    return _herdrResolveWorkspaceTarget(sessions, workspace);
   }
 
   /// tab 選択（Select Window 相当）: その tab のフォーカス pane へ切替える。
@@ -4235,6 +4314,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (!mounted) return;
 
       // active=1のウィンドウを検出して自動切替
+      // （アプリ契約: 作成後自動切替。herdr 側は _createHerdrTab →
+      //  HerdrSyncTargetPolicy.followBackendFocus と同一仕様）
       final updatedSession = ref.read(tmuxProvider).activeSession;
       final activeWindow = updatedSession?.windows
           .where((w) => w.active)
@@ -5621,6 +5702,33 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     });
   }
 
+  /// herdr の New Tab ラベル入力ダイアログ（タスク②・🤝#3・🤝#4）。
+  ///
+  /// ラベルは任意入力（[_HerdrLabelInputDialog.allowEmpty: true]）。空欄
+  /// （null / 空文字 / 空白のみ）はデフォルト名（`--label` なし）と同一視し、
+  /// 従来と同一の即時作成を保証する（trim 正規化・critic #4）。確定時は
+  /// **`focus: true` を渡し**、作成後は Tmux と同様に新タブへ自動フォーカス
+  /// 移動する（🤝#4・2026-08-11 追加指示）。キャンセルはコマンド未発行
+  /// （mounted ガード・rename フローと同型）。
+  void _showHerdrCreateTabDialog(MultiplexerSession workspace) {
+    final workspaceId = workspace.id;
+    if (workspaceId == null) return;
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _HerdrLabelInputDialog(
+        title: 'New Tab',
+        labelText: 'Tab Label',
+        hintText: 'Leave empty for default',
+        confirmLabel: 'Create',
+        allowEmpty: true,
+      ),
+    ).then((label) {
+      if (label == null || !mounted || _isDisposed) return;
+      final normalized = label.trim().isEmpty ? null : label;
+      _createHerdrTab(workspaceId, label: normalized, focus: true);
+    });
+  }
+
   /// herdr の tab ラベル変更（`PaneWriter.renameTab` = `herdr tab rename`）。
   ///
   /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
@@ -5643,19 +5751,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// herdr の tab 作成（Q-05: tab CRUD 解禁）。
   ///
   /// [PaneWriter.createTab]（`HerdrPaneWriter` → `herdr tab create --workspace`
-  /// `{workspace_id}`）を実行する。tab create 応答は layout を含まないため
-  /// （T18・`result.tab` のみ）、成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）
-  /// の force 再取得で snapshot から反映する。失敗時は T19/S4 の分類別通知
-  /// （[_handleHerdrMutationError]）へ倒れる。
-  Future<void> _createHerdrTab(String workspaceId) async {
+  /// `{workspace_id}`・[label]/[focus] 透過）を実行する。tab create 応答は layout
+  /// を含まないため（T18・`result.tab` のみ）、成功後は H5/T18 単一経路
+  /// （[_syncAfterHerdrMutation]）の force 再取得で snapshot から反映する。
+  /// [focus] が true（`--focus` 付与 = バックエンドが新タブをアクティブ化）の
+  /// ときは [HerdrSyncTargetPolicy.followBackendFocus] で snapshot の focused pane
+  /// へ表示を追従する（アプリ契約: 作成後自動切替・tmux [_createWindow] と同一
+  /// 仕様）。失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _createHerdrTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
     // tab CRUD 不可（read-only 明示）では送信しない
     if (!_can(const PaneCapabilities(tabCrud: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
     try {
-      await writer.createTab(workspaceId);
+      await writer.createTab(workspaceId, label: label, focus: focus);
       if (!mounted || _isDisposed) return;
-      await _syncAfterHerdrMutation(eventLabel: 'create tab sync');
+      await _syncAfterHerdrMutation(
+        eventLabel: 'create tab sync',
+        policy: focus == true
+            ? HerdrSyncTargetPolicy.followBackendFocus
+            : HerdrSyncTargetPolicy.preserveCurrent,
+      );
     } catch (e) {
       await _handleHerdrMutationError(e, operationLabel: 'create tab');
     }
@@ -7195,12 +7315,17 @@ class _HerdrLabelInputDialog extends StatefulWidget {
   /// 確定ボタンの文言（'Rename'）。
   final String confirmLabel;
 
+  /// 空入力（trim 後）を許容するか（既定 false = rename の空不可挙動を維持。
+  /// create のみ true で「空欄 = デフォルト名」を許容し、100 文字制限のみ課す）。
+  final bool allowEmpty;
+
   const _HerdrLabelInputDialog({
     required this.title,
     required this.labelText,
     this.hintText,
     this.initialValue = '',
     required this.confirmLabel,
+    this.allowEmpty = false,
   });
 
   @override
@@ -7224,10 +7349,11 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
   }
 
   String? _validateLabel(String? value) {
-    if (value == null || value.trim().isEmpty) {
+    final text = value ?? '';
+    if (!widget.allowEmpty && text.trim().isEmpty) {
       return 'Label cannot be empty';
     }
-    if (value.length > 100) {
+    if (text.length > 100) {
       return 'Label must be 100 characters or less';
     }
     return null;
