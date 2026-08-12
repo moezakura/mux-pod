@@ -3091,15 +3091,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _splitPane(paneId, direction);
 
   /// テストフック: [_renameHerdrPane]（herdr 分岐）を widget テストから
-  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （セレクタの Rename 導線が [_renameHerdrPane] を呼ぶ）。
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない。
   @visibleForTesting
   Future<void> renameHerdrPaneForTesting(String paneId, String label) =>
       _renameHerdrPane(paneId, label);
 
   /// テストフック: [_handleHerdrZoomPane]（herdr 分岐）を widget テストから
-  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （セレクタの Zoom 導線が [_handleHerdrZoomPane] を呼ぶ）。
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない。
   @visibleForTesting
   Future<void> zoomHerdrPaneForTesting(String paneId) =>
       _handleHerdrZoomPane(paneId);
@@ -3732,15 +3730,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在表示中の workspace / tab（[_HerdrDisplayData] から引き当て）の pane
   /// 一覧を 1 階層で表示する。pane 表示名は cwd 優先（A10 / [_herdrPaneLabel]）。
   /// 選択すると [_switchHerdrTarget] で切替え、シートを即閉じする。
-  /// mutation 解禁後（T13/T14）はリサイズを有効化する（Q-04: 方向 + ステップ
-  /// UI の [HerdrResizePaneDialog]。絶対値 UI は herdr 非対応のため tmux と
-  /// 経路を分ける）。Q-02（全操作解禁）ではヘッダーに Split / Rename / Zoom を
-  /// 追加する（tmux の [_showPaneSelector] を参照。ヘッダー操作の対象は
-  /// 現在表示中の pane = Resize と同じ導線）:
-  /// - Split: 方向選択ダイアログ（右/下）→ [_splitPane]（`herdr pane split`）
-  /// - Rename: 入力ダイアログ → [_renameHerdrPane]（`herdr pane rename`）
-  /// - Zoom: トグル（[_handleHerdrZoomPane] = `herdr pane zoom --toggle`。
-  ///   zoom 状態は snapshot の layout `zoomed` フラグで表示・可能なら）
+  /// ヘッダーは Resize のみ（Q-04: 方向 + ステップ UI の [HerdrResizePaneDialog]。
+  /// 絶対値 UI は herdr 非対応のため tmux と経路を分ける）。上部に tmux と共通
+  /// の [_PaneLayoutVisualizer]（分割プレビュー）を表示し、プレビュー内タップで
+  /// 分割（[_splitPane] = `herdr pane split`）または対象 pane の選択
+  /// （[_switchHerdrTarget]）を行う。分割プレビューの active 基準は
+  /// [_targetSource.currentPaneId]（現在表示中の pane = Resize の対象と同じ
+  /// 導線）。`topExpected: true` によりローディング中から maxHeight 0.7 固定。
   void _showHerdrPaneSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
@@ -3749,6 +3745,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _showMultiplexerSheet(
       title: 'Select Pane',
       icon: Icons.terminal,
+      // 分割プレビューがローディング中から確定するため maxHeight 0.7 固定。
+      topExpected: true,
       asyncContent: () async {
         // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
         final primary = Theme.of(context).colorScheme.primary;
@@ -3770,44 +3768,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         final canResize = _can(const PaneCapabilities(resize: true));
         final canClose = _can(const PaneCapabilities(close: true));
         final canSplit = _can(const PaneCapabilities(split: true));
-        final canRename = _can(const PaneCapabilities(rename: true));
-        final canZoom = _can(const PaneCapabilities(zoom: true));
-        // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
-        final currentPaneId = _targetSource?.currentPaneId;
-        final currentPane = currentPaneId == null
-            ? null
-            : _findHerdrPane(sessions, currentPaneId);
-        // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
-        final isZoomed = _isHerdrTabZoomed(display?.tabId);
         // ヘッダー mutation（Q-02）はデータロード後に確定するため loader で返す。
         final headerActions = [
-          if (canSplit && currentPane != null)
-            IconButton(
-              icon: Icon(Icons.call_split, color: primary),
-              tooltip: 'Split Pane',
-              onPressed: () => _closeSelectorThen(
-                () => _showHerdrSplitDirectionChooser(currentPane),
-              ),
-            ),
-          if (canRename && currentPane != null)
-            IconButton(
-              icon: Icon(Icons.drive_file_rename_outline, color: primary),
-              tooltip: 'Rename Pane',
-              onPressed: () => _closeSelectorThen(
-                () => _showHerdrRenamePaneDialog(currentPane),
-              ),
-            ),
-          if (canZoom && currentPane != null)
-            IconButton(
-              icon: Icon(
-                isZoomed ? Icons.zoom_out : Icons.zoom_in,
-                color: primary,
-              ),
-              tooltip: isZoomed ? 'Unzoom Pane' : 'Zoom Pane',
-              onPressed: () => _closeSelectorThen(
-                () => _handleHerdrZoomPane(currentPane.id),
-              ),
-            ),
           if (canResize)
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
@@ -3823,6 +3785,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         ];
         return _SelectorContent(
           headerActions: headerActions,
+          top: _buildPaneLayoutVisualizer(
+            window,
+            _targetSource?.currentPaneId,
+            (paneId) {
+              Navigator.pop(context);
+              final pane = _findHerdrPane(sessions, paneId);
+              if (pane != null) _herdrSelectPane(sessions, workspace, pane);
+            },
+            canSplit
+                ? (paneId, direction) {
+                    Navigator.pop(context);
+                    _splitPane(paneId, direction);
+                  }
+                : null,
+          ),
           children: [
             for (final pane in window.panes)
               MultiplexerPaneTile(
@@ -4153,6 +4130,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     required String title,
     required IconData icon,
     Widget? top,
+    bool topExpected = false,
     List<Widget> children = const [],
     List<Widget> headerActions = const [],
     Future<_SelectorContent> Function()? asyncContent,
@@ -4172,6 +4150,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             title: title,
             icon: icon,
             top: top,
+            topExpected: topExpected,
             headerActions: headerActions,
             asyncContent: asyncContent,
             retry: retry,
@@ -5631,93 +5610,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  // inventory: TERM-CRUD-012
-  /// herdr の分割方向選択ダイアログ（Q-02: split 解禁）。
-  ///
-  /// ヘッダーの Split ボタンから現在表示中の pane を対象に開く。右
-  /// （[SplitDirection.horizontal]）/ 下（[SplitDirection.vertical]）の 2 択で
-  /// [_splitPane]（`PaneWriter.splitPane` = `herdr pane split --direction
-  /// right|down`）へ委譲する。成功後は [_splitPane] 内の単一経路
-  /// （[_syncAfterHerdrMutation]）で同期、失敗時は分類別通知
-  /// （[_handleHerdrMutationError]）へ倒れる。
-  void _showHerdrSplitDirectionChooser(MultiplexerPane pane) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondary = isDark
-        ? DesignColors.textSecondary
-        : DesignColors.textSecondaryLight;
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: isDark
-            ? DesignColors.surfaceDark
-            : DesignColors.surfaceLight,
-        title: Text(
-          'Split Pane',
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.textPrimary
-                : DesignColors.textPrimaryLight,
-          ),
-        ),
-        content: Text(
-          'Split "${_herdrPaneLabel(pane)}" to the right or down?',
-          style: TextStyle(color: textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              'Cancel',
-              style: TextStyle(
-                color: isDark
-                    ? DesignColors.textSecondary
-                    : DesignColors.textSecondaryLight,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _splitPane(pane.id, SplitDirection.horizontal);
-            },
-            child: const Text('Split Right'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _splitPane(pane.id, SplitDirection.vertical);
-            },
-            child: const Text('Split Down'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // inventory: TERM-CRUD-013
-  /// herdr の pane ラベル変更ダイアログ（Q-02: rename 解禁）。
-  ///
-  /// 入力後は [_renameHerdrPane]（`PaneWriter.renamePane` =
-  /// `herdr pane rename`）を実行する。現在のラベルは domain に保持されない
-  /// ため（A10: 表示名は cwd 優先）、初期値は空で新規入力する。
-  void _showHerdrRenamePaneDialog(MultiplexerPane pane) {
-    showDialog<String>(
-      context: context,
-      builder: (dialogContext) => _HerdrLabelInputDialog(
-        title: 'Rename Pane',
-        labelText: 'Pane Label',
-        hintText: 'Enter a label for this pane',
-        confirmLabel: 'Rename',
-      ),
-    ).then((label) {
-      if (label == null || !mounted) return;
-      final trimmed = label.trim();
-      if (trimmed.isEmpty) return;
-      // inventory: TERM-CRUD-013
-      _renameHerdrPane(pane.id, trimmed);
-    });
-  }
-
   // inventory: TERM-CRUD-014
   /// herdr の pane ラベル変更（`PaneWriter.renamePane` = `herdr pane rename`）。
   ///
@@ -5755,22 +5647,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       await _handleHerdrMutationError(e, operationLabel: 'zoom');
     }
-  }
-
-  /// snapshot の layout `zoomed` フラグから現在 tab の zoom 状態を返す
-  /// （Q-02: zoom 状態表示・可能なら）。
-  ///
-  /// zoom 状態は tab 単位（layout 単位）に保持される（[HerdrLayout.zoomed]。
-  /// T0 実測 6-b）。[HerdrSnapshotCache.cachedSnapshot] は診断用参照のため、
-  /// セレクタのボタン表示向け best-effort とし、snapshot 未取得（null）なら
-  /// false（非 zoom 表示）を返す。
-  bool _isHerdrTabZoomed(String? tabId) {
-    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
-    if (snapshot == null || tabId == null) return false;
-    for (final layout in snapshot.layouts) {
-      if (layout.tabId == tabId) return layout.zoomed;
-    }
-    return false;
   }
 
   // inventory: TERM-CRUD-016
@@ -8120,11 +7996,15 @@ class _MultiplexerSelectorSheet extends StatefulWidget {
   /// 一覧の上部に表示するウィジェット（無ければ null）。
   final Widget? top;
 
+  /// top 表示がローディング中から確定するセレクタ（herdr pane セレクタ）で
+  /// maxHeight 0.7 を固定する（ローディング中の高さジャンプ防止）。
+  final bool topExpected;
+
   /// 非同期で一覧を取得する（バグ3 根本対応: 即時 open + loading/data/error）。
   ///
-  /// 戻り値は (children, headerActions) のペア。データロード後にヘッダーの
-  /// mutation ボタン（New Tab / Split / Rename / Zoom / Resize）も確定させる
-  /// ため、headerActions も同時に返す（tooltip を維持・バグ3 根本対応）。
+  /// 戻り値は (children, headerActions, top) のセット。データロード後にヘッダーの
+  /// mutation ボタン（Resize 等）と top（分割プレビュー）も確定させるため、
+  /// headerActions / top も同時に返す（tooltip を維持・バグ3 根本対応）。
   final Future<_SelectorContent> Function()? asyncContent;
 
   /// 取得失敗時の Retry コールバック（無ければ null）。
@@ -8135,6 +8015,7 @@ class _MultiplexerSelectorSheet extends StatefulWidget {
     required this.icon,
     this.headerActions = const [],
     this.top,
+    this.topExpected = false,
     this.asyncContent,
     this.retry,
     required this.children,
@@ -8145,13 +8026,17 @@ class _MultiplexerSelectorSheet extends StatefulWidget {
       _MultiplexerSelectorSheetState();
 }
 
-/// 非同期ロードされたセレクタの内容（一覧 + ヘッダー action）。
+/// 非同期ロードされたセレクタの内容（一覧 + ヘッダー action + top）。
 class _SelectorContent {
   final List<Widget> children;
   final List<Widget> headerActions;
+
+  /// 一覧の上部に表示するウィジェット（無ければ null）。
+  final Widget? top;
   const _SelectorContent({
     this.children = const [],
     this.headerActions = const [],
+    this.top,
   });
 }
 
@@ -8196,9 +8081,12 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hasTop = widget.top != null;
+    final hasTop = widget.top != null ||
+        widget.topExpected ||
+        _content?.top != null;
     final maxHeight =
         MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
+    final topWidget = _content?.top ?? widget.top;
 
     final loader = widget.asyncContent;
     if (loader != null) {
@@ -8221,8 +8109,8 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
           children: [
             _buildHeader(context, colorScheme, headerActions),
             Divider(height: 1, color: colorScheme.outline),
-            if (widget.top != null) ...[
-              widget.top!,
+            if (topWidget != null) ...[
+              topWidget,
               Divider(height: 1, color: colorScheme.outline),
             ],
             Flexible(child: body),
@@ -8240,8 +8128,8 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
         children: [
           _buildHeader(context, colorScheme, widget.headerActions),
           Divider(height: 1, color: colorScheme.outline),
-          if (widget.top != null) ...[
-            widget.top!,
+          if (topWidget != null) ...[
+            topWidget,
             Divider(height: 1, color: colorScheme.outline),
           ],
           Flexible(
