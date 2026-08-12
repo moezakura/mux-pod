@@ -116,12 +116,16 @@ HerdrResizeBridge _bridge({
   required _FakeCache cache,
   String executablePath = '/lab/herdr',
   String? tabId = 'w1:t1',
+  Duration? convergeTimeout,
+  Duration? convergePollInterval,
 }) {
   return HerdrResizeBridge(
     client: client,
     cache: cache,
     executablePath: executablePath,
     tabIdProvider: () => tabId,
+    convergeTimeout: convergeTimeout,
+    convergePollInterval: convergePollInterval,
   );
 }
 
@@ -161,7 +165,14 @@ void main() {
       final client = _FakeResizeClient();
       final cache = _FakeCache();
       cache.snapshotProvider = () => snapshot(width: 74, height: 29);
-      final bridge = _bridge(client: client, cache: cache);
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        // resize が収束しない（74x29 のまま）ためタイムアウトまで実待ちしない
+        // よう短縮（プロダクション値は別テストで担保）。
+        convergeTimeout: const Duration(milliseconds: 150),
+        convergePollInterval: const Duration(milliseconds: 20),
+      );
 
       await bridge.currentPtySize(); // 初回: area 逆算 100x30
       await bridge.resize(120, 40); // 成功後: 120x40 を保持
@@ -172,31 +183,55 @@ void main() {
       expect(next.rows, 40);
     });
 
-    test('収束しない（area が期待値と不一致）場合は false（タイムアウト）', () async {
+    test('収束しない（area が期待値と不一致）場合はポーリング継続後タイムアウトで false', () async {
       final client = _FakeResizeClient();
       final cache = _FakeCache();
       cache.snapshotProvider = () => snapshot(width: 74, height: 29);
-      final bridge = _bridge(client: client, cache: cache);
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        // タイムアウトまで実待ちしないよう短縮（プロダクション値は別テストで担保）。
+        convergeTimeout: const Duration(milliseconds: 150),
+        convergePollInterval: const Duration(milliseconds: 20),
+      );
 
       // resize 後も area が 74x29 のまま（期待 94x39）→ 収束せず false。
-      // currentPtySize と収束確認で同じ snapshot を返す。
       final ok = await bridge.resize(120, 40);
       expect(ok, isFalse);
+      // 初回ポーリングの即時 fail ではないこと（複数回ポーリングしてから false）。
+      final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
+      expect(
+        convergenceGets.length,
+        greaterThanOrEqualTo(2),
+        reason: '即時 fail せずポーリングを継続すること（5 秒間・ユーザー決定）',
+      );
     });
 
-    test('乖離検出（非デフォルト表示設定の兆候）は fail closed（早期 false）', () async {
+    test('乖離 area（非デフォルト表示設定の兆候）でも即時 fail せずポーリング後 false', () async {
       final client = _FakeResizeClient();
       final cache = _FakeCache();
-      // resize 後の area が期待値（94x39）から 26 以上乖離（width: 10）→ fail closed。
+      // resize 後の area が期待値（94x39）から大きく乖離（width: 10）しても、
+      // 即時 fail せずポーリングを継続し、タイムアウト後に false。
       cache.onGet = () {
         final last = cache.getLog.last;
         if (!last.joinInflight) return snapshot(width: 10, height: 39);
         return snapshot(width: 74, height: 29);
       };
-      final bridge = _bridge(client: client, cache: cache);
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        convergeTimeout: const Duration(milliseconds: 150),
+        convergePollInterval: const Duration(milliseconds: 20),
+      );
 
       final ok = await bridge.resize(120, 40);
       expect(ok, isFalse);
+      final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
+      expect(
+        convergenceGets.length,
+        greaterThanOrEqualTo(2),
+        reason: '乖離 area でも初回ポーリングで即時 fail しない（daemon 適用遅延）',
+      );
     });
 
     test('0 列 0 行・chrome 差引後 0 以下は拒否', () async {
@@ -217,16 +252,15 @@ void main() {
       cache.snapshotProvider = () => snapshot(width: 74, height: 29);
       final bridge = _bridge(client: client, cache: cache);
 
-      client.processes.firstOrNull?.throwOnResize = true;
-      // プロセスが 1 つ作られるまでは throw しないため、先に 1 回成功させてから
-      // 2 回目で throw を有効にする。
-      client.processes.clear();
-      // ensureStarted 後に throw を仕込む（resize 時）。
-      final first = client.processes.firstOrNull;
-      if (first != null) first.throwOnResize = true;
+      // 起動成功後に resize が throw するよう仕込む（真の throw 経路）。
+      await bridge.ensureStarted();
+      client.processes.last.throwOnResize = true;
 
       final ok = await bridge.resize(120, 40);
       expect(ok, isFalse);
+      // throw 経路は収束ループに入らず即 false（収束確認 get は実行されない）。
+      final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
+      expect(convergenceGets, isEmpty);
     });
 
     test('start 失敗（executablePath 不正）は false（state failed）', () async {
@@ -343,7 +377,13 @@ void main() {
       final client = _FakeResizeClient();
       final cache = _FakeCache();
       cache.snapshotProvider = () => snapshot(width: 74, height: 29);
-      final bridge = _bridge(client: client, cache: cache);
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        // 収束しない（74x29 のまま）ためタイムアウトまで実待ちしないよう短縮。
+        convergeTimeout: const Duration(milliseconds: 150),
+        convergePollInterval: const Duration(milliseconds: 20),
+      );
 
       await bridge.resize(120, 40);
       final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
@@ -370,6 +410,80 @@ void main() {
           40,
         ),
         isFalse,
+      );
+    });
+
+    test('初回ポーリングで旧サイズを観測しても、ポーリング継続で収束すれば true', () async {
+      // 本バグの回帰テスト: herdr daemon の適用遅延（30〜150ms）を模擬し、
+      // 最初の 2 回の収束確認ポーリングは旧サイズ（74x29 = 乖離相当）、3 回目
+      // 以降は新サイズ（94x39 = 120-26 / 40-1）を返す。即時 fail せず収束すること。
+      final client = _FakeResizeClient();
+      final cache = _FakeCache();
+      var convergencePolls = 0;
+      cache.onGet = () {
+        final last = cache.getLog.last;
+        if (!last.joinInflight) {
+          convergencePolls++;
+          if (convergencePolls < 3) return snapshot(width: 74, height: 29);
+          return snapshot(width: 94, height: 39);
+        }
+        return snapshot(width: 74, height: 29);
+      };
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        convergeTimeout: const Duration(milliseconds: 500),
+        convergePollInterval: const Duration(milliseconds: 20),
+      );
+
+      final ok = await bridge.resize(120, 40);
+      expect(ok, isTrue);
+      final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
+      expect(
+        convergenceGets.length,
+        greaterThanOrEqualTo(3),
+        reason: '旧サイズ観測後もポーリングを継続して収束すること（本バグの回帰防止）',
+      );
+    });
+
+    test('resize 収束確認中に reset が割り込むと、タイムアウト前に false で返る', () async {
+      final client = _FakeResizeClient();
+      final cache = _FakeCache();
+      cache.snapshotProvider = () => snapshot(width: 74, height: 29); // 収束しない
+      final bridge = _bridge(
+        client: client,
+        cache: cache,
+        convergeTimeout: const Duration(seconds: 5),
+        convergePollInterval: const Duration(milliseconds: 50),
+      );
+
+      final stopwatch = Stopwatch()..start();
+      final okFuture = bridge.resize(120, 40);
+      // resize の収束ループ実行中に reset（世代が進む）を割り込ませる。
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await bridge.reset();
+      final ok = await okFuture;
+      stopwatch.stop();
+
+      expect(ok, isFalse);
+      // 閾値は convergePollInterval 基準（正常時 ≈50ms で返るため 500ms で十分余裕）。
+      expect(
+        stopwatch.elapsed,
+        lessThan(const Duration(milliseconds: 500)),
+        reason: 'gen 不一致はタイムアウト（5s）を待たず即時 false（安全弁）',
+      );
+    });
+
+    test('収束確認の既定値は 100ms 間隔・5 秒タイムアウト（プロダクション方針）', () {
+      expect(
+        HerdrResizeBridge.defaultConvergePollInterval,
+        const Duration(milliseconds: 100),
+        reason: 'ユーザー決定: 100ms 間隔で変更適用をチェックする',
+      );
+      expect(
+        HerdrResizeBridge.defaultConvergeTimeout,
+        const Duration(seconds: 5),
+        reason: 'ユーザー決定: 最大 5 秒でタイムアウトする',
       );
     });
   });

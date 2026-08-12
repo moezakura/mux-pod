@@ -4796,13 +4796,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // hidden TUI を lazy start し、PTY 要求サイズを変更して収束を確認する。
       final ok = await bridge.resize(result.cols, result.rows);
       if (!ok) {
-        // 収束不達（他クライアントとのフォアグラウンド競合 or 非デフォルト
-        // 表示設定）→ fail closed として通知。
+        // 収束不達（5 秒間ポーリングしても実測変換式の期待値に一致しなかった /
+        // hidden TUI の起動失敗）→ fail closed として通知。非デフォルト表示設定
+        // （サイドバー幅・タブ行）が原因の可能性が高い。
         if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Resize failed. Another client may control the terminal size.',
+                'Resize failed. The terminal size could not be applied. '
+                'Check herdr display settings or try again.',
               ),
             ),
           );

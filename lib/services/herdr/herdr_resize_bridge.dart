@@ -19,8 +19,10 @@ import 'herdr_snapshot_cache.dart';
 ///   `ClientMessage::Resize` → fresh snapshot で収束を確認する。
 /// - **収束判定**: デフォルト表示設定前提の実測変換式
 ///   （`area.width = cols - 26` / `area.height = rows - 1`・herdr 0.7.5/0.8.0 実測
-///   確定・サイドバー 26 列・タブ行 1 行）。期待値から大きく乖離する場合は
-///   **fail closed**（resize 不可 + 通知）。
+///   確定・サイドバー 26 列・タブ行 1 行）。5 秒間 100ms 間隔で fresh snapshot を
+///   ポーリングし、収束しなければ **fail closed**（resize 不可 + 通知）。
+///   初回ポーリングは送信後〜30ms で旧サイズを観測し得るため即時 fail はしない
+///   （daemon 適用遅延 30〜150ms・ユーザー決定）。
 /// - TUI 単体終了: [ManagedPtyProcess.done] 検知 → 限定回数（**初回を除く 3 回**）
 ///   だけ再起動し、SSH 接続自体は維持する。[reset]（intentional close）は
 ///   再起動回数を消費しない。
@@ -36,7 +38,11 @@ class HerdrResizeBridge {
     required this.cache,
     required this.executablePath,
     required this.tabIdProvider,
-  });
+    Duration? convergeTimeout,
+    Duration? convergePollInterval,
+  })  : convergeTimeout = convergeTimeout ?? defaultConvergeTimeout,
+        convergePollInterval =
+            convergePollInterval ?? defaultConvergePollInterval;
 
   /// 実測確定の chrome サイズ（herdr デフォルト表示設定・0.7.5/0.8.0 共通）:
   /// サイドバー 26 列・タブ行 1 行。
@@ -46,9 +52,17 @@ class HerdrResizeBridge {
   /// 初回起動を除く、意図しない終了の再起動上限。
   static const int maxRestarts = 3;
 
-  /// 収束確認のタイムアウト / ポーリング間隔。
-  static const Duration convergeTimeout = Duration(seconds: 3);
-  static const Duration convergePollInterval = Duration(milliseconds: 200);
+  /// 収束確認のタイムアウト / ポーリング間隔（プロダクション既定値）。
+  ///
+  /// herdr TUI の 100ms 周期 resize ポーリングと daemon 適用遅延（30〜150ms・
+  /// 実測）を考慮し、5 秒間 100ms 間隔で収束を確認する（ユーザー決定）。
+  static const Duration defaultConvergeTimeout = Duration(seconds: 5);
+  static const Duration defaultConvergePollInterval =
+      Duration(milliseconds: 100);
+
+  /// 収束確認のタイムアウト / ポーリング間隔（テストで短縮可能）。
+  final Duration convergeTimeout;
+  final Duration convergePollInterval;
 
   final SshClient client;
   final HerdrSnapshotCache cache;
@@ -101,11 +115,10 @@ class HerdrResizeBridge {
   /// 起動失敗（executablePath 不正・接続断等）は false（state は failed）。
   Future<bool> ensureStarted() async {
     if (_state == _BridgeState.ready && _process != null) return true;
-    if (_starting) return false; // single-flight: 起動中は重複しない
+    if (_starting) return false;
     _starting = true;
     try {
       final current = await currentPtySize();
-      // 起動時 Hello = 現在の daemon サイズ（他クライアントのサイズを上書きしない）。
       final process = await client.startManagedPty(
         executablePath,
         cols: current.cols,
@@ -129,8 +142,9 @@ class HerdrResizeBridge {
   /// PTY 要求サイズを [cols] x [rows] に変更し、fresh snapshot で収束を確認する。
   ///
   /// 収束確認はデフォルト表示設定前提の実測変換式（[chromeCols] / [chromeRows]）
-  /// に基づく期待値との width/height 明示比較。期待値から大きく乖離する場合は
-  /// fail closed（false）。0 列 0 行・chrome 差引後 0 以下も拒否する。
+  /// に基づく期待値との width/height 明示比較。[convergeTimeout] の間
+  /// [convergePollInterval] 間隔でポーリングし、収束しなければ false（resize 不可）。
+  /// 0 列 0 行・chrome 差引後 0 以下も拒否する。
   Future<bool> resize(int cols, int rows) async {
     if (cols <= chromeCols || rows <= chromeRows) return false;
     _pendingResize = (cols: cols, rows: rows);
@@ -217,23 +231,41 @@ class HerdrResizeBridge {
 
   /// fresh snapshot（force + joinInflight:false = window-change 送信後に開始された
   /// fetch を保証・Codex B2）で、現在 tab の layout.area が期待値に収束するかを
-  /// 期限付きで確認する。
+  /// [convergePollInterval] 間隔でポーリングし、[convergeTimeout] までに収束しな
+  /// ければ false を返す。
+  ///
+  /// 初回ポーリングは window-change 送信後〜30ms で旧サイズの snapshot を観測し
+  /// 得るため（herdr daemon の適用遅延 30〜150ms・実測）、即時 fail はしない。
+  /// 5 秒間ポーリングし続け、収束すれば true・しなければ false（fail closed）。
   Future<bool> _waitForConvergence(int cols, int rows, int gen) async {
     final deadline = DateTime.now().add(convergeTimeout);
+    var pollCount = 0;
+    HerdrRect? lastArea;
     while (DateTime.now().isBefore(deadline)) {
-      if (gen != _generation) return false; // reset/restart で世代が進んだ
+      if (gen != _generation) {
+        // reset / 世代進行の割り込み: タイムアウトを待たず即座に失敗（安全弁）。
+        return false;
+      }
       try {
         final snapshot = await cache.get(force: true, joinInflight: false);
         final area = _areaForTab(snapshot);
         if (area != null) {
-          final match = _matchesRequestedArea(area, cols, rows);
-          if (match) return true;
-          // 乖離が大きい（非デフォルト表示設定の兆候）→ fail closed。
-          if (_diverged(area, cols, rows)) return false;
+          lastArea = area;
+          if (_matchesRequestedArea(area, cols, rows)) return true;
         }
       } catch (_) {}
+      pollCount++;
       await Future<void>.delayed(convergePollInterval);
     }
+    // タイムアウト原因の判別: generation 不一致はループ内で即時 return 済み。
+    // ここに到達するのは「convergeTimeout の間ポーリングしても期待値に収束
+    // しなかった」場合（非デフォルト表示設定 or snapshot 不達）。
+    debugPrint(
+      '[ResizeDebug] waitForConvergence: TIMEOUT after '
+      '${convergeTimeout.inMilliseconds}ms (polls=$pollCount '
+      'lastArea=${lastArea == null ? 'null' : '${lastArea.width}x${lastArea.height}'}) '
+      '-> false',
+    );
     return false;
   }
 
@@ -247,15 +279,6 @@ class HerdrResizeBridge {
     final expectedWidth = cols - chromeCols;
     final expectedHeight = rows - chromeRows;
     return area.width == expectedWidth && area.height == expectedHeight;
-  }
-
-  /// 期待値からの乖離が chrome サイズ以上 = 非デフォルト表示設定の兆候として
-  /// 収束不能と判定する（fail closed・ユーザー決定）。
-  bool _diverged(HerdrRect area, int cols, int rows) {
-    final expectedWidth = cols - chromeCols;
-    final expectedHeight = rows - chromeRows;
-    return (area.width - expectedWidth).abs() > chromeCols ||
-        (area.height - expectedHeight).abs() > chromeRows;
   }
 
   /// snapshot の現在 tab（[tabIdProvider]）の layout.area を返す。
