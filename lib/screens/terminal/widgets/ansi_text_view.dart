@@ -724,10 +724,22 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           color: widget.foregroundColor,
         );
 
+        // コンテンツがビューポートに満たない場合、先頭パディングで下端に揃える
+        // （履歴が少ないライブ表示でもターミナルとして自然な見た目になる）。
+        // コンテンツ高 ≥ ビューポート高ならパディングなし（従来動作を維持）。
+        final contentHeight = parsedLines.length * _lineHeight;
+        final viewportHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : contentHeight;
+        final bottomAlignPadding = contentHeight < viewportHeight
+            ? viewportHeight - contentHeight
+            : 0.0;
+
         // 仮想スクロール対応のListView.builder
         Widget listWidget = ListView.builder(
           controller: _verticalScrollController,
-          padding: EdgeInsets.zero, // パディングを明示的にゼロにする
+          // コンテンツ不足時のみ下端アライン用の先頭パディングを付与
+          padding: EdgeInsets.only(top: bottomAlignPadding),
           physics: const ClampingScrollPhysics(),
           itemCount: parsedLines.length,
           // 固定の行高さを使用してスクロール計算を高速化
