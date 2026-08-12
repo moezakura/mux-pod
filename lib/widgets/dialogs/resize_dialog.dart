@@ -601,112 +601,155 @@ class _HerdrResizeTerminalDialogState
     ];
   }
 
-  /// サイドバー付きレイアウトプレビュー（herdr の「それっぽい」見た目）。
+  /// サイドバー付きレイアウトプレビュー（tmux の [_buildWindowGridPreview] 準拠）。
   ///
-  /// 「サイドバー + タブ行 + ペイン表示領域」で構成される herdr のレイアウトを
-  /// 想起させる視覚プレビュー。外枠 = 新しい PTY サイズ（cols x rows）の矩形を
-  /// ペイン領域色（明るい色）で描き、**サイドバー**（左端のグレー縦帯・エリア幅の
-  /// 約 15%）と**タブ行**（上端のグレー横帯・エリア高の約 10%）を重ねる。
+  /// - 全体を**水色の枠**（[DesignColors.primary] width 2）で囲む
+  /// - ヘッダーに「**Herdr (PTY)  cols x rows**」を表示（tmux の
+  ///   `'${window.name}  ${currentCols}x$currentRows'` の構造を踏襲）
+  /// - 本体: 外枠 = 新しい PTY サイズ（cols x rows）の矩形・**サイドバー**（左端の
+  ///   グレー縦帯・エリア幅の約 15%）と**タブ行**（上端のグレー横帯・エリア高の
+  ///   約 10%）をグレー表示し、境界に**細い水色線**を引く
+  /// - ペイン表示領域（残り）の中央に「**Panel**」テキストを表示（サイズ表示は
+  ///   ヘッダーに移したため、ペイン領域は Panel のみ）
+  ///
   /// 厳密な幅・高さの再現は herdr の表示設定に依存するため行わない
-  /// （ユーザー決定: 「それっぽい」見た目でよい・実測変換式の厳密値には依存しない）。
-  ///
-  /// cols/rows が小さい場合も描画が破綻しないよう、サイドバー幅・タブ行高は
-  /// 比率とピクセル最小値の大きい方を採用する（最小サイズガード）。
+  /// （ユーザー決定: 「それっぽい」見た目でよい）。cols/rows が小さい場合も
+  /// 描画が破綻しないよう、サイドバー幅・タブ行高は比率とピクセル最小値の
+  /// 大きい方を採用する（最小サイズガード）。
   Widget _buildLayoutPreview() {
     return Container(
-      height: 110,
+      height: 120,
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: DesignColors.canvasDark,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: DesignColors.borderDark),
+        border: Border.all(color: DesignColors.primary, width: 2),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const pad = 4.0;
-          final areaW = constraints.maxWidth - pad * 2;
-          final areaH = constraints.maxHeight - pad * 2;
-          // サイドバー（エリア幅の 15%・最小 24px）とタブ行（エリア高の 10%・最小 12px）。
-          final sidebarW = (areaW * 0.15).clamp(24.0, areaW * 0.5);
-          final tabRowH = (areaH * 0.1).clamp(12.0, areaH * 0.5);
-          // 外枠: 新しい cols x rows の矩形（縦横比を維持して中央配置）。
-          final cols = _cols < 1 ? 1 : _cols;
-          final rows = _rows < 1 ? 1 : _rows;
-          final scale = math.min(areaW / cols, areaH / rows);
-          final previewW = cols * scale;
-          final previewH = rows * scale;
-          final offsetX = (constraints.maxWidth - previewW) / 2;
-          final offsetY = (constraints.maxHeight - previewH) / 2;
-          return Stack(
-            children: [
-              // 外枠（ペイン表示領域 = PTY 全体・明るい色）。
-              Positioned(
-                left: offsetX,
-                top: offsetY,
-                width: previewW,
-                height: previewH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: DesignColors.primary.withValues(alpha: 0.15),
-                    border: Border.all(
-                      color: DesignColors.primary.withValues(alpha: 0.5),
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
+      child: Column(
+        children: [
+          // ヘッダー（tmux のウィンドウヘッダーと同型）。
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: const BoxDecoration(
+              color: DesignColors.surfaceDark,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(6),
+                topRight: Radius.circular(6),
               ),
-              // サイドバー: 左端のグレー縦帯（herdr のサイドバーを想起）。
-              Positioned(
-                left: offsetX,
-                top: offsetY,
-                width: sidebarW,
-                height: previewH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: DesignColors.borderDark.withValues(alpha: 0.7),
-                    border: Border(
-                      right: BorderSide(color: DesignColors.borderDark),
-                    ),
-                    borderRadius: const BorderRadius.horizontal(
-                      left: Radius.circular(4),
-                    ),
-                  ),
-                ),
+            ),
+            child: Text(
+              'Herdr (PTY)  $_cols x $_rows',
+              style: const TextStyle(
+                fontSize: 11,
+                color: DesignColors.primary,
+                fontWeight: FontWeight.w600,
               ),
-              // タブ行: 上端のグレー横帯（herdr のタブ行を想起）。
-              Positioned(
-                left: offsetX + sidebarW,
-                top: offsetY,
-                width: previewW - sidebarW,
-                height: tabRowH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: DesignColors.borderDark.withValues(alpha: 0.7),
-                    border: Border(
-                      bottom: BorderSide(color: DesignColors.borderDark),
+            ),
+          ),
+          // 本体プレビュー（サイドバー + タブ行 + Panel）。
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const pad = 4.0;
+                final areaW = constraints.maxWidth - pad * 2;
+                final areaH = constraints.maxHeight - pad * 2;
+                // サイドバー（エリア幅の 15%・最小 24px）とタブ行（エリア高の 10%・最小 12px）。
+                final sidebarW = (areaW * 0.15).clamp(24.0, areaW * 0.5);
+                final tabRowH = (areaH * 0.1).clamp(12.0, areaH * 0.5);
+                // 外枠: 新しい cols x rows の矩形（縦横比を維持して中央配置）。
+                final cols = _cols < 1 ? 1 : _cols;
+                final rows = _rows < 1 ? 1 : _rows;
+                final scale = math.min(areaW / cols, areaH / rows);
+                final previewW = cols * scale;
+                final previewH = rows * scale;
+                final offsetX = (constraints.maxWidth - previewW) / 2;
+                final offsetY = (constraints.maxHeight - previewH) / 2;
+                return Stack(
+                  children: [
+                    // 外枠（ペイン表示領域 = PTY 全体・明るい色）。
+                    Positioned(
+                      left: offsetX,
+                      top: offsetY,
+                      width: previewW,
+                      height: previewH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.primary.withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: DesignColors.primary.withValues(alpha: 0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
                     ),
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(4),
+                    // サイドバー: 左端のグレー縦帯 + 右境界に細い水色線。
+                    Positioned(
+                      left: offsetX,
+                      top: offsetY,
+                      width: sidebarW,
+                      height: previewH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.borderDark.withValues(alpha: 0.7),
+                          border: Border(
+                            right: BorderSide(
+                              color: DesignColors.primary,
+                              width: 1,
+                            ),
+                          ),
+                          borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(4),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
-              // ペイン表示領域（サイドバー・タブ行を除く残り）のサイズ表示。
-              Positioned.fill(
-                child: Center(
-                  child: Text(
-                    '$_cols x $_rows',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: DesignColors.textPrimary,
+                    // タブ行: 上端のグレー横帯 + 下境界に細い水色線。
+                    Positioned(
+                      left: offsetX + sidebarW,
+                      top: offsetY,
+                      width: previewW - sidebarW,
+                      height: tabRowH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.borderDark.withValues(alpha: 0.7),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: DesignColors.primary,
+                              width: 1,
+                            ),
+                          ),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
+                    // ペイン表示領域（サイドバー・タブ行を除く残り）中央に「Panel」。
+                    Positioned(
+                      left: offsetX + sidebarW,
+                      top: offsetY + tabRowH,
+                      width: previewW - sidebarW,
+                      height: previewH - tabRowH,
+                      child: Center(
+                        child: Text(
+                          'Panel',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.primary.withValues(
+                              alpha: 0.7,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
