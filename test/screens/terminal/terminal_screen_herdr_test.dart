@@ -2013,5 +2013,62 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      '初回コンテンツ受信時は末尾アライン（scrollToBottom相当）で最下部に到達する',
+      (tester) async {
+        // herdr は cursorX/cursorY=0 固定のため、scrollToCaret の中央寄せだと
+        // 最下部より手前で停止する。backendKind==herdr では末尾アラインに分岐し、
+        // 履歴がある状態でも maxScrollExtent（最下部）へ到達することを検証する。
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          readOnly: true,
+          settings: const AppSettings(
+            keepScreenOn: false,
+            adjustMode: 'manual',
+            fontSize: 14.0,
+          ),
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            // 履歴 + pane（24行）でビューポートを超えるだけの行数を返す
+            'herdr pane read': List.generate(
+              300,
+              (i) => 'content-$i',
+            ).join('\n'),
+          },
+          settle: false,
+        );
+
+        // 初回コンテンツ受信（_applyUpdate → _scrollToCaret → 100ms遅延）
+        await tester.pump(const Duration(milliseconds: 100));
+        // scrollToBottom の animateTo(300ms) を消化
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final scrollable = find.descendant(
+          of: find.byType(AnsiTextView),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          ),
+        );
+        final position = tester
+            .state<ScrollableState>(scrollable)
+            .position;
+        expect(
+          position.maxScrollExtent,
+          greaterThan(0),
+          reason: 'コンテンツがビューポートを超えスクロール可能な状態であること',
+        );
+        expect(
+          position.pixels,
+          closeTo(position.maxScrollExtent, 1.0),
+          reason:
+              'herdr（cursorY=0固定）では末尾アラインで最下部に到達すること',
+        );
+      },
+    );
   });
 }

@@ -3239,7 +3239,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _scrollToCaret() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted || _isDisposed) return;
-      _ansiTextViewKey.currentState?.scrollToCaret();
+      // herdr はカーソル位置情報を持たない（PaneFrame が cursorX/cursorY=0 を
+      // 返す固定値）ため、中央寄せだと最下部より (paneHeight-1)/2 行手前で
+      // 停止してしまう。末尾アライン（scrollToBottom 相当）で表示する。
+      // tmux は実カーソル位置があるため従来どおり中央寄せを維持。
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        _ansiTextViewKey.currentState?.scrollToBottom();
+      } else {
+        _ansiTextViewKey.currentState?.scrollToCaret();
+      }
     });
   }
 
