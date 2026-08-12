@@ -128,6 +128,26 @@ void main() {
       expect(parsedLines[1].endStyle.inverse, isFalse);
     });
 
+    test('parseLines normalizes CRLF to LF (PTY 経由の改行)', () {
+      // PTY の出力変換（ONLCR）で \r\n が混入しても、空行として扱われないこと
+      const input = 'line1\r\nline2\r\nline3';
+      final parsedLines = parser.parseLines(input);
+
+      expect(parsedLines.length, 3);
+      expect(parsedLines[0].segments[0].text, 'line1');
+      expect(parsedLines[1].segments[0].text, 'line2');
+      expect(parsedLines[2].segments[0].text, 'line3');
+    });
+
+    test('parseLines strips lone CR (行末の \\r)', () {
+      const input = 'line1\rline2';
+      final parsedLines = parser.parseLines(input);
+
+      // \r は改行とみなさず除去され、1行としてパースされる
+      expect(parsedLines.length, 1);
+      expect(parsedLines[0].segments[0].text, 'line1line2');
+    });
+
     test('handles inverse space (cursor representation)', () {
       const input = 'Prompt\x1b[7m \x1b[27m'; // ' ' is the cursor
       final segments = parser.parse(input);

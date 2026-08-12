@@ -437,7 +437,10 @@ class AnsiParser {
   /// 各行を個別にパースし、スタイルを次の行に引き継ぐ。
   /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
   List<ParsedLine> parseLines(String input) {
-    final lines = input.split('\n');
+    // PTY 経由では \r\n や行末の \r が混入するため、行分割前に正規化する
+    // （\n\n 由来の空行はここでは削除せず、実データの空行として保持）。
+    final normalized = input.replaceAll('\r\n', '\n').replaceAll('\r', '');
+    final lines = normalized.split('\n');
     final prev = _lineCache;
     final next = <(AnsiStyle, String), ParsedLine>{};
     final parsed = <ParsedLine>[];
