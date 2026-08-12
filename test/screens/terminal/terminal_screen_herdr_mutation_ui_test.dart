@@ -1071,9 +1071,9 @@ void main() {
         // Cancel/Resize ボタン・グリッドプレビュー省略）+ PTY 要求サイズの文言。
         expect(find.text('Resize Terminal'), findsOneWidget);
         expect(
-          find.textContaining('PTY（ターミナル全体）の要求サイズを変更します'),
+          find.textContaining('Changes the size of the whole terminal'),
           findsOneWidget,
-          reason: 'ユーザー決定: PTY 要求サイズ + デフォルト表示設定前提の趣旨を記載する',
+          reason: 'ユーザー選択 案4: ターミナル全体（PTY）のサイズ変更・全ワークスペースに適用（英語表記）',
         );
         expect(find.text('Cols'), findsOneWidget);
         expect(find.text('Rows'), findsOneWidget);
