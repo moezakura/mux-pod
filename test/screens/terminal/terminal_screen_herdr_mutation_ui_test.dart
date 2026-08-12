@@ -19,9 +19,10 @@ import '../../helpers/terminal_test_scaffold.dart';
 //   `changed:false`（分割境界外）は情報通知。
 // - T15（Q-06/H7）: paste は `send-text` 複数行・画像転送は SFTP + send-text・
 //   copy-mode は herdr では無く（H7）`pane read` 履歴ベースのみ。
-// - Q-02（全操作解禁）: pane セレクタの Split / Rename / Zoom と tab セレクタの
-//   tab CRUD（New / Rename / Close）の UI 配線。ヘッダー操作の対象は現在表示中
-//   pane / 現在 workspace（tmux セレクタと同型）。
+// - Q-02（全操作解禁）: pane セレクタは Resize（ヘッダー）+ 分割プレビュー
+//   （ビジュアライザ内タップ）経由、tab セレクタの tab CRUD（New / Rename /
+//   Close）の UI 配線。ヘッダー操作の対象は現在表示中 pane / 現在 workspace
+//   （tmux セレクタと同型）。
 
 // G4 実測の snapshot fixture に layout rect（w1:p1 = 80x24）を追加した版。
 // セレクタ / resize ダイアログの「現在サイズ（layout rect）」表示の検証に使う。
@@ -79,32 +80,35 @@ const kHerdrResizeUnchangedFixture =
     '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}},'
     '"type":"pane_resize"}}';
 
-// zoom 状態表示の検証用: layout `zoomed:true`（T0 実測 6-b: zoom 中は rect 不変）。
-const kHerdrZoomedSnapshotFixture =
+// 2 pane（w1:p1 / w1:p2・横並び）の layout 付き snapshot fixture。
+// 各矩形は 幅>80 かつ 高さ>60（分割プレビューのインライン分割経路が入るサイズ）。
+const kHerdrTwoPaneLayoutSnapshotFixture =
     '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
     '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
     '"focused_workspace_id":"w1",'
-    '"layouts":[{"area":{"x":0,"y":0,"width":80,"height":24},'
+    '"layouts":[{"area":{"x":0,"y":0,"width":200,"height":70},'
     '"focused_pane_id":"w1:p1",'
     '"panes":[{"pane_id":"w1:p1","focused":true,'
-    '"rect":{"x":0,"y":0,"width":80,"height":24}}],'
-    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":true}],'
-    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
-    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"rect":{"x":0,"y":0,"width":100,"height":70}},'
+    '{"pane_id":"w1:p2","focused":false,'
+    '"rect":{"x":100,"y":0,"width":100,"height":70}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
     '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
     '"viewport_rows":23},"tab_id":"w1:t1",'
-    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
     '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
-    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"pane_count":2,"tab_id":"w1:t1","workspace_id":"w1"}],'
     '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
     '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
-    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
     '"type":"session_snapshot"}}';
-
-// zoom が pane_not_found で失敗する構造化エラー JSON（T19: target-not-found 分類）。
-const kPaneNotFoundZoomFixture =
-    '{"error":{"code":"pane_not_found","message":"no pane"},'
-    '"id":"cli:pane:zoom"}';
 
 // S0 実測形状: create --focus 後の snapshot（旧 tab は残存しつつ新タブが focused）。
 // 旧 tab w1:t1（w1:p1）が残っていても、focused_tab_id / focused_pane_id /
@@ -554,10 +558,10 @@ void main() {
     );
   });
 
-  group('Q-02: herdr pane セレクタの Split / Rename / Zoom 配線', () {
+  group('Q-02: herdr pane セレクタの Split（分割プレビュー経由）配線', () {
     testWidgets(
-      'ヘッダーの Split ボタンで方向選択ダイアログが開き、'
-      'Split Right で pane split コマンドを発行する',
+      '分割プレビューのアクティブ pane タップ → Split Right で '
+      'pane split コマンドを発行する',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -574,17 +578,15 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
-        // ヘッダーの Split ボタン → 方向選択ダイアログ。
-        await tester.tap(find.byTooltip('Split Pane'));
+        // 分割プレビュー内タップ（アクティブ pane・矩形 80x24 → インライン分割
+        // モード）→ Split Right ボタン。
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-pane-layout-w1:p1')),
+        );
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(find.text('Split Pane'), findsOneWidget);
-        expect(find.text('Split Right'), findsOneWidget);
-        expect(find.text('Split Down'), findsOneWidget);
-
-        await tester.tap(find.text('Split Right'));
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-split-right-w1:p1')),
+        );
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
@@ -593,22 +595,163 @@ void main() {
             (c) => c == 'herdr pane split w1:p1 --direction right',
           ),
           isTrue,
-          reason: 'Split UI は PaneWriter.splitPane（herdr pane split）を発行すること',
+          reason: '分割プレビューは PaneWriter.splitPane（herdr pane split）を発行すること',
         );
 
         await tester.pump(const Duration(milliseconds: 200));
       },
     );
 
-    testWidgets('Split Down は herdr pane split --direction down を発行する', (
+    testWidgets(
+      '分割プレビュー内の Split Down は herdr pane split --direction down を発行する',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-pane-layout-w1:p1')),
+        );
+        await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-split-down-w1:p1')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(
+          client.execCommands.any(
+            (c) => c == 'herdr pane split w1:p1 --direction down',
+          ),
+          isTrue,
+          reason: 'Split Down は vertical 方向の pane split を発行すること',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+  });
+
+  group('N-T: herdr pane セレクタの分割プレビュー（新規）', () {
+    testWidgets(
+      'ヘッダーは Resize のみ + ローディング中 0.7 固定（N-T1）',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+
+        // ローディング中: Split / Rename / Zoom のツールチップは存在しない。
+        expect(find.byTooltip('Split Pane'), findsNothing);
+        expect(find.byTooltip('Rename Pane'), findsNothing);
+        expect(find.byTooltip('Zoom Pane'), findsNothing);
+        // topExpected: true → ローディング中から maxHeight が画面高の 0.7 固定
+        // （top 表示後と同じ高さでジャンプしない）。
+        final sheetBox = tester.widget<ConstrainedBox>(
+          find
+              .ancestor(
+                of: find.text('Select Pane'),
+                matching: find.byType(ConstrainedBox),
+              )
+              .first,
+        );
+        final screenHeight = MediaQuery.sizeOf(
+          tester.element(find.text('Select Pane')),
+        ).height;
+        expect(
+          sheetBox.constraints.maxHeight,
+          closeTo(screenHeight * 0.7, 0.001),
+          reason: 'topExpected によりローディング中から maxHeight 0.7 固定',
+        );
+
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // データロード後: ヘッダーは Resize のみ。
+        expect(find.byTooltip('Resize Pane'), findsOneWidget);
+        expect(find.byTooltip('Split Pane'), findsNothing);
+        expect(find.byTooltip('Rename Pane'), findsNothing);
+        expect(find.byTooltip('Zoom Pane'), findsNothing);
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'herdr ビジュアライザ表示 + アクティブ pane は現在表示中の pane（N-T2）',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 分割プレビューが表示される。
+        expect(
+          find.byKey(const ValueKey('terminal-pane-layout-w1:p1')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('terminal-pane-layout-w1:p2')),
+          findsOneWidget,
+        );
+
+        // アクティブ pane のハイライトは _targetSource?.currentPaneId（= w1:p1、
+        // 現在表示中の pane）基準。非アクティブ pane は黒半透明のまま。
+        Color? paneColorOf(String paneId) {
+          final container = tester.widget<AnimatedContainer>(
+            find.descendant(
+              of: find.byKey(ValueKey('terminal-pane-layout-$paneId')),
+              matching: find.byType(AnimatedContainer),
+            ),
+          );
+          return (container.decoration as BoxDecoration).color;
+        }
+
+        expect(paneColorOf('w1:p1'), isNot(Colors.black45));
+        expect(paneColorOf('w1:p2'), Colors.black45);
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets('非アクティブ pane タップで対象 pane に切替えてシートが閉じる（N-T3）', (
       tester,
     ) async {
-      final client = await TerminalTestScaffold.pumpTerminalScreen(
+      await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
         execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+          'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
           'herdr pane read': 'hello\n',
         },
         settle: false,
@@ -617,29 +760,75 @@ void main() {
       await tester.tap(find.text('Pane 1'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byTooltip('Split Pane'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Select Pane'), findsOneWidget);
 
-      await tester.tap(find.text('Split Down'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(
-        client.execCommands.any(
-          (c) => c == 'herdr pane split w1:p1 --direction down',
-        ),
-        isTrue,
-        reason: 'Split Down は vertical 方向の pane split を発行すること',
+      // 非アクティブ pane（w1:p2）をタップ → 選択（onPaneSelected）に倒れる。
+      await tester.tap(
+        find.byKey(const ValueKey('terminal-pane-layout-w1:p2')),
       );
+      await tester.pump();
+      // シートの閉じアニメーション + 表示切替を進める。
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // シートが閉じ、表示対象が w1:p2 に切替わる。
+      expect(find.text('Select Pane'), findsNothing);
+      expect(find.text('Pane 2'), findsOneWidget);
 
       await tester.pump(const Duration(milliseconds: 200));
     });
 
     testWidgets(
-      'ヘッダーの Rename ボタンで入力ダイアログが開き、'
-      'pane rename コマンドを発行する',
+      'オフセット付き rect（x:26 / y:1）でもプレビューが 0 起点で欠けない（N-T4）',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrResizedSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        final paneFinder = find.byKey(
+          const ValueKey('terminal-pane-layout-w1:p1'),
+        );
+        expect(paneFinder, findsOneWidget);
+
+        // min 正規化: minLeft（26）/ minTop（1）が差し引かれ 0 起点で配置される。
+        final positioned = tester.widget<Positioned>(
+          find.ancestor(of: paneFinder, matching: find.byType(Positioned)).first,
+        );
+        expect(
+          positioned.left,
+          lessThan(1.0),
+          reason: 'minLeft（26）が差し引かれ 0 起点で描画されること',
+        );
+        expect(
+          positioned.top,
+          lessThan(1.0),
+          reason: 'minTop（1）が差し引かれ 0 起点で描画されること',
+        );
+
+        // プレビュー右端/下端がプレビュー領域内に収まる（欠けない）。
+        final stackRect = tester.getRect(
+          find.ancestor(of: paneFinder, matching: find.byType(Stack)).first,
+        );
+        final paneRect = tester.getRect(paneFinder);
+        expect(paneRect.right, lessThanOrEqualTo(stackRect.right + 0.5));
+        expect(paneRect.bottom, lessThanOrEqualTo(stackRect.bottom + 0.5));
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'read-only ではアクティブ pane タップが分割モードに入らず選択に倒れる（N-T5）',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -649,6 +838,7 @@ void main() {
             'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
             'herdr pane read': 'hello\n',
           },
+          readOnly: true,
           settle: false,
         );
 
@@ -656,128 +846,27 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
-        await tester.tap(find.byTooltip('Rename Pane'));
+        // read-only では onSplitRequested == null のため、アクティブ pane タップ
+        // は分割モードに入らず選択（onPaneSelected）に倒れる。
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-pane-layout-w1:p1')),
+        );
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
+        // シートの閉じアニメーションを進める。
+        await tester.pump(const Duration(milliseconds: 400));
 
-        expect(find.text('Rename Pane'), findsOneWidget);
-        await tester.enterText(find.byType(TextField), 'editor');
-        await tester.tap(find.text('Rename'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-
+        // 分割ボタンは表示されず、シートが閉じる。split コマンドも発行されない。
         expect(
-          client.execCommands.any(
-            (c) => c == "herdr pane rename w1:p1 'editor'",
-          ),
-          isTrue,
-          reason: 'Rename UI は PaneWriter.renamePane（herdr pane rename）を発行すること',
+          find.byKey(const ValueKey('terminal-split-right-w1:p1')),
+          findsNothing,
+        );
+        expect(find.text('Select Pane'), findsNothing);
+        expect(
+          client.execCommands.where((c) => c.startsWith('herdr pane split')),
+          isEmpty,
         );
 
         await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
-
-    testWidgets(
-      'ヘッダーの Zoom ボタンで pane zoom --toggle を発行する（非 zoom 表示）',
-      (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
-
-        await tester.tap(find.text('Pane 1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-
-        // 非 zoom（layout zoomed:false）→ zoom_in アイコン + 'Zoom Pane' ツールチップ。
-        expect(find.byTooltip('Zoom Pane'), findsOneWidget);
-        expect(find.byIcon(Icons.zoom_in), findsOneWidget);
-
-        await tester.tap(find.byTooltip('Zoom Pane'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(
-          client.execCommands.any(
-            (c) => c == 'herdr pane zoom --pane w1:p1 --toggle',
-          ),
-          isTrue,
-          reason: 'Zoom UI は PaneWriter.zoomPane（herdr pane zoom --toggle）を発行すること',
-        );
-
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
-
-    testWidgets(
-      'snapshot の zoomed:true では Unzoom 表示になる（zoom 状態の表示）',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrZoomedSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
-
-        await tester.tap(find.text('Pane 1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-
-        // zoom 中（layout zoomed:true）→ zoom_out アイコン + 'Unzoom Pane'。
-        expect(find.byTooltip('Unzoom Pane'), findsOneWidget);
-        expect(find.byIcon(Icons.zoom_out), findsOneWidget);
-
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
-
-    testWidgets(
-      'zoom の pane_not_found は target-not-found 分類で通知される（T19）',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
-            'herdr pane read': 'hello\n',
-            'herdr pane zoom': kPaneNotFoundZoomFixture,
-          },
-          execExitCodes: {'herdr pane zoom': 1},
-          settle: false,
-        );
-
-        await tester.tap(find.text('Pane 1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.tap(find.byTooltip('Zoom Pane'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.pump(const Duration(milliseconds: 100));
-
-        expect(
-          find.text('対象が消えました。再同期しました'),
-          findsOneWidget,
-          reason: 'zoom の pane_not_found も target-not-found 分類で通知されること',
-        );
-
-        // SnackBar の自動クローズ（4s）まで進めて pending timer を消化する。
-        await tester.pump(const Duration(seconds: 4));
-        await tester.pump(const Duration(milliseconds: 750));
       },
     );
   });
