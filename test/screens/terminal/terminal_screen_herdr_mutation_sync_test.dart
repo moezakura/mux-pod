@@ -1038,6 +1038,52 @@ void main() {
     );
 
     testWidgets(
+      'zoom の pane_not_found も SnackBar 通知 + 再同期で復旧する（Q-02・移設）',
+      (tester) async {
+        await _pumpHerdrTerminal(
+          tester,
+          // zoom が pane_not_found で失敗 → 再同期（force 再取得）で w1:p2 へ。
+          execOutputs: {
+            'herdr pane zoom': kPaneNotFoundErrorFixture,
+          },
+          execExitCodes: {'herdr pane zoom': 1},
+          execOutputQueues: {
+            'herdr api snapshot': [
+              kHerdrSnapshotFixture,
+              kHerdrSnapshotPane2Fixture,
+            ],
+          },
+        );
+
+        final dynamic state = tester.state(find.byType(TerminalScreen));
+        final future = state.zoomHerdrPaneForTesting('w1:p1');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        await future;
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // 分類別通知（target-not-found）+ 単一経路の再同期。
+        expect(
+          find.text('対象が消えました。再同期しました'),
+          findsOneWidget,
+          reason: 'zoom の pane_not_found も target-not-found 分類で通知されること',
+        );
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('zoom re-sync -> w1:p2')),
+          isTrue,
+          reason: 'zoom の target-not-found 後は _syncAfterHerdrMutation で再同期されること',
+        );
+        expect(find.text('Pane 2'), findsOneWidget);
+
+        // SnackBar の自動クローズ（4s）まで進めて pending timer を消化する。
+        await tester.pump(const Duration(seconds: 4));
+        await tester.pump(const Duration(milliseconds: 750));
+      },
+    );
+
+    testWidgets(
       'close tab の target-not-found も SnackBar 通知 + 再同期で復旧する（Q-05）',
       (tester) async {
         await _pumpHerdrTerminal(
