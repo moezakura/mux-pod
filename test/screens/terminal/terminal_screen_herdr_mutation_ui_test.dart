@@ -1035,7 +1035,7 @@ void main() {
 
         // 成功: fail closed SnackBar は出ない。
         expect(
-          find.textContaining('Resize が反映されませんでした'),
+          find.textContaining('Resize failed. Another client may control the terminal size.'),
           findsNothing,
           reason: '収束確認が成功した場合は fail closed 通知を出さない',
         );
@@ -1091,7 +1091,7 @@ void main() {
         // FakeSshClient では hidden TUI（managed PTY）を起動できないため、
         // HerdrResizeBridge が start 失敗 → fail closed の SnackBar を表示する。
         expect(
-          find.textContaining('Resize が反映されませんでした'),
+          find.textContaining('Resize failed. Another client may control the terminal size.'),
           findsOneWidget,
           reason: 'resize 不達（他クライアント競合 or 表示設定不一致）は fail closed 通知',
         );
@@ -1119,7 +1119,7 @@ void main() {
 
         // キャンセルは hidden TUI を起動せず resize しない（通知もなし）。
         expect(
-          find.textContaining('Resize が反映されませんでした'),
+          find.textContaining('Resize failed. Another client may control the terminal size.'),
           findsNothing,
           reason: 'キャンセルは bridge を起動しない（mounted ガード）',
         );

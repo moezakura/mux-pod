@@ -4802,8 +4802,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Resize が反映されませんでした。接続中の他クライアントとの競合や '
-                'herdr の表示設定（サイドバー幅・タブ行）との不一致が考えられます',
+                'Resize failed. Another client may control the terminal size.',
               ),
             ),
           );
