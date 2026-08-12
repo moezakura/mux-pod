@@ -142,7 +142,7 @@ class PersistentShell implements TmuxInputTransport {
       'export HISTFILE=/dev/null HISTSIZE=0 HISTFILESIZE=0 SAVEHIST=0 2>/dev/null;'
       ' set +H 2>/dev/null;'
       ' set fish_history "" 2>/dev/null; true;'
-      ' export PS1="" PS2="" 2>/dev/null; stty -echo\n',
+      ' export PS1="" PS2="" 2>/dev/null; stty -echo -onlcr -opost\n',
     ));
     await Future.delayed(const Duration(milliseconds: 100));
 
