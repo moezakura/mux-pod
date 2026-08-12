@@ -4216,7 +4216,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _showMultiplexerSheet(
       title: 'Select Pane',
       icon: Icons.terminal,
-      top: _buildPaneLayoutVisualizer(tmuxState, domainWindow),
+      top: _buildPaneLayoutVisualizer(
+        domainWindow,
+        tmuxState.activePaneId,
+        (paneId) {
+          Navigator.pop(context);
+          _selectPane(paneId);
+        },
+        _canSplitPane
+            ? (paneId, direction) {
+                Navigator.pop(context);
+                _splitPane(paneId, direction);
+              }
+            : null,
+      ),
       headerActions: [
         if (canResize)
           IconButton(
@@ -4269,31 +4282,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// tmux のペインレイアウトビジュアライザを構築する（T2 / Q3）。
+  /// tmux のペインレイアウトビジュアライザを構築する（T2 / Q3・domain ベース）。
   ///
-  /// 共通 domain の [MultiplexerWindow] から tmux の [TmuxWindow]（幾何情報を
-  /// 含む）を引き当て、[_PaneLayoutVisualizer] を返す。引き当てできない場合は
-  /// null（レイアウト非表示）。分割不可（`!_canSplitPane`）では split を
-  /// 無効化し選択のみ許可する（H-4）。
+  /// 共通 domain の [MultiplexerWindow]（geometry 込み）から
+  /// [_PaneLayoutVisualizer] を返す。[activePaneId] は呼び出し側（tmux:
+  /// provider のアクティブ pane id / herdr: `_targetSource.currentPaneId`）が
+  /// 明示的に渡す。分割不可（`!_canSplitPane`）では split を無効化し選択のみ
+  /// 許可する（H-4）。
   Widget? _buildPaneLayoutVisualizer(
-    TmuxState tmuxState,
     MultiplexerWindow window,
+    String? activePaneId,
+    void Function(String paneId) onPaneSelected,
+    void Function(String paneId, SplitDirection direction)? onSplitRequested,
   ) {
-    final tmuxWindow = _tmuxWindowInTree(tmuxState, window);
-    if (tmuxWindow == null) return null;
     return _PaneLayoutVisualizer(
-      panes: tmuxWindow.panes,
-      activePaneId: tmuxState.activePaneId,
-      onPaneSelected: (paneId) {
-        Navigator.pop(context);
-        _selectPane(paneId);
-      },
-      onSplitRequested: _canSplitPane
-          ? (paneId, direction) {
-              Navigator.pop(context);
-              _splitPane(paneId, direction);
-            }
-          : null,
+      panes: window.panes,
+      activePaneId: activePaneId,
+      onPaneSelected: onPaneSelected,
+      onSplitRequested: onSplitRequested,
     );
   }
 
@@ -6616,7 +6622,7 @@ class _PaneLayoutPainter extends CustomPainter {
 ///
 /// 各ペインをタップで選択可能。ペイン番号も表示。
 class _PaneLayoutVisualizer extends StatefulWidget {
-  final List<TmuxPane> panes;
+  final List<MultiplexerPane> panes;
   final String? activePaneId;
   // inventory: LEGACY-0084
   final void Function(String paneId) onPaneSelected;
@@ -6642,17 +6648,27 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   Widget build(BuildContext context) {
     if (widget.panes.isEmpty) return const SizedBox.shrink();
 
-    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）
+    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）。herdr の layout rect
+    // は 0 起点でないため（実測 x:26 / y:1）、min を 0 起点へ正規化する
+    // （tmux は 0 起点パースのため正規化は恒等）。
+    int minLeft = widget.panes.first.left;
+    int minTop = widget.panes.first.top;
     int maxRight = 0;
     int maxBottom = 0;
     for (final pane in widget.panes) {
       final right = pane.left + pane.width;
       final bottom = pane.top + pane.height;
+      if (pane.left < minLeft) minLeft = pane.left;
+      if (pane.top < minTop) minTop = pane.top;
       if (right > maxRight) maxRight = right;
       if (bottom > maxBottom) maxBottom = bottom;
     }
 
     if (maxRight == 0 || maxBottom == 0) return const SizedBox.shrink();
+
+    // 0 起点へ正規化した全体サイズ
+    maxRight -= minLeft;
+    maxBottom -= minTop;
 
     // アスペクト比を計算
     final aspectRatio = maxRight / maxBottom;
@@ -6676,9 +6692,9 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                 final isActive = pane.id == widget.activePaneId;
                 final isSplitMode = _splitModeActivePaneId == pane.id;
 
-                // 実際の位置とサイズからRectを計算
-                final left = pane.left * scaleX;
-                final top = pane.top * scaleY;
+                // 実際の位置とサイズからRectを計算（0 起点へ正規化済み）
+                final left = (pane.left - minLeft) * scaleX;
+                final top = (pane.top - minTop) * scaleY;
                 final width = pane.width * scaleX - gap;
                 final height = pane.height * scaleY - gap;
 
@@ -6729,7 +6745,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   static const _minInlineHeight = 60.0;
 
   void _handlePaneTap(
-    TmuxPane pane,
+    MultiplexerPane pane,
     bool isActive,
     double width,
     double height,
@@ -6752,7 +6768,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
     }
   }
 
-  void _showSplitDialog(TmuxPane pane) {
+  void _showSplitDialog(MultiplexerPane pane) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -6807,7 +6823,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   }
 
   Widget _buildPaneContent({
-    required TmuxPane pane,
+    required MultiplexerPane pane,
     required bool isActive,
     required bool isSplitMode,
     required double width,
@@ -7979,21 +7995,6 @@ String _tmuxPaneLabelFor(TmuxState tmuxState, String paneId) {
 /// tmux の pane サブタイトル（'WxH'・M-2）。引き当て不可なら null。
 String? _tmuxPaneSubtitleFor(TmuxState tmuxState, MultiplexerPane pane) {
   return _findTmuxPaneIn(tmuxState, pane.id)?.sizeString;
-}
-
-/// 共通 domain の [MultiplexerWindow] に一致する [TmuxWindow] をツリー全体から
-/// 引き当てる（ID 優先、次に index + name）。
-TmuxWindow? _tmuxWindowInTree(TmuxState tmuxState, MultiplexerWindow window) {
-  for (final session in tmuxState.sessions) {
-    for (final tmuxWindow in session.windows) {
-      if (window.id != null && tmuxWindow.id == window.id) return tmuxWindow;
-      if (tmuxWindow.index == window.index &&
-          tmuxWindow.name == window.name) {
-        return tmuxWindow;
-      }
-    }
-  }
-  return null;
 }
 
 /// [session] 内で [window] に一致する [TmuxWindow] を引き当てる。
