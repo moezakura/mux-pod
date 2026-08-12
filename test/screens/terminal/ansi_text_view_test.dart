@@ -84,4 +84,37 @@ void main() {
     await tester.tap(find.byType(AnsiTextView));
     expect(tapped, isTrue);
   });
+
+  testWidgets('line height uses FontCalculator.lineHeightRatio (1.2)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsProvider.overrideWith(
+            () => FakeSettingsNotifier(
+              settings: const AppSettings(
+                keepScreenOn: false,
+                adjustMode: 'manual',
+                fontSize: 14.0,
+              ),
+            ),
+          ),
+          terminalDisplayProvider.overrideWith(() => _FixedTerminalDisplayNotifier()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnsiTextView(
+              text: 'a\nb\nc\nd\ne',
+              paneWidth: 80,
+              paneHeight: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final listView = tester.widget<ListView>(find.byType(ListView));
+    expect(listView.itemExtent, closeTo(14.0 * 1.2, 0.001));
+  });
 }

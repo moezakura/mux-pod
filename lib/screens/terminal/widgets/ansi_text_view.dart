@@ -235,7 +235,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _cachedFontFamily = fontFamily;
 
     // 行の高さを計算（fontSize * lineHeight係数）
-    _lineHeight = fontSize * 1.4;
+    _lineHeight = fontSize * FontCalculator.lineHeightRatio;
 
     return _cachedParsedLines!;
   }
@@ -720,7 +720,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         final baseTextStyle = TerminalFontStyles.getTextStyle(
           settings.fontFamily,
           fontSize: fontSize,
-          height: 1.4,
+          height: FontCalculator.lineHeightRatio,
           color: widget.foregroundColor,
         );
 
