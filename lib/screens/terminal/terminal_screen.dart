@@ -32,6 +32,7 @@ import '../../services/herdr/herdr_models.dart';
 import '../../services/herdr/herdr_pane_content_reader.dart';
 import '../../services/herdr/herdr_pane_frame_reader.dart';
 import '../../services/herdr/herdr_resize_bridge.dart';
+import '../../services/herdr/herdr_resize_math.dart';
 import '../../services/herdr/herdr_snapshot_cache.dart';
 import '../../services/herdr/herdr_target_resolver.dart';
 import '../../services/herdr/herdr_to_domain.dart';
@@ -49,6 +50,7 @@ import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
 
 import '../../services/tmux/tmux_version.dart';
+import '../../widgets/dialogs/pane_chooser_dialog.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
 import '../../widgets/dialogs/rename_window_dialog.dart';
 import '../../theme/design_colors.dart';
@@ -3774,13 +3776,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
               tooltip: 'Resize Pane',
-              onPressed: () => _closeSelectorThen(() {
-                // ヘッダーの Resize は現在表示中の pane を対象にする。
-                final id = _targetSource?.currentPaneId;
-                if (id == null) return;
-                final pane = _findHerdrPane(sessions, id);
-                if (pane != null) _handleHerdrResizePane(pane);
-              }),
+              onPressed: () => _closeSelectorThen(
+                // ヘッダーの Resize は選択モーダル経由（初期選択=現在表示中 pane）。
+                () => _showHerdrResizePaneChooser(sessions, window),
+              ),
             ),
         ];
         return _SelectorContent(
@@ -3824,8 +3823,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         })
                     : null,
                 onResize: canResize
-                    ? () =>
-                        _closeSelectorThen(() => _handleHerdrResizePane(pane))
+                    ? () => _closeSelectorThen(
+                          // タイル⋮ Resize も選択モーダル経由に統一
+                          // （初期選択=現在表示中 pane・ユーザー決定①）。
+                          () => _showHerdrResizePaneChooser(sessions, window),
+                        )
                     : null,
                 onClose: canClose
                     ? () => _closeSelectorThen(() {
@@ -4489,13 +4491,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return _ResizePaneChooserDialog(
-          panes: window.panes,
-          activePaneId: tmuxState.activePaneId,
-          onResize: (selectedPane) {
+        // 共通 PaneChooserDialog（MultiplexerPane ベース）へ移行。
+        // TmuxPane は toDomain()（tmux_to_domain.dart）で共通 domain 型へ変換する。
+        return PaneChooserDialog(
+          panes: window.panes.map((p) => p.toDomain()).toList(),
+          initialPaneId: tmuxState.activePaneId,
+          onResize: (paneId) {
             Navigator.pop(dialogContext);
             // inventory: TERM-RESIZE-004
-            _handleResizePane(selectedPane);
+            final pane = window.panes.where((p) => p.id == paneId).firstOrNull;
+            if (pane != null) _handleResizePane(pane);
+          },
+        );
+      },
+    );
+  }
+
+  /// herdr のリサイズ対象 pane 選択モーダル（条件2/3/10/11・ユーザー決定①〜③）。
+  ///
+  /// セレクタの asyncContent が取得済みの [sessions] をそのまま受け取り、
+  /// [PaneChooserDialog] へ渡す（fetch なし・バックグラウンド refresh なし・
+  /// フォールバックなし・ローディングなし・条件2/ユーザー決定③）。[window.panes]
+  /// が空なら黙って return（tmux [_showResizePaneChooser] と同型）。pane 数に
+  /// 関わらず常にモーダルを表示する（1枚でもスキップしない・条件3/ユーザー決定②）。
+  /// 初期選択は現在表示中の pane（[_targetSource.currentPaneId]・条件10/
+  /// ユーザー決定①）。onResize では [_findHerdrPane] で sessions 内に再引当して
+  /// から [_handleHerdrResizePane] へ渡す（条件11・実行前再検証）。
+  void _showHerdrResizePaneChooser(
+    List<MultiplexerSession> sessions,
+    MultiplexerWindow window,
+  ) {
+    if (window.panes.isEmpty) {
+      // stale 中断（空リストで黙って return・tmux L4487 と同型）。
+      _recordHerdrSwitchEvent('resize stale abort: empty pane list');
+      return;
+    }
+    _recordHerdrSwitchEvent('resize chooser shown');
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return PaneChooserDialog(
+          panes: window.panes,
+          initialPaneId: _targetSource?.currentPaneId,
+          labelBuilder: _herdrPaneLabel,
+          onResize: (paneId) {
+            Navigator.pop(dialogContext);
+            // 実行前再検証（条件11）: sessions 内に引当できない pane は中断。
+            final pane = _findHerdrPane(sessions, paneId);
+            if (pane == null) {
+              _recordHerdrSwitchEvent(
+                'resize stale abort: pane not found ($paneId)',
+              );
+              return;
+            }
+            // プレビュー用に選択モーダルと同じ window.panes を渡す（条件8・
+            // シート sessions 由来のまま・fetch なし）。
+            _handleHerdrResizePane(pane, panes: window.panes);
           },
         );
       },
@@ -4683,28 +4735,50 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-RESIZE-007
-  /// herdr ペインを「方向 + ステップ」でリサイズする（T14・Q-04）。
+  /// herdr ペインを絶対値（Cols/Rows）でリサイズする（T14・Q-04・ユーザー決定）。
   ///
-  /// herdr は絶対 cols/rows 不可・相対分数のみ（m11/m16 実測）のため、tmux の
-  /// 絶対値 [ResizePaneDialog] は使わず、方向（←→↑↓）+ ステップ量
-  /// （0.05/0.1/0.2 等）の [HerdrResizePaneDialog] を表示する。現在サイズは
-  /// layout の rect（[MultiplexerPane.width]/[height]）から表示する。
+  /// herdr は絶対 cols/rows を直接発行できない（`absoluteResize=false`・Q-04）
+  /// ため、tmux と同構造の絶対値 [HerdrResizePaneDialog]（プレビュー + Cols/Rows
+  /// 入力 + 絶対値プリセット）で目標サイズを選び、**相対量へ換算して送信**する:
   ///
-  /// 実行は [PaneWriter.resizePane]（`HerdrPaneWriter` → `herdr pane resize
-  /// --direction --amount`）へ委譲する。`changed:false`（分割境界外）は
-  /// [PaneOperationNoopException] として情報通知（S4）し、成功時はスナップ
-  /// ショットを強制再取得してレイアウトを同期する（H5 単一経路の resize 適用）。
-  Future<void> _handleHerdrResizePane(MultiplexerPane pane) async {
+  /// - [PaneResizeMath.absoluteToDelta] で絶対セル差 → 相対量 delta に換算
+  ///   （コンテナサイズは panes の rect から 0 起点正規化して算出）。
+  /// - [PaneResizeMath.resolveDirection] で対象 pane の隣接位置から方向を自動判定。
+  /// - 成長（delta > 0）は対象 pane に送信。**縮小（delta < 0）は隣接 pane を
+  ///   対象にした成長として実現**（方向反転 + |delta|・ユーザー決定5）。
+  /// - Cols / Rows の両方が変わった場合は Cols → Rows の順に 2 回送信（決定6）。
+  /// - `changed:false`（分割境界外）は [PaneOperationNoopException] として情報
+  ///   通知（S4）し、成功時はスナップショットを強制再取得してレイアウトを同期
+  ///   する（H5 単一経路の resize 適用）。
+  ///
+  /// [panes] はダイアログのプレビュー・コンテナサイズ算出用（選択モーダルで
+  /// 表示したウィンドウの pane 一覧・条件8）。呼び出し元（[_showHerdrResizePaneChooser]）
+  /// が保持するシート sessions 由来の [MultiplexerWindow.panes] をそのまま渡す
+  /// （条件2・fetch なし）。空の場合はダイアログ側でプレビュー非表示・
+  /// コンテナサイズ不明（換算 null）となり送信しない。
+  Future<void> _handleHerdrResizePane(
+    MultiplexerPane pane, {
+    List<MultiplexerPane> panes = const [],
+  }) async {
     if (_isResizing) return;
     // resize 可能（herdr は `absoluteResize` false のため絶対値 UI には到達しない）。
     if (!_can(const PaneCapabilities(resize: true))) return;
 
-    final result = await showDialog<HerdrResizeResult>(
+    // 表示設定（Match Screen プリセット用・tmux `_handleResizePane` と同一パターン）。
+    final displayState = ref.read(terminalDisplayProvider);
+    final settings = ref.read(settingsProvider);
+
+    final result = await showDialog<ResizeResult>(
       context: context,
       builder: (context) => HerdrResizePaneDialog(
-        paneId: pane.id,
-        currentWidth: pane.width,
-        currentHeight: pane.height,
+        targetPaneId: pane.id,
+        panes: panes,
+        currentCols: pane.width,
+        currentRows: pane.height,
+        screenWidth: displayState.screenWidth,
+        screenHeight: displayState.screenHeight,
+        fontSize: displayState.calculatedFontSize,
+        fontFamily: settings.fontFamily,
       ),
     );
     if (result == null || !mounted) return;
@@ -4714,19 +4788,166 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     try {
       final writer = _paneWriter;
       if (writer == null) return;
-      await writer.resizePane(pane.id, result.direction, result.amount);
+
+      // 絶対値（Cols/Rows）→ 相対量へ換算して送信（バックエンド不変・Q-04）。
+      // 両方変更時は Cols → Rows の順に 2 回送信（ユーザー決定6）。
+      await _herdrResizeOneAxis(
+        writer,
+        pane: pane,
+        panes: panes,
+        horizontal: true,
+        targetCells: result.cols,
+      );
+      await _herdrResizeOneAxis(
+        writer,
+        pane: pane,
+        panes: panes,
+        horizontal: false,
+        targetCells: result.rows,
+      );
+
       // 成功: H5/T18 単一経路（force 再取得 → 再解決 → ターゲット変化時のみ
       // 切替）で layout rect と表示対象を同期する。
       await _syncAfterHerdrMutation(eventLabel: 'resize sync');
+      // 実行テレメトリ（A8・機密情報非含有: pane ID / 目標サイズのみ・L623-625）。
+      _recordHerdrSwitchEvent(
+        'resize executed: pane=${pane.id} cols=${result.cols} '
+        'rows=${result.rows}',
+      );
     } on PaneOperationNoopException catch (e) {
       // 分割境界外（soft 失敗・情報通知）。
       _showHerdrMutationNoopSnackBar(e);
+      _recordHerdrSwitchEvent('resize no-op (reason: ${e.reason ?? '<null>'})');
     } catch (e) {
       await _handleHerdrMutationError(e, operationLabel: 'resize');
     } finally {
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
     }
+  }
+
+  /// コンテナ（ウィンドウ）のセル数を panes の rect から計算する。
+  ///
+  /// 0 起点へ正規化（全 pane の min を引く）して `max(end) - min(pos)` を返す。
+  /// [horizontal] = true は幅（Cols）方向・false は高さ（Rows）方向。
+  /// panes が空なら 0（換算関数側で null ガード）。
+  int _herdrContainerCells(
+    List<MultiplexerPane> panes, {
+    required bool horizontal,
+  }) {
+    if (panes.isEmpty) return 0;
+    var min = horizontal ? panes.first.left : panes.first.top;
+    var max = 0;
+    for (final p in panes) {
+      final pos = horizontal ? p.left : p.top;
+      final end = pos + (horizontal ? p.width : p.height);
+      if (pos < min) min = pos;
+      if (end > max) max = end;
+    }
+    return max - min;
+  }
+
+  /// 1 軸（横 = Cols / 縦 = Rows）の絶対値変更を相対量へ換算して送信する。
+  ///
+  /// - 換算: [PaneResizeMath.absoluteToDelta]（コンテナ不明・変化なしは送信しない）
+  /// - 成長（delta > 0）: 対象 pane に [PaneResizeMath.resolveDirection](grow:
+  ///   true) の方向で `|delta|` を送る。
+  /// - 縮小（delta < 0）: 隣接 pane を対象にした成長として実現（ユーザー決定5）。
+  ///   縮小側の方向（grow: false）の隣接 pane を特定し、隣接から見て対象側
+  ///   （方向反転）へ `|delta|` を送る。
+  Future<void> _herdrResizeOneAxis(
+    PaneWriter writer, {
+    required MultiplexerPane pane,
+    required List<MultiplexerPane> panes,
+    required bool horizontal,
+    required int targetCells,
+  }) async {
+    final container = _herdrContainerCells(panes, horizontal: horizontal);
+    final current = horizontal ? pane.width : pane.height;
+    final delta = PaneResizeMath.absoluteToDelta(
+      currentCells: current,
+      targetCells: targetCells,
+      containerCells: container,
+    );
+    if (delta == null || delta == 0) return;
+
+    if (delta > 0) {
+      // 対象を成長させる（隣接が縮む）。
+      final direction = PaneResizeMath.resolveDirection(
+        target: pane,
+        panes: panes,
+        horizontal: horizontal,
+        grow: true,
+      );
+      if (direction == null) return;
+      await writer.resizePane(pane.id, direction, delta);
+    } else {
+      // 対象を縮小する = 隣接 pane を成長させる（方向反転 + |delta|）。
+      final side = PaneResizeMath.resolveDirection(
+        target: pane,
+        panes: panes,
+        horizontal: horizontal,
+        grow: false,
+      );
+      if (side == null) return;
+      final neighbor = _herdrAdjacentPane(panes, pane.id, side);
+      if (neighbor == null) return;
+      await writer.resizePane(
+        neighbor.id,
+        _herdrOppositeDirection(side),
+        delta.abs(),
+      );
+    }
+  }
+
+  /// [direction]（`'right'` / `'left'` / `'down'` / `'up'`）の位置に隣接する
+  /// pane を rect の重なりから特定して返す（無ければ null）。
+  MultiplexerPane? _herdrAdjacentPane(
+    List<MultiplexerPane> panes,
+    String paneId,
+    String direction,
+  ) {
+    MultiplexerPane? target;
+    for (final p in panes) {
+      if (p.id == paneId) {
+        target = p;
+        break;
+      }
+    }
+    if (target == null || target.width <= 0 || target.height <= 0) return null;
+
+    final right = target.left + target.width;
+    final bottom = target.top + target.height;
+    for (final p in panes) {
+      if (p.id == paneId) continue;
+      if (p.width <= 0 || p.height <= 0) continue;
+      final overlapsVertically =
+          p.top < bottom && p.top + p.height > target.top;
+      final overlapsHorizontally =
+          p.left < right && p.left + p.width > target.left;
+      switch (direction) {
+        case 'right':
+          if (p.left >= right && overlapsVertically) return p;
+        case 'left':
+          if (p.left + p.width <= target.left && overlapsVertically) return p;
+        case 'down':
+          if (p.top >= bottom && overlapsHorizontally) return p;
+        case 'up':
+          if (p.top + p.height <= target.top && overlapsHorizontally) return p;
+      }
+    }
+    return null;
+  }
+
+  /// 方向の反転（`'right'` ↔ `'left'`・`'down'` ↔ `'up'`）。
+  String _herdrOppositeDirection(String direction) {
+    return switch (direction) {
+      'right' => 'left',
+      'left' => 'right',
+      'down' => 'up',
+      'up' => 'down',
+      _ => 'right',
+    };
   }
 
   // inventory: TERM-RESIZE-008
@@ -7406,200 +7627,6 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
         ),
         FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
-    );
-  }
-}
-
-// ====================================================================
-// _ResizePaneChooserDialog
-// ====================================================================
-
-/// リサイズ対象ペインをグラフィカルに選択するダイアログ
-class _ResizePaneChooserDialog extends StatefulWidget {
-  final List<TmuxPane> panes;
-  final String? activePaneId;
-  final void Function(TmuxPane selectedPane) onResize;
-
-  const _ResizePaneChooserDialog({
-    required this.panes,
-    this.activePaneId,
-    required this.onResize,
-  });
-
-  @override
-  State<_ResizePaneChooserDialog> createState() =>
-      _ResizePaneChooserDialogState();
-}
-
-class _ResizePaneChooserDialogState extends State<_ResizePaneChooserDialog> {
-  late String? _selectedPaneId;
-
-  @override
-  void initState() {
-    super.initState();
-    // デフォルト: 現在アクティブなペインが選択状態
-    _selectedPaneId = widget.activePaneId;
-  }
-
-  TmuxPane? get _selectedPane {
-    if (_selectedPaneId == null) return null;
-    try {
-      return widget.panes.firstWhere((p) => p.id == _selectedPaneId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = _selectedPane;
-
-    return AlertDialog(
-      backgroundColor: DesignColors.surfaceDark,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.8,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ペインレイアウトのグリッドプレビュー
-              _buildSelectablePaneGrid(),
-              const SizedBox(height: 12),
-              // 選択中のペイン情報
-              if (selected != null)
-                Text(
-                  'Selected: Pane ${selected.index} (${selected.width}x${selected.height})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textSecondary,
-                  ),
-                )
-              else
-                const Text(
-                  'Tap a pane to select',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textSecondary,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: selected != null ? () => widget.onResize(selected) : null,
-          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
-          child: const Text('Resize'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSelectablePaneGrid() {
-    if (widget.panes.isEmpty) return const SizedBox.shrink();
-
-    // ウィンドウ全体のサイズを計算
-    int maxRight = 0;
-    int maxBottom = 0;
-    for (final pane in widget.panes) {
-      final right = pane.left + pane.width;
-      final bottom = pane.top + pane.height;
-      if (right > maxRight) maxRight = right;
-      if (bottom > maxBottom) maxBottom = bottom;
-    }
-    if (maxRight == 0) maxRight = 1;
-    if (maxBottom == 0) maxBottom = 1;
-
-    return Container(
-      height: 150,
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: DesignColors.canvasDark,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: DesignColors.borderDark),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const pad = 4.0;
-          final areaW = constraints.maxWidth - pad * 2;
-          final areaH = constraints.maxHeight - pad * 2;
-          final scaleX = areaW / maxRight;
-          final scaleY = areaH / maxBottom;
-
-          return Padding(
-            padding: const EdgeInsets.all(pad),
-            child: Stack(
-              children: [
-                SizedBox(width: areaW, height: areaH),
-                ...widget.panes.map((pane) {
-                  final isSelected = pane.id == _selectedPaneId;
-                  final left = pane.left * scaleX;
-                  final top = pane.top * scaleY;
-                  final width = (pane.width * scaleX).clamp(20.0, areaW - left);
-                  final height = (pane.height * scaleY).clamp(
-                    14.0,
-                    areaH - top,
-                  );
-
-                  return Positioned(
-                    left: left,
-                    top: top,
-                    width: width,
-                    height: height,
-                    child: GestureDetector(
-                      key: ValueKey('terminal-resize-pane-${pane.id}'),
-                      onTap: () => setState(() => _selectedPaneId = pane.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? DesignColors.primary.withValues(alpha: 0.25)
-                              : DesignColors.surfaceDark,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: isSelected
-                                ? DesignColors.primary
-                                : DesignColors.borderDark,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: Text(
-                              '${pane.index}\n${pane.width}x${pane.height}',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isSelected
-                                    ? DesignColors.primary
-                                    : DesignColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          );
-        },
-      ),
     );
   }
 }
