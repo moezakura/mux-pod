@@ -192,6 +192,15 @@ class SshClient implements BackendAdapter {
   // inventory: SSH-020
   SshConnectOptions? _connectOptions;
 
+  /// 旧形式（MD5 hex）保存値からの移行保留。
+  ///
+  /// dartssh2 2.18.0+ でホスト鍵 fingerprint が `SHA256:<base64>` の UTF-8 バイトに
+  /// 変更された（BREAKING）。旧形式で保存済みの値は再検証できないため、
+  /// 接続実績のあるサーバーとして受理し、**ユーザー認証成功後にのみ**
+  /// 正規形式へ更新する（[connect] で保存）。
+  ({String host, int port, String type, String fingerprint})?
+  _pendingFingerprintMigration;
+
   // inventory: LEGACY-0138
   /// 接続時に使用したオプション
   SshConnectOptions? get connectOptions => _connectOptions;
@@ -319,6 +328,8 @@ class SshClient implements BackendAdapter {
 
     _state = SshConnectionState.connecting;
     _lastError = null;
+    // 前回接続の移行保留をリセット（成功・失敗どちらでも次回に持ち越さない）
+    _pendingFingerprintMigration = null;
 
     try {
       final connectionFactory = _connectionFactory;
@@ -390,6 +401,19 @@ class SshClient implements BackendAdapter {
       // 認証完了を待機
       await _client!.authenticated;
 
+      // 旧形式保存値からの移行: 認証が成功した場合のみ正規形式で保存する
+      // （認証失敗時は更新しない = 問題なければ SHA256 に Update）。
+      final pending = _pendingFingerprintMigration;
+      _pendingFingerprintMigration = null;
+      if (pending != null) {
+        await SecureStorageService().saveHostKeyFingerprint(
+          pending.host,
+          pending.port,
+          pending.type,
+          pending.fingerprint,
+        );
+      }
+
       _state = SshConnectionState.connected;
       _connectionStateController.add(_state);
 
@@ -451,8 +475,16 @@ class SshClient implements BackendAdapter {
   // inventory: SSH-LIFE-017
   /// ホスト鍵フィンガープリントを検証する。
   ///
-  /// 初回接続時は [acceptNewHostKeys] が true なら受け入れて保存し、
-  /// false なら拒否する。2回目以降は保存済みフィンガープリントと比較する。
+  /// dartssh2 2.18.0 以降は OpenSSH 形式 `SHA256:<base64>` 文字列の UTF-8 バイトが
+  /// 渡される（2.18.0 で BREAKING: それ以前は MD5 生バイト）。
+  ///
+  /// - 初回接続時: [acceptNewHostKeys] が true なら受け入れて保存し、
+  ///   false なら拒否する。
+  /// - 保存値が正規形式（`SHA256:` プレフィックス）: 比較して一致なら受理、
+  ///   不一致なら拒否。
+  /// - 保存値が旧形式（MD5 hex・`SHA256:` プレフィックスなし）: 再検証不能なため
+  ///   接続実績のあるサーバーとして受理し、[connect] がユーザー認証成功後に
+  ///   正規形式へ更新する（[_pendingFingerprintMigration]）。
   Future<bool> _onVerifyHostKey(
     String host,
     int port,
@@ -460,9 +492,7 @@ class SshClient implements BackendAdapter {
     Uint8List fingerprint, {
     required bool acceptNewHostKeys,
   }) async {
-    final formatted = fingerprint
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join(':');
+    final formatted = utf8.decode(fingerprint, allowMalformed: true);
 
     final storage = SecureStorageService();
     final known = await storage.getHostKeyFingerprint(host, port, type);
@@ -470,6 +500,21 @@ class SshClient implements BackendAdapter {
     if (known == null) {
       if (acceptNewHostKeys) {
         await storage.saveHostKeyFingerprint(host, port, type, formatted);
+        return true;
+      }
+      _lastError = 'Unknown host key: $host:$port ($type)';
+      return false;
+    }
+
+    if (!known.startsWith('SHA256:')) {
+      // 旧形式（MD5 hex）の保存値。認証成功後に正規形式へ更新する。
+      if (acceptNewHostKeys) {
+        _pendingFingerprintMigration = (
+          host: host,
+          port: port,
+          type: type,
+          fingerprint: formatted,
+        );
         return true;
       }
       _lastError = 'Unknown host key: $host:$port ($type)';
