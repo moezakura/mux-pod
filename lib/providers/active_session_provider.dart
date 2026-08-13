@@ -41,7 +41,7 @@ class ActiveSession {
   // inventory: LEGACY-0007
   final bool isAttached;
 
-  /// backend 種別（herdr は read-only のため Terminal 遷移不可）。
+  /// backend 種別（backend 固有の UI・操作分岐に使う）。
   final MultiplexerBackendKind backend;
 
   // inventory: PROV-ACTIVE-009

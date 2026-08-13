@@ -182,15 +182,12 @@ void main() {
       expect(find.text('Herdr'), findsOneWidget);
     });
 
-    testWidgets('selecting Herdr shows read-only notice and saves a herdr connection',
+    testWidgets('selecting Herdr saves a herdr connection',
         (tester) async {
       final harness = await _pumpForm(tester);
 
       await tester.tap(find.text('Herdr'));
       await tester.pumpAndSettle();
-
-      // read-only である旨の説明が表示される
-      expect(find.textContaining('Read-only'), findsOneWidget);
 
       await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
       await tester.enterText(find.byType(TextFormField).at(1), '192.168.1.2');
@@ -231,7 +228,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text('Connection successful! Herdr is available (read-only).'),
+        find.text('Connection successful! Herdr is available.'),
         findsOneWidget,
       );
       expect(harness.client!.lastOptions!.multiplexer!.backend, BackendType.herdr);

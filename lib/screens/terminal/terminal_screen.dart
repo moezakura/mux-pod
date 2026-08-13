@@ -954,7 +954,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         throw Exception('Connection not found');
       }
 
-      // 1.5. backend 種別を確定（herdr は read-only 分岐に使う）
+      // 1.5. backend 種別を確定（backend 固有の操作・capability 判定に使う）
       final isHerdr = connection.multiplexer.backend == BackendType.herdr;
       _backendKind = isHerdr
           ? MultiplexerBackendKind.herdr
@@ -978,7 +978,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         throw Exception('SSH client is not available');
       }
 
-      // 3.4. herdr: read-only セッションを設定して終了
+      // 3.4. herdr: セッションを設定して終了
       if (isHerdr) {
         await _setupHerdrSession(client);
         if (!mounted || _isDisposed) return;
@@ -1262,7 +1262,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     };
   }
 
-  /// herdr の read-only セッションを設定する。
+  /// herdr のセッションを設定する。
   ///
   /// 表示対象 pane を解決し、ライブポーリングを開始する。mutation 系の
   /// tmux セットアップ（バージョン確認・セッション作成・ツリー取得・
