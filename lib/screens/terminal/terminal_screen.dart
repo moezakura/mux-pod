@@ -2860,9 +2860,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在のペインからナビゲーション可能な方向を取得
   Map<SwipeDirection, bool>? _getNavigableDirections() {
     // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
-    // herdr では tmuxProvider が clear() されているため null を返し、
-    // スワイプヒントは非表示になる（方向 focus の herdr 配線は T12/T18）。
     if (!_canFocusDirection) return null;
+
+    // herdr: snapshot の layout（pane rect）から隣接判定する。
+    // tmux と同様に navigableDirections を提供し、隣接 pane が無い方向の
+    // 2 本指スワイプでエッジフラッシュ（赤）を表示できるようにする（バグ4）。
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      final herdrDirections = _herdrNavigableDirections();
+      if (herdrDirections == null) return null;
+      final settings = ref.read(settingsProvider);
+      if (settings.invertPaneNavigation) {
+        return {
+          for (final dir in SwipeDirection.values)
+            dir: herdrDirections[dir.inverted] ?? false,
+        };
+      }
+      return herdrDirections;
+    }
+
     final tmuxState = ref.read(tmuxProvider);
     final window = tmuxState.activeWindow;
     final activePane = tmuxState.activePane;
@@ -2884,6 +2899,81 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
     return rawDirections;
   }
+
+  /// herdr: 現在表示中の pane の各方向に隣接 pane が存在するかを返す。
+  ///
+  /// snapshot の layout（pane の絶対座標 rect）から、[PaneNavigator] と
+  /// 同様の隣接判定を行う。snapshot 未取得時は null（スワイプヒント非表示）。
+  Map<SwipeDirection, bool>? _herdrNavigableDirections() {
+    final paneId = _targetSource?.currentPaneId;
+    final cache = _herdrSnapshotCache;
+    if (paneId == null || cache == null) return null;
+    final snapshot = cache.cachedSnapshot;
+    if (snapshot == null) return null;
+
+    // 現在の pane が属する layout（tab）を探す
+    HerdrLayout? layout;
+    for (final l in snapshot.layouts) {
+      if (l.panes.any((p) => p.paneId == paneId)) {
+        layout = l;
+        break;
+      }
+    }
+    if (layout == null) return null;
+
+    final current = layout.panes
+        .where((p) => p.paneId == paneId)
+        .firstOrNull;
+    if (current == null) return null;
+
+    return {
+      for (final dir in SwipeDirection.values)
+        dir: _herdrHasAdjacentPane(layout.panes, current, dir),
+    };
+  }
+
+  /// herdr layout 内で [current] の [direction] 方向に隣接 pane があるか判定。
+  bool _herdrHasAdjacentPane(
+    List<HerdrLayoutPane> panes,
+    HerdrLayoutPane current,
+    SwipeDirection direction,
+  ) {
+    if (panes.length <= 1) return false;
+    for (final pane in panes) {
+      if (pane.paneId == current.paneId) continue;
+      final r = pane.rect;
+      final c = current.rect;
+      switch (direction) {
+        case SwipeDirection.right:
+          // 右: 左端が現在の右端以上 + 垂直方向の重なり
+          if (r.x >= c.x + c.width && _herdrVerticalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.left:
+          // 左: 右端が現在の左端以下 + 垂直方向の重なり
+          if (r.x + r.width <= c.x && _herdrVerticalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.down:
+          // 下: 上端が現在の下端以上 + 水平方向の重なり
+          if (r.y >= c.y + c.height && _herdrHorizontalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.up:
+          // 上: 下端が現在の上端以下 + 水平方向の重なり
+          if (r.y + r.height <= c.y && _herdrHorizontalOverlap(c, r)) {
+            return true;
+          }
+      }
+    }
+    return false;
+  }
+
+  bool _herdrVerticalOverlap(HerdrRect a, HerdrRect b) =>
+      a.y < b.y + b.height && b.y < a.y + a.height;
+
+  bool _herdrHorizontalOverlap(HerdrRect a, HerdrRect b) =>
+      a.x < b.x + b.width && b.x < a.x + a.width;
 
   /// キーデータを PaneWriter 経由で送信（tmux: send-keys -l / herdr: send-text）
   Future<void> _sendKeyData(String data) async {
