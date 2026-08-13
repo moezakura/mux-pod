@@ -14,9 +14,11 @@ import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/terminal_test_scaffold.dart';
 
 // T14/T15: herdr の mutation UI テスト。
-// - T14（Q-04）: resize は「方向 + ステップ」ダイアログ。絶対値 UI は使わず
+// - T14（Q-04）: resize は「対象選択モーダル → 相対量ダイアログ」の 2 段階
+//   （tmux 準拠・条件1〜12）。絶対値 UI は使わず
 //   `herdr pane resize --direction <dir> --amount <step>` を発行する。
-//   `changed:false`（分割境界外）は情報通知。
+//   1 pane でも常に選択モーダルを表示（条件3）・初期選択は現在表示中 pane
+//   （条件10）・`changed:false`（分割境界外）は情報通知。
 // - T15（Q-06/H7）: paste は `send-text` 複数行・画像転送は SFTP + send-text・
 //   copy-mode は herdr では無く（H7）`pane read` 履歴ベースのみ。
 // - Q-02（全操作解禁）: pane セレクタは Resize（ヘッダー）+ 分割プレビュー
@@ -108,6 +110,44 @@ const kHerdrTwoPaneLayoutSnapshotFixture =
     '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
     '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
     '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// 3 pane（L 字: w1:p1 左上・w1:p2 右上・w1:p3 左下）の layout 付き snapshot
+// fixture。w1:p1 は右隣（p2）と下隣（p3）の両方を持つため、Cols/Rows 両変更時の
+// 「Cols→Rows 順の 2 回送信」（ユーザー決定6）の検証に使う。
+const kHerdrThreePaneLayoutSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1",'
+    '"layouts":[{"area":{"x":0,"y":0,"width":200,"height":70},'
+    '"focused_pane_id":"w1:p1",'
+    '"panes":[{"pane_id":"w1:p1","focused":true,'
+    '"rect":{"x":0,"y":0,"width":100,"height":35}},'
+    '{"pane_id":"w1:p2","focused":false,'
+    '"rect":{"x":100,"y":0,"width":100,"height":35}},'
+    '{"pane_id":"w1:p3","focused":false,'
+    '"rect":{"x":0,"y":35,"width":100,"height":35}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/c","focused":false,'
+    '"foreground_cwd":"/c","pane_id":"w1:p3","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_3","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":3,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":3,"tab_count":1,"workspace_id":"w1"}]},'
     '"type":"session_snapshot"}}';
 
 // S0 実測形状: create --focus 後の snapshot（旧 tab は残存しつつ新タブが focused）。
@@ -273,112 +313,394 @@ Future<FakeSshClient> _pumpHerdrAndOpenWorkspaceSelector(
   return client;
 }
 
+/// pane セレクタのヘッダー Resize（tooltip 'Resize Pane'）をタップし、
+/// 選択モーダル（[PaneChooserDialog]）が表示されるまで進める。
+Future<void> _tapHeaderResizeAndOpenChooser(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Resize Pane'));
+  // `_closeSelectorThen` の 200ms 遅延後に選択モーダルが開く。
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 250));
+  await tester.pump(const Duration(milliseconds: 100));
+  expect(find.text('Resize Pane'), findsOneWidget);
+}
+
+/// 選択モーダルの Resize ボタンでリサイズダイアログ
+/// （[HerdrResizePaneDialog]）へ進める（ダイアログ連鎖・R7）。
+Future<void> _tapChooserResize(WidgetTester tester) async {
+  await tester.tap(find.text('Resize'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 150));
+}
+
+/// リサイズダイアログ（絶対値 UI）で Cols/Rows の◀▶ ステッパー、または絶対値
+/// プリセットで目標サイズを設定し、Resize ボタンで確定して resize コマンド
+/// 発行まで進める。
+///
+/// - [colsPlus] / [colsMinus]: Cols の ▶ / ◀ のタップ回数（.first が Cols 側）
+/// - [rowsPlus] / [rowsMinus]: Rows の ▶ / ◀ のタップ回数（.last が Rows 側）
+/// - [presetLabel]: 指定時はプリセットチップをタップ（例: '80x24 (Standard)'）
+Future<void> _tapResizeDialogAndConfirm(
+  WidgetTester tester, {
+  int colsPlus = 0,
+  int colsMinus = 0,
+  int rowsPlus = 0,
+  int rowsMinus = 0,
+  String? presetLabel,
+}) async {
+  if (presetLabel != null) {
+    await tester.tap(find.text(presetLabel));
+    await tester.pump();
+  } else {
+    for (var i = 0; i < colsPlus; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_right).first);
+      await tester.pump();
+    }
+    for (var i = 0; i < colsMinus; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_left).first);
+      await tester.pump();
+    }
+    for (var i = 0; i < rowsPlus; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_right).last);
+      await tester.pump();
+    }
+    for (var i = 0; i < rowsMinus; i++) {
+      await tester.tap(find.byIcon(Icons.chevron_left).last);
+      await tester.pump();
+    }
+  }
+  await tester.tap(find.text('Resize'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 150));
+}
+
+/// `herdr pane resize` コマンド文字列から `--amount` の値をパースする。
+///
+/// 実装（herdr_commands.dart）は `amount.toString()` をそのまま文字列化する
+/// ため、浮動小数点誤差（例: 0.020000000000000018）が現れうる。期待値の照合は
+/// この実測値をパースし `closeTo` で行う（テスト戦略・実測ベース）。
+double? _amountOf(String command) {
+  final match = RegExp(r'--amount ([-0-9.eE+]+)').firstMatch(command);
+  return match == null ? null : double.parse(match.group(1)!);
+}
+
+/// 期待する方向・対象 pane・相対量（[expectedAmount] と closeTo）で
+/// `herdr pane resize` コマンドが発行されているかを判定する。
+bool _hasResizeCommand(
+  List<String> commands, {
+  required String direction,
+  required String paneId,
+  required double expectedAmount,
+}) {
+  return commands.any((c) {
+    if (!c.startsWith('herdr pane resize')) return false;
+    if (!c.contains('--direction $direction')) return false;
+    if (!c.contains('--pane $paneId')) return false;
+    final amount = _amountOf(c);
+    return amount != null && (amount - expectedAmount).abs() < 1e-9;
+  });
+}
+
 void main() {
-  group('T14: herdr resize 方向+ステップ UI（Q-04）', () {
+  group('T14: herdr resize 2段階フロー（選択モーダル→絶対値ダイアログ・Q-04）', () {
     testWidgets(
-      'selector header の Resize ボタンでダイアログが開き、'
-      '現在サイズが layout rect から表示される',
+      'ヘッダー Resize → 選択モーダルが開き、1 pane でも常に表示される（条件3）',
       (tester) async {
         await _pumpHerdrAndOpenPaneSelector(tester);
 
-        // ヘッダーの Resize ボタン（tooltip 'Resize Pane'）。
-        await tester.tap(find.byTooltip('Resize Pane'));
-        // `_closeSelectorThen` の 200ms 遅延後にダイアログが開く。
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pump(const Duration(milliseconds: 100));
+        // ヘッダーの Resize → 選択モーダル表示。
+        await _tapHeaderResizeAndOpenChooser(tester);
 
+        // 1 pane でも選択モーダルが開く（条件3・C-1解消・スキップしない）。
         expect(find.text('Resize Pane'), findsOneWidget);
-        // 現在サイズ（layout rect 由来: 80 x 24）。
-        expect(find.text('Current: 80 x 24'), findsOneWidget);
-        expect(find.text('Direction'), findsOneWidget);
-        expect(find.text('Step'), findsOneWidget);
+        // 初期選択は現在表示中の pane（currentPaneId = w1:p1・cwd /tmp ラベル）。
+        expect(find.text('Selected: /tmp (80x24)'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('terminal-resize-pane-w1:p1')),
+          findsOneWidget,
+        );
 
         // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。
         await tester.pump(const Duration(milliseconds: 200));
       },
     );
 
-    testWidgets('方向 + ステップ（既定 0.1）で pane resize コマンドを発行する', (
-      tester,
-    ) async {
-      final client = await TerminalTestScaffold.pumpTerminalScreen(
-        tester,
-        connection: _herdrConnection(),
-        sessionName: 'lab-ws1',
-        execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
-          'herdr pane read': 'hello\n',
-        },
-        settle: false,
-      );
+    testWidgets(
+      '選択モーダル → ダイアログ: 絶対値 Cols/Rows 入力・絶対値プリセット'
+      '（旧 UI 要素は削除済み）',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
 
-      await tester.tap(find.text('Pane 1'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byTooltip('Resize Pane'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+        await _tapChooserResize(tester);
 
-      // 右方向（既定ステップ 0.1）で確定。
-      await tester.tap(find.byTooltip('Right'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        // 絶対値 UI（tmux と同構造）: 概算プレビュー・Cols/Rows 入力・プリセット。
+        expect(find.text('概算(estimated)'), findsOneWidget);
+        expect(find.text('Cols'), findsOneWidget);
+        expect(find.text('Rows'), findsOneWidget);
+        expect(find.text('80x24 (Standard)'), findsOneWidget);
+        expect(find.text('120x40 (Wide)'), findsOneWidget);
+        // 旧 UI 要素は削除（ユーザー決定）: Current 表示・方向パッド・相対量チップ。
+        expect(find.text('Current: 80 x 24'), findsNothing);
+        expect(find.byTooltip('Right'), findsNothing);
+        expect(find.text('+20%'), findsNothing);
+        expect(find.text('Direction'), findsNothing);
+        expect(find.text('Amount'), findsNothing);
 
-      expect(
-        client.execCommands.any(
-          (c) =>
-              c == 'herdr pane resize --direction right --amount 0.1 --pane w1:p1',
-        ),
-        isTrue,
-        reason: '方向+ステップ UI は herdr pane resize の相対分数コマンドを発行する',
-      );
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
 
-      // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。
-      await tester.pump(const Duration(milliseconds: 200));
-    });
+    testWidgets(
+      '絶対値入力: Cols を +4 セル変更 → 相対換算 right コマンドを発行する',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
 
-    testWidgets('ステップ量を 0.2 に変更すると --amount 0.2 で発行される', (
-      tester,
-    ) async {
-      final client = await TerminalTestScaffold.pumpTerminalScreen(
-        tester,
-        connection: _herdrConnection(),
-        sessionName: 'lab-ws1',
-        execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
-          'herdr pane read': 'hello\n',
-        },
-        settle: false,
-      );
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+        await _tapChooserResize(tester);
 
-      await tester.tap(find.text('Pane 1'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byTooltip('Resize Pane'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.pump(const Duration(milliseconds: 100));
+        // Cols を +4 セル（100 → 104）に変更して確定。
+        await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
 
-      // ステップ 0.2 を選択 → 上方向で確定。
-      await tester.tap(find.text('0.2'));
-      await tester.pump();
-      await tester.tap(find.byTooltip('Up'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+        // 相対換算: delta = 4 / コンテナ幅(200) = 0.02 → 成長方向は right（右隣）。
+        expect(
+          _hasResizeCommand(
+            client.execCommands,
+            direction: 'right',
+            paneId: 'w1:p1',
+            expectedAmount: 4 / 200,
+          ),
+          isTrue,
+          reason: '絶対値 Cols 変更が相対量（4/コンテナ幅）に換算されて送信される',
+        );
+        // Rows は変更なし（delta 0）→ 送信は 1 回のみ。
+        expect(
+          client.execCommands.where((c) => c.startsWith('herdr pane resize')),
+          hasLength(1),
+        );
 
-      expect(
-        client.execCommands.any(
-          (c) =>
-              c == 'herdr pane resize --direction up --amount 0.2 --pane w1:p1',
-        ),
-        isTrue,
-        reason: '選択したステップ量が --amount に反映されること',
-      );
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
 
-      await tester.pump(const Duration(milliseconds: 200));
-    });
+    testWidgets(
+      '縮小入力: Cols を -4 セル → 隣接 pane（w1:p2）への成長コマンド（方向反転）',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+        await _tapChooserResize(tester);
+
+        // Cols を -4 セル（100 → 96）に変更して確定。
+        await _tapResizeDialogAndConfirm(tester, colsMinus: 4);
+
+        // 縮小は隣接 pane を成長させる（ユーザー決定5）:
+        // 対象 w1:p1 の縮小側（right）= w1:p2 を、w1:p2 から見て対象側（left）へ成長。
+        expect(
+          _hasResizeCommand(
+            client.execCommands,
+            direction: 'left',
+            paneId: 'w1:p2',
+            expectedAmount: 4 / 200,
+          ),
+          isTrue,
+          reason: '縮小は隣接 pane への成長として実現される（--pane が w1:p2 に変わる）',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'プリセット 80x24 → Cols 縮小を隣接成長で送信（Rows は縦隣接なしで送信なし）',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+        await _tapChooserResize(tester);
+
+        // 絶対値プリセット 80x24 → Cols 100→80（-20）・Rows 70→24（-46）。
+        await _tapResizeDialogAndConfirm(tester, presetLabel: '80x24 (Standard)');
+
+        // Cols: delta = -20/コンテナ幅(200) = -0.1 → 縮小 → 隣接 w1:p2 を left で成長。
+        expect(
+          _hasResizeCommand(
+            client.execCommands,
+            direction: 'left',
+            paneId: 'w1:p2',
+            expectedAmount: 20 / 200,
+          ),
+          isTrue,
+        );
+        // Rows: 縮小だが縦方向に隣接が無い → 送信されない（コマンドは 1 回のみ）。
+        expect(
+          client.execCommands.where((c) => c.startsWith('herdr pane resize')),
+          hasLength(1),
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      '2 pane: 選択モーダルで w1:p2 を選択 → 警告表示・--pane w1:p2・成長方向 left',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+
+        // 初期選択は現在表示中の pane（w1:p1・cwd /a ラベル・条件10）。
+        expect(find.text('Selected: /a (100x70)'), findsOneWidget);
+
+        // 選択モーダルで w1:p2 を選択 → 実行前再検証（条件11）で引当成功。
+        await tester.tap(
+          find.byKey(const ValueKey('terminal-resize-pane-w1:p2')),
+        );
+        await tester.pump();
+        expect(find.text('Selected: /b (100x70)'), findsOneWidget);
+        await _tapChooserResize(tester);
+
+        // pane 2 枚以上 → 警告表示（条件4・tmux と同レベル）。
+        expect(
+          find.text('Other pane sizes may also change.'),
+          findsOneWidget,
+        );
+
+        // Cols +4 → w1:p2 は左隣（w1:p1）のみ → 成長方向は left。
+        await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
+
+        expect(
+          _hasResizeCommand(
+            client.execCommands,
+            direction: 'left',
+            paneId: 'w1:p2',
+            expectedAmount: 4 / 200,
+          ),
+          isTrue,
+          reason: '選択モーダルで選んだ pane（w1:p2）が --pane に反映・方向は左隣',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
+
+    testWidgets(
+      'タイル⋮ Resize も選択モーダル経由・初期選択は現在表示中 pane（条件10）',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // タイル w1:p2 の ⋮ → Resize Pane（タイル ⋮ 導線）。
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const ValueKey('mux-sel-pane-w1:p2')),
+            matching: find.byIcon(Icons.more_vert),
+          ),
+        );
+        // PopupMenu の表示アニメーションを消化する。
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.text('Resize Pane'));
+        // `_closeSelectorThen` の 200ms 遅延後に選択モーダルが開く。
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // タップしたタイル（w1:p2）ではなく現在表示中 pane（w1:p1）が初期選択
+        // （ユーザー決定①・条件10）。
+        expect(find.text('Selected: /a (100x70)'), findsOneWidget);
+        expect(find.text('Selected: /b (100x70)'), findsNothing);
+
+        // そのまま確定 → 現在表示中 pane が対象になる（Cols +4 → right 成長）。
+        await _tapChooserResize(tester);
+        await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
+
+        expect(
+          _hasResizeCommand(
+            client.execCommands,
+            direction: 'right',
+            paneId: 'w1:p1',
+            expectedAmount: 4 / 200,
+          ),
+          isTrue,
+          reason: 'タイル ⋮ 導線も選択モーダル経由・初期選択=currentPaneId に統一',
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
 
     testWidgets('changed:false（分割境界外）は情報 SnackBar を表示する', (
       tester,
@@ -388,7 +710,7 @@ void main() {
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
         execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+          'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
           'herdr pane read': 'hello\n',
           // resize が分割境界外で changed:false を返す。
           'herdr pane resize': kHerdrResizeUnchangedFixture,
@@ -399,14 +721,9 @@ void main() {
       await tester.tap(find.text('Pane 1'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.byTooltip('Resize Pane'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 250));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      await tester.tap(find.byTooltip('Right'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 100));
+      await _tapHeaderResizeAndOpenChooser(tester);
+      await _tapChooserResize(tester);
+      await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
 
       expect(
         find.text('分割境界のため変更なし'),
@@ -418,6 +735,78 @@ void main() {
       await tester.pump(const Duration(seconds: 4));
       await tester.pump(const Duration(milliseconds: 750));
     });
+
+    testWidgets('単一 pane では隣接が無く resize コマンドを送信しない', (
+      tester,
+    ) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
+
+      await tester.tap(find.text('Pane 1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await _tapHeaderResizeAndOpenChooser(tester);
+      await _tapChooserResize(tester);
+
+      // Cols を +4 セル変更しても、隣接 pane が無く方向解決に失敗 → 送信しない。
+      await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
+
+      expect(
+        client.execCommands.where((c) => c.startsWith('herdr pane resize')),
+        isEmpty,
+        reason: '隣接 pane が無い場合は方向解決に失敗し送信しない',
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets(
+      '3 pane: プリセット 120x40 → Cols/Rows 両方変更 → Cols→Rows 順に 2 回送信',
+      (tester) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrThreePaneLayoutSnapshotFixture,
+            'herdr pane read': 'hello\n',
+          },
+          settle: false,
+        );
+
+        await tester.tap(find.text('Pane 1'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await _tapHeaderResizeAndOpenChooser(tester);
+        await _tapChooserResize(tester);
+
+        // プリセット 120x40 → Cols 100→120（+20）・Rows 35→40（+5）。
+        // w1:p1 は右隣（p2）と下隣（p3）の両方を持つ。
+        await _tapResizeDialogAndConfirm(tester, presetLabel: '120x40 (Wide)');
+
+        final resizeCmds = client.execCommands
+            .where((c) => c.startsWith('herdr pane resize'))
+            .toList();
+        expect(resizeCmds, hasLength(2), reason: 'Cols と Rows の両方変更で 2 回送信');
+        // Cols → Rows の順（ユーザー決定6）。
+        expect(resizeCmds[0], contains('--direction right'));
+        expect(resizeCmds[0], contains('--pane w1:p1'));
+        expect(_amountOf(resizeCmds[0])!, closeTo(20 / 200, 1e-9));
+        expect(resizeCmds[1], contains('--direction down'));
+        expect(resizeCmds[1], contains('--pane w1:p1'));
+        expect(_amountOf(resizeCmds[1])!, closeTo(5 / 70, 1e-9));
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
   });
 
   group('T15: herdr paste / 画像転送 / copy-mode 代替（Q-06/H7）', () {
