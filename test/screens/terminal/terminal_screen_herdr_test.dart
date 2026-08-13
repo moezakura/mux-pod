@@ -1714,7 +1714,7 @@ void main() {
           client.execCommands.any(
             (c) =>
                 c.startsWith('herdr pane send-text w1:p1') &&
-                c.contains('\x1b[5~'),
+                c.contains(r'\x1b[5~'),
           ),
           isTrue,
           reason: '拒否キー（PgUp）は send-text でエスケープシーケンスが送られること',
@@ -1751,7 +1751,7 @@ void main() {
           client.execCommands.any(
             (c) =>
                 c.startsWith('herdr pane send-text w1:p1') &&
-                c.codeUnits.contains(0x04),
+                c.contains(r'\x04'),
           ),
           isTrue,
           reason: '制御文字（C-d）は send-text で制御文字そのものが送られること',

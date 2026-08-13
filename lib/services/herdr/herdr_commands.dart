@@ -262,12 +262,38 @@ class HerdrCommands {
     return 'herdr workspace focus $workspaceId';
   }
 
-  /// シェル引用符（単一引用符）で囲む。`'` は `'\''` にエスケープする。
+  /// シェル引用符で囲む。`'` は `'\''` にエスケープする。
   ///
   /// コマンドは SSH 経由でシェルに渡るため、空白・改行・unicode を含む
   /// テキスト（send-text / rename label / split cwd）を安全に転送する。
-  static String _shellQuote(String value) =>
-      "'${value.replaceAll("'", r"'\''")}'";
+  ///
+  /// **制御文字（0x00-0x1F / 0x7F）を含む場合は bash の ANSI-C quoting
+  /// （`$'...'`）で送る**。通常の単一引用符で囲むと、コマンドライン内の
+  /// 制御文字（Ctrl+A = 行頭移動、Ctrl+O = 履歴操作、Ctrl+E = 行末移動等）
+  /// を、対話シェルの readline が解釈して失うため。`$'...'` 形式なら
+  /// 制御文字を `\xHH` のリテラル表現で送り、実行時に bash が制御文字へ
+  /// 復元する（readline に吸われない）。
+  static String _shellQuote(String value) {
+    if (value.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
+      final buffer = StringBuffer("\$'");
+      for (final rune in value.runes) {
+        if (rune < 0x20 || rune == 0x7f) {
+          buffer.write('\\x${rune.toRadixString(16).padLeft(2, '0')}');
+        } else if (rune == 0x5c) {
+          // backslash
+          buffer.write(r'\\');
+        } else if (rune == 0x27) {
+          // single quote
+          buffer.write(r"\'");
+        } else {
+          buffer.writeCharCode(rune);
+        }
+      }
+      buffer.write("'");
+      return buffer.toString();
+    }
+    return "'${value.replaceAll("'", r"'\''")}'";
+  }
 }
 
 // inventory: HERDR-ERR-001
