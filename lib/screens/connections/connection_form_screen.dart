@@ -9,6 +9,7 @@ import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/multiplexer_config.dart';
+import '../../services/command/command_request.dart';
 import '../../services/herdr/herdr_adapter.dart';
 import '../../services/herdr/herdr_commands.dart';
 import '../../services/keychain/secure_storage.dart';
@@ -1031,8 +1032,12 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       } else {
       // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
       try {
-        final result = await sshClient.tmuxExecutor.execWithExitCode(
-          TmuxCommands.version(),
+        final result = await sshClient.tmuxExecutor.execute(
+          CommandRequest(
+            command: TmuxCommands.version(),
+            transport: CommandTransportPreference.ephemeralOnly,
+            output: CommandOutputRequirement.separatedOutput,
+          ),
         );
         if (result.exitCode != null && result.exitCode != 0) {
           tmuxInstalled = false;

@@ -6,6 +6,7 @@ library;
 
 import 'dart:async';
 
+import '../command/command_request.dart';
 import 'tmux_command_builder.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_contract.dart';
@@ -199,7 +200,14 @@ class TmuxFacade implements TmuxContract {
     final combined = '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: historyLines)}; '
         '${TmuxCommands.getCursorPosition(target)}; '
         '${TmuxCommands.getPaneMode(target)}';
-    final output = await executor.execPersistent(combined);
+    final result = await executor.execute(
+      CommandRequest(
+        command: combined,
+        transport: CommandTransportPreference.persistentPreferred,
+        output: CommandOutputRequirement.outputOnly,
+      ),
+    );
+    final output = result.primaryOutput;
 
     final modeCut = output.lastIndexOf('\n');
     final paneModeOutput = modeCut >= 0 ? output.substring(modeCut + 1) : '';
@@ -287,13 +295,19 @@ class TmuxFacade implements TmuxContract {
   }
 
   // inventory: TMUX-FACADE-CHECK-001
-  /// [execWithExitCode] を使ってコマンドを実行し、
+  /// [CommandExecutor.execute] を使ってコマンドを実行し、
   /// 終了コード/標準エラーがあれば [TmuxCommandException] を投げる。
   ///
-  /// 標準エラーが [stdout] に混ざる [SshClient.exec] とは異なり、
-  /// ここでは [stdout] のみを呼び出しに返す。
+  /// ephemeral + separatedOutput を要求する（stderr 分離が必要な tmux
+  /// mutation / チェック系コマンド。Codex 根本設計レビュー・バグ2 根本対応）。
   Future<String> _execChecked(TmuxCommandExecutor executor, String command) async {
-    final result = await executor.execWithExitCode(command);
+    final result = await executor.execute(
+      CommandRequest(
+        command: command,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.separatedOutput,
+      ),
+    );
     if (result.exitCode != 0 || result.stderr.isNotEmpty) {
       throw TmuxCommandException(
         result.stderr.isNotEmpty

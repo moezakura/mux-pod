@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_backend.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
@@ -141,10 +143,36 @@ class FakeSshClient extends SshClient
     return _lookupOutput(command);
   }
 
-  @override
   Future<String> execPersistent(String command, {Duration? timeout}) async {
     execPersistentCommands.add(command);
     return exec(command, timeout: timeout);
+  }
+
+  @override
+  Future<CommandResult> execute(CommandRequest request) async {
+    // persistent 要求のみ execPersistentCommands に記録する（テスト観測性）。
+    // それ以外（ephemeral）は execCommands 側で記録される。
+    final usePersistent =
+        request.transport == CommandTransportPreference.persistentPreferred ||
+            request.transport == CommandTransportPreference.persistentOnly;
+    final result = usePersistent
+        ? await execPersistentWithExitCode(request.command)
+        : await execWithExitCode(request.command);
+    return CommandResult(
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: usePersistent
+          ? CommandTransport.persistent
+          : CommandTransport.ephemeral,
+    );
+  }
+
+  Future<({String stdout, String stderr, int? exitCode})>
+  execPersistentWithExitCode(String command, {Duration? timeout}) async {
+    execPersistentCommands.add(command);
+    return execWithExitCode(command, timeout: timeout);
   }
 
   @override

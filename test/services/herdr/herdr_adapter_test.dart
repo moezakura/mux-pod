@@ -375,6 +375,40 @@ void main() {
         startsWith('/usr/local/bin/herdr pane read w1:p1'),
       );
     });
+
+    test('viaPersistent: true は execPersistentWithExitCode 経由で取得する', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] = 'hello\n';
+
+      final adapter = HerdrAdapter(client);
+      final content = await adapter.paneRead('w1:p1', viaPersistent: true);
+
+      expect(content.rawText, 'hello');
+      // FakeSshClient.execPersistentWithExitCode は execPersistentCommands に記録する。
+      expect(
+        client.execPersistentCommands,
+        contains('herdr pane read w1:p1 --source recent'),
+      );
+    });
+
+    test('viaPersistent でも target-not-found の例外分類は維持される', () async {
+      final client = FakeSshClient();
+      client.execOutputs['herdr pane read'] =
+          '{"error":{"code":"pane_not_found","message":"no pane"}}';
+      client.execExitCodes['herdr pane read'] = 1;
+
+      final adapter = HerdrAdapter(client);
+      await expectLater(
+        adapter.paneRead('w1:p1', viaPersistent: true),
+        throwsA(
+          isA<HerdrTargetNotFoundException>().having(
+            (e) => e.kind,
+            'kind',
+            HerdrTargetNotFoundKind.pane,
+          ),
+        ),
+      );
+    });
   });
 
   group('HerdrAdapter mutation (_execMutation)', () {

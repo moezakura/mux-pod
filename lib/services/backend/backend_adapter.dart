@@ -1,3 +1,5 @@
+import '../command/command_executor.dart';
+
 /// backend 入力トランスポートの回復可能な失敗。
 ///
 /// [BackendInputTransport.sendNoWait] 等で発生し、呼出側が再起動や
@@ -33,21 +35,12 @@ abstract interface class BackendInputTransport {
 ///
 /// [SshClient] は [BackendAdapter]（互換名 [TmuxBackend]）としてこのインターフェースを
 /// 実装する。backend 層は具象型ではなくこの抽象に依存する。
-abstract interface class BackendAdapter {
+///
+/// [CommandExecutor] を実装し、コマンド実行は [CommandRequest] / [CommandResult]
+/// ベースで行う（Codex 根本設計レビュー・バグ2 根本対応）。
+abstract interface class BackendAdapter implements CommandExecutor {
   /// 接続中かどうか。
   bool get isConnected;
-
-  /// コマンドを実行して結果を取得する。
-  Future<String> exec(String command, {Duration? timeout});
-
-  /// 持続的シェル経由でコマンドを実行する。
-  Future<String> execPersistent(String command, {Duration? timeout});
-
-  /// コマンドを実行して標準出力・標準エラー・終了コードを取得する。
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  });
 
   /// データを書き込む。
   void write(String data);

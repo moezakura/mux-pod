@@ -132,6 +132,28 @@ void main() {
 
       expect(find.byIcon(Icons.more_vert), findsNothing);
     });
+
+    testWidgets('uses custom resize label when resizeLabel is provided',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MultiplexerWindowTile(
+              window: window,
+              isActive: false,
+              onResize: () {},
+              resizeLabel: 'Resize Tab',
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Resize Tab'), findsOneWidget);
+      expect(find.text('Resize Window'), findsNothing);
+    });
   });
 
   group('MultiplexerPaneTile', () {

@@ -13,6 +13,12 @@ class FontCalculator {
   /// デフォルトのフォントサイズ
   static const double defaultFontSize = 14.0;
 
+  /// ターミナル行の高さ比率（行ピッチ = fontSize × この値）
+  ///
+  /// AnsiTextView の itemExtent / TextStyle.height と同一値を参照し、
+  /// 行高係数の不整合（過去の 1.4 ハードコードとの乖離）を構造的に防ぐ。
+  static const double lineHeightRatio = 1.2;
+
   /// 文字幅比率のキャッシュ（フォントファミリー → 比率）
   static final Map<String, double> _charWidthRatioCache = {};
 
@@ -417,7 +423,7 @@ class FontCalculator {
     required double screenHeight,
     required double fontSize,
     required String fontFamily,
-    double lineHeightRatio = 1.2,
+    double lineHeightRatio = FontCalculator.lineHeightRatio,
   }) {
     final lineHeight = fontSize * lineHeightRatio;
     if (lineHeight <= 0) return 24;

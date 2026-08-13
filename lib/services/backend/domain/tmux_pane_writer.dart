@@ -152,7 +152,8 @@ class TmuxPaneWriter implements PaneWriter {
       _unsupported('resizePane');
 
   @override
-  Future<void> createTab(String workspaceId) => _unsupported('createTab');
+  Future<void> createTab(String workspaceId, {String? label, bool? focus}) =>
+      _unsupported('createTab');
 
   @override
   Future<void> closeTab(String tabId) => _unsupported('closeTab');

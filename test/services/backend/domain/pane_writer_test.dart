@@ -202,7 +202,7 @@ class _FakePaneWriter implements PaneWriter {
   }
 
   @override
-  Future<void> createTab(String workspaceId) async {
+  Future<void> createTab(String workspaceId, {String? label, bool? focus}) async {
     calls.add('createTab');
   }
 

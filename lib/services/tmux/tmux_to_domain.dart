@@ -35,5 +35,9 @@ extension TmuxPaneDomainMapping on TmuxPane {
         id: id,
         active: active,
         currentPath: currentPath,
+        left: left,
+        top: top,
+        width: width,
+        height: height,
       );
 }

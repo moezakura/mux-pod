@@ -1,6 +1,8 @@
 import 'package:flutter_muxpod/services/backend/backend_adapter.dart';
 import 'package:flutter_muxpod/services/backend/domain/herdr_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -82,6 +84,52 @@ void main() {
       expect(backend.commands.single, contains('herdr pane send-text w1:p1'));
       expect(backend.commands.single.codeUnits, contains(0x04));
     });
+
+    test(
+      'sendText: 入力シェルがあれば fire-and-forget（sendNoWait）で送信される'
+      '（バグ2: 直列化キューから除外）',
+      () async {
+        final sent = <String>[];
+        backend.fakeInputTransport = _FakeInputTransport(
+          onSend: sent.add,
+          started: true,
+        );
+
+        await writer.sendText('w1:p1', 'hello');
+
+        // exec チャネル（commands）には乗らず、入力シェルへ即時送信される。
+        expect(backend.commands, isEmpty,
+            reason: 'バグ2: 入力シェルがある場合 sendText は exec を呼ばない');
+        expect(sent.single, 'herdr pane send-text w1:p1 \'hello\'');
+      },
+    );
+
+    test(
+      'sendKey: 入力シェルがあれば受理キーも fire-and-forget（sendNoWait）',
+      () async {
+        final sent = <String>[];
+        backend.fakeInputTransport = _FakeInputTransport(
+          onSend: sent.add,
+          started: true,
+        );
+
+        await writer.sendKey('w1:p1', 'Enter');
+
+        expect(backend.commands, isEmpty);
+        expect(sent.single, 'herdr pane send-keys w1:p1 Enter');
+      },
+    );
+
+    test(
+      'sendText: 入力シェルが無ければ exec チャネルにフォールバックする',
+      () async {
+        backend.fakeInputTransport = null;
+
+        await writer.sendText('w1:p1', 'hello');
+
+        expect(backend.commands.single, 'herdr pane send-text w1:p1 \'hello\'');
+      },
+    );
 
     test('focusPaneDirection: pane focus へ委譲する', () async {
       await writer.focusPaneDirection('w1:p1', 'right');
@@ -210,6 +258,14 @@ void main() {
       expect(backend.commands.single, 'herdr tab create --workspace w1');
     });
 
+    test('createTab: label と focus を tab create へ透過する（Q-05）', () async {
+      await writer.createTab('w1', label: 'logs', focus: true);
+      expect(
+        backend.commands.single,
+        "herdr tab create --workspace w1 --label 'logs' --focus",
+      );
+    });
+
     test('closeTab: tab close へ委譲する（Q-05）', () async {
       await writer.closeTab('w1:t1');
       expect(backend.commands.single, 'herdr tab close w1:t1');
@@ -275,6 +331,9 @@ void main() {
 class _FakeBackend implements BackendAdapter {
   final List<String> commands = [];
 
+  /// 入力専用の持続的シェル（fire-and-forget 送信の検証用）。
+  BackendInputTransport? fakeInputTransport;
+
   /// この値が null 以外なら `execWithExitCode` がこの結果を返す
   /// （`changed:false` 応答のテスト用）。
   ({String stdout, String stderr, int? exitCode})? execWithExitCodeResult;
@@ -286,7 +345,7 @@ class _FakeBackend implements BackendAdapter {
   String? get userExecutablePath => null;
 
   @override
-  BackendInputTransport? get inputTransport => null;
+  BackendInputTransport? get inputTransport => fakeInputTransport;
 
   @override
   void Function()? get onInputTransportRebooted => null;
@@ -298,26 +357,33 @@ class _FakeBackend implements BackendAdapter {
   Future<void> restartInputTransport() async {}
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    commands.add(command);
-    return execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
+  Future<CommandResult> execute(CommandRequest request) async {
+    commands.add(request.command);
+    final result = execWithExitCodeResult ??
+        (stdout: '', stderr: '', exitCode: 0);
+    return CommandResult(
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: CommandTransport.ephemeral,
+    );
   }
 
   @override
   void write(String data) {}
+}
+
+/// 記録用の fake [BackendInputTransport]。
+class _FakeInputTransport implements BackendInputTransport {
+  _FakeInputTransport({required this.onSend, required this.started});
+
+  final void Function(String command) onSend;
+  final bool started;
+
+  @override
+  bool get isStarted => started;
+
+  @override
+  void sendNoWait(String data) => onSend(data);
 }

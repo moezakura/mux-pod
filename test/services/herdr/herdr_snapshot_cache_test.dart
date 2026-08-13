@@ -36,6 +36,24 @@ class _FakeSnapshotAdapter extends HerdrAdapter {
   }
 }
 
+/// 初回の snapshot だけ失敗する fake（joinInflight:false の失敗リトライ検証用）。
+class _FailingOnceAdapter extends _FakeSnapshotAdapter {
+  _FailingOnceAdapter(super.responses);
+
+  bool _failed = false;
+
+  @override
+  Future<HerdrSnapshot> snapshot({Duration? timeout}) async {
+    snapshotCalls++;
+    if (!_failed) {
+      _failed = true;
+      throw StateError('fetch failed');
+    }
+    final index = snapshotCalls - 1;
+    return _responses[index >= _responses.length ? _responses.length - 1 : index];
+  }
+}
+
 void main() {
   group('HerdrSnapshotCache TTL', () {
     test('TTL 内はキャッシュを返し adapter.snapshot を呼ばない', () async {
@@ -188,6 +206,48 @@ void main() {
       expect(adapter.snapshotCalls, 2);
       // 失効自体は表示対象の切替ではないためエポック不変
       expect(cache.epoch, 0);
+    });
+  });
+
+  group('HerdrSnapshotCache joinInflight', () {
+    test('joinInflight:false は進行中 fetch を待ってから新規 fetch する', () async {
+      final gate = Completer<void>();
+      final adapter = _FakeSnapshotAdapter([_snap('a'), _snap('b')], gate: gate);
+      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+
+      // 1 回目の fetch を開始（gate でブロック中）。
+      final firstFuture = cache.get();
+      await Future<void>.delayed(Duration.zero);
+      expect(adapter.snapshotCalls, 1);
+
+      // joinInflight:false: 進行中 fetch に合流せず、完了後に必ず新規 fetch する。
+      final secondFuture = cache.get(force: true, joinInflight: false);
+      await Future<void>.delayed(Duration.zero);
+      // gate 未完了の間は 2 回目の fetch は開始されない（待機中）。
+      expect(adapter.snapshotCalls, 1);
+
+      gate.complete();
+      final first = await firstFuture;
+      expect(first.version, 'a');
+      final second = await secondFuture;
+      expect(second.version, 'b');
+      expect(adapter.snapshotCalls, 2);
+    });
+
+    test('前回 fetch 失敗は無視して新規 fetch する（joinInflight:false）', () async {
+      final adapter = _FailingOnceAdapter([_snap('a')]);
+      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+
+      // 1 回目は失敗（throw が伝播）。
+      await expectLater(
+        cache.get(force: true, joinInflight: false),
+        throwsA(isA<StateError>()),
+      );
+
+      // 2 回目は in-flight の失敗を無視して新規 fetch し成功する。
+      final result = await cache.get(force: true, joinInflight: false);
+      expect(result.version, 'a');
+      expect(adapter.snapshotCalls, 2);
     });
   });
 }

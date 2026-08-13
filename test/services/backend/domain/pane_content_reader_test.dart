@@ -1,4 +1,5 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_pane_content_reader.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_pane_content_reader.dart';
@@ -25,14 +26,26 @@ const kHerdrSnapshotFixture =
 
 void main() {
   group('MultiplexerPaneSnapshot', () {
-    test('defaults cursor, mode, and size for backends without them', () {
+    test('defaults cursor, mode, and geometry for backends without them', () {
       const snapshot = MultiplexerPaneSnapshot(content: 'hello');
+      expect(snapshot.geometry, isNull);
       expect(snapshot.width, 0);
       expect(snapshot.height, 0);
       expect(snapshot.cursorX, 0);
       expect(snapshot.cursorY, 0);
       expect(snapshot.paneMode, '');
       expect(snapshot.hasAnsi, isFalse);
+    });
+
+    test('geometry is carried through and exposes width/height', () {
+      const snapshot = MultiplexerPaneSnapshot(
+        content: 'hello',
+        geometry: PaneGeometry(width: 90, height: 30),
+      );
+      expect(snapshot.geometry?.width, 90);
+      expect(snapshot.geometry?.height, 30);
+      expect(snapshot.width, 90);
+      expect(snapshot.height, 30);
     });
   });
 
@@ -45,29 +58,27 @@ void main() {
 
       final reader = TmuxPaneContentReader(client);
       final snapshot = await reader.readPane(
-        paneId: '%0',
-        historyLines: -120,
+        PaneReadRequest.live(paneId: '%0'),
       );
 
       expect(snapshot.content, 'hello');
       expect(snapshot.cursorX, 7);
       expect(snapshot.cursorY, 8);
-      expect(snapshot.width, 90);
-      expect(snapshot.height, 30);
+      expect(snapshot.geometry?.width, 90);
+      expect(snapshot.geometry?.height, 30);
       expect(
         client.execPersistentCommands.any((c) => c.contains('capture-pane')),
         isTrue,
       );
     });
 
-    test('deep history path uses capturePane with the start line', () async {
+    test('scrollback path uses capturePane with the max lines', () async {
       final client = FakeSshClient();
       client.execOutputs['capture-pane'] = 'deep-line-1\ndeep-line-2\n';
 
       final reader = TmuxPaneContentReader(client);
       final snapshot = await reader.readPane(
-        paneId: '%0',
-        historyLines: -100000,
+        PaneReadRequest.scrollback(paneId: '%0', maxLines: 100000),
       );
 
       expect(snapshot.content, 'deep-line-1\ndeep-line-2');
@@ -75,23 +86,25 @@ void main() {
         client.execCommands.any((c) => c.contains('capture-pane -t %0 -p -e -S -100000')),
         isTrue,
       );
-      // 深い履歴は exec チャネル（poll の persistent ではない）で実行される。
+      // スクロールバックは exec チャネル（poll の persistent ではない）で実行される。
       expect(
         client.execPersistentCommands.any((c) => c.contains('capture-pane')),
         isFalse,
       );
     });
 
-    test('null historyLines uses the live poll default window', () async {
+    test('live purpose uses the live poll window', () async {
       final client = FakeSshClient();
       client.execOutputs['capture-pane'] = 'hello\n0,0,80,24\n';
 
       final reader = TmuxPaneContentReader(client);
-      final snapshot = await reader.readPane(paneId: '%0');
+      final snapshot = await reader.readPane(
+        PaneReadRequest.live(paneId: '%0'),
+      );
 
       expect(snapshot.content, 'hello');
-      expect(snapshot.width, 80);
-      expect(snapshot.height, 24);
+      expect(snapshot.geometry?.width, 80);
+      expect(snapshot.geometry?.height, 24);
     });
   });
 
@@ -102,7 +115,9 @@ void main() {
       client.execOutputs['herdr pane read'] = '\x1b[32mok\x1b[0m\nnext\n';
 
       final reader = HerdrPaneContentReader(HerdrAdapter(client));
-      final snapshot = await reader.readPane(paneId: 'w1:p1', historyLines: -120);
+      final snapshot = await reader.readPane(
+        PaneReadRequest.live(paneId: 'w1:p1'),
+      );
 
       expect(
         client.execCommands,
@@ -114,20 +129,29 @@ void main() {
       expect(snapshot.cursorX, 0);
       expect(snapshot.cursorY, 0);
       expect(snapshot.paneMode, '');
-      expect(snapshot.width, 0);
-      expect(snapshot.height, 0);
+      expect(snapshot.geometry, isNull);
     });
 
-    test('deep history requests a large line count', () async {
+    test('scrollback purpose requests the max lines via persistent channel',
+        () async {
       final client = FakeSshClient();
       client.execOutputs['herdr pane read'] = 'line1\nline2\n';
 
       final reader = HerdrPaneContentReader(HerdrAdapter(client));
-      await reader.readPane(paneId: 'w1:p1', historyLines: -100000);
+      await reader.readPane(
+        PaneReadRequest.scrollback(paneId: 'w1:p1', maxLines: 10000),
+      );
 
       expect(
         client.execCommands,
-        contains('herdr pane read w1:p1 --source recent --lines 100000 --raw'),
+        contains('herdr pane read w1:p1 --source recent --lines 10000 --raw'),
+      );
+      // herdr の read は persistent チャネルで統一される（live/deep 分離なし）。
+      expect(
+        client.execPersistentCommands.any(
+          (c) => c.contains('herdr pane read w1:p1 --source recent'),
+        ),
+        isTrue,
       );
     });
   });
