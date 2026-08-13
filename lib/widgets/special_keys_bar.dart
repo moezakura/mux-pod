@@ -272,9 +272,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// 外付けキーボードの修飾子を検出してtmux形式キー名に変換
   String _applyHardwareModifiers(String baseKey) {
     final isShift = HardwareKeyboard.instance.isShiftPressed;
-    final isCtrl = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
+    final isCtrl = HardwareKeyboard.instance.isControlPressed;
     final isAlt = HardwareKeyboard.instance.isAltPressed;
+    final isMeta = HardwareKeyboard.instance.isMetaPressed;
 
     // 特殊ケース: Shift+Tab → BTab
     if (isShift && baseKey == 'Tab') return 'BTab';
@@ -283,6 +283,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     if (isShift) mods.add('S');
     if (isCtrl) mods.add('C');
     if (isAlt) mods.add('M');
+    if (isMeta) mods.add('M');
     if (mods.isEmpty) return baseKey;
     return '${mods.join('-')}-$baseKey';
   }
@@ -349,9 +350,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
     final key = event.logicalKey;
 
-    // Ctrl/Meta + A-Z のショートカット処理
-    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
+    // Ctrl + A-Z のショートカット処理（Cmd/Meta は Ctrl として扱わない）
+    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed;
     if (isCtrlPressed) {
       final keyLabel = key.keyLabel;
       if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
@@ -360,6 +360,21 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           HapticFeedback.lightImpact();
         }
         widget.onSpecialKeyPressed('C-${keyLabel.toLowerCase()}');
+        _resetSoftwareModifiers();
+        return KeyEventResult.handled;
+      }
+    }
+
+    // Cmd/Meta + A-Z は M- として送信（ユーザー要望: Meta/Super として伝える）
+    final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
+    if (isMetaPressed) {
+      final keyLabel = key.keyLabel;
+      if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
+        _markKeyEventHandled();
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+        widget.onSpecialKeyPressed('M-${keyLabel.toLowerCase()}');
         _resetSoftwareModifiers();
         return KeyEventResult.handled;
       }
