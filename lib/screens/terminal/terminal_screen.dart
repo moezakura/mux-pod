@@ -46,6 +46,7 @@ import '../../services/tmux/tmux_to_domain.dart';
 import '../../services/tmux/tmux_version.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
 import '../../widgets/dialogs/rename_window_dialog.dart';
+import '../../widgets/dialogs/new_window_dialog.dart';
 import '../../theme/design_colors.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../widgets/key_overlay_widget.dart';
@@ -4078,20 +4079,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// ウィンドウ作成ダイアログを表示
   void _showCreateWindowDialog(TmuxSession session) {
     final existingNames = session.windows.map((w) => w.name).toList();
-    showDialog<String>(
+    showDialog<NewWindowRequest>(
       context: context,
       builder: (dialogContext) =>
-          _NewWindowDialog(existingWindowNames: existingNames),
-    ).then((windowName) {
-      if (windowName != null) {
+          NewWindowDialog(existingWindowNames: existingNames),
+    ).then((request) {
+      if (request != null) {
         // inventory: TERM-CRUD-001
-        _createWindow(windowName.isEmpty ? null : windowName);
+        _createWindow(request);
       }
     });
   }
 
-  /// 新しいウィンドウを作成
-  Future<void> _createWindow(String? windowName) async {
+  /// 新しいウィンドウを作成する。
+  ///
+  /// [NewWindowRequest.command] が指定された場合は、新ウィンドウの pane を
+  /// 選択した後に send-text + Enter で入力する（キーボードを開かずに
+  /// コマンドを実行できるようにするため）。
+  Future<void> _createWindow(NewWindowRequest request) async {
     if (_isCreatingWindow) return;
     _isCreatingWindow = true;
     try {
@@ -4110,10 +4115,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       await tmuxFacade.createWindow(
         sshClient.tmuxExecutor,
         sessionName: session.name,
-        windowName: windowName,
+        windowName: request.name,
       );
       await _refreshSessionTree();
       if (!mounted) return;
+
+      final command = request.command;
+      var commandDispatched = false;
 
       // active=1のウィンドウを検出して自動切替
       final updatedSession = ref.read(tmuxProvider).activeSession;
@@ -4127,7 +4135,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         final activePaneId = ref.read(tmuxProvider).activePaneId;
         if (activePaneId != null) {
           await _selectPane(activePaneId);
+          if (command != null) {
+            if (!mounted) return;
+            commandDispatched = true;
+            await _sendNewWindowCommand(activePaneId, command);
+          }
         }
+      }
+      if (command != null && !commandDispatched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Window created, but the command could not be sent'),
+          ),
+        );
       }
       _boostPolling();
     } catch (e) {
@@ -4138,6 +4158,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
     } finally {
       _isCreatingWindow = false;
+    }
+  }
+
+  /// 新規ウィンドウ作成時の任意コマンドを PaneWriter 経由で入力する
+  /// （send-text + Enter）。送信失敗はウィンドウ作成の失敗として扱わない。
+  Future<void> _sendNewWindowCommand(String paneId, String command) async {
+    if (!_canSendText) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.sendText(paneId, command);
+      await writer.sendKey(paneId, 'Enter');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Window created, but the command failed: $e')),
+        );
+      }
     }
   }
 
@@ -6929,110 +6967,6 @@ class _InputDialogContentState extends State<_InputDialogContent> {
           const SizedBox(height: 16),
         ],
       ),
-    );
-  }
-}
-
-/// ウィンドウ名入力ダイアログ
-class _NewWindowDialog extends StatefulWidget {
-  // inventory: LEGACY-0089
-  final List<String> existingWindowNames;
-
-  const _NewWindowDialog({required this.existingWindowNames});
-
-  @override
-  State<_NewWindowDialog> createState() => _NewWindowDialogState();
-}
-
-class _NewWindowDialogState extends State<_NewWindowDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  String? _validateWindowName(String? value) {
-    if (value == null || value.isEmpty) {
-      return null; // 空入力はtmuxデフォルト名で許容
-    }
-    if (value.length > 50) {
-      return 'Window name must be 50 characters or less';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - and _ allowed';
-    }
-    if (widget.existingWindowNames.contains(value)) {
-      return 'Window "$value" already exists';
-    }
-    return null;
-  }
-
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pop(context, _nameController.text);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(
-        'New Window',
-        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
-      ),
-      content: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _nameController,
-          autofocus: true,
-          maxLength: 50,
-          decoration: InputDecoration(
-            labelText: 'Window Name',
-            hintText: 'Leave empty for default',
-            hintStyle: GoogleFonts.jetBrainsMono(
-              fontSize: 14,
-              color: isDark
-                  ? DesignColors.textMuted
-                  : DesignColors.textMutedLight,
-            ),
-            filled: true,
-            fillColor: isDark
-                ? DesignColors.inputDark
-                : DesignColors.inputLight,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.primary),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: DesignColors.error),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: DesignColors.error),
-            ),
-          ),
-          style: GoogleFonts.jetBrainsMono(fontSize: 14),
-          validator: _validateWindowName,
-          onFieldSubmitted: (_) => _submit(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Create')),
-      ],
     );
   }
 }
