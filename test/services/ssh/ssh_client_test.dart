@@ -35,6 +35,9 @@ class _FakeSocket implements SSHSocket {
 
   @override
   void destroy() => unawaited(close());
+
+  @override
+  Future<void> flush() async {}
 }
 
 class _FakeInteractiveSession implements SSHSession {
@@ -93,6 +96,7 @@ class _FakeRawSshClient implements SSHClient {
   @override
   Future<SSHSession> shell({
     SSHPtyConfig? pty = const SSHPtyConfig(),
+    SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
     lastPty = pty;
@@ -103,6 +107,7 @@ class _FakeRawSshClient implements SSHClient {
   Future<SSHSession> execute(
     String command, {
     SSHPtyConfig? pty,
+    SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
     final session = _FakeInteractiveSession();

@@ -66,6 +66,7 @@ class _FakeSSHClient implements SSHClient {
   @override
   Future<SSHSession> shell({
     SSHPtyConfig? pty = const SSHPtyConfig(),
+    SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
     shellCalls++;

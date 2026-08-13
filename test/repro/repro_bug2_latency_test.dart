@@ -50,6 +50,9 @@ class _FakeSocket implements SSHSocket {
 
   @override
   void destroy() => unawaited(close());
+
+  @override
+  Future<void> flush() async {}
 }
 
 /// execWithExitCode が listen した時点で stdout/stderr を閉じる fake セッション。
@@ -129,6 +132,7 @@ class _CountingRawSshClient implements SSHClient {
   Future<SSHSession> execute(
     String command, {
     SSHPtyConfig? pty,
+    SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
     executedCommands.add(command);
@@ -148,6 +152,7 @@ class _CountingRawSshClient implements SSHClient {
   @override
   Future<SSHSession> shell({
     SSHPtyConfig? pty = const SSHPtyConfig(),
+    SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
     final session = _FakeInteractiveSession();

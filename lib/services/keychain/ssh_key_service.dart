@@ -71,8 +71,8 @@ class SshKeyService {
       ));
 
     final pair = keyGen.generateKeyPair();
-    final publicKey = pair.publicKey as pc.RSAPublicKey;
-    final privateKey = pair.privateKey as pc.RSAPrivateKey;
+    final publicKey = pair.publicKey;
+    final privateKey = pair.privateKey;
 
     final publicKeyBlob = _buildRsaPublicKeyBlob(publicKey);
     final fingerprint = calculateFingerprint('ssh-rsa', publicKeyBlob);

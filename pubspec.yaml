@@ -34,7 +34,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  dartssh2: ^2.13.0
+  dartssh2: ^2.16.0
   flutter_riverpod: ^3.1.0
   flutter_secure_storage: ^10.0.0
   local_auth: ^3.0.0
@@ -44,7 +44,7 @@ dependencies:
   # SSH key management dependencies
   file_picker: ^8.0.3
   cryptography: ^2.7.0
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   crypto: ^3.0.3
   # Image transfer
   image_picker: ^1.1.2
