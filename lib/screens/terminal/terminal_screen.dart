@@ -2828,8 +2828,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （「その方向に pane はありません」・S4/T19）。
   Future<void> _focusHerdrPaneDirection(SwipeDirection direction) async {
     final writer = _paneWriter;
-    final paneId = _targetSource?.currentPaneId;
-    if (writer == null || paneId == null) return;
+    final beforePane = _targetSource?.currentPaneId;
+    if (writer == null || beforePane == null) return;
 
     final directionName = switch (direction) {
       SwipeDirection.up => 'up',
@@ -2841,10 +2841,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ポーリング停止（SSH競合回避・mutation 実行中は既存方針）
     _pollTimer?.cancel();
     try {
-      await writer.focusPaneDirection(paneId, directionName);
+      await writer.focusPaneDirection(beforePane, directionName);
       if (!mounted || _isDisposed) return;
       // H5/T18 単一経路: 強制再取得 → 再解決 → ターゲット変化時のみ切替コミット。
-      await _syncAfterHerdrMutation(eventLabel: 'focus sync');
+      // スワイプはフォーカス移動を伴う操作のため、snapshot の focused pane へ
+      // 表示を追従させる（preserveCurrent では旧 pane 維持となり表示が変わらない）。
+      await _syncAfterHerdrMutation(
+        eventLabel: 'focus sync',
+        policy: HerdrSyncTargetPolicy.followBackendFocus,
+      );
     } on PaneOperationNoopException catch (e) {
       // 隣接 pane なし（soft 失敗・情報通知）。
       _showHerdrMutationNoopSnackBar(e);
