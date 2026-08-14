@@ -132,21 +132,24 @@ class PersistentShell implements TmuxInputTransport {
     // シェル初期化を待つ（プロンプトが出力されるまで少し待機）
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // ヒストリー記録を無効化（Bash/Zsh/fish対応）し、プロンプトを抑制
-    // - export HISTFILE=... : Bash/Zsh用（スタートアップファイル後に上書き）
-    // - set +H : Bashのヒストリー展開を無効化（入力中のリテラル`!`が
-    //   展開されて入力行全体が中断されるのを防ぐ）
-    // - set fish_history ... : fish用（exportはfishで構文エラーになるため別途）
-    // - 2>/dev/null で未対応シェルのエラーを抑制
+    // SSHログイン時にfishへ切り替える設定があっても、以降の制御文字を
+    // BashのANSI-C quotingで送信できるよう、内部シェルをbashに固定する。
+    // fishのWelcomeバナーなど、exec前に届いた初期出力は破棄する。
+    _sharedScanner.reset();
+    _session!.write(utf8.encode('exec bash --norc\n'));
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // Bashのヒストリー記録を無効化し、プロンプトを抑制する。
+    // - export HISTFILE=... : スタートアップファイル後にも履歴を保存しない
+    // - set +H : 入力中のリテラル`!`のヒストリー展開を無効化
     _session!.write(utf8.encode(
       'export HISTFILE=/dev/null HISTSIZE=0 HISTFILESIZE=0 SAVEHIST=0 2>/dev/null;'
       ' set +H 2>/dev/null;'
-      ' set fish_history "" 2>/dev/null; true;'
       ' export PS1="" PS2="" 2>/dev/null; stty -echo -onlcr -opost\n',
     ));
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // バッファをクリア（初期化出力を破棄）
+    // バッファをクリア（bash起動・初期化コマンドのエコーを破棄）
     _sharedScanner.reset();
   }
 
