@@ -23,6 +23,7 @@ class SshKeyMeta {
   final DateTime createdAt;
   final String? comment;
   final KeySource source; // 鍵の由来
+  final bool isAvailable; // 秘密鍵が復号可能か（false = 破損鍵）
 
   const SshKeyMeta({
     required this.id,
@@ -34,6 +35,7 @@ class SshKeyMeta {
     required this.createdAt,
     this.comment,
     this.source = KeySource.generated,
+    this.isAvailable = true,
   });
 
   SshKeyMeta copyWith({
@@ -46,6 +48,7 @@ class SshKeyMeta {
     DateTime? createdAt,
     String? comment,
     KeySource? source,
+    bool? isAvailable,
   }) {
     return SshKeyMeta(
       id: id ?? this.id,
@@ -57,6 +60,7 @@ class SshKeyMeta {
       createdAt: createdAt ?? this.createdAt,
       comment: comment ?? this.comment,
       source: source ?? this.source,
+      isAvailable: isAvailable ?? this.isAvailable,
     );
   }
 
@@ -71,6 +75,7 @@ class SshKeyMeta {
       'createdAt': createdAt.toIso8601String(),
       'comment': comment,
       'source': source.name,
+      'isAvailable': isAvailable,
     };
   }
 
@@ -88,6 +93,7 @@ class SshKeyMeta {
         (e) => e.name == (json['source'] as String?),
         orElse: () => KeySource.generated,
       ),
+      isAvailable: json['isAvailable'] as bool? ?? true,
     );
   }
 }
@@ -97,22 +103,26 @@ class KeysState {
   final List<SshKeyMeta> keys;
   final bool isLoading;
   final String? error;
+  final List<SshKeyMeta> damagedKeys; // 破損鍵（モーダル表示用）
 
   const KeysState({
     this.keys = const [],
     this.isLoading = false,
     this.error,
+    this.damagedKeys = const [],
   });
 
   KeysState copyWith({
     List<SshKeyMeta>? keys,
     bool? isLoading,
     String? error,
+    List<SshKeyMeta>? damagedKeys,
   }) {
     return KeysState(
       keys: keys ?? this.keys,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      damagedKeys: damagedKeys ?? this.damagedKeys,
     );
   }
 }
@@ -121,15 +131,21 @@ class KeysState {
 class KeysNotifier extends Notifier<KeysState> {
   static const String _storageKey = 'ssh_keys_meta';
 
+  bool _disposed = false;
+  int _loadGeneration = 0;
+
   @override
   KeysState build() {
+    ref.onDispose(() => _disposed = true);
     _loadKeys();
     return const KeysState(isLoading: true);
   }
 
   Future<void> _loadKeys() async {
+    final generation = ++_loadGeneration;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (_disposed || generation != _loadGeneration) return;
       final jsonString = prefs.getString(_storageKey);
 
       if (jsonString != null) {
@@ -141,24 +157,42 @@ class KeysNotifier extends Notifier<KeysState> {
         // 作成日時で並び替え（降順）
         keys.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-        state = KeysState(keys: keys);
+        // 秘密鍵の可用性をチェック（破損鍵の検出）
+        final storage = SecureStorageService();
+        for (var i = 0; i < keys.length; i++) {
+          final privateKey = await storage.getPrivateKey(keys[i].id);
+          if (_disposed || generation != _loadGeneration) return;
+          // 可用性は保存済み値ではなく、各ロード時の読み取り結果から上書きする
+          keys[i] = keys[i].copyWith(isAvailable: privateKey != null);
+        }
+
+        final damagedKeys = keys.where((k) => !k.isAvailable).toList();
+        if (_disposed || generation != _loadGeneration) return;
+        state = KeysState(keys: keys, damagedKeys: damagedKeys);
       } else {
+        if (_disposed || generation != _loadGeneration) return;
         state = const KeysState();
       }
     } catch (e) {
-      state = KeysState(error: e.toString());
+      if (!_disposed && generation == _loadGeneration) {
+        state = KeysState(error: e.toString());
+      }
     }
   }
 
   Future<void> _saveKeys() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = state.keys.map((k) => k.toJson()).toList();
+    // 作成日時で並び替え（降順）
+    final keys = [...state.keys]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final jsonList = keys.map((k) => k.toJson()).toList();
     await prefs.setString(_storageKey, jsonEncode(jsonList));
   }
 
   /// 鍵を追加
   Future<void> add(SshKeyMeta key) async {
-    final keys = [...state.keys, key];
+    final keys = [...state.keys, key]
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     state = state.copyWith(keys: keys);
     await _saveKeys();
   }
@@ -193,6 +227,12 @@ class KeysNotifier extends Notifier<KeysState> {
     state = state.copyWith(isLoading: true, error: null);
     await _loadKeys();
   }
+}
+
+/// 指定の鍵IDが破損鍵（秘密鍵を読み出せない）かどうかを返す。
+bool isKeyDamaged(KeysState state, String? keyId) {
+  if (keyId == null) return false;
+  return state.keys.any((k) => k.id == keyId && !k.isAvailable);
 }
 
 /// SSH鍵プロバイダー

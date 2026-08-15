@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// セキュアストレージサービス
@@ -7,10 +9,19 @@ class SecureStorageService {
   /// テスト用のインメモリストレージ。
   static Map<String, String>? _testValues;
 
+  /// テスト用: 読み取り時に例外（復号不能）を投げるキー一覧。
+  static Set<String>? _testThrowKeys;
+
   /// テスト用のストレージ値をセットする。
   /// null を渡すとテストモードを解除する。
   static void setTestValues(Map<String, String>? values) {
     _testValues = values != null ? Map.of(values) : null;
+  }
+
+  /// テスト用: 読み取り時に例外（PlatformException: 復号不能）を投げるキーを指定する。
+  /// null を渡すと解除する。
+  static void setTestThrowKeys(Set<String>? keys) {
+    _testThrowKeys = keys != null ? Set.of(keys) : null;
   }
 
   SecureStorageService()
@@ -41,8 +52,21 @@ class SecureStorageService {
   }
 
   /// 秘密鍵を取得
+  ///
+  /// 復号不能（Keystore キー欠如など）の場合は例外を捕捉して null を返す。
+  /// それ以外の例外（一時障害・実装エラー）は再スローし、破損と誤判定しない。
   Future<String?> getPrivateKey(String keyId) async {
-    return await _readValue('privatekey_$keyId');
+    try {
+      return await _readValue('privatekey_$keyId');
+    } on PlatformException catch (e) {
+      // Keystore 復号不能（Failed to unwrap key）など → 破損鍵として null 扱い
+      debugPrint('[SecureStorage] getPrivateKey failed for id=$keyId: ${e.code}');
+      return null;
+    } catch (e) {
+      // 一時障害・実装エラーは再スロー（破損と誤判定しない）
+      debugPrint('[SecureStorage] getPrivateKey unexpected error for id=$keyId: $e');
+      rethrow;
+    }
   }
 
   /// 秘密鍵を削除
@@ -95,6 +119,12 @@ class SecureStorageService {
 
   Future<String?> _readValue(String key) async {
     if (_testValues != null) {
+      if (_testThrowKeys?.contains(key) ?? false) {
+        throw PlatformException(
+          code: 'invalid_key',
+          message: 'Failed to unwrap key',
+        );
+      }
       return _testValues![key];
     }
     return await _storage.read(key: key);

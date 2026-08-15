@@ -837,9 +837,16 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           dropdownColor: colorScheme.surface,
           style: GoogleFonts.spaceGrotesk(fontSize: 14, color: colorScheme.onSurface),
           items: keysState.keys.map((key) {
+            final damaged = !key.isAvailable;
             return DropdownMenuItem(
               value: key.id,
-              child: Text(key.name),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(key.name),
+                  if (damaged) ...[const SizedBox(width: 6), Icon(Icons.warning_amber, size: 14, color: colorScheme.error)],
+                ],
+              ),
             );
           }).toList(),
           onChanged: (value) => setState(() => _selectedKeyId = value),
@@ -854,17 +861,30 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             style: GoogleFonts.spaceGrotesk(color: mutedColor),
           ),
         ),
-        if (_authMethod == 'key' && keysState.keys.isEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            'No SSH keys found. Add keys in the Keys section.',
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 12,
-              color: colorScheme.error,
-            ),
-          ),
-        ],
+        if (_authMethod == 'key' && keysState.keys.isEmpty) ...[const SizedBox(height: 8), Text('No SSH keys found. Add keys in the Keys section.', style: GoogleFonts.spaceGrotesk(fontSize: 12, color: colorScheme.error))],
+        if (_authMethod == 'key' &&
+            _selectedKeyId != null &&
+            isKeyDamaged(keysState, _selectedKeyId)) ...[const SizedBox(height: 8), _buildDamagedKeyWarning(context)],
       ],
+    );
+  }
+
+  /// 破損キー選択中の警告表示
+  Widget _buildDamagedKeyWarning(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '選択中の鍵は破損しています（秘密鍵を読み出せません）。別の鍵を選択するか、鍵を再インポートしてください。',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 12,
+              color: colorScheme.onErrorContainer,
+            ),
+      ),
     );
   }
 
@@ -965,7 +985,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         privateKey = await storage.getPrivateKey(_selectedKeyId!);
         passphrase = await storage.getPassphrase(_selectedKeyId!);
         if (privateKey == null) {
-          throw SshAuthenticationError('Private key not found');
+          throw SshAuthenticationError(
+            'Private key is not readable. Please re-import the key.',
+          );
         }
       }
 

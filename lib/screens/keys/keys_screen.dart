@@ -11,12 +11,30 @@ import 'key_import_screen.dart';
 import 'widgets/key_tile.dart';
 
 /// SSH鍵一覧画面
-class KeysScreen extends ConsumerWidget {
+class KeysScreen extends ConsumerStatefulWidget {
   const KeysScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<KeysScreen> createState() => _KeysScreenState();
+}
+
+class _KeysScreenState extends ConsumerState<KeysScreen> {
+  /// 破損鍵モーダルを表示済みか（同一セッション内で一度だけ表示する）
+  bool _damagedKeysDialogShown = false;
+
+  @override
+  Widget build(BuildContext context) {
     final keysState = ref.watch(keysProvider);
+
+    // 破損鍵が検出された場合、起動時に一度だけモーダルを表示する
+    ref.listen(keysProvider, (prev, next) {
+      if (!_damagedKeysDialogShown && next.damagedKeys.isNotEmpty) {
+        _damagedKeysDialogShown = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showDamagedKeysDialog(next.damagedKeys);
+        });
+      }
+    });
 
     return Scaffold(
       body: CustomScrollView(
@@ -290,5 +308,108 @@ class KeysScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// 破損鍵検出モーダル（削除 or 保持を選択）
+  Future<void> _showDamagedKeysDialog(List<SshKeyMeta> damagedKeys) async {
+    if (!mounted) return;
+    final selected = <String>{};
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('破損した鍵が見つかりました'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '秘密鍵を読み出せない鍵があります。削除するか、そのまま残すかを選択してください。',
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: damagedKeys.map((key) {
+                          return CheckboxListTile(
+                            dense: true,
+                            title: Text(key.name),
+                            subtitle: Text(
+                              '${key.type} · ${_shortFingerprint(key.fingerprint)}',
+                            ),
+                            value: selected.contains(key.id),
+                            onChanged: (checked) {
+                              setDialogState(() {
+                                if (checked == true) {
+                                  selected.add(key.id);
+                                } else {
+                                  selected.remove(key.id);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('そのままにする'),
+                ),
+                FilledButton(
+                  onPressed: selected.isEmpty
+                      ? null
+                      : () async {
+                          await _deleteDamagedKeys(selected.toList());
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        },
+                  child: const Text('選択した鍵を削除'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 選択された破損鍵（メタデータ + 秘密鍵）を削除する
+  Future<void> _deleteDamagedKeys(List<String> keyIds) async {
+    final storage = ref.read(secureStorageProvider);
+    final keysNotifier = ref.read(keysProvider.notifier);
+    try {
+      for (final id in keyIds) {
+        await storage.deletePrivateKey(id);
+        await storage.deletePassphrase(id);
+        await keysNotifier.remove(id);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete key: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  /// フィンガープリントの先頭を短縮表示する
+  String _shortFingerprint(String? fingerprint) {
+    if (fingerprint == null) return '';
+    return fingerprint.length > 12
+        ? fingerprint.substring(0, 12)
+        : fingerprint;
   }
 }
