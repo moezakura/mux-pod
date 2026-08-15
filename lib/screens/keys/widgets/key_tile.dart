@@ -35,6 +35,7 @@ class KeyTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _buildSourceBadge(context),
+              if (!keyMeta.isAvailable) ...[const SizedBox(width: 4), _buildUnavailableBadge(context)],
               if (keyMeta.hasPassphrase) ...[
                 const SizedBox(width: 4),
                 Icon(
@@ -133,6 +134,25 @@ class KeyTile extends StatelessWidget {
               color: isGenerated
                   ? Theme.of(context).colorScheme.onPrimaryContainer
                   : Theme.of(context).colorScheme.onSecondaryContainer,
+            ),
+      ),
+    );
+  }
+
+  /// 破損鍵（秘密鍵を読み出せない鍵）のバッジ
+  Widget _buildUnavailableBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '使用不可',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontSize: 9,
+              color: colorScheme.onErrorContainer,
             ),
       ),
     );
