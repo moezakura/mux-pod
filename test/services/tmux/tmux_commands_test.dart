@@ -603,14 +603,14 @@ void main() {
     test('generates new-window command with defaults', () {
       expect(
         TmuxCommands.newWindow(sessionName: 'main'),
-        'tmux new-window -t main',
+        'tmux new-window -t main:',
       );
     });
 
     test('generates new-window command with background flag', () {
       expect(
         TmuxCommands.newWindow(sessionName: 'main', background: true),
-        'tmux new-window -t main -d',
+        'tmux new-window -t main: -d',
       );
     });
 
@@ -621,7 +621,7 @@ void main() {
           windowName: 'build',
           startDirectory: '/home/user',
         ),
-        'tmux new-window -t main -n build -c /home/user',
+        'tmux new-window -t main: -n build -c /home/user',
       );
     });
   });
