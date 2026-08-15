@@ -12,6 +12,7 @@
 //
 // 期待される正しい動作: 実ペイン幅（文字セル単位）でフォントサイズを計算する
 // 実際の動作（バグ）: paneWidth=80 固定で計算される
+@Tags(['repro'])
 library;
 
 import 'package:flutter_test/flutter_test.dart';

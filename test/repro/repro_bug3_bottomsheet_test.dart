@@ -12,6 +12,7 @@
 // このテストは「sshProvider の state 変化 → 親 rebuild → シートが閉じるか」を
 // widget テストで確認する。実機では SSH 接続状態の遷移（keep-alive タイムアウト
 // → 再接続、ネットワーク断など）が同様の変化を引き起こす。
+@Tags(['repro'])
 library;
 
 import 'package:flutter/material.dart';

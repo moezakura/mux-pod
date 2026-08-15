@@ -12,6 +12,7 @@
 //
 // 期待される正しい動作: tmux と揃えて 'Connection successful! Herdr is available.'
 // 実際の動作（バグ）: '(read-only)' が付く
+@Tags(['repro'])
 library;
 
 import 'package:flutter/material.dart';

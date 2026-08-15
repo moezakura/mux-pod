@@ -15,6 +15,7 @@
 // このテストは「ライブポーリングが常に --lines 120 --raw を発行する」ことと
 // 「空応答が空コンテンツになる」ことを再現する。実際の herdr CLI の 0 バイト
 // 応答は実機（herdr サーバ）での確認が必要（手順書参照）。
+@Tags(['repro'])
 library;
 
 import 'package:flutter_test/flutter_test.dart';

@@ -17,6 +17,7 @@
 //   - ローカル sshd が ed25519 ホスト鍵で稼働している
 //   - /tmp/bugfix-repro-key の公開鍵が authorized_keys に登録されている
 //   - /tmp/bugfix-repro-key-wrong は authorized_keys に未登録（認証失敗用）
+@Tags(['repro'])
 library;
 
 import 'dart:convert';
