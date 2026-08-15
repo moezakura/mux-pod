@@ -76,13 +76,15 @@ void main() {
     test('sendKey: 拒否キーは send-text でエスケープシーケンスを送信する', () async {
       await writer.sendKey('w1:p1', 'Home');
       expect(backend.commands.single, contains('herdr pane send-text w1:p1'));
-      expect(backend.commands.single, contains('\x1b[H'));
+      // エスケープシーケンスは ANSI-C quoting（$'...'）で送る
+      expect(backend.commands.single, contains(r'\x1b[H'));
     });
 
     test('sendKey: 制御文字は send-text で制御文字そのものを送信する', () async {
       await writer.sendKey('w1:p1', 'C-d');
       expect(backend.commands.single, contains('herdr pane send-text w1:p1'));
-      expect(backend.commands.single.codeUnits, contains(0x04));
+      // 制御文字は ANSI-C quoting（$'...'）の \x04 リテラルで送る
+      expect(backend.commands.single, contains(r'\x04'));
     });
 
     test(
@@ -249,7 +251,7 @@ void main() {
       await writer.pasteText('w1:p1', 'a\nb');
       expect(
         backend.commands.single,
-        contains("herdr pane send-text w1:p1 'a"),
+        contains(r"herdr pane send-text w1:p1 $'a\x0ab'"),
       );
     });
 

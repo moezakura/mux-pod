@@ -335,14 +335,17 @@ void main() {
     );
 
     testWidgets(
-      'focus 成功後は単一経路（force 再取得）で同期される',
+      'focus 成功後は単一経路（force 再取得）で同期され、フォーカス先の pane へ表示が切り替わる',
       (tester) async {
         final client = await _pumpHerdrTerminal(
           tester,
+          // 接続時: w1:t1（w1:p1）/ focus 後の force 再取得: 旧 pane は残存しつつ
+          // フォーカスは w1:p2 へ移動（S0 実測形状）。スワイプ（方向フォーカス）は
+          // フォーカス移動を伴う操作のため followBackendFocus で追従すること。
           execOutputQueues: {
             'herdr api snapshot': [
               kHerdrSnapshotFixture,
-              kHerdrSnapshotFixture,
+              kHerdrSnapshotNewTabFixture,
             ],
           },
         );
@@ -368,6 +371,20 @@ void main() {
           greaterThanOrEqualTo(2),
           reason: 'focus 成功後も _syncAfterHerdrMutation 単一経路が走ること',
         );
+        // スワイプはフォーカス移動を伴うため、旧 pane（w1:p1）が snapshot に
+        // 残存していても followBackendFocus でフォーカス先（w1:p2）へ表示切替。
+        final events = herdrSwitchEvents(tester);
+        expect(
+          events.any((e) => e.contains('focus sync -> w1:p2')),
+          isTrue,
+          reason: 'focus 後は _syncAfterHerdrMutation（focus sync）が走ること',
+        );
+        expect(
+          events.any((e) => e.contains('switch target -> w1:p2')),
+          isTrue,
+          reason: '方向フォーカスは snapshot の focused pane へ表示を追従すること',
+        );
+        expect(find.text('Pane 2'), findsOneWidget);
 
         await tester.pump(const Duration(milliseconds: 200));
       },

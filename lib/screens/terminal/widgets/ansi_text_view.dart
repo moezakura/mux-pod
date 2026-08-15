@@ -139,6 +139,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   bool _ctrlPressed = false;
   bool _altPressed = false;
   bool _shiftPressed = false;
+  bool _metaPressed = false;
 
   /// ホールド+スワイプ用の状態
   bool _isLongPressing = false;
@@ -983,6 +984,11 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         _shiftPressed = true;
         return KeyEventResult.handled;
       }
+      if (key == LogicalKeyboardKey.metaLeft ||
+          key == LogicalKeyboardKey.metaRight) {
+        _metaPressed = true;
+        return KeyEventResult.handled;
+      }
 
       // 特殊キーの処理
       String? data;
@@ -1120,6 +1126,11 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         if (_altPressed) {
           data = '\x1b$data';
         }
+
+        // Meta(Cmd)+文字の処理（xterm の ESC 前置・ユーザー要望）
+        if (_metaPressed) {
+          data = '\x1b$data';
+        }
       }
 
       if (data != null) {
@@ -1143,6 +1154,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       } else if (key == LogicalKeyboardKey.shiftLeft ||
           key == LogicalKeyboardKey.shiftRight) {
         _shiftPressed = false;
+      } else if (key == LogicalKeyboardKey.metaLeft ||
+          key == LogicalKeyboardKey.metaRight) {
+        _metaPressed = false;
       }
     }
 

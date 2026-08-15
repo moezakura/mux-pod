@@ -107,8 +107,13 @@ void main() {
       expect(client.lastPty?.type, 'dumb');
       expect(client.lastPty?.width, 200);
       expect(client.lastPty?.height, 50);
+      expect(client._session.written, hasLength(2));
+      expect(
+        String.fromCharCodes(client._session.written.first),
+        'exec bash --norc\n',
+      );
       final initialization = String.fromCharCodes(
-        client._session.written.single,
+        client._session.written.last,
       );
       expect(initialization, contains('HISTFILE=/dev/null'));
       expect(initialization, contains('stty -echo'));
@@ -210,7 +215,7 @@ void main() {
       final shell = PersistentShell(client);
       await shell.start();
       shell.sendNoWait('C-c');
-      expect(client._session.written, hasLength(2));
+      expect(client._session.written, hasLength(3));
       final last = String.fromCharCodes(client._session.written.last);
       expect(last, 'C-c\n');
       await shell.dispose();
@@ -404,7 +409,9 @@ void main() {
       await shell.start();
       final newSession = client._session;
       final newWrites = newSession.written.where(
-        (w) => !String.fromCharCodes(w).contains('HISTFILE=/dev/null'),
+        (w) =>
+            !String.fromCharCodes(w).contains('HISTFILE=/dev/null') &&
+            String.fromCharCodes(w) != 'exec bash --norc\n',
       );
       expect(
         newWrites,

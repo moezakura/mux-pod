@@ -55,9 +55,38 @@ void main() {
     });
 
     test('paneSendText handles multi-line and unicode text', () {
+      // 改行（0x0A）は制御文字のため ANSI-C quoting（$'...'）で送る
       expect(
         HerdrCommands.paneSendText('w1:p1', 'line1\nline2 \u3042'),
-        "herdr pane send-text w1:p1 'line1\nline2 \u3042'",
+        r"herdr pane send-text w1:p1 $'line1\x0aline2 あ'",
+      );
+    });
+
+    test('paneSendText escapes control chars with ANSI-C quoting', () {
+      // 制御文字（Ctrl+O = 0x0F など）は readline に吸われないよう \xHH で送る
+      expect(
+        HerdrCommands.paneSendText('w1:p1', '\x0f'),
+        r"herdr pane send-text w1:p1 $'\x0f'",
+      );
+    });
+
+    test('paneSendText escapes all Ctrl+A-Z control chars (0x01-0x1A)', () {
+      // Ctrl+[A-Z] の制御文字（0x01-0x1A）がすべて $'\xHH' 形式で送られること
+      for (var i = 1; i <= 26; i++) {
+        final ctrl = String.fromCharCode(i);
+        final hex = i.toRadixString(16).padLeft(2, '0');
+        expect(
+          HerdrCommands.paneSendText('w1:p1', ctrl),
+          "herdr pane send-text w1:p1 \$'\\x$hex'",
+          reason: 'Ctrl+${String.fromCharCode(0x40 + i)} (0x$hex) のエスケープ',
+        );
+      }
+    });
+
+    test('paneSendText ANSI-C quoting escapes backslash and quote', () {
+      expect(
+        HerdrCommands.paneSendText('w1:p1', '\\\x01'),
+        r"herdr pane send-text w1:p1 $'\\\x01'",
       );
     });
 

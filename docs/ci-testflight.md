@@ -29,7 +29,7 @@ git tag v0.2.2 && git push origin v0.2.2
 | OS | macOS 15.6 / Apple Silicon |
 | 実行ユーザ | `muxpod-ci`（標準ユーザ。管理者権限なし） |
 | Xcode | 26.1.1 |
-| Flutter | 3.38.6（mise 管理） |
+| Flutter | 3.44.9（mise 管理） |
 | Ruby | 3.3.12（mise 管理） |
 | fastlane / CocoaPods | 2.237.0 / 1.17.0 |
 | runner | `muxpod-mac-mini` / labels `self-hosted,macOS,ARM64,xcode,muxpod` |
@@ -40,19 +40,19 @@ CI の実行に sudo は不要。
 ### 注意点
 
 - **Flutter のバージョン指定**: リポジトリの `.mise.toml` は
-  `flutter = "3.38.6-stable"` を指定しているが、これは古い mise
+  `flutter = "3.44.9-stable"` を指定しているが、これは古い mise
   (asdf プラグイン方式) 向けの表記。ビルドマシンの mise 2026.7.x は
   ここから URL を組み立てる際に `-stable` を二重に付けてしまい 404 になる。
 
   ```
-  flutter_macos_arm64_3.38.6-stable-stable.zip  ← 存在しない
+  flutter_macos_arm64_3.44.9-stable-stable.zip  ← 存在しない
   ```
 
   ローカル開発環境 (mise 2024.9.x) では現在の表記で動作しているため
-  `.mise.toml` は変更せず、workflow の `MISE_FLUTTER_VERSION: '3.38.6'` で
+  `.mise.toml` は変更せず、workflow の `MISE_FLUTTER_VERSION: '3.44.9'` で
   CI 側だけ上書きしている。環境変数は設定ファイルより優先される。
 
-  将来ローカルの mise を更新した際は `.mise.toml` を `3.38.6` に直し、
+  将来ローカルの mise を更新した際は `.mise.toml` を `3.44.9` に直し、
   この上書きを削除してよい。
 - **libyaml**: macOS には libyaml のヘッダが無いため、mise の Ruby ビルドで
   psych が入らない。`~/.local` に libyaml 0.2.5 を自前ビルドし、
@@ -171,7 +171,7 @@ sudo bash scripts/ci/create-muxpod-ci-user.sh
 # 2. ツールチェーン（muxpod-ci として実行）
 curl -fsSL https://mise.run | sh
 export PATH=$HOME/.local/bin:$PATH
-mise use -g flutter@3.38.6
+mise use -g flutter@3.44.9
 
 #    Ruby は libyaml を先に用意してからでないと psych が入らない
 curl -fsSL -o yaml.tar.gz https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz

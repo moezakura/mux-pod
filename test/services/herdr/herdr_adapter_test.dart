@@ -435,9 +435,10 @@ void main() {
       final adapter = HerdrAdapter(client);
       await adapter.sendText('w1:p1', 'line1\nline2 \u3042');
 
+      // 改行（0x0A）は制御文字のため ANSI-C quoting（$'...'）で送る
       expect(
         client.execCommands,
-        contains("herdr pane send-text w1:p1 'line1\nline2 \u3042'"),
+        contains(r"herdr pane send-text w1:p1 $'line1\x0aline2 あ'"),
       );
     });
 

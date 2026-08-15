@@ -27,12 +27,12 @@ jobs:
       # fastlane / CocoaPods は UTF-8 ロケールを要求する
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
-      # リポジトリの .mise.toml は flutter = "3.38.6-stable" を指定しているが、
+      # リポジトリの .mise.toml は flutter = "3.44.9-stable" を指定しているが、
       # これは古い mise (asdf プラグイン) 向けの表記。ビルドマシンの
       # mise 2026.7.x はここから URL を組み立てる際に -stable を二重に付けて
       # しまい 404 になる。ローカル開発環境では動作している表記なので
       # .mise.toml は変更せず、CI 側でのみバージョンを上書きする。
-      MISE_FLUTTER_VERSION: '3.38.6'
+      MISE_FLUTTER_VERSION: '3.44.9'
       FASTLANE_SKIP_UPDATE_CHECK: '1'
       FASTLANE_HIDE_CHANGELOG: '1'
       # xcodebuild のログを CI 向けに抑制する
