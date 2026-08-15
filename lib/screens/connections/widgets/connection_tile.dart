@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
+
 /// 接続一覧のタイルWidget
 class ConnectionTile extends StatelessWidget {
   final String name;
@@ -49,23 +51,26 @@ class ConnectionTile extends StatelessWidget {
           }
         },
         itemBuilder: (context) => [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'edit',
             child: Row(
               children: [
-                Icon(Icons.edit),
-                SizedBox(width: 8),
-                Text('Edit'),
+                const Icon(Icons.edit),
+                const SizedBox(width: 8),
+                Text(context.l10n.connEdit),
               ],
             ),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'delete',
             child: Row(
               children: [
-                Icon(Icons.delete, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Delete', style: TextStyle(color: Colors.red)),
+                const Icon(Icons.delete, color: Colors.red),
+                const SizedBox(width: 8),
+                Text(
+                  context.l10n.connDelete,
+                  style: const TextStyle(color: Colors.red),
+                ),
               ],
             ),
           ),
