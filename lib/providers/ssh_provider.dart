@@ -79,8 +79,7 @@ class SshNotifier extends Notifier<SshState> {
       SshForegroundTaskService();
 
   /// 設定言語から解決したローカライズ文字列。
-  AppLocalizations get _l10n =>
-      lookupL10n();
+  AppLocalizations get _l10n => lookupL10n();
 
   // 再接続用のキャッシュ
   Connection? _lastConnection;

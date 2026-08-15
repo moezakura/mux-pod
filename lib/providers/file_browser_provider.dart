@@ -237,9 +237,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       _log('delete operation OK');
     } catch (e) {
       _log('delete ERROR: $e');
-      state = state.copyWith(
-        error: lookupL10n().fileDeleteFailureDetail('$e'),
-      );
+      state = state.copyWith(error: lookupL10n().fileDeleteFailureDetail('$e'));
       return false;
     }
     await loadDirectory(state.currentPath);
@@ -265,9 +263,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       _log('rename operation OK');
     } catch (e) {
       _log('rename ERROR: $e');
-      state = state.copyWith(
-        error: lookupL10n().fileRenameFailureDetail('$e'),
-      );
+      state = state.copyWith(error: lookupL10n().fileRenameFailureDetail('$e'));
       return false;
     }
     await loadDirectory(state.currentPath);
@@ -313,9 +309,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   SshClient _getSshClient() {
     final client = ref.read(sshProvider.notifier).client;
     if (client == null || !client.isConnected) {
-      throw StateError(
-        lookupL10n().termSshNotAvailable,
-      );
+      throw StateError(lookupL10n().termSshNotAvailable);
     }
     return client;
   }

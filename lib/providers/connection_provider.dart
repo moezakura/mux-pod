@@ -11,7 +11,6 @@ import '../services/connection/connection_storage_schema.dart';
 import '../services/keychain/secure_storage.dart';
 import '../l10n/l10n_lookup.dart';
 
-
 /// 接続設定
 class Connection {
   /// 現在の永続化スキーマバージョン（このアプリが書き込む新形式）。
