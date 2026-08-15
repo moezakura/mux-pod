@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/widgets/dialogs/theme_dialog.dart';
 
 void main() {
@@ -9,6 +10,8 @@ void main() {
     testWidgets('displays all theme options', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ThemeDialog(isDarkMode: true),
           ),
@@ -23,6 +26,8 @@ void main() {
     testWidgets('dark mode is selected when isDarkMode is true', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ThemeDialog(isDarkMode: true),
           ),
@@ -39,6 +44,8 @@ void main() {
     testWidgets('light mode is selected when isDarkMode is false', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: ThemeDialog(isDarkMode: false),
           ),
@@ -57,6 +64,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
@@ -87,6 +96,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(

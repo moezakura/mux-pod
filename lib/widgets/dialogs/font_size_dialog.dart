@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n_ext.dart';
+
 /// フォントサイズ選択ダイアログ
 class FontSizeDialog extends StatefulWidget {
   final double currentSize;
@@ -28,8 +30,9 @@ class _FontSizeDialogState extends State<FontSizeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Font Size'),
+      title: Text(l10n.fontSizeTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -50,7 +53,7 @@ class _FontSizeDialogState extends State<FontSizeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
       ],
     );

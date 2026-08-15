@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/design_colors.dart';
+import '../l10n/l10n_ext.dart';
 
 /// 特殊キーバー（HTMLデザイン仕様準拠）
 ///
@@ -732,7 +733,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                   color: isDark ? Colors.white : Colors.black87,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Type here...',
+                  hintText: context.l10n.keyBarTypeHere,
                   hintStyle: GoogleFonts.jetBrainsMono(
                     fontSize: 14,
                     color: DesignColors.success.withValues(alpha: 0.5),
