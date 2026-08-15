@@ -2376,6 +2376,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   Future<SshConnectOptions> _getAuthOptions(Connection connection) async {
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await _secureStorage.getPrivateKey(connection.keyId!);
+      if (privateKey == null) {
+        throw SshAuthenticationError(
+          'Private key is not readable. Please re-import the key.',
+        );
+      }
       final passphrase = await _secureStorage.getPassphrase(connection.keyId!);
       return SshConnectOptions(
         privateKey: privateKey,

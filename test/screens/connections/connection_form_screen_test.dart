@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -312,6 +314,51 @@ void main() {
       expect(multiplexer.backend, BackendType.tmux);
       expect(multiplexer.executablePath, '/usr/local/bin/tmux');
       expect(harness.client!.disposed, isTrue);
+    });
+
+    testWidgets(
+        'connection test with unreadable key shows re-import error',
+        (tester) async {
+      // 鍵メタデータはあるが秘密鍵が読めない（破損鍵）状態を用意
+      SharedPreferences.setMockInitialValues({
+        'ssh_keys_meta': jsonEncode([
+          {
+            'id': 'k1',
+            'name': 'broken-key',
+            'type': 'ed25519',
+            'createdAt': '2026-01-01T00:00:00.000',
+          },
+        ]),
+      });
+      // 秘密鍵なし → getPrivateKey が null（破損鍵）
+      SecureStorageService.setTestValues({});
+
+      await _pumpForm(tester);
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Test');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.pump();
+
+      // 認証方式を Private Key に切り替え
+      await tester.tap(find.text('Private Key'));      await tester.pumpAndSettle();
+
+      // 鍵を選択（破損鍵）
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('broken-key').last);
+      await tester.pumpAndSettle();
+
+      // 接続テスト
+      await tester.tap(find.text('TEST CONNECTION'));
+      await tester.pumpAndSettle();
+
+      // 統一エラーが表示される（生の Keystore エラーではなく再インポート案内）
+      expect(
+        find.textContaining('Private key is not readable'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Failed to unwrap key'), findsNothing);
     });
   });
 }

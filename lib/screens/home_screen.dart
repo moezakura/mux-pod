@@ -379,6 +379,11 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
           SshConnectOptions options;
           if (connection.authMethod == 'key' && connection.keyId != null) {
             final privateKey = await storage.getPrivateKey(connection.keyId!);
+            if (privateKey == null) {
+              throw SshAuthenticationError(
+                'Private key is not readable. Please re-import the key.',
+              );
+            }
             final passphrase = await storage.getPassphrase(connection.keyId!);
             options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, multiplexer: connection.multiplexer);
           } else {

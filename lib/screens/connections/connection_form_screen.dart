@@ -965,7 +965,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         privateKey = await storage.getPrivateKey(_selectedKeyId!);
         passphrase = await storage.getPassphrase(_selectedKeyId!);
         if (privateKey == null) {
-          throw SshAuthenticationError('Private key not found');
+          throw SshAuthenticationError(
+            'Private key is not readable. Please re-import the key.',
+          );
         }
       }
 
