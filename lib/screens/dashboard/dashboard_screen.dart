@@ -51,7 +51,9 @@ class DashboardScreen extends ConsumerWidget {
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                  color: isDark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -67,26 +69,21 @@ class DashboardScreen extends ConsumerWidget {
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final session = sessions[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _SessionHistoryCard(
-                        session: session,
-                        onTap: () => _navigateToTerminal(context, ref, session),
-                        onRemove: () => _removeFromHistory(ref, session),
-                      ),
-                    );
-                  },
-                  childCount: sessions.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final session = sessions[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SessionHistoryCard(
+                      session: session,
+                      onTap: () => _navigateToTerminal(context, ref, session),
+                      onRemove: () => _removeFromHistory(ref, session),
+                    ),
+                  );
+                }, childCount: sessions.length),
               ),
             ),
           // Bottom padding
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 80),
-          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 80)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -107,7 +104,9 @@ class DashboardScreen extends ConsumerWidget {
           Icon(
             Icons.terminal_outlined,
             size: 64,
-            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
           ),
           const SizedBox(height: 16),
           Text(
@@ -115,7 +114,9 @@ class DashboardScreen extends ConsumerWidget {
             style: GoogleFonts.spaceGrotesk(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
@@ -123,7 +124,9 @@ class DashboardScreen extends ConsumerWidget {
             context.l10n.dashConnectToServerToStart,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
         ],
@@ -131,12 +134,18 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  void _navigateToTerminal(BuildContext context, WidgetRef ref, ActiveSession session) {
+  void _navigateToTerminal(
+    BuildContext context,
+    WidgetRef ref,
+    ActiveSession session,
+  ) {
     // T16（Q-05）: herdr も mutation 可能。readOnly は呼び出し側明示の
     // opt-in としてのみ渡す（herdr による自動付与は廃止・H6）。
 
     // 最終アクセス日時を更新
-    ref.read(activeSessionsProvider.notifier).touchSession(
+    ref
+        .read(activeSessionsProvider.notifier)
+        .touchSession(
           session.connectionId,
           session.sessionName,
           sessionId: session.sessionId,
@@ -156,7 +165,9 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   void _removeFromHistory(WidgetRef ref, ActiveSession session) {
-    ref.read(activeSessionsProvider.notifier).removeSession(
+    ref
+        .read(activeSessionsProvider.notifier)
+        .removeSession(
           session.connectionId,
           session.sessionName,
           sessionId: session.sessionId,
@@ -165,9 +176,7 @@ class DashboardScreen extends ConsumerWidget {
 
   void _addNewConnection(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => const ConnectionFormScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const ConnectionFormScreen()),
     );
   }
 }
@@ -215,10 +224,7 @@ class _SessionHistoryCard extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.delete_outline,
-              color: DesignColors.error,
-            ),
+            const Icon(Icons.delete_outline, color: DesignColors.error),
             const SizedBox(height: 4),
             Text(
               context.l10n.dashRemove,
@@ -248,7 +254,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                     dialogContext.l10n.dashRemoveFromHistoryMessage(
                       session.sessionName,
                     ),
-                    style: GoogleFonts.spaceGrotesk(color: dialogColorScheme.onSurfaceVariant),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: dialogColorScheme.onSurfaceVariant,
+                    ),
                   ),
                   actions: [
                     TextButton(
@@ -257,7 +265,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(dialogContext, true),
-                      style: TextButton.styleFrom(foregroundColor: DesignColors.error),
+                      style: TextButton.styleFrom(
+                        foregroundColor: DesignColors.error,
+                      ),
                       child: Text(dialogContext.l10n.dashRemove),
                     ),
                   ],
@@ -273,10 +283,14 @@ class _SessionHistoryCard extends ConsumerWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+            color: isDark
+                ? DesignColors.surfaceDark
+                : DesignColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+              color: isDark
+                  ? DesignColors.borderDark
+                  : DesignColors.borderLight,
             ),
             boxShadow: [
               BoxShadow(
@@ -294,14 +308,18 @@ class _SessionHistoryCard extends ConsumerWidget {
                 height: 48,
                 decoration: BoxDecoration(
                   color: isAttached
-                      ? (isDark ? DesignColors.connectingCardDark : DesignColors.connectingCardLight)
-                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                      ? (isDark
+                            ? DesignColors.connectingCardDark
+                            : DesignColors.connectingCardLight)
+                      : (isDark
+                            ? DesignColors.borderDark
+                            : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isAttached
                         ? (isDark
-                            ? DesignColors.connectingCardBorderDark
-                            : DesignColors.connectingCardBorderLight)
+                              ? DesignColors.connectingCardBorderDark
+                              : DesignColors.connectingCardBorderLight)
                         : Colors.transparent,
                   ),
                 ),
@@ -310,7 +328,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                   size: 24,
                   color: isAttached
                       ? DesignColors.primary
-                      : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+                      : (isDark
+                            ? DesignColors.textSecondary
+                            : DesignColors.textSecondaryLight),
                 ),
               ),
               const SizedBox(width: 16),
@@ -335,7 +355,14 @@ class _SessionHistoryCard extends ConsumerWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (hasDamagedKey) ...[const SizedBox(width: 6), Icon(Icons.warning_amber, size: 16, color: colorScheme.error)],
+                        if (hasDamagedKey) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.warning_amber,
+                            size: 16,
+                            color: colorScheme.error,
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -347,7 +374,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                             session.host,
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 12,
-                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -357,7 +386,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                           ' • ',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 12,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                         Text(
@@ -367,12 +398,17 @@ class _SessionHistoryCard extends ConsumerWidget {
                           ),
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 12,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                       ],
                     ),
-                    if (hasDamagedKey) ...[const SizedBox(height: 4), _buildDamagedKeyBadge(context)],
+                    if (hasDamagedKey) ...[
+                      const SizedBox(height: 4),
+                      _buildDamagedKeyBadge(context),
+                    ],
                     const SizedBox(height: 4),
                     // Window count and last position
                     Row(
@@ -381,7 +417,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                           context.l10n.appWindowCount(session.windowCount),
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                         if (session.lastPaneId != null) ...[
@@ -389,7 +427,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                             ' • ',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 11,
-                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
                             ),
                           ),
                           Icon(
@@ -402,7 +442,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                             'W${session.lastWindowIndex ?? 0}',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 10,
-                              color: DesignColors.primary.withValues(alpha: 0.7),
+                              color: DesignColors.primary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ],
@@ -413,7 +455,9 @@ class _SessionHistoryCard extends ConsumerWidget {
               ),
               Icon(
                 Icons.chevron_right,
-                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                color: isDark
+                    ? DesignColors.textMuted
+                    : DesignColors.textMutedLight,
               ),
             ],
           ),
@@ -451,11 +495,10 @@ class _SessionHistoryCard extends ConsumerWidget {
       child: Text(
         context.l10n.dashDamagedKeyInUse,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 9,
-              color: colorScheme.onErrorContainer,
-            ),
+          fontSize: 9,
+          color: colorScheme.onErrorContainer,
+        ),
       ),
     );
   }
 }
-

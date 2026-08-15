@@ -12,9 +12,7 @@ void main() {
         const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
+          home: Scaffold(body: ThemeDialog(isDarkMode: true)),
         ),
       );
 
@@ -23,38 +21,42 @@ void main() {
       expect(find.text('Light'), findsOneWidget);
     });
 
-    testWidgets('dark mode is selected when isDarkMode is true', (tester) async {
+    testWidgets('dark mode is selected when isDarkMode is true', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
+          home: Scaffold(body: ThemeDialog(isDarkMode: true)),
         ),
       );
 
       final darkRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == true && widget.groupValue == true,
+            widget is RadioListTile<bool> &&
+            widget.value == true &&
+            widget.groupValue == true,
       );
       expect(darkRadio, findsOneWidget);
     });
 
-    testWidgets('light mode is selected when isDarkMode is false', (tester) async {
+    testWidgets('light mode is selected when isDarkMode is false', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: false),
-          ),
+          home: Scaffold(body: ThemeDialog(isDarkMode: false)),
         ),
       );
 
       final lightRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == false && widget.groupValue == false,
+            widget is RadioListTile<bool> &&
+            widget.value == false &&
+            widget.groupValue == false,
       );
       expect(lightRadio, findsOneWidget);
     });

@@ -30,9 +30,7 @@ void main() {
         const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: FontFamilyDialog(currentFamily: 'Fira Code'),
-          ),
+          home: Scaffold(body: FontFamilyDialog(currentFamily: 'Fira Code')),
         ),
       );
 

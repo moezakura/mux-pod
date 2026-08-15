@@ -1258,8 +1258,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // herdr: mutation 解禁（Phase 2・T13）。capability は PaneCapabilities 参照。
       MultiplexerBackendKind.herdr => HerdrPaneWriter(HerdrAdapter(sshClient)),
       // tmux: 既存 tmuxFacade をラップ（後方互換・コマンド文字列不変）。
-      MultiplexerBackendKind.tmux =>
-        TmuxPaneWriter(tmuxFacade, sshClient.tmuxExecutor),
+      MultiplexerBackendKind.tmux => TmuxPaneWriter(
+        tmuxFacade,
+        sshClient.tmuxExecutor,
+      ),
       MultiplexerBackendKind.unknown => null,
     };
   }
@@ -1282,7 +1284,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 直接指定（initialPaneId / lastPaneId）時はスナップショット解決を伴わず、
     // workspaceId / tabId は pane ID からの best-effort 導出にフォールバックする。
     final directId = widget.initialPaneId ?? widget.lastPaneId;
-    final resolvedTarget = directId == null ? await _resolveHerdrPaneId() : null;
+    final resolvedTarget = directId == null
+        ? await _resolveHerdrPaneId()
+        : null;
     final resolvedId = resolvedTarget?.paneId ?? directId;
     if (resolvedId == null) {
       // 診断: 要求条件（sessionId / label）とスナップショット状態を記録する。
@@ -1392,7 +1396,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // sessionId 優先: スナップショット内に一致する workspace がある場合のみ
     // workspaceId として resolver へ渡す（無ければラベル一致にフォールバック）。
     final requestedId = widget.sessionId;
-    final workspaceId = (requestedId != null &&
+    final workspaceId =
+        (requestedId != null &&
             requestedId.isNotEmpty &&
             snapshot.workspaces.any((w) => w.id == requestedId))
         ? requestedId
@@ -1575,9 +1580,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // PaneContentReader を使う。ライブポーリングは read intent（LiveTail）で
       // 要求する（バグ4 根本対応: 行数の符号・大小による暗黙の意味判定を廃止）。
       final snapshot = frameReader != null
-          ? (await frameReader.read(PaneFrameRequest(
-              PaneReadRequest.live(paneId: paneId),
-            ))).toSnapshot()
+          ? (await frameReader.read(
+              PaneFrameRequest(PaneReadRequest.live(paneId: paneId)),
+            )).toSnapshot()
           : await reader.readPane(PaneReadRequest.live(paneId: paneId));
 
       final endTime = DateTime.now();
@@ -1864,7 +1869,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _recordHerdrSwitchEvent(
           '$eventLabel: snapshot fetch error (${e.runtimeType})',
         );
-        _showHerdrErrorSnackBar(context.l10n.termFailedToLoadHerdrTree(e.toString()));
+        _showHerdrErrorSnackBar(
+          context.l10n.termFailedToLoadHerdrTree(e.toString()),
+        );
       }
       return null;
     }
@@ -2015,25 +2022,36 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final tab = focusedTab ?? workspace.windows.firstOrNull;
     if (tab != null) {
       final focusedPane = tab.panes.where((p) => p.active).firstOrNull;
-      if (focusedPane != null) return _herdrResolvedTargetOf(sessions, focusedPane);
-      if (tab.panes.isNotEmpty) return _herdrResolvedTargetOf(sessions, tab.panes.first);
+      if (focusedPane != null) {
+        return _herdrResolvedTargetOf(sessions, focusedPane);
+      }
+      if (tab.panes.isNotEmpty) {
+        return _herdrResolvedTargetOf(sessions, tab.panes.first);
+      }
     }
 
     // 5. workspace 内フォールバック（tab 解決不能・tab 内が空のとき）
     final workspacePanes = [for (final w in workspace.windows) ...w.panes];
     final workspaceFocused = workspacePanes.where((p) => p.active).firstOrNull;
-    if (workspaceFocused != null) return _herdrResolvedTargetOf(sessions, workspaceFocused);
-    if (workspacePanes.isNotEmpty) return _herdrResolvedTargetOf(sessions, workspacePanes.first);
+    if (workspaceFocused != null) {
+      return _herdrResolvedTargetOf(sessions, workspaceFocused);
+    }
+    if (workspacePanes.isNotEmpty) {
+      return _herdrResolvedTargetOf(sessions, workspacePanes.first);
+    }
 
     // 6. 全体フォールバック
     final allPanes = [
       for (final s in sessions)
-        for (final w in s.windows)
-          ...w.panes,
+        for (final w in s.windows) ...w.panes,
     ];
     final globalFocused = allPanes.where((p) => p.active).firstOrNull;
-    if (globalFocused != null) return _herdrResolvedTargetOf(sessions, globalFocused);
-    if (allPanes.isNotEmpty) return _herdrResolvedTargetOf(sessions, allPanes.first);
+    if (globalFocused != null) {
+      return _herdrResolvedTargetOf(sessions, globalFocused);
+    }
+    if (allPanes.isNotEmpty) {
+      return _herdrResolvedTargetOf(sessions, allPanes.first);
+    }
     return null;
   }
 
@@ -2088,7 +2106,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _suspendPollingAfterError();
     _herdrSnapshotCache?.invalidate();
     if (mounted && !_isDisposed) {
-      _showHerdrErrorSnackBar(context.l10n.termHerdrServerNotResponding(e.toString()));
+      _showHerdrErrorSnackBar(
+        context.l10n.termHerdrServerNotResponding(e.toString()),
+      );
     }
   }
 
@@ -2134,9 +2154,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 踏襲したプレーン通知。分類別の文言は呼び出し側が組み立てる）。
   void _showHerdrMutationSnackBar(String message) {
     if (!mounted || _isDisposed) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// T19/S4: target-not-found の通知（SnackBar「対象が消えました。再同期しました」）。
@@ -2550,9 +2570,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               if (_backendKind == MultiplexerBackendKind.herdr)
                 ValueListenableBuilder<_HerdrDisplayData?>(
                   valueListenable: _herdrDisplayNotifier,
-                  builder: (context, display, _) => _buildBreadcrumbHeader(
-                    _herdrToBreadcrumb(display),
-                  ),
+                  builder: (context, display, _) =>
+                      _buildBreadcrumbHeader(_herdrToBreadcrumb(display)),
                 )
               else
                 Consumer(
@@ -2936,9 +2955,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
     if (layout == null) return null;
 
-    final current = layout.panes
-        .where((p) => p.paneId == paneId)
-        .firstOrNull;
+    final current = layout.panes.where((p) => p.paneId == paneId).firstOrNull;
     if (current == null) return null;
 
     return {
@@ -3002,9 +3019,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _inputQueue.enqueue(data);
       if (!wasOverflow && _inputQueue.isOverflow && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.termInputQueueFull),
-          ),
+          SnackBar(content: Text(context.l10n.termInputQueueFull)),
         );
       }
       if (mounted) setState(() {}); // キューイング状態を更新
@@ -3184,17 +3199,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   Future<bool> syncAfterHerdrMutationForTesting({
     String eventLabel = 'test mutation sync',
     HerdrSyncTargetPolicy policy = HerdrSyncTargetPolicy.preserveCurrent,
-  }) =>
-      _syncAfterHerdrMutation(eventLabel: eventLabel, policy: policy);
+  }) => _syncAfterHerdrMutation(eventLabel: eventLabel, policy: policy);
 
   /// テストフック: [_splitPane]（herdr 分岐）を widget テストから呼び出すための
   /// `@visibleForTesting` メソッド。本番コードからは呼ばない（セレクタの
   /// 分割導線が `_splitPane` を呼ぶ）。
   @visibleForTesting
-  Future<void> splitPaneForTesting(
-    String paneId,
-    SplitDirection direction,
-  ) =>
+  Future<void> splitPaneForTesting(String paneId, SplitDirection direction) =>
       _splitPane(paneId, direction);
 
   /// テストフック: [_renameHerdrPane]（herdr 分岐）を widget テストから
@@ -3217,8 +3228,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     String workspaceId, {
     String? label,
     bool? focus,
-  }) =>
-      _createHerdrTab(workspaceId, label: label, focus: focus);
+  }) => _createHerdrTab(workspaceId, label: label, focus: focus);
 
   /// テストフック: [_renameHerdrTab]（herdr 分岐）を widget テストから呼び出す
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
@@ -3251,8 +3261,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// から直接呼び出すための `@visibleForTesting` メソッド。本番コードからは
   /// 呼ばない（オーバースクロール / スクロールモード遷移が呼ぶ）。
   @visibleForTesting
-  Future<void> loadHistoryForScrollForTesting() =>
-      _loadHistoryForScroll();
+  Future<void> loadHistoryForScrollForTesting() => _loadHistoryForScroll();
 
   /// テストフック: `_can` 判定を widget テストから直接検証する（H4 等価性
   /// テスト・T4）。本番コードからは呼ばない。
@@ -3719,9 +3728,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
               tooltip: l10n.termResizeTerminal,
-              onPressed: () => _closeSelectorThen(
-                () => _handleHerdrResizeTerminal(),
-              ),
+              onPressed: () =>
+                  _closeSelectorThen(() => _handleHerdrResizeTerminal()),
             ),
         ];
         return _SelectorContent(
@@ -3813,19 +3821,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 },
                 onRename: canRename && window.id != null
                     ? () => _closeSelectorThen(() {
-                          _showHerdrRenameTabDialog(workspace, window);
-                        })
+                        _showHerdrRenameTabDialog(workspace, window);
+                      })
                     : null,
                 onClose: canTabCrud && window.id != null
                     ? () => _closeSelectorThen(() {
-                          // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
-                          // `tab close` を実行する。
-                          _confirmAndCloseHerdrTab(
-                            workspace: workspace,
-                            tab: window,
-                            isLastTab: workspace.windows.length == 1,
-                          );
-                        })
+                        // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
+                        // `tab close` を実行する。
+                        _confirmAndCloseHerdrTab(
+                          workspace: workspace,
+                          tab: window,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
                     : null,
               ),
           ],
@@ -3920,32 +3928,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 },
                 onLongPress: canClose
                     ? () => _closeSelectorThen(() {
-                          // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
-                          // 行い、連鎖 close を確認してから `pane close` を実行する。
-                          _confirmAndKillHerdrPane(
-                            paneId: pane.id,
-                            paneTitle: _herdrPaneLabel(pane),
-                            isLastPane: window.panes.length == 1,
-                            isLastTab: workspace.windows.length == 1,
-                          );
-                        })
+                        // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
+                        // 行い、連鎖 close を確認してから `pane close` を実行する。
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
                     : null,
                 onResize: canResize
                     ? () => _closeSelectorThen(
-                          // タイル⋮ Resize も選択モーダル経由に統一
-                          // （初期選択=現在表示中 pane・ユーザー決定①）。
-                          () => _showHerdrResizePaneChooser(sessions, window),
-                        )
+                        // タイル⋮ Resize も選択モーダル経由に統一
+                        // （初期選択=現在表示中 pane・ユーザー決定①）。
+                        () => _showHerdrResizePaneChooser(sessions, window),
+                      )
                     : null,
                 onClose: canClose
                     ? () => _closeSelectorThen(() {
-                          _confirmAndKillHerdrPane(
-                            paneId: pane.id,
-                            paneTitle: _herdrPaneLabel(pane),
-                            isLastPane: window.panes.length == 1,
-                            isLastTab: workspace.windows.length == 1,
-                          );
-                        })
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
                     : null,
               ),
           ],
@@ -4030,7 +4038,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   _HerdrResolvedTarget? _resolveFocusedPaneFromSessions(
     List<MultiplexerSession> sessions,
   ) {
-    final workspace = _herdrFindWorkspace(sessions, _herdrDisplayNotifier.value);
+    final workspace = _herdrFindWorkspace(
+      sessions,
+      _herdrDisplayNotifier.value,
+    );
     if (workspace == null) return null;
     final focusedTab = workspace.windows.where((w) => w.active).firstOrNull;
     final focusedPane = focusedTab?.panes.where((p) => p.active).firstOrNull;
@@ -4045,8 +4056,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     MultiplexerSession workspace,
     MultiplexerWindow tab,
   ) {
-    final pane = tab.panes.where((p) => p.active).firstOrNull ??
-        tab.panes.firstOrNull;
+    final pane =
+        tab.panes.where((p) => p.active).firstOrNull ?? tab.panes.firstOrNull;
     if (pane == null) return;
     final target = _herdrResolvedTargetOf(sessions, pane);
     _switchHerdrTarget(
@@ -4181,27 +4192,28 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             },
             onRename: canRename
                 ? () => _closeSelectorThen(() {
-                      final tmuxWindow = _tmuxWindowOf(session, window);
-                      if (tmuxWindow != null) {
-                        // inventory: TERM-CRUD-009
-                        _showRenameWindowDialog(session, tmuxWindow);
-                      }
-                    })
+                    final tmuxWindow = _tmuxWindowOf(session, window);
+                    if (tmuxWindow != null) {
+                      // inventory: TERM-CRUD-009
+                      _showRenameWindowDialog(session, tmuxWindow);
+                    }
+                  })
                 : null,
             onResize: canResize
-                ? () =>
-                    _closeSelectorThen(() => _showResizeWindowChooser(tmuxState))
+                ? () => _closeSelectorThen(
+                    () => _showResizeWindowChooser(tmuxState),
+                  )
                 : null,
             onClose: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-007
-                      _confirmAndKillWindow(
-                        sessionName: session.name,
-                        windowIndex: window.index,
-                        windowName: window.name,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-007
+                    _confirmAndKillWindow(
+                      sessionName: session.name,
+                      windowIndex: window.index,
+                      windowName: window.name,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
           ),
       ],
@@ -4214,12 +4226,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// activeWindowIndex / activeWindowId / activePaneId）を渡す。sessionId は
   /// ハイライト判定の一義的な基準（$0 等）。
   _SelectorContext _selectorContextOf(TmuxState tmuxState) => _SelectorContext(
-        sessionName: tmuxState.activeSessionName,
-        sessionId: tmuxState.activeSession?.id,
-        windowIndex: tmuxState.activeWindowIndex,
-        windowId: tmuxState.activeWindow?.id,
-        paneId: tmuxState.activePaneId,
-      );
+    sessionName: tmuxState.activeSessionName,
+    sessionId: tmuxState.activeSession?.id,
+    windowIndex: tmuxState.activeWindowIndex,
+    windowId: tmuxState.activeWindow?.id,
+    paneId: tmuxState.activePaneId,
+  );
 
   /// 共通 1 段セレクタシート（[_MultiplexerSelectorSheet]）を開く汎用ヘルパー。
   ///
@@ -4342,29 +4354,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             },
             onLongPress: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-004
-                      _confirmAndKillPane(
-                        paneId: pane.id,
-                        paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
-                        isLastPane: window.panes.length == 1,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-004
+                    _confirmAndKillPane(
+                      paneId: pane.id,
+                      paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+                      isLastPane: window.panes.length == 1,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
             onResize: canResize
-                ? () =>
-                    _closeSelectorThen(() => _showResizePaneChooser(tmuxState))
+                ? () => _closeSelectorThen(
+                    () => _showResizePaneChooser(tmuxState),
+                  )
                 : null,
             onClose: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-004
-                      _confirmAndKillPane(
-                        paneId: pane.id,
-                        paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
-                        isLastPane: window.panes.length == 1,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-004
+                    _confirmAndKillPane(
+                      paneId: pane.id,
+                      paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+                      isLastPane: window.panes.length == 1,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
           ),
       ],
@@ -4462,21 +4475,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
       if (command != null && !commandDispatched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.termWindowCreatedCommandNotSent),
-          ),
+          SnackBar(content: Text(context.l10n.termWindowCreatedCommandNotSent)),
         );
       }
       _boostPolling();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              context.l10n.termFailedToCreateWindow(e.toString()),
-            ),
+            content: Text(context.l10n.termFailedToCreateWindow(e.toString())),
           ),
         );
       }
@@ -4548,13 +4555,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // ポーリング停止 + 通知 / その他 → エラー通知）。
         await _handleHerdrMutationError(e, operationLabel: 'split');
       } else if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              context.l10n.termFailedToSplitPane(e.toString()),
-            ),
+            content: Text(context.l10n.termFailedToSplitPane(e.toString())),
           ),
         );
       }
@@ -4568,7 +4571,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     required String paneTitle,
     required bool isLastPane,
     required bool isLastWindow,
-  }) {    final isDark = Theme.of(context).brightness == Brightness.dark;
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -4885,9 +4889,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))),
+        );
       }
     } finally {
       _isResizing = false;
@@ -5176,9 +5180,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // （サイドバー幅・タブ行）が原因の可能性が高い。
         if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(context.l10n.termResizeFailedHerdr),
-            ),
+            SnackBar(content: Text(context.l10n.termResizeFailedHerdr)),
           );
         }
         return;
@@ -5253,9 +5255,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))),
+        );
       }
     } finally {
       _isResizing = false;
@@ -5335,9 +5337,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to kill pane: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.l10n.termFailedToClosePane(e.toString())),
           ),
@@ -5601,7 +5601,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               // 設定画面へ
               ListTile(
                 leading: Icon(Icons.settings, color: inactiveIconColor),
-                title: Text(context.l10n.termSettings, style: TextStyle(color: textColor)),
+                title: Text(
+                  context.l10n.termSettings,
+                  style: TextStyle(color: textColor),
+                ),
                 subtitle: Text(
                   context.l10n.termSettingsSubtitle,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
@@ -5768,9 +5771,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to kill window: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.l10n.termFailedToCloseWindow(e.toString())),
           ),
@@ -5833,9 +5834,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to rename window: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(context.l10n.termFailedToRenameWindow(e.toString())),
           ),
@@ -6584,9 +6583,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              context.l10n.termUploaded(next.lastUploadedPath!),
-            ),
+            content: Text(context.l10n.termUploaded(next.lastUploadedPath!)),
             backgroundColor: Colors.green,
           ),
         );
@@ -6731,9 +6728,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // once connected rather than silently queuing via the legacy path.
       if (text.contains('\n') && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(context.l10n.termMultilineNeedsConnection),
-          ),
+          SnackBar(content: Text(context.l10n.termMultilineNeedsConnection)),
         );
       } else {
         _inputQueue.enqueue(text);
@@ -7663,7 +7658,9 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
                   : DesignColors.textMutedLight,
             ),
             filled: true,
-            fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+            fillColor: isDark
+                ? DesignColors.inputDark
+                : DesignColors.inputLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -8032,7 +8029,9 @@ bool _isCurrentSession(MultiplexerSession session, _SelectorContext? current) {
     if (sessionId != null && sessionId == currentSessionId) return true;
     // paneId が現在の session に属するか（pane 由来の ID 判定）
     final paneId = current.paneId;
-    if (paneId != null && sessionId != null && paneId.startsWith('$sessionId:')) {
+    if (paneId != null &&
+        sessionId != null &&
+        paneId.startsWith('$sessionId:')) {
       return true;
     }
     return false;
@@ -8177,11 +8176,9 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hasTop = widget.top != null ||
-        widget.topExpected ||
-        _content?.top != null;
-    final maxHeight =
-        MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
+    final hasTop =
+        widget.top != null || widget.topExpected || _content?.top != null;
+    final maxHeight = MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
     final topWidget = _content?.top ?? widget.top;
 
     final loader = widget.asyncContent;
@@ -8193,11 +8190,11 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
               child: Center(child: CircularProgressIndicator()),
             )
           : _loadError != null
-              ? _buildError(context, colorScheme)
-              : ListView(
-                  shrinkWrap: true,
-                  children: _content?.children ?? const <Widget>[],
-                );
+          ? _buildError(context, colorScheme)
+          : ListView(
+              shrinkWrap: true,
+              children: _content?.children ?? const <Widget>[],
+            );
       return ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: Column(
@@ -8229,10 +8226,7 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
             Divider(height: 1, color: colorScheme.outline),
           ],
           Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: widget.children,
-            ),
+            child: ListView(shrinkWrap: true, children: widget.children),
           ),
           const SizedBox(height: 16),
         ],
@@ -8259,10 +8253,7 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
               color: colorScheme.onSurface,
             ),
           ),
-          if (headerActions.isNotEmpty) ...[
-            const Spacer(),
-            ...headerActions,
-          ],
+          if (headerActions.isNotEmpty) ...[const Spacer(), ...headerActions],
         ],
       ),
     );

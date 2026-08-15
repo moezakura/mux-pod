@@ -109,7 +109,9 @@ void main() {
       expect(find.text('Bracketed Paste'), findsOneWidget);
     });
 
-    testWidgets('displays Language setting and opens the picker', (tester) async {
+    testWidgets('displays Language setting and opens the picker', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 

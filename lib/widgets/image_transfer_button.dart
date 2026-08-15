@@ -12,15 +12,13 @@ import '../providers/image_transfer_provider.dart';
 class ImageTransferButton extends ConsumerWidget {
   final VoidCallback? onTransferComplete;
 
-  const ImageTransferButton({
-    super.key,
-    this.onTransferComplete,
-  });
+  const ImageTransferButton({super.key, this.onTransferComplete});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transferState = ref.watch(imageTransferProvider);
-    final isUploading = transferState.phase == ImageTransferPhase.uploading ||
+    final isUploading =
+        transferState.phase == ImageTransferPhase.uploading ||
         transferState.phase == ImageTransferPhase.converting;
     final isIdle = transferState.canPick;
 
@@ -46,14 +44,11 @@ class ImageTransferButton extends ConsumerWidget {
                 color: isIdle
                     ? Colors.white70
                     : transferState.phase == ImageTransferPhase.error
-                        ? Colors.redAccent
-                        : Colors.green,
+                    ? Colors.redAccent
+                    : Colors.green,
               ),
               padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(
-                minWidth: 36,
-                minHeight: 36,
-              ),
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               tooltip: context.l10n.imgTransferSendImage,
             ),
     );
@@ -86,7 +81,9 @@ class ImageTransferButton extends ConsumerWidget {
               title: Text(context.l10n.imgTransferGallery),
               onTap: () {
                 Navigator.pop(context);
-                ref.read(imageTransferProvider.notifier).pickImage(ImageSource.gallery);
+                ref
+                    .read(imageTransferProvider.notifier)
+                    .pickImage(ImageSource.gallery);
               },
             ),
             ListTile(
@@ -94,7 +91,9 @@ class ImageTransferButton extends ConsumerWidget {
               title: Text(context.l10n.imgTransferCamera),
               onTap: () {
                 Navigator.pop(context);
-                ref.read(imageTransferProvider.notifier).pickImage(ImageSource.camera);
+                ref
+                    .read(imageTransferProvider.notifier)
+                    .pickImage(ImageSource.camera);
               },
             ),
           ],

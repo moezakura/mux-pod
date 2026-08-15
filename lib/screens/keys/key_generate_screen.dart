@@ -31,9 +31,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.keyMgmtGenerateTitle),
-      ),
+      appBar: AppBar(title: Text(context.l10n.keyMgmtGenerateTitle)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -57,14 +55,8 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
             const SizedBox(height: 8),
             SegmentedButton<String>(
               segments: const [
-                ButtonSegment(
-                  value: 'ed25519',
-                  label: Text('Ed25519'),
-                ),
-                ButtonSegment(
-                  value: 'rsa',
-                  label: Text('RSA'),
-                ),
+                ButtonSegment(value: 'ed25519', label: Text('Ed25519')),
+                ButtonSegment(value: 'rsa', label: Text('RSA')),
               ],
               selected: {_keyType},
               onSelectionChanged: (selected) {

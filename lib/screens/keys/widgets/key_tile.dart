@@ -21,9 +21,7 @@ class KeyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: CircleAvatar(
-        child: Icon(_getKeyTypeIcon()),
-      ),
+      leading: CircleAvatar(child: Icon(_getKeyTypeIcon())),
       title: Text(keyMeta.name),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,7 +34,10 @@ class KeyTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _buildSourceBadge(context),
-              if (!keyMeta.isAvailable) ...[const SizedBox(width: 4), _buildUnavailableBadge(context)],
+              if (!keyMeta.isAvailable) ...[
+                const SizedBox(width: 4),
+                _buildUnavailableBadge(context),
+              ],
               if (keyMeta.hasPassphrase) ...[
                 const SizedBox(width: 4),
                 Icon(
@@ -52,10 +53,10 @@ class KeyTile extends StatelessWidget {
             Text(
               keyMeta.fingerprint!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                    fontSize: 10,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: Theme.of(context).colorScheme.outline,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -132,13 +133,15 @@ class KeyTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        isGenerated ? context.l10n.keyMgmtGenerated : context.l10n.keyMgmtImported,
+        isGenerated
+            ? context.l10n.keyMgmtGenerated
+            : context.l10n.keyMgmtImported,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 9,
-              color: isGenerated
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onSecondaryContainer,
-            ),
+          fontSize: 9,
+          color: isGenerated
+              ? Theme.of(context).colorScheme.onPrimaryContainer
+              : Theme.of(context).colorScheme.onSecondaryContainer,
+        ),
       ),
     );
   }
@@ -155,9 +158,9 @@ class KeyTile extends StatelessWidget {
       child: Text(
         context.l10n.keyMgmtUnavailable,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 9,
-              color: colorScheme.onErrorContainer,
-            ),
+          fontSize: 9,
+          color: colorScheme.onErrorContainer,
+        ),
       ),
     );
   }

@@ -23,22 +23,21 @@ import '../../theme/design_colors.dart';
 /// [ConnectionFormScreen] の接続テストで使用する [SshClient] のファクトリ。
 ///
 /// テスト時に fake client を差し込めるよう Provider として公開する。
-final connectionFormSshClientFactoryProvider =
-    Provider<SshClient Function()>((ref) => createSshClient);
+final connectionFormSshClientFactoryProvider = Provider<SshClient Function()>(
+  (ref) => createSshClient,
+);
 
 /// 接続編集画面
 class ConnectionFormScreen extends ConsumerStatefulWidget {
   final String? connectionId;
 
-  const ConnectionFormScreen({
-    super.key,
-    this.connectionId,
-  });
+  const ConnectionFormScreen({super.key, this.connectionId});
 
   bool get isEditing => connectionId != null;
 
   @override
-  ConsumerState<ConnectionFormScreen> createState() => _ConnectionFormScreenState();
+  ConsumerState<ConnectionFormScreen> createState() =>
+      _ConnectionFormScreenState();
 }
 
 class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
@@ -69,7 +68,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   }
 
   void _loadExistingConnection() {
-    final connection = ref.read(connectionsProvider.notifier).getById(widget.connectionId!);
+    final connection = ref
+        .read(connectionsProvider.notifier)
+        .getById(widget.connectionId!);
     if (connection != null) {
       _nameController.text = connection.name;
       _hostController.text = connection.host;
@@ -78,7 +79,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       _authMethod = connection.authMethod;
       _selectedKeyId = connection.keyId;
       _backend = connection.multiplexer.backend;
-      _multiplexerPathController.text = connection.multiplexer.executablePath ?? '';
+      _multiplexerPathController.text =
+          connection.multiplexer.executablePath ?? '';
       _deepLinkIdController.text = connection.deepLinkId ?? '';
     }
   }
@@ -147,14 +149,18 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         child: Text(
           context.l10n.connCancel,
           style: GoogleFonts.spaceGrotesk(
-            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
             fontWeight: FontWeight.w500,
           ),
         ),
       ),
       leadingWidth: 80,
       title: Text(
-        widget.isEditing ? context.l10n.connEditTitle : context.l10n.connAddTitle,
+        widget.isEditing
+            ? context.l10n.connEditTitle
+            : context.l10n.connAddTitle,
         style: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
@@ -185,7 +191,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
   Widget _buildSectionHeader(String title) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
@@ -210,7 +218,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.2),
+            ),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -300,7 +310,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.2),
+            ),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -334,8 +346,12 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildNameInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _nameController,
       style: GoogleFonts.spaceGrotesk(
@@ -345,23 +361,32 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       decoration: InputDecoration(
         hintText: context.l10n.connNameHint,
-        hintStyle: GoogleFonts.spaceGrotesk(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.spaceGrotesk(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.label_outline, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -375,30 +400,46 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildHostInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _hostController,
       keyboardType: TextInputType.url,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: context.l10n.connHostHint,
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         suffixIcon: Container(
           padding: const EdgeInsets.all(12),
           child: Container(
@@ -434,30 +475,46 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildPortInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _portController,
       keyboardType: TextInputType.number,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: '22',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -475,30 +532,46 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildUsernameInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _usernameController,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: 'root',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.person_outline, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
@@ -512,41 +585,63 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildMultiplexerPathInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     final isHerdr = _backend == BackendType.herdr;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
           controller: _multiplexerPathController,
-          style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+          ),
           decoration: InputDecoration(
             hintText: isHerdr
                 ? context.l10n.connMultiplexerPathHint('/usr/local/bin/herdr')
                 : context.l10n.connMultiplexerPathHint('/usr/bin/tmux'),
-            hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
-            prefixIcon: Icon(Icons.terminal_outlined, color: mutedColor, size: 20),
+            hintStyle: GoogleFonts.jetBrainsMono(
+              color: mutedColor.withValues(alpha: 0.5),
+            ),
+            prefixIcon: Icon(
+              Icons.terminal_outlined,
+              color: mutedColor,
+              size: 20,
+            ),
             filled: true,
             fillColor: inputColor,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: colorScheme.primary),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
           validator: (value) {
             if (value != null && value.isNotEmpty && !value.startsWith('/')) {
               return isHerdr
-                  ? context.l10n.connAbsolutePathRequired('/usr/local/bin/herdr')
+                  ? context.l10n.connAbsolutePathRequired(
+                      '/usr/local/bin/herdr',
+                    )
                   : context.l10n.connAbsolutePathRequired('/usr/bin/tmux');
             }
             return null;
@@ -567,30 +662,46 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildDeepLinkIdInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _deepLinkIdController,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: context.l10n.connDeepLinkIdHint,
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.link, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value != null && value.isNotEmpty && value.contains(' ')) {
@@ -604,7 +715,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildBackendToggle() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
@@ -689,7 +802,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildAuthMethodToggle() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
@@ -774,15 +889,24 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildPasswordInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _passwordController,
       obscureText: _obscurePassword,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: '••••••••••••',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.key, color: mutedColor, size: 20),
         suffixIcon: IconButton(
           icon: Icon(
@@ -802,7 +926,10 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (!widget.isEditing && (value == null || value.isEmpty)) {
@@ -816,25 +943,39 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildKeyDropdown(KeysState keysState) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
           initialValue: _selectedKeyId,
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.vpn_key_outlined, color: mutedColor, size: 20),
+            prefixIcon: Icon(
+              Icons.vpn_key_outlined,
+              color: mutedColor,
+              size: 20,
+            ),
             filled: true,
             fillColor: inputColor,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
           dropdownColor: colorScheme.surface,
-          style: GoogleFonts.spaceGrotesk(fontSize: 14, color: colorScheme.onSurface),
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+          ),
           items: keysState.keys.map((key) {
             final damaged = !key.isAvailable;
             return DropdownMenuItem(
@@ -843,7 +984,14 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(key.name),
-                  if (damaged) ...[const SizedBox(width: 6), Icon(Icons.warning_amber, size: 14, color: colorScheme.error)],
+                  if (damaged) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.warning_amber,
+                      size: 14,
+                      color: colorScheme.error,
+                    ),
+                  ],
                 ],
               ),
             );
@@ -856,14 +1004,28 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             return null;
           },
           hint: Text(
-            keysState.keys.isEmpty ? context.l10n.connNoKeysAvailable : context.l10n.connSelectKey,
+            keysState.keys.isEmpty
+                ? context.l10n.connNoKeysAvailable
+                : context.l10n.connSelectKey,
             style: GoogleFonts.spaceGrotesk(color: mutedColor),
           ),
         ),
-        if (_authMethod == 'key' && keysState.keys.isEmpty) ...[const SizedBox(height: 8), Text(context.l10n.connNoKeysFoundAddInKeys, style: GoogleFonts.spaceGrotesk(fontSize: 12, color: colorScheme.error))],
+        if (_authMethod == 'key' && keysState.keys.isEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            context.l10n.connNoKeysFoundAddInKeys,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 12,
+              color: colorScheme.error,
+            ),
+          ),
+        ],
         if (_authMethod == 'key' &&
             _selectedKeyId != null &&
-            isKeyDamaged(keysState, _selectedKeyId)) ...[const SizedBox(height: 8), _buildDamagedKeyWarning(context)],
+            isKeyDamaged(keysState, _selectedKeyId)) ...[
+          const SizedBox(height: 8),
+          _buildDamagedKeyWarning(context),
+        ],
       ],
     );
   }
@@ -880,9 +1042,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       child: Text(
         context.l10n.connDamagedKeyWarning,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontSize: 12,
-              color: colorScheme.onErrorContainer,
-            ),
+          fontSize: 12,
+          color: colorScheme.onErrorContainer,
+        ),
       ),
     );
   }
@@ -1006,7 +1168,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   backend: BackendType.herdr,
                   executablePath: customPath.isNotEmpty ? customPath : null,
                 )
-              : MultiplexerConfig.tmux(customPath.isNotEmpty ? customPath : null),
+              : MultiplexerConfig.tmux(
+                  customPath.isNotEmpty ? customPath : null,
+                ),
         ),
       );
 
@@ -1032,38 +1196,38 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           herdrWarning = l10n.connHerdrCheckFailed('$e');
         }
       } else {
-      // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
-      try {
-        final result = await sshClient.tmuxExecutor.execute(
-          CommandRequest(
-            command: TmuxCommands.version(),
-            transport: CommandTransportPreference.ephemeralOnly,
-            output: CommandOutputRequirement.separatedOutput,
-          ),
-        );
-        if (result.exitCode != null && result.exitCode != 0) {
+        // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
+        try {
+          final result = await sshClient.tmuxExecutor.execute(
+            CommandRequest(
+              command: TmuxCommands.version(),
+              transport: CommandTransportPreference.ephemeralOnly,
+              output: CommandOutputRequirement.separatedOutput,
+            ),
+          );
+          if (result.exitCode != null && result.exitCode != 0) {
+            tmuxInstalled = false;
+            tmuxWarning = customPath.isNotEmpty
+                ? l10n.connTmuxPathNotFound(customPath)
+                : l10n.connTmuxNotFound;
+          } else {
+            final version = TmuxVersionInfo.parse(result.stdout);
+            if (version != null) {
+              tmuxInstalled = true;
+            } else {
+              tmuxInstalled = false;
+              tmuxWarning = l10n.connTmuxVersionUnrecognized;
+            }
+          }
+        } on SshConnectionError catch (_) {
           tmuxInstalled = false;
           tmuxWarning = customPath.isNotEmpty
               ? l10n.connTmuxPathNotFound(customPath)
               : l10n.connTmuxNotFound;
-        } else {
-          final version = TmuxVersionInfo.parse(result.stdout);
-          if (version != null) {
-            tmuxInstalled = true;
-          } else {
-            tmuxInstalled = false;
-            tmuxWarning = l10n.connTmuxVersionUnrecognized;
-          }
+        } catch (e) {
+          tmuxInstalled = false;
+          tmuxWarning = l10n.connTmuxCheckFailed('$e');
         }
-      } on SshConnectionError catch (_) {
-        tmuxInstalled = false;
-        tmuxWarning = customPath.isNotEmpty
-            ? l10n.connTmuxPathNotFound(customPath)
-            : l10n.connTmuxNotFound;
-      } catch (e) {
-        tmuxInstalled = false;
-        tmuxWarning = l10n.connTmuxCheckFailed('$e');
-      }
       }
     } on SshAuthenticationError catch (e) {
       errorMessage = l10n.connTestAuthFailed(e.message);
@@ -1095,20 +1259,22 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor: herdrReady ? DesignColors.success : DesignColors.warning,
+            backgroundColor: herdrReady
+                ? DesignColors.success
+                : DesignColors.warning,
             duration: const Duration(seconds: 3),
           ),
         );
       } else {
         final message = tmuxInstalled
             ? l10n.connTestSuccessTmux
-            : l10n.connTestSuccessWarning(
-                tmuxWarning ?? l10n.connTmuxNotFound,
-              );
+            : l10n.connTestSuccessWarning(tmuxWarning ?? l10n.connTmuxNotFound);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor: tmuxInstalled ? DesignColors.success : DesignColors.warning,
+            backgroundColor: tmuxInstalled
+                ? DesignColors.success
+                : DesignColors.warning,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -1129,10 +1295,16 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     try {
       final connectionId = widget.connectionId ?? const Uuid().v4();
-      developer.log('Connection ID: $connectionId (isEditing: ${widget.isEditing})', name: 'ConnectionForm');
+      developer.log(
+        'Connection ID: $connectionId (isEditing: ${widget.isEditing})',
+        name: 'ConnectionForm',
+      );
 
       if (_authMethod == 'password' && _passwordController.text.isNotEmpty) {
-        developer.log('Saving password to secure storage...', name: 'ConnectionForm');
+        developer.log(
+          'Saving password to secure storage...',
+          name: 'ConnectionForm',
+        );
         final storage = SecureStorageService();
         await storage.savePassword(connectionId, _passwordController.text);
         developer.log('Password saved successfully', name: 'ConnectionForm');
@@ -1157,28 +1329,49 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         multiplexer: multiplexer,
         deepLinkId: saveDeepLinkId.isNotEmpty ? saveDeepLinkId : null,
         createdAt: widget.isEditing
-            ? ref.read(connectionsProvider.notifier).getById(connectionId)?.createdAt ?? DateTime.now()
+            ? ref
+                      .read(connectionsProvider.notifier)
+                      .getById(connectionId)
+                      ?.createdAt ??
+                  DateTime.now()
             : DateTime.now(),
       );
-      developer.log('Connection object created: ${connection.name}', name: 'ConnectionForm');
+      developer.log(
+        'Connection object created: ${connection.name}',
+        name: 'ConnectionForm',
+      );
 
       if (widget.isEditing) {
-        developer.log('Updating existing connection...', name: 'ConnectionForm');
+        developer.log(
+          'Updating existing connection...',
+          name: 'ConnectionForm',
+        );
         await ref.read(connectionsProvider.notifier).update(connection);
-        developer.log('Connection updated successfully', name: 'ConnectionForm');
+        developer.log(
+          'Connection updated successfully',
+          name: 'ConnectionForm',
+        );
       } else {
         developer.log('Adding new connection...', name: 'ConnectionForm');
         await ref.read(connectionsProvider.notifier).add(connection);
         developer.log('Connection added successfully', name: 'ConnectionForm');
       }
 
-      developer.log('Save completed, popping navigator...', name: 'ConnectionForm');
+      developer.log(
+        'Save completed, popping navigator...',
+        name: 'ConnectionForm',
+      );
       if (mounted) {
         Navigator.of(context).pop(true);
         developer.log('Navigator popped', name: 'ConnectionForm');
       }
     } catch (e, stackTrace) {
-      developer.log('Error saving connection: $e', name: 'ConnectionForm', error: e, stackTrace: stackTrace);
+      developer.log(
+        'Error saving connection: $e',
+        name: 'ConnectionForm',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

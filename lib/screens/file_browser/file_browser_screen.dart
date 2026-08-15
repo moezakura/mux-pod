@@ -19,11 +19,7 @@ class FileBrowserScreen extends ConsumerStatefulWidget {
   final String connectionId;
   final String? paneId;
 
-  const FileBrowserScreen({
-    super.key,
-    required this.connectionId,
-    this.paneId,
-  });
+  const FileBrowserScreen({super.key, required this.connectionId, this.paneId});
 
   @override
   ConsumerState<FileBrowserScreen> createState() => _FileBrowserScreenState();
@@ -57,7 +53,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               child: PathBar(
                 currentPath: state.currentPath,
                 onPathSelected: (path) {
-                  ref.read(fileBrowserProvider.notifier).navigateToDirectory(path);
+                  ref
+                      .read(fileBrowserProvider.notifier)
+                      .navigateToDirectory(path);
                 },
               ),
             ),
@@ -80,7 +78,8 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   ) {
     final dirName = state.currentPath == '/'
         ? '/'
-        : state.currentPath.split('/').where((s) => s.isNotEmpty).lastOrNull ?? '/';
+        : state.currentPath.split('/').where((s) => s.isNotEmpty).lastOrNull ??
+              '/';
 
     return SliverAppBar(
       floating: true,
@@ -113,10 +112,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
           tooltip: context.l10n.fileSort,
           onSelected: (selection) {
             if (selection.isDirectionToggle) {
-              ref.read(fileBrowserProvider.notifier).setSort(
-                    state.sortOption,
-                    ascending: !state.sortAscending,
-                  );
+              ref
+                  .read(fileBrowserProvider.notifier)
+                  .setSort(state.sortOption, ascending: !state.sortAscending);
             } else {
               ref.read(fileBrowserProvider.notifier).setSort(selection.option!);
             }
@@ -144,13 +142,17 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 children: [
                   const SizedBox(width: 24),
                   Icon(
-                    state.sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                    state.sortAscending
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text(state.sortAscending
-                      ? context.l10n.fileSortAscending
-                      : context.l10n.fileSortDescending),
+                  Text(
+                    state.sortAscending
+                        ? context.l10n.fileSortAscending
+                        : context.l10n.fileSortDescending,
+                  ),
                 ],
               ),
             ),
@@ -196,7 +198,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
+                    color: isDark
+                        ? DesignColors.textPrimary
+                        : DesignColors.textPrimaryLight,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -205,12 +209,15 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                    color: isDark
+                        ? DesignColors.textMuted
+                        : DesignColors.textMutedLight,
                   ),
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
-                  onPressed: () => ref.read(fileBrowserProvider.notifier).refresh(),
+                  onPressed: () =>
+                      ref.read(fileBrowserProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh, size: 18),
                   label: Text(context.l10n.fileRetry),
                 ),
@@ -233,14 +240,18 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               Icon(
                 Icons.folder_open,
                 size: 48,
-                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                color: isDark
+                    ? DesignColors.textMuted
+                    : DesignColors.textMutedLight,
               ),
               const SizedBox(height: 16),
               Text(
                 context.l10n.fileEmptyDirectory,
                 style: TextStyle(
                   fontSize: 15,
-                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                  color: isDark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                 ),
               ),
             ],
@@ -252,42 +263,45 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     return SliverPadding(
       padding: const EdgeInsets.only(bottom: 80),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            // 先頭に親ディレクトリ「..」を表示（ルート以外）
-            if (state.currentPath != '/') {
-              if (index == 0) {
-                return ListTile(
-                  leading: const Icon(Icons.subdirectory_arrow_left, size: 24),
-                  title: const Text('..', style: TextStyle(fontSize: 14)),
-                  onTap: () => ref.read(fileBrowserProvider.notifier).navigateUp(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                );
-              }
-              final entry = entries[index - 1];
-              return FileListTile(
-                entry: entry,
-                onTap: () => _handleEntryTap(context, entry),
-                onLongPress: () => _showActionMenu(context, entry),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          // 先頭に親ディレクトリ「..」を表示（ルート以外）
+          if (state.currentPath != '/') {
+            if (index == 0) {
+              return ListTile(
+                leading: const Icon(Icons.subdirectory_arrow_left, size: 24),
+                title: const Text('..', style: TextStyle(fontSize: 14)),
+                onTap: () =>
+                    ref.read(fileBrowserProvider.notifier).navigateUp(),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 2,
+                ),
               );
             }
-
-            final entry = entries[index];
+            final entry = entries[index - 1];
             return FileListTile(
               entry: entry,
               onTap: () => _handleEntryTap(context, entry),
               onLongPress: () => _showActionMenu(context, entry),
             );
-          },
-          childCount: entries.length + (state.currentPath != '/' ? 1 : 0),
-        ),
+          }
+
+          final entry = entries[index];
+          return FileListTile(
+            entry: entry,
+            onTap: () => _handleEntryTap(context, entry),
+            onLongPress: () => _showActionMenu(context, entry),
+          );
+        }, childCount: entries.length + (state.currentPath != '/' ? 1 : 0)),
       ),
     );
   }
 
   void _handleEntryTap(BuildContext context, FileEntry entry) {
     if (entry.isDirectory) {
-      ref.read(fileBrowserProvider.notifier).navigateToDirectory(entry.fullPath);
+      ref
+          .read(fileBrowserProvider.notifier)
+          .navigateToDirectory(entry.fullPath);
     } else {
       _showActionMenu(context, entry);
     }
@@ -299,7 +313,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
     switch (action) {
       case FileAction.open:
-        ref.read(fileBrowserProvider.notifier).navigateToDirectory(entry.fullPath);
+        ref
+            .read(fileBrowserProvider.notifier)
+            .navigateToDirectory(entry.fullPath);
       case FileAction.rename:
         await _showRenameDialog(context, entry);
       case FileAction.delete:
@@ -318,11 +334,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: InputDecoration(
-            border: const OutlineInputBorder(),
-          ),
+          decoration: InputDecoration(border: const OutlineInputBorder()),
           style: TextStyle(
-            color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
+            color: isDark
+                ? DesignColors.textPrimary
+                : DesignColors.textPrimaryLight,
           ),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
@@ -341,15 +357,24 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
     controller.dispose();
 
-    if (newName != null && newName.isNotEmpty && newName != entry.name && mounted) {
-      final success = await ref.read(fileBrowserProvider.notifier).rename(entry, newName);
+    if (newName != null &&
+        newName.isNotEmpty &&
+        newName != entry.name &&
+        mounted) {
+      final success = await ref
+          .read(fileBrowserProvider.notifier)
+          .rename(entry, newName);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success ? context.l10n.fileRenameSuccess : context.l10n.fileRenameFailure,
+              success
+                  ? context.l10n.fileRenameSuccess
+                  : context.l10n.fileRenameFailure,
             ),
-            backgroundColor: success ? DesignColors.success : DesignColors.error,
+            backgroundColor: success
+                ? DesignColors.success
+                : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -357,7 +382,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     }
   }
 
-  Future<void> _showDeleteConfirmDialog(BuildContext context, FileEntry entry) async {
+  Future<void> _showDeleteConfirmDialog(
+    BuildContext context,
+    FileEntry entry,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -385,14 +413,20 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     );
 
     if (confirmed == true && mounted) {
-      final success = await ref.read(fileBrowserProvider.notifier).delete(entry);
+      final success = await ref
+          .read(fileBrowserProvider.notifier)
+          .delete(entry);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success ? context.l10n.fileDeleteSuccess : context.l10n.fileDeleteFailure,
+              success
+                  ? context.l10n.fileDeleteSuccess
+                  : context.l10n.fileDeleteFailure,
             ),
-            backgroundColor: success ? DesignColors.success : DesignColors.error,
+            backgroundColor: success
+                ? DesignColors.success
+                : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -416,7 +450,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
             border: const OutlineInputBorder(),
           ),
           style: TextStyle(
-            color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
+            color: isDark
+                ? DesignColors.textPrimary
+                : DesignColors.textPrimaryLight,
           ),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
@@ -436,7 +472,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     controller.dispose();
 
     if (name != null && name.isNotEmpty && mounted) {
-      final success = await ref.read(fileBrowserProvider.notifier).createDirectory(name);
+      final success = await ref
+          .read(fileBrowserProvider.notifier)
+          .createDirectory(name);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -445,7 +483,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                   ? context.l10n.fileCreateFolderSuccess
                   : context.l10n.fileCreateFolderFailure,
             ),
-            backgroundColor: success ? DesignColors.success : DesignColors.error,
+            backgroundColor: success
+                ? DesignColors.success
+                : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
         );

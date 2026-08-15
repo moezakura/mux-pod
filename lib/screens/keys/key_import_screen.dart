@@ -36,9 +36,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(context.l10n.keyMgmtImportTitle),
-      ),
+      appBar: AppBar(title: Text(context.l10n.keyMgmtImportTitle)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -61,9 +59,11 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
             OutlinedButton.icon(
               onPressed: _pickFile,
               icon: const Icon(Icons.file_upload),
-              label: Text(_selectedFilePath != null
-                  ? _selectedFilePath!.split('/').last
-                  : context.l10n.keyMgmtSelectFile),
+              label: Text(
+                _selectedFilePath != null
+                    ? _selectedFilePath!.split('/').last
+                    : context.l10n.keyMgmtSelectFile,
+              ),
             ),
             const SizedBox(height: 8),
             Text(

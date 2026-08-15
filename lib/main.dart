@@ -26,16 +26,14 @@ void main() {
   LicenseService.registerLicenses();
 
   // ステータスバーを透明に
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
-
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
     ),
   );
+
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -103,7 +101,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     final server = data.server;
     if (server == null) return;
 
-    final connection = ref.read(connectionsProvider.notifier)
+    final connection = ref
+        .read(connectionsProvider.notifier)
         .findByDeepLinkIdOrName(server);
 
     if (connection == null) {
@@ -156,9 +155,7 @@ class _MyAppState extends ConsumerState<MyApp> {
       darkTheme: AppTheme.dark,
       themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
       // 言語設定: 'system' なら端末のロケールに追従、それ以外は明示指定
-      locale: settings.language == 'system'
-          ? null
-          : Locale(settings.language),
+      locale: settings.language == 'system' ? null : Locale(settings.language),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: const HomeScreen(),

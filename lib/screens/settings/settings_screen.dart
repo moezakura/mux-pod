@@ -40,21 +40,26 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(l10n.settingsShowCursorDescription),
                   value: settings.showTerminalCursor,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setShowTerminalCursor(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setShowTerminalCursor(value);
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.tune),
                   title: Text(l10n.settingsAdjustMode),
                   subtitle: Text(_adjustModeLabel(l10n, settings.adjustMode)),
-                  onTap: () => _showAdjustModePicker(context, ref, settings.adjustMode),
+                  onTap: () =>
+                      _showAdjustModePicker(context, ref, settings.adjustMode),
                 ),
                 ListTile(
                   leading: const Icon(Icons.text_fields),
                   title: Text(l10n.settingsFontSize),
                   subtitle: Text(
                     settings.isAutoFit
-                        ? l10n.settingsFontSizeAutoFit(settings.fontSize.toInt())
+                        ? l10n.settingsFontSizeAutoFit(
+                            settings.fontSize.toInt(),
+                          )
                         : '${settings.fontSize.toInt()} pt',
                   ),
                   enabled: !settings.isAutoFit,
@@ -63,12 +68,13 @@ class SettingsScreen extends ConsumerWidget {
                       : () async {
                           final size = await showDialog<double>(
                             context: context,
-                            builder: (context) => FontSizeDialog(
-                              currentSize: settings.fontSize,
-                            ),
+                            builder: (context) =>
+                                FontSizeDialog(currentSize: settings.fontSize),
                           );
                           if (size != null) {
-                            ref.read(settingsProvider.notifier).setFontSize(size);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setFontSize(size);
                           }
                         },
                 ),
@@ -79,9 +85,8 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: () async {
                     final family = await showDialog<String>(
                       context: context,
-                      builder: (context) => FontFamilyDialog(
-                        currentFamily: settings.fontFamily,
-                      ),
+                      builder: (context) =>
+                          FontFamilyDialog(currentFamily: settings.fontFamily),
                     );
                     if (family != null) {
                       ref.read(settingsProvider.notifier).setFontFamily(family);
@@ -93,8 +98,12 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsMinimumFontSize),
                   subtitle: Text(
                     settings.isAutoFit
-                        ? l10n.settingsMinFontSizeAutoFitLimit(settings.minFontSize.toInt())
-                        : l10n.settingsMinFontSizeNotUsed(settings.minFontSize.toInt()),
+                        ? l10n.settingsMinFontSizeAutoFitLimit(
+                            settings.minFontSize.toInt(),
+                          )
+                        : l10n.settingsMinFontSizeNotUsed(
+                            settings.minFontSize.toInt(),
+                          ),
                   ),
                   enabled: settings.isAutoFit,
                   onTap: settings.isAutoFit
@@ -106,7 +115,9 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                           );
                           if (size != null) {
-                            ref.read(settingsProvider.notifier).setMinFontSize(size);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setMinFontSize(size);
                           }
                         }
                       : null,
@@ -119,7 +130,9 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(l10n.settingsKeyOverlayDescription),
                   value: settings.showKeyOverlay,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setShowKeyOverlay(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setShowKeyOverlay(value);
                   },
                 ),
                 if (settings.showKeyOverlay) ...[
@@ -129,7 +142,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: Text(l10n.settingsModifierKeysDescription),
                     value: settings.keyOverlayModifier,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayModifier(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayModifier(value);
                     },
                   ),
                   SwitchListTile(
@@ -138,7 +153,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: Text(l10n.settingsSpecialKeysDescription),
                     value: settings.keyOverlaySpecial,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlaySpecial(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlaySpecial(value);
                     },
                   ),
                   SwitchListTile(
@@ -147,7 +164,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: Text(l10n.settingsArrowKeysDescription),
                     value: settings.keyOverlayArrow,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayArrow(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayArrow(value);
                     },
                   ),
                   SwitchListTile(
@@ -156,33 +175,50 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: Text(l10n.settingsShortcutKeysDescription),
                     value: settings.keyOverlayShortcut,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayShortcut(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayShortcut(value);
                     },
                   ),
                   ListTile(
                     leading: const Icon(Icons.place),
                     title: Text(l10n.settingsOverlayPosition),
-                    subtitle: Text(
-                      switch (settings.keyOverlayPosition) {
-                        'center' => l10n.settingsOverlayPositionCenter,
-                        'belowHeader' => l10n.settingsOverlayPositionBelowHeader,
-                        _ => l10n.settingsOverlayPositionAboveKeyboard,
-                      },
-                    ),
+                    subtitle: Text(switch (settings.keyOverlayPosition) {
+                      'center' => l10n.settingsOverlayPositionCenter,
+                      'belowHeader' => l10n.settingsOverlayPositionBelowHeader,
+                      _ => l10n.settingsOverlayPositionAboveKeyboard,
+                    }),
                     onTap: () async {
                       final result = await showDialog<String>(
                         context: context,
                         builder: (context) => SimpleDialog(
                           title: Text(l10n.settingsOverlayPosition),
                           children: [
-                            _buildPositionOption(context, 'aboveKeyboard', l10n.settingsOverlayPositionAboveKeyboard, settings.keyOverlayPosition),
-                            _buildPositionOption(context, 'center', l10n.settingsOverlayPositionCenter, settings.keyOverlayPosition),
-                            _buildPositionOption(context, 'belowHeader', l10n.settingsOverlayPositionBelowHeader, settings.keyOverlayPosition),
+                            _buildPositionOption(
+                              context,
+                              'aboveKeyboard',
+                              l10n.settingsOverlayPositionAboveKeyboard,
+                              settings.keyOverlayPosition,
+                            ),
+                            _buildPositionOption(
+                              context,
+                              'center',
+                              l10n.settingsOverlayPositionCenter,
+                              settings.keyOverlayPosition,
+                            ),
+                            _buildPositionOption(
+                              context,
+                              'belowHeader',
+                              l10n.settingsOverlayPositionBelowHeader,
+                              settings.keyOverlayPosition,
+                            ),
                           ],
                         ),
                       );
                       if (result != null) {
-                        ref.read(settingsProvider.notifier).setKeyOverlayPosition(result);
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setKeyOverlayPosition(result);
                       }
                     },
                   ),
@@ -195,7 +231,9 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(l10n.settingsHapticFeedbackDescription),
                   value: settings.enableVibration,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setEnableVibration(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setEnableVibration(value);
                   },
                 ),
                 SwitchListTile(
@@ -210,7 +248,9 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.screen_rotation),
                   title: Text(l10n.settingsScreenOrientation),
-                  subtitle: Text(_orientationLabel(l10n, settings.screenOrientation)),
+                  subtitle: Text(
+                    _orientationLabel(l10n, settings.screenOrientation),
+                  ),
                   onTap: () => _showOrientationPicker(
                     context,
                     ref,
@@ -233,7 +273,9 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(l10n.settingsInvertPaneNavigationDescription),
                   value: settings.invertPaneNavigation,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setInvertPaneNavigation(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setInvertPaneNavigation(value);
                   },
                 ),
                 const Divider(),
@@ -241,13 +283,14 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.dark_mode),
                   title: Text(l10n.settingsTheme),
-                  subtitle: Text(settings.darkMode ? l10n.themeDark : l10n.themeLight),
+                  subtitle: Text(
+                    settings.darkMode ? l10n.themeDark : l10n.themeLight,
+                  ),
                   onTap: () async {
                     final isDark = await showDialog<bool>(
                       context: context,
-                      builder: (context) => ThemeDialog(
-                        isDarkMode: settings.darkMode,
-                      ),
+                      builder: (context) =>
+                          ThemeDialog(isDarkMode: settings.darkMode),
                     );
                     if (isDark != null) {
                       ref.read(settingsProvider.notifier).setDarkMode(isDark);
@@ -258,7 +301,8 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.language),
                   title: Text(context.l10n.settingsLanguage),
                   subtitle: Text(_languageLabel(context, settings.language)),
-                  onTap: () => _showLanguagePicker(context, ref, settings.language),
+                  onTap: () =>
+                      _showLanguagePicker(context, ref, settings.language),
                 ),
                 const Divider(),
                 _SectionHeader(title: l10n.settingsSectionImageTransfer),
@@ -267,17 +311,24 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsRemotePath),
                   subtitle: Text(settings.imageRemotePath),
                   onTap: () => _showTextInputDialog(
-                    context, ref,
+                    context,
+                    ref,
                     title: l10n.settingsRemotePath,
                     currentValue: settings.imageRemotePath,
-                    onSave: (v) => ref.read(settingsProvider.notifier).setImageRemotePath(v),
+                    onSave: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setImageRemotePath(v),
                   ),
                 ),
                 ListTile(
                   leading: const Icon(Icons.image),
                   title: Text(l10n.settingsOutputFormat),
                   subtitle: Text(settings.imageOutputFormat),
-                  onTap: () => _showFormatPicker(context, ref, settings.imageOutputFormat),
+                  onTap: () => _showFormatPicker(
+                    context,
+                    ref,
+                    settings.imageOutputFormat,
+                  ),
                 ),
                 if (settings.imageOutputFormat == 'jpeg')
                   ListTile(
@@ -285,18 +336,26 @@ class SettingsScreen extends ConsumerWidget {
                     title: Text(l10n.settingsJpegQuality),
                     subtitle: Text('${settings.imageJpegQuality}%'),
                     onTap: () => _showSliderDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: l10n.settingsJpegQuality,
                       value: settings.imageJpegQuality.toDouble(),
-                      min: 1, max: 100,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageJpegQuality(v.round()),
+                      min: 1,
+                      max: 100,
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageJpegQuality(v.round()),
                     ),
                   ),
                 ListTile(
                   leading: const Icon(Icons.photo_size_select_large),
                   title: Text(l10n.settingsResize),
                   subtitle: Text(settings.imageResizePreset.toUpperCase()),
-                  onTap: () => _showResizePresetPicker(context, ref, settings.imageResizePreset),
+                  onTap: () => _showResizePresetPicker(
+                    context,
+                    ref,
+                    settings.imageResizePreset,
+                  ),
                 ),
                 if (settings.imageResizePreset == 'custom') ...[
                   ListTile(
@@ -304,10 +363,13 @@ class SettingsScreen extends ConsumerWidget {
                     title: Text(l10n.settingsMaxWidth),
                     subtitle: Text('${settings.imageMaxWidth}px'),
                     onTap: () => _showNumberInputDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: l10n.settingsMaxWidth,
                       currentValue: settings.imageMaxWidth,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageMaxWidth(v),
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageMaxWidth(v),
                     ),
                   ),
                   ListTile(
@@ -315,10 +377,13 @@ class SettingsScreen extends ConsumerWidget {
                     title: Text(l10n.settingsMaxHeight),
                     subtitle: Text('${settings.imageMaxHeight}px'),
                     onTap: () => _showNumberInputDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: l10n.settingsMaxHeight,
                       currentValue: settings.imageMaxHeight,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageMaxHeight(v),
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageMaxHeight(v),
                     ),
                   ),
                 ],
@@ -327,11 +392,14 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsPathFormat),
                   subtitle: Text(settings.imagePathFormat),
                   onTap: () => _showTextInputDialog(
-                    context, ref,
+                    context,
+                    ref,
                     title: l10n.settingsPathFormat,
                     currentValue: settings.imagePathFormat,
                     hint: l10n.settingsPathFormatHint('{path}'),
-                    onSave: (v) => ref.read(settingsProvider.notifier).setImagePathFormat(v),
+                    onSave: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setImagePathFormat(v),
                   ),
                 ),
                 SwitchListTile(
@@ -339,14 +407,17 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsAutoEnter),
                   subtitle: Text(l10n.settingsAutoEnterDescription),
                   value: settings.imageAutoEnter,
-                  onChanged: (v) => ref.read(settingsProvider.notifier).setImageAutoEnter(v),
+                  onChanged: (v) =>
+                      ref.read(settingsProvider.notifier).setImageAutoEnter(v),
                 ),
                 SwitchListTile(
                   secondary: const Icon(Icons.paste),
                   title: Text(l10n.settingsBracketedPaste),
                   subtitle: Text(l10n.settingsBracketedPasteDescription),
                   value: settings.imageBracketedPaste,
-                  onChanged: (v) => ref.read(settingsProvider.notifier).setImageBracketedPaste(v),
+                  onChanged: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setImageBracketedPaste(v),
                 ),
                 const Divider(),
                 _SectionHeader(title: l10n.settingsSectionAbout),
@@ -360,9 +431,14 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsSourceCode),
                   subtitle: const Text('github.com/moezakura/mux-pod'),
                   onTap: () async {
-                    final url = Uri.parse('https://github.com/moezakura/mux-pod');
+                    final url = Uri.parse(
+                      'https://github.com/moezakura/mux-pod',
+                    );
                     if (await canLaunchUrl(url)) {
-                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        url,
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                 ),
@@ -409,7 +485,10 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.commonCancel)),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.commonCancel),
+          ),
           FilledButton(
             onPressed: () {
               onSave(controller.text.trim());
@@ -441,7 +520,10 @@ class SettingsScreen extends ConsumerWidget {
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.commonCancel)),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(l10n.commonCancel),
+          ),
           FilledButton(
             onPressed: () {
               final v = int.tryParse(controller.text.trim());
@@ -474,12 +556,20 @@ class SettingsScreen extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Slider(value: current, min: min, max: max, onChanged: (v) => setState(() => current = v)),
+              Slider(
+                value: current,
+                min: min,
+                max: max,
+                onChanged: (v) => setState(() => current = v),
+              ),
               Text('${current.round()}'),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(l10n.commonCancel)),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.commonCancel),
+            ),
             FilledButton(
               onPressed: () {
                 onSave(current);
@@ -506,7 +596,9 @@ class SettingsScreen extends ConsumerWidget {
               value: format,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setImageOutputFormat(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setImageOutputFormat(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -526,7 +618,11 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showAdjustModePicker(BuildContext context, WidgetRef ref, String current) {
+  void _showAdjustModePicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     final l10n = context.l10n;
     showDialog(
       context: context,
@@ -534,9 +630,21 @@ class SettingsScreen extends ConsumerWidget {
         title: Text(l10n.settingsAdjustMode),
         children: [
           for (final entry in [
-            ('none', l10n.settingsAdjustModeNone, l10n.settingsAdjustModeNoneDescription),
-            ('autoFit', l10n.settingsAdjustModeAutoFit, l10n.settingsAdjustModeAutoFitDescription),
-            ('autoResize', l10n.settingsAdjustModeAutoResize, l10n.settingsAdjustModeAutoResizeDescription),
+            (
+              'none',
+              l10n.settingsAdjustModeNone,
+              l10n.settingsAdjustModeNoneDescription,
+            ),
+            (
+              'autoFit',
+              l10n.settingsAdjustModeAutoFit,
+              l10n.settingsAdjustModeAutoFitDescription,
+            ),
+            (
+              'autoResize',
+              l10n.settingsAdjustModeAutoResize,
+              l10n.settingsAdjustModeAutoResizeDescription,
+            ),
           ])
             RadioListTile<String>(
               title: Text(entry.$2),
@@ -544,7 +652,9 @@ class SettingsScreen extends ConsumerWidget {
               value: entry.$1,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setAdjustMode(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setAdjustMode(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -579,7 +689,11 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   /// 言語設定ピッカー: System / 日本語 / English の3択
-  void _showLanguagePicker(BuildContext context, WidgetRef ref, String current) {
+  void _showLanguagePicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) {
@@ -610,7 +724,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showOrientationPicker(BuildContext context, WidgetRef ref, String current) {
+  void _showOrientationPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     final l10n = context.l10n;
     showDialog(
       context: context,
@@ -618,9 +736,21 @@ class SettingsScreen extends ConsumerWidget {
         title: Text(l10n.settingsScreenOrientation),
         children: [
           for (final entry in [
-            ('auto', l10n.settingsOrientationAuto, l10n.settingsOrientationAutoDescription),
-            ('portrait', l10n.settingsOrientationPortrait, l10n.settingsOrientationPortraitDescription),
-            ('landscape', l10n.settingsOrientationLandscape, l10n.settingsOrientationLandscapeDescription),
+            (
+              'auto',
+              l10n.settingsOrientationAuto,
+              l10n.settingsOrientationAutoDescription,
+            ),
+            (
+              'portrait',
+              l10n.settingsOrientationPortrait,
+              l10n.settingsOrientationPortraitDescription,
+            ),
+            (
+              'landscape',
+              l10n.settingsOrientationLandscape,
+              l10n.settingsOrientationLandscapeDescription,
+            ),
           ])
             RadioListTile<String>(
               title: Text(entry.$2),
@@ -652,7 +782,11 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showRefreshRatePicker(BuildContext context, WidgetRef ref, String current) {
+  void _showRefreshRatePicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     final l10n = context.l10n;
     showDialog(
       context: context,
@@ -660,7 +794,11 @@ class SettingsScreen extends ConsumerWidget {
         title: Text(l10n.settingsMaxRefreshRate),
         children: [
           for (final entry in [
-            ('auto', l10n.settingsRefreshRateAuto, l10n.settingsRefreshRateAutoDescription),
+            (
+              'auto',
+              l10n.settingsRefreshRateAuto,
+              l10n.settingsRefreshRateAutoDescription,
+            ),
             ('120', '120 Hz', l10n.settingsRefreshRateCap(120)),
             ('90', '90 Hz', l10n.settingsRefreshRateCap(90)),
             ('60', '60 Hz', l10n.settingsRefreshRateCap(60)),
@@ -682,7 +820,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showResizePresetPicker(BuildContext context, WidgetRef ref, String current) {
+  void _showResizePresetPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     final l10n = context.l10n;
     showDialog(
       context: context,
@@ -701,7 +843,9 @@ class SettingsScreen extends ConsumerWidget {
               value: entry.$1,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setImageResizePreset(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setImageResizePreset(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -745,7 +889,9 @@ class SettingsScreen extends ConsumerWidget {
       child: Row(
         children: [
           Icon(
-            value == currentValue ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+            value == currentValue
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
             size: 20,
           ),
           const SizedBox(width: 12),

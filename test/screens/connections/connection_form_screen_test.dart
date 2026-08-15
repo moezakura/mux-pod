@@ -444,7 +444,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // 破損キー選択中の警告が表示される
-      expect(find.textContaining('The selected key is damaged'), findsOneWidget);
+      expect(
+        find.textContaining('The selected key is damaged'),
+        findsOneWidget,
+      );
     });
   });
 }

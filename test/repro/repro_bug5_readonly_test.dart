@@ -67,7 +67,8 @@ Future<_TestSshClient> _pumpForm(WidgetTester tester) async {
       overrides: [
         connectionsProvider.overrideWith(() => connections),
         connectionFormSshClientFactoryProvider.overrideWith(
-          (ref) => () => fakeClient,
+          (ref) =>
+              () => fakeClient,
         ),
       ],
       child: MaterialApp(
@@ -90,58 +91,60 @@ void main() {
   });
 
   group('Repro BUG-5: TestConnection 成功時に "(read-only)" が表示される', () {
-    testWidgets(
-      'herdr 接続テスト成功の SnackBar に "(read-only)" が含まれる（バグ）',
-      (tester) async {
-        final client = await _pumpForm(tester);
-        client.execOutputs['herdr status --json'] = _kHerdrStatusOk;
+    testWidgets('herdr 接続テスト成功の SnackBar に "(read-only)" が含まれる（バグ）', (
+      tester,
+    ) async {
+      final client = await _pumpForm(tester);
+      client.execOutputs['herdr status --json'] = _kHerdrStatusOk;
 
-        // 名前入力前にトグルを選択
-        await tester.tap(find.text('Herdr'));
-        await tester.pumpAndSettle();
+      // 名前入力前にトグルを選択
+      await tester.tap(find.text('Herdr'));
+      await tester.pumpAndSettle();
 
-        await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
-        await tester.enterText(find.byType(TextFormField).at(1), 'host');
-        await tester.enterText(find.byType(TextFormField).at(3), 'user');
-        await tester.enterText(
-            find.byType(TextFormField).at(4), '/usr/local/bin/herdr');
-        await tester.enterText(find.byType(TextFormField).at(6), 'password');
-        await tester.pump();
+      await tester.enterText(find.byType(TextFormField).at(0), 'Herdr Host');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(
+        find.byType(TextFormField).at(4),
+        '/usr/local/bin/herdr',
+      );
+      await tester.enterText(find.byType(TextFormField).at(6), 'password');
+      await tester.pump();
 
-        await tester.tap(find.text('TEST CONNECTION'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('TEST CONNECTION'));
+      await tester.pumpAndSettle();
 
-        // バグの再現: read-only 文言が表示される
-        expect(
-          find.text('Connection successful! Herdr is available (read-only).'),
-          findsOneWidget,
-          reason: 'バグ: 2c8f02b で mutation 解禁済みなのに read-only 文言が残っている',
-        );
-      },
-    );
+      // バグの再現: read-only 文言が表示される
+      expect(
+        find.text('Connection successful! Herdr is available (read-only).'),
+        findsOneWidget,
+        reason: 'バグ: 2c8f02b で mutation 解禁済みなのに read-only 文言が残っている',
+      );
+    });
 
-    testWidgets(
-      'tmux 接続テスト成功の SnackBar には "(read-only)" が含まれない（比較対照）',
-      (tester) async {
-        await _pumpForm(tester);
+    testWidgets('tmux 接続テスト成功の SnackBar には "(read-only)" が含まれない（比較対照）', (
+      tester,
+    ) async {
+      await _pumpForm(tester);
 
-        await tester.enterText(find.byType(TextFormField).at(0), 'Test');
-        await tester.enterText(find.byType(TextFormField).at(1), 'host');
-        await tester.enterText(find.byType(TextFormField).at(3), 'user');
-        await tester.enterText(
-            find.byType(TextFormField).at(4), '/usr/local/bin/tmux');
-        await tester.enterText(find.byType(TextFormField).at(6), 'password');
-        await tester.pump();
+      await tester.enterText(find.byType(TextFormField).at(0), 'Test');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(
+        find.byType(TextFormField).at(4),
+        '/usr/local/bin/tmux',
+      );
+      await tester.enterText(find.byType(TextFormField).at(6), 'password');
+      await tester.pump();
 
-        await tester.tap(find.text('TEST CONNECTION'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('TEST CONNECTION'));
+      await tester.pumpAndSettle();
 
-        expect(
-          find.text('Connection successful! tmux is available.'),
-          findsOneWidget,
-        );
-        expect(find.textContaining('read-only'), findsNothing);
-      },
-    );
+      expect(
+        find.text('Connection successful! tmux is available.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('read-only'), findsNothing);
+    });
   });
 }
