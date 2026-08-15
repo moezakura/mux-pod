@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
+import '../../providers/connection_provider.dart';
+import '../../providers/key_provider.dart';
 import '../../providers/session_history_provider.dart';
 import '../../theme/design_colors.dart';
 import '../connections/connection_form_screen.dart';
@@ -169,7 +171,7 @@ class DashboardScreen extends ConsumerWidget {
 }
 
 /// セッション履歴カード
-class _SessionHistoryCard extends StatelessWidget {
+class _SessionHistoryCard extends ConsumerWidget {
   final ActiveSession session;
   final VoidCallback onTap;
   final VoidCallback onRemove;
@@ -181,10 +183,22 @@ class _SessionHistoryCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     final isAttached = session.isAttached;
+
+    // このセッションの接続が破損キー（秘密鍵を読み出せない鍵）を参照しているか
+    final connectionsState = ref.watch(connectionsProvider);
+    String? connectionKeyId;
+    for (final c in connectionsState.connections) {
+      if (c.id == session.connectionId) {
+        connectionKeyId = c.keyId;
+        break;
+      }
+    }
+    final keysState = ref.watch(keysProvider);
+    final hasDamagedKey = isKeyDamaged(keysState, connectionKeyId);
 
     return Dismissible(
       key: Key(session.key),
@@ -302,16 +316,23 @@ class _SessionHistoryCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Session Name with Connection Name
-                    Text(
-                      '${session.connectionName}: ${session.sessionName}',
-                      style: GoogleFonts.spaceGrotesk(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: colorScheme.onSurface,
-                        letterSpacing: 0.3,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${session.connectionName}: ${session.sessionName}',
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
+                              letterSpacing: 0.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (hasDamagedKey) ...[const SizedBox(width: 6), Icon(Icons.warning_amber, size: 16, color: colorScheme.error)],
+                      ],
                     ),
                     const SizedBox(height: 4),
                     // Host and relative time
@@ -344,6 +365,7 @@ class _SessionHistoryCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (hasDamagedKey) ...[const SizedBox(height: 4), _buildDamagedKeyBadge(context)],
                     const SizedBox(height: 4),
                     // Window count and last position
                     Row(
@@ -412,6 +434,25 @@ class _SessionHistoryCard extends StatelessWidget {
       final weeks = (diff.inDays / 7).floor();
       return '$weeks week${weeks > 1 ? 's' : ''} ago';
     }
+  }
+
+  /// 破損キー使用中のバッジ
+  Widget _buildDamagedKeyBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '破損した鍵を使用中',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontSize: 9,
+              color: colorScheme.onErrorContainer,
+            ),
+      ),
+    );
   }
 }
 

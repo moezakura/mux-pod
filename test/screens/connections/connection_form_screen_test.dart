@@ -360,5 +360,41 @@ void main() {
       );
       expect(find.textContaining('Failed to unwrap key'), findsNothing);
     });
+
+    testWidgets('shows damaged key warning when broken key is selected',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'ssh_keys_meta': jsonEncode([
+          {
+            'id': 'k1',
+            'name': 'broken-key',
+            'type': 'ed25519',
+            'createdAt': '2026-01-01T00:00:00.000',
+          },
+        ]),
+      });
+      // 秘密鍵なし → 破損キーとして検出される
+      SecureStorageService.setTestValues({});
+
+      await _pumpForm(tester);
+
+      await tester.enterText(find.byType(TextFormField).at(0), 'Test');
+      await tester.enterText(find.byType(TextFormField).at(1), 'host');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.pump();
+
+      // 認証方式を Private Key に切り替え
+      await tester.tap(find.text('Private Key'));
+      await tester.pumpAndSettle();
+
+      // 破損キーを選択
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('broken-key').last);
+      await tester.pumpAndSettle();
+
+      // 破損キー選択中の警告が表示される
+      expect(find.textContaining('破損しています'), findsOneWidget);
+    });
   });
 }

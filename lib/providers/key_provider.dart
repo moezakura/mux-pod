@@ -229,6 +229,12 @@ class KeysNotifier extends Notifier<KeysState> {
   }
 }
 
+/// 指定の鍵IDが破損鍵（秘密鍵を読み出せない）かどうかを返す。
+bool isKeyDamaged(KeysState state, String? keyId) {
+  if (keyId == null) return false;
+  return state.keys.any((k) => k.id == keyId && !k.isAvailable);
+}
+
 /// SSH鍵プロバイダー
 final keysProvider = NotifierProvider<KeysNotifier, KeysState>(() {
   return KeysNotifier();

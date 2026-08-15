@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
+import '../../providers/key_provider.dart';
 import '../home_screen.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
@@ -557,6 +558,10 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         activeSessionsState.getSessionsForConnection(widget.connection.id);
     final hasActiveSessions = activeSessions.isNotEmpty;
 
+    // 破損キー（秘密鍵を読み出せない鍵）を参照している接続かどうか
+    final keysState = ref.watch(keysProvider);
+    final hasDamagedKey = isKeyDamaged(keysState, widget.connection.keyId);
+
     // 接続状態の判定（アクティブセッションがあるか、lastConnectedAtがあるか）
     final isConnected = hasActiveSessions || widget.connection.lastConnectedAt != null;
     final statusColor = hasActiveSessions
@@ -643,14 +648,21 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.connection.name,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSurface,
-                            letterSpacing: 0.3,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.connection.name,
+                                style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                            if (hasDamagedKey) ...[const SizedBox(width: 6), Icon(Icons.warning_amber, size: 16, color: colorScheme.error)],
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
@@ -660,6 +672,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                             color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                           ),
                         ),
+                        if (hasDamagedKey) ...[const SizedBox(height: 4), _buildDamagedKeyBadge(context)],
                       ],
                     ),
                   ),
@@ -1283,6 +1296,25 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         ),
       );
     }).toList();
+  }
+
+  /// 破損キー使用中のバッジ
+  Widget _buildDamagedKeyBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '破損した鍵を使用中',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontSize: 9,
+              color: colorScheme.onErrorContainer,
+            ),
+      ),
+    );
   }
 }
 
