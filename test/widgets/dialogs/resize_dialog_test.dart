@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_pane.dart';
 import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 import 'package:flutter_muxpod/widgets/dialogs/resize_dialog.dart';
@@ -56,6 +57,8 @@ void main() {
     final harness = _DialogHarness();
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: Builder(
             builder: (context) => ElevatedButton(
@@ -110,7 +113,7 @@ void main() {
       await openDialog(tester, panes: [p1, p2]);
 
       // プレビュー（概算ラベル・0 起点正規化）。
-      expect(find.text('概算(estimated)'), findsOneWidget);
+      expect(find.text('Estimated'), findsOneWidget);
       expect(find.text('1\n80x24'), findsOneWidget);
       expect(find.text('2\n80x24'), findsOneWidget);
       // Cols/Rows 数値入力。
@@ -194,8 +197,8 @@ void main() {
       );
       await openDialog(tester, panes: [unknown]);
 
-      expect(find.text('1\nサイズ不明'), findsOneWidget);
-      expect(find.text('概算(estimated)'), findsOneWidget);
+      expect(find.text('1\nUnknown size'), findsOneWidget);
+      expect(find.text('Estimated'), findsOneWidget);
     });
 
     testWidgets('Match Screen プリセットが表示され選択できる', (tester) async {
@@ -235,7 +238,7 @@ void main() {
     testWidgets('panes 空: プレビュー・警告なしで Cols/Rows 入力のみ', (tester) async {
       await openDialog(tester, panes: const []);
 
-      expect(find.text('概算(estimated)'), findsNothing);
+      expect(find.text('Estimated'), findsNothing);
       expect(find.text('Other pane sizes may also change.'), findsNothing);
       expect(find.text('Cols'), findsOneWidget);
       expect(find.text('Rows'), findsOneWidget);

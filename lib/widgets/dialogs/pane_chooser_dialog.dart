@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../services/backend/domain/multiplexer_pane.dart';
 import '../../theme/design_colors.dart';
 
@@ -94,7 +95,9 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
 
   /// サイズ表記（width/height <= 0 のサイズ不明 pane は「サイズ不明」・E1）。
   String _sizeLabel(MultiplexerPane pane) {
-    if (pane.width <= 0 || pane.height <= 0) return 'サイズ不明';
+    if (pane.width <= 0 || pane.height <= 0) {
+      return context.l10n.paneChooserSizeUnknown;
+    }
     return '${pane.width}x${pane.height}';
   }
 
@@ -105,9 +108,9 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.paneChooserTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -122,17 +125,19 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
               // 選択中のペイン情報
               if (selected != null)
                 Text(
-                  'Selected: ${_labelFor(selected)} '
-                  '(${_sizeLabel(selected)})',
+                  context.l10n.paneChooserSelected(
+                    _labelFor(selected),
+                    _sizeLabel(selected),
+                  ),
                   style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
                 )
               else if (widget.panes.isNotEmpty)
-                const Text(
-                  'Tap a pane to select',
-                  style: TextStyle(
+                Text(
+                  context.l10n.paneChooserTapToSelect,
+                  style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
@@ -144,13 +149,13 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.paneChooserCancel),
         ),
         FilledButton(
           // 未選択・空リスト時は disabled（tmux L7501 の前例）
           onPressed: selected != null ? () => widget.onResize(selected.id) : null,
           style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
-          child: const Text('Resize'),
+          child: Text(context.l10n.paneChooserResize),
         ),
       ],
     );

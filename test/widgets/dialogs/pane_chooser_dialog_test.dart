@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_pane.dart';
 import 'package:flutter_muxpod/widgets/dialogs/pane_chooser_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +54,8 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: Builder(
             builder: (context) => ElevatedButton(
@@ -256,9 +259,9 @@ void main() {
       );
 
       // グリッド内は index + 「サイズ不明」
-      expect(find.text('3\nサイズ不明'), findsOneWidget);
+      expect(find.text('3\nUnknown size'), findsOneWidget);
       // Selected 行も同様にフォールバック
-      expect(find.text('Selected: Pane 3 (サイズ不明)'), findsOneWidget);
+      expect(find.text('Selected: Pane 3 (Unknown size)'), findsOneWidget);
       // サイズ不明でも選択・Resize は可能
       expect(isResizeEnabled(tester), isTrue);
     });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 
 /// 新規ウィンドウ作成ダイアログの入力値
@@ -36,17 +37,18 @@ class _NewWindowDialogState extends State<NewWindowDialog> {
   }
 
   String? _validateWindowName(String? value) {
+    final l10n = context.l10n;
     if (value == null || value.isEmpty) {
       return null; // 空入力はtmuxデフォルト名で許容
     }
     if (value.length > 50) {
-      return 'Window name must be 50 characters or less';
+      return l10n.newWindowNameTooLong;
     }
     if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - and _ allowed';
+      return l10n.newWindowNameChars;
     }
     if (widget.existingWindowNames.contains(value)) {
-      return 'Window "$value" already exists';
+      return l10n.newWindowNameExists(value);
     }
     return null;
   }
@@ -109,7 +111,7 @@ class _NewWindowDialogState extends State<NewWindowDialog> {
     final fieldStyle = GoogleFonts.jetBrainsMono(fontSize: 14);
     return AlertDialog(
       title: Text(
-        'New Window',
+        context.l10n.newWindowTitle,
         style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
       ),
       content: Form(
@@ -128,8 +130,8 @@ class _NewWindowDialogState extends State<NewWindowDialog> {
                 decoration: _decoration(
                   isDark: isDark,
                   colorScheme: colorScheme,
-                  labelText: 'Window Name',
-                  hintText: 'Leave empty for default',
+                  labelText: context.l10n.newWindowNameLabel,
+                  hintText: context.l10n.newWindowNameHint,
                 ),
                 style: fieldStyle,
                 validator: _validateWindowName,
@@ -146,8 +148,8 @@ class _NewWindowDialogState extends State<NewWindowDialog> {
                 decoration: _decoration(
                   isDark: isDark,
                   colorScheme: colorScheme,
-                  labelText: 'Command',
-                  hintText: 'npm run dev (optional)',
+                  labelText: context.l10n.newWindowCommandLabel,
+                  hintText: context.l10n.newWindowCommandHint,
                 ),
                 style: fieldStyle,
                 onFieldSubmitted: (_) => _submit(),
@@ -159,9 +161,12 @@ class _NewWindowDialogState extends State<NewWindowDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.newWindowCancel),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Create')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(context.l10n.newWindowCreate),
+        ),
       ],
     );
   }

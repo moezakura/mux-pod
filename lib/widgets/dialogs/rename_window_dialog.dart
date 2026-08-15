@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 
 /// ウィンドウ名変更ダイアログ
@@ -35,17 +36,18 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
   }
 
   String? _validateWindowName(String? value) {
+    final l10n = context.l10n;
     if (value == null || value.isEmpty) {
-      return 'Window name cannot be empty';
+      return l10n.renameWindowCannotBeEmpty;
     }
     if (value.length > 50) {
-      return 'Window name must be 50 characters or less';
+      return l10n.renameWindowTooLong;
     }
     if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - and _ allowed';
+      return l10n.renameWindowChars;
     }
     if (widget.otherWindowNames.contains(value)) {
-      return 'Window "$value" already exists';
+      return l10n.renameWindowExists(value);
     }
     return null;
   }
@@ -62,7 +64,7 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text(
-        'Rename Window',
+        context.l10n.renameWindowTitle,
         style: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
         ),
@@ -74,7 +76,7 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
           autofocus: true,
           maxLength: 50,
           decoration: InputDecoration(
-            labelText: 'Window Name',
+            labelText: context.l10n.renameWindowNameLabel,
             filled: true,
             fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
             border: OutlineInputBorder(
@@ -102,11 +104,11 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.renameWindowCancel),
         ),
         FilledButton(
           onPressed: _submit,
-          child: const Text('Rename'),
+          child: Text(context.l10n.renameWindowConfirm),
         ),
       ],
     );
