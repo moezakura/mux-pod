@@ -1,0 +1,4 @@
+/* Localized versions of Info.plist keys (English) */
+"NSFaceIDUsageDescription" = "Use Face ID to securely access SSH connection credentials";
+"NSPhotoLibraryUsageDescription" = "Use the photo library to transfer images to a remote server";
+"NSCameraUsageDescription" = "Use the camera to transfer captured images to a remote server";
