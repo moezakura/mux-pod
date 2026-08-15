@@ -139,3 +139,62 @@ jobs:
         run: |
           GIT_REF="${{ github.ref_name }}@$(echo '${{ github.sha }}' | cut -c1-7)"
           flutter build apk --debug --dart-define=GIT_REF=$GIT_REF
+
+  build-ios:
+    name: build debug iOS
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: 'stable'
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: pods-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # release-ios.yml と同じリトライ付き pod install（CDN の一時失敗対策）
+      - name: Install CocoaPods dependencies
+        run: |
+          cd ios
+          for i in 1 2 3; do
+            if pod install --repo-update; then
+              echo "CocoaPods install succeeded on attempt $i"
+              break
+            fi
+            if [ $i -eq 3 ]; then
+              echo "CocoaPods install failed after 3 attempts"
+              exit 1
+            fi
+            rm -rf Pods
+            SLEEP_TIME=$((10 * i))
+            echo "Attempt $i failed, retrying in ${SLEEP_TIME}s..."
+            sleep $SLEEP_TIME
+          done
+
+      # 署名不要の debug ビルドで iOS 向けコンパイル検証
+      - name: Build debug iOS
+        run: |
+          GIT_REF="${{ github.ref_name }}@$(echo '${{ github.sha }}' | cut -c1-7)"
+          flutter build ios --debug --no-codesign --dart-define=GIT_REF=$GIT_REF
