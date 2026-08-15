@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: format / analyze / test / build (debug APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # .mise.toml の "3.44.9-stable" 表記は古い mise (asdf プラグイン) 向けのため、
+      # CI ではサフィックスなしのバージョンを指定する (testflight.yml と同じ理由)。
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.9'
+          channel: 'stable'
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+          key: ${{ runner.os }}-pub-${{ hashFiles('pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      # test/repro/ はローカル sshd 実接続前提のバグ再現テストのため除外
+      - name: Run tests
+        run: flutter test --exclude-tags=repro
+
+      # 署名不要の debug ビルドで Android 向けコンパイル検証
+      - name: Build debug APK
+        run: |
+          GIT_REF="${{ github.ref_name }}@$(echo '${{ github.sha }}' | cut -c1-7)"
+          flutter build apk --debug --dart-define=GIT_REF=$GIT_REF
