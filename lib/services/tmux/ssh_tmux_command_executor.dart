@@ -32,11 +32,9 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
   Future<void>? _detectFuture;
 
   // inventory: TMUX-SSH-EXEC-002
-  SshTmuxCommandExecutor(
-    this._backend, {
-    String? userExecutablePath,
-  })  : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
-        _resolver = TmuxExecutableResolver() {
+  SshTmuxCommandExecutor(this._backend, {String? userExecutablePath})
+    : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
+      _resolver = TmuxExecutableResolver() {
     _lifecycle = TmuxShellLifecycle(resolver: _resolver);
     _backend.onInputTransportRebooted = _reapplyLastRestoreTrap;
   }
@@ -252,5 +250,3 @@ extension BackendAdapterExecutor on BackendAdapter {
     );
   }
 }
-
-

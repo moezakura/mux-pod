@@ -6,10 +6,7 @@ import 'package:flutter/material.dart';
 class FontSizeDialog extends StatefulWidget {
   final double currentSize;
 
-  const FontSizeDialog({
-    super.key,
-    required this.currentSize,
-  });
+  const FontSizeDialog({super.key, required this.currentSize});
 
   @override
   State<FontSizeDialog> createState() => _FontSizeDialogState();

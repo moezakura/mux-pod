@@ -5,7 +5,20 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('PaneKeyMap: ① send-keys 受理キー（T0 実測 1-a: 21 種）', () {
     test('function keys F1-F12 route to send-keys', () {
-      for (final key in ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12']) {
+      for (final key in [
+        'F1',
+        'F2',
+        'F3',
+        'F4',
+        'F5',
+        'F6',
+        'F7',
+        'F8',
+        'F9',
+        'F10',
+        'F11',
+        'F12',
+      ]) {
         final route = PaneKeyMap.mapSpecialKey(key);
         expect(route, isA<HerdrKeyRouteSendKeys>(), reason: key);
         expect((route as HerdrKeyRouteSendKeys).keyName, key);
@@ -123,24 +136,27 @@ void main() {
       }
     });
 
-    test('modified PgUp/PgDn/Delete/Insert use CSI param modifier encoding', () {
-      for (final entry in {
-        'S-PPage': '\x1b[5;2~',
-        'C-PageUp': '\x1b[5;5~',
-        'M-PageUp': '\x1b[5;3~',
-        'S-NPage': '\x1b[6;2~',
-        'C-PageDown': '\x1b[6;5~',
-        'M-PageDown': '\x1b[6;3~',
-        'C-Delete': '\x1b[3;5~',
-        'S-DC': '\x1b[3;2~',
-        'M-DC': '\x1b[3;3~',
-        'C-Insert': '\x1b[2;5~',
-      }.entries) {
-        final route = PaneKeyMap.mapSpecialKey(entry.key);
-        expect(route, isA<HerdrKeyRouteSendTextEscape>(), reason: entry.key);
-        expect((route as HerdrKeyRouteSendTextEscape).bytes, entry.value);
-      }
-    });
+    test(
+      'modified PgUp/PgDn/Delete/Insert use CSI param modifier encoding',
+      () {
+        for (final entry in {
+          'S-PPage': '\x1b[5;2~',
+          'C-PageUp': '\x1b[5;5~',
+          'M-PageUp': '\x1b[5;3~',
+          'S-NPage': '\x1b[6;2~',
+          'C-PageDown': '\x1b[6;5~',
+          'M-PageDown': '\x1b[6;3~',
+          'C-Delete': '\x1b[3;5~',
+          'S-DC': '\x1b[3;2~',
+          'M-DC': '\x1b[3;3~',
+          'C-Insert': '\x1b[2;5~',
+        }.entries) {
+          final route = PaneKeyMap.mapSpecialKey(entry.key);
+          expect(route, isA<HerdrKeyRouteSendTextEscape>(), reason: entry.key);
+          expect((route as HerdrKeyRouteSendTextEscape).bytes, entry.value);
+        }
+      },
+    );
 
     test('modified function keys use xterm encoding', () {
       for (final entry in {
@@ -262,7 +278,20 @@ void main() {
     test('the complete app key vocabulary always returns a route', () {
       final keys = <String>[
         // 受理キー（21 種）
-        ...['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'],
+        ...[
+          'F1',
+          'F2',
+          'F3',
+          'F4',
+          'F5',
+          'F6',
+          'F7',
+          'F8',
+          'F9',
+          'F10',
+          'F11',
+          'F12',
+        ],
         'Enter', 'Tab', 'Space', 'Backspace', 'BS', 'BSpace', 'Escape',
         'Up', 'Down', 'Left', 'Right',
         'C-c', 'c-c',
@@ -272,9 +301,32 @@ void main() {
         // 修飾キー（S / C / M × 全ベース）
         for (final mod in ['S', 'C', 'M'])
           for (final base in [
-            'Up', 'Down', 'Left', 'Right', 'Home', 'End', 'PPage', 'NPage',
-            'DC', 'Insert', 'Tab', 'Enter', 'Space', 'Backspace',
-            'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+            'Up',
+            'Down',
+            'Left',
+            'Right',
+            'Home',
+            'End',
+            'PPage',
+            'NPage',
+            'DC',
+            'Insert',
+            'Tab',
+            'Enter',
+            'Space',
+            'Backspace',
+            'F1',
+            'F2',
+            'F3',
+            'F4',
+            'F5',
+            'F6',
+            'F7',
+            'F8',
+            'F9',
+            'F10',
+            'F11',
+            'F12',
           ])
             '$mod-$base',
         // 制御文字
@@ -282,7 +334,8 @@ void main() {
           'C-$letter',
         'C-@', 'C-Space', 'C-[', r'C-\', 'C-]', 'C-^', 'C-_', 'C-?',
         // Alt+文字
-        for (final letter in 'abcdefghijklmnopqrstuvwxyz'.split('')) 'M-$letter',
+        for (final letter in 'abcdefghijklmnopqrstuvwxyz'.split(''))
+          'M-$letter',
         // 合成修飾
         'S-C-M-F5',
         'C-M-a',

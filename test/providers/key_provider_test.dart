@@ -77,8 +77,11 @@ void main() {
       await notifier.add(newer);
 
       final keys = container.read(keysProvider).keys;
-      expect(keys.map((k) => k.id).toList(), ['b', 'a'],
-          reason: 'add 直後に createdAt 降順（新しい鍵が先頭）でなければならない');
+      expect(
+        keys.map((k) => k.id).toList(),
+        ['b', 'a'],
+        reason: 'add 直後に createdAt 降順（新しい鍵が先頭）でなければならない',
+      );
     });
 
     test('marks key as damaged when private key is missing', () async {
@@ -134,31 +137,33 @@ void main() {
       expect(state.damagedKeys, isEmpty);
     });
 
-    test('recovers isAvailable to true when private key becomes readable',
-        () async {
-      // 保存済み JSON に isAvailable=false が残っていても、読み取り成功なら true に戻す
-      SharedPreferences.setMockInitialValues({
-        'ssh_keys_meta': jsonEncode([
-          {
-            'id': 'k1',
-            'name': 'recovered-key',
-            'type': 'ed25519',
-            'createdAt': '2026-01-01T00:00:00.000',
-            'isAvailable': false,
-          },
-        ]),
-      });
-      SecureStorageService.setTestValues({'privatekey_k1': 'PRIVATE_KEY'});
+    test(
+      'recovers isAvailable to true when private key becomes readable',
+      () async {
+        // 保存済み JSON に isAvailable=false が残っていても、読み取り成功なら true に戻す
+        SharedPreferences.setMockInitialValues({
+          'ssh_keys_meta': jsonEncode([
+            {
+              'id': 'k1',
+              'name': 'recovered-key',
+              'type': 'ed25519',
+              'createdAt': '2026-01-01T00:00:00.000',
+              'isAvailable': false,
+            },
+          ]),
+        });
+        SecureStorageService.setTestValues({'privatekey_k1': 'PRIVATE_KEY'});
 
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      final notifier = container.read(keysProvider.notifier);
-      await notifier.reload();
+        final notifier = container.read(keysProvider.notifier);
+        await notifier.reload();
 
-      final state = container.read(keysProvider);
-      expect(state.keys.single.isAvailable, isTrue);
-      expect(state.damagedKeys, isEmpty);
-    });
+        final state = container.read(keysProvider);
+        expect(state.keys.single.isAvailable, isTrue);
+        expect(state.damagedKeys, isEmpty);
+      },
+    );
   });
 }

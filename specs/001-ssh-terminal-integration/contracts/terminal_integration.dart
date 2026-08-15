@@ -162,13 +162,15 @@ class AuthenticationDataNotFoundError implements TerminalIntegrationError {
   AuthenticationDataNotFoundError(this.connectionId);
 
   @override
-  String get message => 'Authentication data not found for connection: $connectionId';
+  String get message =>
+      'Authentication data not found for connection: $connectionId';
 }
 
 /// tmuxが利用不可
 class TmuxNotAvailableError implements TerminalIntegrationError {
   @override
-  String get message => 'tmux is not installed or not available on the remote server';
+  String get message =>
+      'tmux is not installed or not available on the remote server';
 }
 
 // ============================================================
@@ -192,10 +194,7 @@ typedef TmuxSessionInfo = ({
 /// 統合テストで使用するモックの契約
 abstract interface class IMockSshClient {
   /// 接続をシミュレート
-  Future<void> mockConnect({
-    required bool shouldSucceed,
-    Duration delay,
-  });
+  Future<void> mockConnect({required bool shouldSucceed, Duration delay});
 
   /// データ受信をシミュレート
   void mockReceiveData(Uint8List data);

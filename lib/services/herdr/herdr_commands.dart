@@ -217,11 +217,7 @@ class HerdrCommands {
   /// `.result.root_pane.pane_id`。herdr 0.7.5 CLI reference）。
   /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
   /// false で `--no-focus`（既定を明示）。
-  static String workspaceCreate({
-    String? label,
-    String? cwd,
-    bool? focus,
-  }) {
+  static String workspaceCreate({String? label, String? cwd, bool? focus}) {
     final parts = ['herdr', 'workspace', 'create'];
     if (cwd != null && cwd.isNotEmpty) {
       parts.addAll(['--cwd', _shellQuote(cwd)]);
@@ -318,7 +314,12 @@ class HerdrCommandException implements Exception {
   /// 元の例外（任意）。
   final Object? cause;
 
-  HerdrCommandException(this.message, {this.exitCode, this.errorCode, this.cause});
+  HerdrCommandException(
+    this.message, {
+    this.exitCode,
+    this.errorCode,
+    this.cause,
+  });
 
   @override
   String toString() => 'HerdrCommandException: $message';
@@ -409,8 +410,8 @@ class HerdrServerNotRunningException implements Exception {
   final String message;
 
   HerdrServerNotRunningException()
-      : message =
-            "Herdr server is not running. Start it with 'herdr server' first.";
+    : message =
+          "Herdr server is not running. Start it with 'herdr server' first.";
 
   @override
   String toString() => 'HerdrServerNotRunningException: $message';

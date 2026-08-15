@@ -41,14 +41,18 @@ void main() {
       expect(find.text('Start Directory'), findsNothing);
     });
 
-    testWidgets('blank form pops a request with both fields null',
-        (tester) async {
+    testWidgets('blank form pops a request with both fields null', (
+      tester,
+    ) async {
       NewWindowRequest? result;
       var completed = false;
-      await openDialog(tester, onResult: (r) {
-        result = r;
-        completed = true;
-      });
+      await openDialog(
+        tester,
+        onResult: (r) {
+          result = r;
+          completed = true;
+        },
+      );
 
       await tester.tap(find.text('Create'));
       await tester.pumpAndSettle();
@@ -89,20 +93,27 @@ void main() {
       expect(result!.command, isNull);
     });
 
-    testWidgets('invalid name shows error and keeps dialog open',
-        (tester) async {
+    testWidgets('invalid name shows error and keeps dialog open', (
+      tester,
+    ) async {
       NewWindowRequest? result;
       var completed = false;
-      await openDialog(tester, onResult: (r) {
-        result = r;
-        completed = true;
-      });
+      await openDialog(
+        tester,
+        onResult: (r) {
+          result = r;
+          completed = true;
+        },
+      );
 
       await tester.enterText(find.byType(TextFormField).at(0), 'bad name');
       await tester.tap(find.text('Create'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Only letters, numbers, - and _ allowed'), findsOneWidget);
+      expect(
+        find.text('Only letters, numbers, - and _ allowed'),
+        findsOneWidget,
+      );
       expect(find.byType(NewWindowDialog), findsOneWidget);
       expect(completed, isFalse);
       expect(result, isNull);
@@ -124,10 +135,13 @@ void main() {
     testWidgets('cancel pops null', (tester) async {
       NewWindowRequest? result;
       var completed = false;
-      await openDialog(tester, onResult: (r) {
-        result = r;
-        completed = true;
-      });
+      await openDialog(
+        tester,
+        onResult: (r) {
+          result = r;
+          completed = true;
+        },
+      );
 
       await tester.enterText(find.byType(TextFormField).at(0), 'editor');
       await tester.tap(find.text('Cancel'));

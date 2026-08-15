@@ -39,8 +39,9 @@ void main() {
     addTearDown(() => SecureStorageService.setTestValues(null));
   });
 
-  testWidgets('shows damaged key badge for session using a broken key',
-      (tester) async {
+  testWidgets('shows damaged key badge for session using a broken key', (
+    tester,
+  ) async {
     // 鍵メタデータはあるが秘密鍵が読めない（破損鍵）状態を用意
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
@@ -87,9 +88,7 @@ void main() {
             () => _StaticActiveSessionsNotifier(session),
           ),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
     await tester.pumpAndSettle();

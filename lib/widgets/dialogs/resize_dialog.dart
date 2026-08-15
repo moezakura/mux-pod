@@ -99,7 +99,11 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
       const _SizePreset('80x24 (Standard)', 80, 24),
       const _SizePreset('120x40 (Wide)', 120, 40),
       const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(
+        'Match Screen ($matchCols x $matchRows)',
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -163,9 +167,7 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
         FilledButton(
           onPressed: () =>
               Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
           child: const Text('Resize'),
         ),
       ],
@@ -238,18 +240,24 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
       const _SizePreset('80x24 (Standard)', 80, 24),
       const _SizePreset('120x40 (Wide)', 120, 40),
       const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(
+        'Match Screen ($matchCols x $matchRows)',
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
-    debugPrint('[ResizePaneDialog] build() mediaSize=$mediaSize '
-        'allPanes=${widget.allPanesInWindow.length} '
-        'target=${widget.targetPane.id} '
-        'screenW=${widget.screenWidth} screenH=${widget.screenHeight} '
-        'fontSize=${widget.fontSize} fontFamily=${widget.fontFamily}');
+    debugPrint(
+      '[ResizePaneDialog] build() mediaSize=$mediaSize '
+      'allPanes=${widget.allPanesInWindow.length} '
+      'target=${widget.targetPane.id} '
+      'screenW=${widget.screenWidth} screenH=${widget.screenHeight} '
+      'fontSize=${widget.fontSize} fontFamily=${widget.fontFamily}',
+    );
 
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
@@ -275,24 +283,24 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
                 previewCols: _cols,
                 previewRows: _rows,
               ),
-            const SizedBox(height: 12),
-            if (widget.allPanesInWindow.length >= 2)
-              _buildWarning('Other pane sizes may also change.'),
-            const SizedBox(height: 12),
-            _buildSizeInputRow(
-              cols: _cols,
-              rows: _rows,
-              onColsChanged: (v) => setState(() => _cols = v),
-              onRowsChanged: (v) => setState(() => _rows = v),
-            ),
-            const SizedBox(height: 12),
-            _buildPresetChips(
-              presets: _presets,
-              onSelect: (p) => setState(() {
-                _cols = p.cols;
-                _rows = p.rows;
-              }),
-            ),
+              const SizedBox(height: 12),
+              if (widget.allPanesInWindow.length >= 2)
+                _buildWarning('Other pane sizes may also change.'),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
             ],
           ),
         ),
@@ -305,9 +313,7 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
         FilledButton(
           onPressed: () =>
               Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
           child: const Text('Resize'),
         ),
       ],
@@ -374,7 +380,11 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
       const _SizePreset('80x24 (Standard)', 80, 24),
       const _SizePreset('120x40 (Wide)', 120, 40),
       const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(
+        'Match Screen ($matchCols x $matchRows)',
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -400,24 +410,26 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
                 currentCols: widget.currentCols,
                 currentRows: widget.currentRows,
               ),
-            const SizedBox(height: 12),
-            if (!widget.supportsResizeWindow)
-              _buildWarning('Window resize requires tmux 2.9+. Resize button disabled.'),
-            const SizedBox(height: 12),
-            _buildSizeInputRow(
-              cols: _cols,
-              rows: _rows,
-              onColsChanged: (v) => setState(() => _cols = v),
-              onRowsChanged: (v) => setState(() => _rows = v),
-            ),
-            const SizedBox(height: 12),
-            _buildPresetChips(
-              presets: _presets,
-              onSelect: (p) => setState(() {
-                _cols = p.cols;
-                _rows = p.rows;
-              }),
-            ),
+              const SizedBox(height: 12),
+              if (!widget.supportsResizeWindow)
+                _buildWarning(
+                  'Window resize requires tmux 2.9+. Resize button disabled.',
+                ),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
             ],
           ),
         ),
@@ -430,11 +442,11 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
         FilledButton(
           onPressed: widget.supportsResizeWindow
               ? () => Navigator.pop(
-                  context, ResizeResult(cols: _cols, rows: _rows))
+                  context,
+                  ResizeResult(cols: _cols, rows: _rows),
+                )
               : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
           child: const Text('Resize'),
         ),
       ],
@@ -491,8 +503,7 @@ class HerdrResizeTerminalDialog extends StatefulWidget {
       _HerdrResizeTerminalDialogState();
 }
 
-class _HerdrResizeTerminalDialogState
-    extends State<HerdrResizeTerminalDialog> {
+class _HerdrResizeTerminalDialogState extends State<HerdrResizeTerminalDialog> {
   late int _cols;
   late int _rows;
 
@@ -518,7 +529,11 @@ class _HerdrResizeTerminalDialogState
       const _SizePreset('80x24 (Standard)', 80, 24),
       const _SizePreset('120x40 (Wide)', 120, 40),
       const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(
+        'Match Screen ($matchCols x $matchRows)',
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -658,9 +673,7 @@ class _HerdrResizeTerminalDialogState
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: DesignColors.primary.withValues(
-                              alpha: 0.7,
-                            ),
+                            color: DesignColors.primary.withValues(alpha: 0.7),
                           ),
                         ),
                       ),
@@ -726,9 +739,7 @@ class _HerdrResizeTerminalDialogState
         FilledButton(
           onPressed: () =>
               Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
           child: const Text('Resize'),
         ),
       ],
@@ -757,8 +768,10 @@ List<MultiplexerPane> _simulatePaneResizeAbsolute({
   required int newRows,
 }) {
   if (panes.isEmpty) return panes;
-  final target =
-      panes.firstWhere((p) => p.id == targetId, orElse: () => panes.first);
+  final target = panes.firstWhere(
+    (p) => p.id == targetId,
+    orElse: () => panes.first,
+  );
   if (!panes.any((p) => p.id == targetId)) return panes;
 
   // === Step 1: ウィンドウサイズ・セパレータ算出 ===
@@ -841,7 +854,10 @@ List<MultiplexerPane> _simulatePaneResizeAbsolute({
         // 最後のペインに残りを全て割り当て（端数調整）
         newHeights[p.id] = math.max<int>(1, remainingH - distributed);
       } else {
-        final h = math.max(1, (remainingH * p.height / otherOriginalSum).round());
+        final h = math.max(
+          1,
+          (remainingH * p.height / otherOriginalSum).round(),
+        );
         newHeights[p.id] = h;
         distributed += h;
       }
@@ -1089,16 +1105,16 @@ Widget _buildWarning(String message) {
     ),
     child: Row(
       children: [
-        const Icon(Icons.warning_amber_rounded,
-            size: 16, color: DesignColors.warning),
+        const Icon(
+          Icons.warning_amber_rounded,
+          size: 16,
+          color: DesignColors.warning,
+        ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             message,
-            style: const TextStyle(
-              fontSize: 12,
-              color: DesignColors.warning,
-            ),
+            style: const TextStyle(fontSize: 12, color: DesignColors.warning),
           ),
         ),
       ],
@@ -1147,10 +1163,7 @@ Widget _buildNumberInput({
     children: [
       Text(
         label,
-        style: const TextStyle(
-          fontSize: 12,
-          color: DesignColors.textSecondary,
-        ),
+        style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
       ),
       const SizedBox(height: 4),
       Container(
@@ -1192,10 +1205,7 @@ Widget _buildNumberInput({
 }
 
 /// ステップボタン（◀ / ▶）
-Widget _stepButton({
-  required IconData icon,
-  required VoidCallback? onPressed,
-}) {
+Widget _stepButton({required IconData icon, required VoidCallback? onPressed}) {
   return IconButton(
     icon: Icon(icon, size: 20),
     onPressed: onPressed,

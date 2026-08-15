@@ -30,8 +30,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// ローカル sshd の ed25519 ホスト鍵 blob（KEX で渡される host key そのもの）。
 Uint8List _localHostKeyBlob() {
-  final pubLine =
-      File('/etc/ssh/ssh_host_ed25519_key.pub').readAsLinesSync().first;
+  final pubLine = File(
+    '/etc/ssh/ssh_host_ed25519_key.pub',
+  ).readAsLinesSync().first;
   return base64.decode(pubLine.split(' ')[1]);
 }
 

@@ -23,77 +23,64 @@ import 'package:flutter_muxpod/services/herdr/herdr_parser.dart';
 
 void main() {
   group('Repro BUG-4: ライブポーリングは固定 -120 行', () {
-    test(
-      'ライブポーリング（historyLines: -120, ansi: true）は '
-      '`--source recent --lines 120 --raw` を生成する',
-      () {
-        final cmd = HerdrCommands.paneRead(
-          'w1:p1',
-          source: 'recent',
-          lines: 120,
-          ansi: true,
-        );
-        expect(
-          cmd,
-          'herdr pane read w1:p1 --source recent --lines 120 --raw',
-          reason: 'バグ: アプリは常に --lines と --raw を併用する。'
-              'mutation-baseline-report.md:268-269 の実測ではこの組み合わせは'
-              '0 バイトを返す（--lines のセマンティクス要確認）',
-        );
-      },
-    );
+    test('ライブポーリング（historyLines: -120, ansi: true）は '
+        '`--source recent --lines 120 --raw` を生成する', () {
+      final cmd = HerdrCommands.paneRead(
+        'w1:p1',
+        source: 'recent',
+        lines: 120,
+        ansi: true,
+      );
+      expect(
+        cmd,
+        'herdr pane read w1:p1 --source recent --lines 120 --raw',
+        reason:
+            'バグ: アプリは常に --lines と --raw を併用する。'
+            'mutation-baseline-report.md:268-269 の実測ではこの組み合わせは'
+            '0 バイトを返す（--lines のセマンティクス要確認）',
+      );
+    });
 
-    test(
-      '深い履歴（scrollback）は PaneHistoryPolicy が行数を解決し、'
-      'その行数で `--lines N` を生成する（バグ4 修正後）',
-      () {
-        // 修正後: 行数は backend ポリシー（PaneHistoryPolicy）が解決する。
-        // 既定 scrollbackLines=10000 の場合、herdr は --lines 10000 を要求する。
-        final cmd = HerdrCommands.paneRead(
-          'w1:p1',
-          source: 'recent',
-          lines: 10000,
-          ansi: true,
-        );
-        expect(
-          cmd,
-          'herdr pane read w1:p1 --source recent --lines 10000 --raw',
-        );
-      },
-    );
+    test('深い履歴（scrollback）は PaneHistoryPolicy が行数を解決し、'
+        'その行数で `--lines N` を生成する（バグ4 修正後）', () {
+      // 修正後: 行数は backend ポリシー（PaneHistoryPolicy）が解決する。
+      // 既定 scrollbackLines=10000 の場合、herdr は --lines 10000 を要求する。
+      final cmd = HerdrCommands.paneRead(
+        'w1:p1',
+        source: 'recent',
+        lines: 10000,
+        ansi: true,
+      );
+      expect(cmd, 'herdr pane read w1:p1 --source recent --lines 10000 --raw');
+    });
 
-    test(
-      'herdr CLI が 0 バイトを返した場合、パース結果は空コンテンツになる',
-      () {
-        // mutation-baseline-report.md:268-269: `--lines` と `--raw` 併用で
-        // 0 バイト応答。その場合の表示は空になる。
-        final parsed = HerdrPaneContentParser.parse('', ansi: true);
-        expect(parsed.rawText, '');
-        expect(parsed.lines, isEmpty);
-        expect(parsed.hasAnsi, isTrue); // --raw 指定のため ansi フラグは立つ
-      },
-    );
+    test('herdr CLI が 0 バイトを返した場合、パース結果は空コンテンツになる', () {
+      // mutation-baseline-report.md:268-269: `--lines` と `--raw` 併用で
+      // 0 バイト応答。その場合の表示は空になる。
+      final parsed = HerdrPaneContentParser.parse('', ansi: true);
+      expect(parsed.rawText, '');
+      expect(parsed.lines, isEmpty);
+      expect(parsed.hasAnsi, isTrue); // --raw 指定のため ansi フラグは立つ
+    });
 
-    test(
-      '行数指定なし（全量）と比べ、--lines 120 は最大120行に制限される',
-      () {
-        // 120行を超える履歴がある場合、--lines 120 は末尾120行のみ返す。
-        // これ自体は仕様だが、「ユーザー設定 scrollbackLines（200〜20000）」と
-        // 比較すると、ライブ表示に使える履歴が常に120行に制限される。
-        final limited = HerdrCommands.paneRead(
-          'w1:p1',
-          source: 'recent',
-          lines: 120,
-          ansi: true,
-        );
-        expect(limited, contains('--lines 120'));
-        expect(
-          limited.contains('--lines 2000'),
-          isFalse,
-          reason: 'tmux 側はユーザー設定 scrollbackLines（200〜20000）に従うが、'
-              'herdr ライブポーリングは常に 120 行固定',
-        );
-      },
-    );
+    test('行数指定なし（全量）と比べ、--lines 120 は最大120行に制限される', () {
+      // 120行を超える履歴がある場合、--lines 120 は末尾120行のみ返す。
+      // これ自体は仕様だが、「ユーザー設定 scrollbackLines（200〜20000）」と
+      // 比較すると、ライブ表示に使える履歴が常に120行に制限される。
+      final limited = HerdrCommands.paneRead(
+        'w1:p1',
+        source: 'recent',
+        lines: 120,
+        ansi: true,
+      );
+      expect(limited, contains('--lines 120'));
+      expect(
+        limited.contains('--lines 2000'),
+        isFalse,
+        reason:
+            'tmux 側はユーザー設定 scrollbackLines（200〜20000）に従うが、'
+            'herdr ライブポーリングは常に 120 行固定',
+      );
+    });
   });
 }

@@ -15,15 +15,14 @@ void main() {
 
   Future<void> pumpKeysScreen(WidgetTester tester) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(home: KeysScreen()),
-      ),
+      const ProviderScope(child: MaterialApp(home: KeysScreen())),
     );
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows damaged keys dialog when a damaged key exists',
-      (tester) async {
+  testWidgets('shows damaged keys dialog when a damaged key exists', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
         {
@@ -43,8 +42,9 @@ void main() {
     expect(find.text('damaged-key'), findsWidgets);
   });
 
-  testWidgets('does not show damaged keys dialog when all keys are healthy',
-      (tester) async {
+  testWidgets('does not show damaged keys dialog when all keys are healthy', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
         {
@@ -62,8 +62,9 @@ void main() {
     expect(find.text('破損した鍵が見つかりました'), findsNothing);
   });
 
-  testWidgets('deleting a damaged key from the dialog removes it',
-      (tester) async {
+  testWidgets('deleting a damaged key from the dialog removes it', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
         {
@@ -90,8 +91,9 @@ void main() {
     expect(SecureStorageService().getPrivateKey('k1'), completion(isNull));
   });
 
-  testWidgets('keeping a damaged key from the dialog leaves it in the list',
-      (tester) async {
+  testWidgets('keeping a damaged key from the dialog leaves it in the list', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
         {

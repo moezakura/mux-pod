@@ -52,11 +52,7 @@ class ConnectionTile extends StatelessWidget {
           const PopupMenuItem(
             value: 'edit',
             child: Row(
-              children: [
-                Icon(Icons.edit),
-                SizedBox(width: 8),
-                Text('Edit'),
-              ],
+              children: [Icon(Icons.edit), SizedBox(width: 8), Text('Edit')],
             ),
           ),
           const PopupMenuItem(

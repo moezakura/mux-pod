@@ -8,11 +8,7 @@ void main() {
   group('ThemeDialog', () {
     testWidgets('displays all theme options', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: ThemeDialog(isDarkMode: true))),
       );
 
       expect(find.text('Theme'), findsOneWidget);
@@ -20,34 +16,34 @@ void main() {
       expect(find.text('Light'), findsOneWidget);
     });
 
-    testWidgets('dark mode is selected when isDarkMode is true', (tester) async {
+    testWidgets('dark mode is selected when isDarkMode is true', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: ThemeDialog(isDarkMode: true))),
       );
 
       final darkRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == true && widget.groupValue == true,
+            widget is RadioListTile<bool> &&
+            widget.value == true &&
+            widget.groupValue == true,
       );
       expect(darkRadio, findsOneWidget);
     });
 
-    testWidgets('light mode is selected when isDarkMode is false', (tester) async {
+    testWidgets('light mode is selected when isDarkMode is false', (
+      tester,
+    ) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: false),
-          ),
-        ),
+        const MaterialApp(home: Scaffold(body: ThemeDialog(isDarkMode: false))),
       );
 
       final lightRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == false && widget.groupValue == false,
+            widget is RadioListTile<bool> &&
+            widget.value == false &&
+            widget.groupValue == false,
       );
       expect(lightRadio, findsOneWidget);
     });

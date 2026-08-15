@@ -229,55 +229,59 @@ void main() {
     });
 
     group('TerminalScreen common selector sheets (T2 / 選択即閉じ)', () {
-      testWidgets('session selector lists all sessions and closes on selection', (
-        tester,
-      ) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+      testWidgets(
+        'session selector lists all sessions and closes on selection',
+        (tester) async {
+          final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
 
-        // session セグメントタップ → Select Session シート（M-6: タイトル統一）
-        await tester.tap(find.text('mysession'));
-        await tester.pumpAndSettle();
-        expect(find.text('Select Session'), findsOneWidget);
-        expect(find.text('mysession'), findsWidgets);
-        expect(find.text('other'), findsOneWidget);
+          // session セグメントタップ → Select Session シート（M-6: タイトル統一）
+          await tester.tap(find.text('mysession'));
+          await tester.pumpAndSettle();
+          expect(find.text('Select Session'), findsOneWidget);
+          expect(find.text('mysession'), findsWidgets);
+          expect(find.text('other'), findsOneWidget);
 
-        // session タップ → 選択確定 + シート即閉じ（元 tmux 挙動）
-        await tester.tap(find.text('other'));
-        await tester.pumpAndSettle();
-        expect(find.text('Select Session'), findsNothing);
-        expect(find.text('Select Window'), findsNothing);
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(TerminalScreen)),
-        );
-        expect(container.read(tmuxProvider).activeSessionName, 'other');
-        expect(
-          client.execCommands.any((c) => c.contains('select-pane')),
-          isTrue,
-        );
-      });
+          // session タップ → 選択確定 + シート即閉じ（元 tmux 挙動）
+          await tester.tap(find.text('other'));
+          await tester.pumpAndSettle();
+          expect(find.text('Select Session'), findsNothing);
+          expect(find.text('Select Window'), findsNothing);
+          final container = ProviderScope.containerOf(
+            tester.element(find.byType(TerminalScreen)),
+          );
+          expect(container.read(tmuxProvider).activeSessionName, 'other');
+          expect(
+            client.execCommands.any((c) => c.contains('select-pane')),
+            isTrue,
+          );
+        },
+      );
 
-      testWidgets('window selector shows the current session windows and closes '
-          'on selection', (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+      testWidgets(
+        'window selector shows the current session windows and closes '
+        'on selection',
+        (tester) async {
+          final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
 
-        // window セグメントタップ → Select Window シート
-        await tester.tap(find.text('shell'));
-        await tester.pumpAndSettle();
-        expect(find.text('Select Window'), findsOneWidget);
-        expect(find.text('0: shell'), findsOneWidget);
+          // window セグメントタップ → Select Window シート
+          await tester.tap(find.text('shell'));
+          await tester.pumpAndSettle();
+          expect(find.text('Select Window'), findsOneWidget);
+          expect(find.text('0: shell'), findsOneWidget);
 
-        // window タップ → select-window 発行 + シート即閉じ
-        await tester.tap(find.text('0: shell'));
-        await tester.pumpAndSettle();
-        expect(find.text('Select Window'), findsNothing);
-        expect(find.text('Select Pane'), findsNothing);
-        expect(
-          client.execCommands.any(
-            (c) => c.contains('select-window') && c.contains('mysession'),
-          ),
-          isTrue,
-        );
-      });
+          // window タップ → select-window 発行 + シート即閉じ
+          await tester.tap(find.text('0: shell'));
+          await tester.pumpAndSettle();
+          expect(find.text('Select Window'), findsNothing);
+          expect(find.text('Select Pane'), findsNothing);
+          expect(
+            client.execCommands.any(
+              (c) => c.contains('select-window') && c.contains('mysession'),
+            ),
+            isTrue,
+          );
+        },
+      );
 
       testWidgets('pane selector shows the active window panes and closes on '
           'selection', (tester) async {

@@ -4,9 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
 
 Widget _buildApp() {
-  return const ProviderScope(
-    child: MaterialApp(home: SettingsScreen()),
-  );
+  return const ProviderScope(child: MaterialApp(home: SettingsScreen()));
 }
 
 /// Scrolls until [finder] is visible in the first Scrollable of the tree.

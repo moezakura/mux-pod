@@ -209,102 +209,105 @@ void main() {
 
     tearDown(() => client.disconnect());
 
-    test(
-      'execute(ephemeralOnly) を2回呼ぶと execute（チャネル開設）が2回発生し、'
-      '各セッションが close される（= 毎回チャネル開閉）',
-      () async {
-        await client.execute(
+    test('execute(ephemeralOnly) を2回呼ぶと execute（チャネル開設）が2回発生し、'
+        '各セッションが close される（= 毎回チャネル開閉）', () async {
+      await client.execute(
+        const CommandRequest(
+          command: 'herdr status --json',
+          transport: CommandTransportPreference.ephemeralOnly,
+          output: CommandOutputRequirement.outputOnly,
+        ),
+      );
+      await client.execute(
+        const CommandRequest(
+          command: 'herdr api snapshot',
+          transport: CommandTransportPreference.ephemeralOnly,
+          output: CommandOutputRequirement.outputOnly,
+        ),
+      );
+
+      expect(rawClient.executedCommands, [
+        'herdr status --json',
+        'herdr api snapshot',
+      ]);
+      // 毎回 execute() = SSH チャネルを開いている（tmux の persistent は
+      // チャネルを再利用するため execute を呼ばない）。
+      expect(rawClient.executedCommands.length, 2);
+      // 各セッションが close されている（= チャネルを毎回閉じている）。
+      expect(
+        rawClient.openedSessions.every((s) => s.closed),
+        isTrue,
+        reason:
+            'バグ: ephemeralOnly が毎回チャネルを開いて閉じるため、'
+            'チャネル開閉の RTT オーバーヘッドが毎ポーリング発生する',
+      );
+    });
+
+    test('execute(ephemeralOnly) は直列化される（並行要求でも execute の同時実行は1つ）', () async {
+      // 各 execute に 50ms かかる状態で3連続呼び出し
+      rawClient.executeDelay = const Duration(milliseconds: 50);
+
+      final futures = [
+        client.execute(
           const CommandRequest(
-            command: 'herdr status --json',
+            command: 'cmd-1',
             transport: CommandTransportPreference.ephemeralOnly,
             output: CommandOutputRequirement.outputOnly,
           ),
-        );
-        await client.execute(
+        ),
+        client.execute(
           const CommandRequest(
-            command: 'herdr api snapshot',
+            command: 'cmd-2',
             transport: CommandTransportPreference.ephemeralOnly,
             output: CommandOutputRequirement.outputOnly,
           ),
-        );
-
-        expect(rawClient.executedCommands, [
-          'herdr status --json',
-          'herdr api snapshot',
-        ]);
-        // 毎回 execute() = SSH チャネルを開いている（tmux の persistent は
-        // チャネルを再利用するため execute を呼ばない）。
-        expect(rawClient.executedCommands.length, 2);
-        // 各セッションが close されている（= チャネルを毎回閉じている）。
-        expect(rawClient.openedSessions.every((s) => s.closed), isTrue,
-            reason: 'バグ: ephemeralOnly が毎回チャネルを開いて閉じるため、'
-                'チャネル開閉の RTT オーバーヘッドが毎ポーリング発生する');
-      },
-    );
-
-    test(
-      'execute(ephemeralOnly) は直列化される（並行要求でも execute の同時実行は1つ）',
-      () async {
-        // 各 execute に 50ms かかる状態で3連続呼び出し
-        rawClient.executeDelay = const Duration(milliseconds: 50);
-
-        final futures = [
-          client.execute(
-            const CommandRequest(
-              command: 'cmd-1',
-              transport: CommandTransportPreference.ephemeralOnly,
-              output: CommandOutputRequirement.outputOnly,
-            ),
-          ),
-          client.execute(
-            const CommandRequest(
-              command: 'cmd-2',
-              transport: CommandTransportPreference.ephemeralOnly,
-              output: CommandOutputRequirement.outputOnly,
-            ),
-          ),
-          client.execute(
-            const CommandRequest(
-              command: 'cmd-3',
-              transport: CommandTransportPreference.ephemeralOnly,
-              output: CommandOutputRequirement.outputOnly,
-            ),
-          ),
-        ];
-        await Future.wait(futures);
-
-        expect(rawClient.executedCommands, ['cmd-1', 'cmd-2', 'cmd-3']);
-        expect(rawClient.maxConcurrentExecutes, 1,
-            reason: 'バグ: _withExecLock により全コマンドが直列化されるため、'
-                '同時に3つのコマンドを発行しても逐次実行になり、'
-                '合計レイテンシ = 3 × (チャネル開閉 + RTT + 実行時間) になる');
-      },
-    );
-
-    test(
-      'lightweight 接続（herdr 相当）では persistent もチャネルを開く'
-      '（持続的シェルが無いため ephemeral にフォールバック）',
-      () async {
-        // herdr は connectWithoutShell（lightweight: true）で接続されるため、
-        // persistentShell が存在せず、persistentPreferred も ephemeral に
-        // フォールバックする（チャネル開設）。
-        await client.execute(
+        ),
+        client.execute(
           const CommandRequest(
-            command: 'herdr pane read w1:p1 --source recent',
-            transport: CommandTransportPreference.persistentPreferred,
+            command: 'cmd-3',
+            transport: CommandTransportPreference.ephemeralOnly,
             output: CommandOutputRequirement.outputOnly,
           ),
-        );
+        ),
+      ];
+      await Future.wait(futures);
 
-        expect(rawClient.executedCommands, isNotEmpty,
-            reason: 'バグ: lightweight 接続では持続的シェルが無いため、'
-                'persistentPreferred でさえ毎回チャネル開閉が発生する。'
-                'tmux はフル接続（persistentShell あり）でチャネルを再利用する');
-        expect(
-          rawClient.executedCommands,
-          contains('herdr pane read w1:p1 --source recent'),
-        );
-      },
-    );
+      expect(rawClient.executedCommands, ['cmd-1', 'cmd-2', 'cmd-3']);
+      expect(
+        rawClient.maxConcurrentExecutes,
+        1,
+        reason:
+            'バグ: _withExecLock により全コマンドが直列化されるため、'
+            '同時に3つのコマンドを発行しても逐次実行になり、'
+            '合計レイテンシ = 3 × (チャネル開閉 + RTT + 実行時間) になる',
+      );
+    });
+
+    test('lightweight 接続（herdr 相当）では persistent もチャネルを開く'
+        '（持続的シェルが無いため ephemeral にフォールバック）', () async {
+      // herdr は connectWithoutShell（lightweight: true）で接続されるため、
+      // persistentShell が存在せず、persistentPreferred も ephemeral に
+      // フォールバックする（チャネル開設）。
+      await client.execute(
+        const CommandRequest(
+          command: 'herdr pane read w1:p1 --source recent',
+          transport: CommandTransportPreference.persistentPreferred,
+          output: CommandOutputRequirement.outputOnly,
+        ),
+      );
+
+      expect(
+        rawClient.executedCommands,
+        isNotEmpty,
+        reason:
+            'バグ: lightweight 接続では持続的シェルが無いため、'
+            'persistentPreferred でさえ毎回チャネル開閉が発生する。'
+            'tmux はフル接続（persistentShell あり）でチャネルを再利用する',
+      );
+      expect(
+        rawClient.executedCommands,
+        contains('herdr pane read w1:p1 --source recent'),
+      );
+    });
   });
 }

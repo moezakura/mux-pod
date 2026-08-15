@@ -58,41 +58,40 @@ void main() {
       },
     );
 
-    testWidgets(
-      'TERM-CRUD-001b creates a window and runs a command',
-      (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+    testWidgets('TERM-CRUD-001b creates a window and runs a command', (
+      tester,
+    ) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
 
-        await tester.tap(find.text('shell'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('New Window'));
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.pumpAndSettle();
-        // .at(0)=Window Name, .at(1)=Command
-        await tester.enterText(find.byType(TextFormField).at(0), 'deploy');
-        await tester.enterText(find.byType(TextFormField).at(1), 'make deploy');
-        await tester.tap(find.text('Create'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.text('shell'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('New Window'));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pumpAndSettle();
+      // .at(0)=Window Name, .at(1)=Command
+      await tester.enterText(find.byType(TextFormField).at(0), 'deploy');
+      await tester.enterText(find.byType(TextFormField).at(1), 'make deploy');
+      await tester.tap(find.text('Create'));
+      await tester.pumpAndSettle();
 
-        final create = client.execCommands.indexWhere(
-          (c) => c.contains('new-window') && c.contains('deploy'),
-        );
-        expect(create, greaterThanOrEqualTo(0));
+      final create = client.execCommands.indexWhere(
+        (c) => c.contains('new-window') && c.contains('deploy'),
+      );
+      expect(create, greaterThanOrEqualTo(0));
 
-        // PaneWriter sends key input through the no-wait channel, not exec.
-        final sendText = client.sendKeysCommands.indexWhere(
-          (c) => c.contains('send-keys') && c.contains('make deploy'),
-        );
-        expect(sendText, greaterThanOrEqualTo(0));
+      // PaneWriter sends key input through the no-wait channel, not exec.
+      final sendText = client.sendKeysCommands.indexWhere(
+        (c) => c.contains('send-keys') && c.contains('make deploy'),
+      );
+      expect(sendText, greaterThanOrEqualTo(0));
 
-        expect(
-          client.sendKeysCommands
-              .skip(sendText + 1)
-              .any((c) => c.contains('send-keys') && c.contains('Enter')),
-          isTrue,
-        );
-      },
-    );
+      expect(
+        client.sendKeysCommands
+            .skip(sendText + 1)
+            .any((c) => c.contains('send-keys') && c.contains('Enter')),
+        isTrue,
+      );
+    });
 
     testWidgets('TERM-NAV-006 selects a pane and synchronizes tmux target', (
       tester,

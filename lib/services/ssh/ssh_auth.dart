@@ -62,16 +62,14 @@ class SshCredential {
 
   /// パスワード認証用
   const SshCredential.password(this.password)
-      : method = SshAuthMethod.password,
-        privateKey = null,
-        passphrase = null;
+    : method = SshAuthMethod.password,
+      privateKey = null,
+      passphrase = null;
 
   /// 公開鍵認証用
-  const SshCredential.publicKey({
-    required this.privateKey,
-    this.passphrase,
-  })  : method = SshAuthMethod.publicKey,
-        password = null;
+  const SshCredential.publicKey({required this.privateKey, this.passphrase})
+    : method = SshAuthMethod.publicKey,
+      password = null;
 
   /// 有効な資格情報かどうか
   bool get isValid {
@@ -97,8 +95,8 @@ class SshAuthService {
   SshAuthService({
     SecureStorageService? storage,
     LocalAuthentication? localAuth,
-  })  : _storage = storage ?? SecureStorageService(),
-        _localAuth = localAuth ?? LocalAuthentication();
+  }) : _storage = storage ?? SecureStorageService(),
+       _localAuth = localAuth ?? LocalAuthentication();
 
   // ===== 資格情報の取得 =====
 
@@ -249,7 +247,9 @@ class SshAuthService {
         localizedReason: reason,
       );
 
-      return authenticated ? BiometricAuthResult.success : BiometricAuthResult.cancelled;
+      return authenticated
+          ? BiometricAuthResult.success
+          : BiometricAuthResult.cancelled;
     } on PlatformException catch (e) {
       return _handleAuthError(e);
     }
@@ -258,9 +258,7 @@ class SshAuthService {
   /// 認証（生体認証またはデバイスPIN/パターン）
   ///
   /// 生体認証が利用できない場合、デバイスの認証（PIN/パターン等）にフォールバック
-  Future<BiometricAuthResult> authenticate({
-    String reason = '認証してください',
-  }) async {
+  Future<BiometricAuthResult> authenticate({String reason = '認証してください'}) async {
     try {
       final isSupported = await isDeviceSupported();
       if (!isSupported) {
@@ -271,7 +269,9 @@ class SshAuthService {
         localizedReason: reason,
       );
 
-      return authenticated ? BiometricAuthResult.success : BiometricAuthResult.cancelled;
+      return authenticated
+          ? BiometricAuthResult.success
+          : BiometricAuthResult.cancelled;
     } on PlatformException catch (e) {
       return _handleAuthError(e);
     }
@@ -285,7 +285,8 @@ class SshAuthService {
       return BiometricAuthResult.notEnrolled;
     } else if (code == 'LockedOut' || code == 'lockedOut') {
       return BiometricAuthResult.lockedOut;
-    } else if (code == 'PermanentlyLockedOut' || code == 'permanentlyLockedOut') {
+    } else if (code == 'PermanentlyLockedOut' ||
+        code == 'permanentlyLockedOut') {
       return BiometricAuthResult.permanentlyLockedOut;
     } else if (code == 'NotAvailable' || code == 'notAvailable') {
       return BiometricAuthResult.notAvailable;
@@ -307,10 +308,7 @@ class SshAuthService {
 
   /// SSH鍵のすべての資格情報を削除
   Future<void> deleteKeyCredentials(String keyId) async {
-    await Future.wait([
-      deletePrivateKey(keyId),
-      deletePassphrase(keyId),
-    ]);
+    await Future.wait([deletePrivateKey(keyId), deletePassphrase(keyId)]);
   }
 
   /// すべての資格情報を削除
@@ -320,8 +318,6 @@ class SshAuthService {
 }
 
 /// ファクトリ関数
-SshAuthService createSshAuthService({
-  SecureStorageService? storage,
-}) {
+SshAuthService createSshAuthService({SecureStorageService? storage}) {
   return SshAuthService(storage: storage);
 }

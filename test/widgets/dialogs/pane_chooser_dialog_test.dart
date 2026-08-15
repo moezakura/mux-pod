@@ -79,8 +79,9 @@ void main() {
   }
 
   bool isResizeEnabled(WidgetTester tester) {
-    final button =
-        tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Resize'));
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Resize'),
+    );
     return button.onPressed != null;
   }
 
@@ -111,8 +112,22 @@ void main() {
 
     testWidgets('active pane も存在しなければ panes.first にフォールバック', (tester) async {
       const inactive = [
-        MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 80, height: 24),
-        MultiplexerPane(index: 2, id: 'w1:p2', left: 80, top: 0, width: 80, height: 24),
+        MultiplexerPane(
+          index: 1,
+          id: 'w1:p1',
+          left: 0,
+          top: 0,
+          width: 80,
+          height: 24,
+        ),
+        MultiplexerPane(
+          index: 2,
+          id: 'w1:p2',
+          left: 80,
+          top: 0,
+          width: 80,
+          height: 24,
+        ),
       ];
       await openDialog(
         tester,
@@ -125,7 +140,9 @@ void main() {
       expect(isResizeEnabled(tester), isTrue);
     });
 
-    testWidgets('タップ選択 → Selected 更新 → Resize で onResize が発火する', (tester) async {
+    testWidgets('タップ選択 → Selected 更新 → Resize で onResize が発火する', (
+      tester,
+    ) async {
       String? resizedId;
       await openDialog(
         tester,
@@ -138,7 +155,9 @@ void main() {
       expect(find.text('Selected: Pane 1 (80x24)'), findsOneWidget);
 
       // p2 をタップして選択を切り替える
-      await tester.tap(find.byKey(const ValueKey('terminal-resize-pane-w1:p2')));
+      await tester.tap(
+        find.byKey(const ValueKey('terminal-resize-pane-w1:p2')),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Selected: Pane 2 (80x24)'), findsOneWidget);
 
@@ -148,7 +167,9 @@ void main() {
       expect(resizedId, 'w1:p2');
     });
 
-    testWidgets('0 起点正規化: 非 0 起点 fixture（x:26 / y:1・E12）でもタイルが描画され選択できる', (tester) async {
+    testWidgets('0 起点正規化: 非 0 起点 fixture（x:26 / y:1・E12）でもタイルが描画され選択できる', (
+      tester,
+    ) async {
       String? resizedId;
       await openDialog(
         tester,
@@ -158,10 +179,18 @@ void main() {
       );
 
       // 両タイルが find でき（画面内に描画され）、タップで選択可能
-      expect(find.byKey(const ValueKey('terminal-resize-pane-w1:p1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('terminal-resize-pane-w1:p2')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('terminal-resize-pane-w1:p1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('terminal-resize-pane-w1:p2')),
+        findsOneWidget,
+      );
 
-      await tester.tap(find.byKey(const ValueKey('terminal-resize-pane-w1:p2')));
+      await tester.tap(
+        find.byKey(const ValueKey('terminal-resize-pane-w1:p2')),
+      );
       await tester.pumpAndSettle();
       expect(find.text('Selected: Pane 2 (80x24)'), findsOneWidget);
 
@@ -170,22 +199,24 @@ void main() {
       expect(resizedId, 'w1:p2');
     });
 
-    testWidgets("空リスト: グリッド非表示・'Tap a pane to select' 非表示・Resize disabled", (tester) async {
-      await openDialog(
-        tester,
-        panes: const [],
-        onResize: (_) {},
-      );
+    testWidgets("空リスト: グリッド非表示・'Tap a pane to select' 非表示・Resize disabled", (
+      tester,
+    ) async {
+      await openDialog(tester, panes: const [], onResize: (_) {});
 
       // グリッドタイルが存在しない（グリッド非表示）
-      expect(find.byKey(const ValueKey('terminal-resize-pane-w1:p1')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('terminal-resize-pane-w1:p1')),
+        findsNothing,
+      );
       // 未選択案内も空リストでは出さない
       expect(find.text('Tap a pane to select'), findsNothing);
       // Resize disabled
       expect(isResizeEnabled(tester), isFalse);
       // Cancel は有効のまま
-      final cancel =
-          tester.widget<TextButton>(find.widgetWithText(TextButton, 'Cancel'));
+      final cancel = tester.widget<TextButton>(
+        find.widgetWithText(TextButton, 'Cancel'),
+      );
       expect(cancel.onPressed, isNotNull);
     });
 
@@ -203,7 +234,9 @@ void main() {
       expect(find.text('Selected: Pane 1 (80x24)'), findsNothing);
     });
 
-    testWidgets("ラベル注入: labelBuilder が null を返す場合は 'Pane N' にフォールバック", (tester) async {
+    testWidgets("ラベル注入: labelBuilder が null を返す場合は 'Pane N' にフォールバック", (
+      tester,
+    ) async {
       await openDialog(
         tester,
         panes: [p1, p2],
@@ -227,11 +260,7 @@ void main() {
     });
 
     testWidgets('グリッド内は index + WxH 形式で表示される', (tester) async {
-      await openDialog(
-        tester,
-        panes: [p1, p2],
-        onResize: (_) {},
-      );
+      await openDialog(tester, panes: [p1, p2], onResize: (_) {});
 
       expect(find.text('1\n80x24'), findsOneWidget);
       expect(find.text('2\n80x24'), findsOneWidget);

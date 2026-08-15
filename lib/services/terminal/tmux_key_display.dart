@@ -28,7 +28,12 @@ enum KeyOverlayPosition {
 /// tmux send-keys 形式のキー名を人間可読表示に変換するユーティリティ
 class TmuxKeyDisplay {
   static const _specialKeys = {
-    'Escape', 'Tab', 'Enter', 'BSpace', 'BTab', 'S-Enter',
+    'Escape',
+    'Tab',
+    'Enter',
+    'BSpace',
+    'BTab',
+    'S-Enter',
   };
 
   static const _arrowKeys = {'Up', 'Down', 'Left', 'Right'};

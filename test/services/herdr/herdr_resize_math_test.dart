@@ -44,7 +44,10 @@ void main() {
     test('実測値: round(ratio × container)', () {
       expect(PaneResizeMath.cellsFor(0.5, 78), 39);
       expect(PaneResizeMath.cellsFor(0.55, 78), 43); // 42.9 → 43
-      expect(PaneResizeMath.cellsFor(0.75, 78), 59); // 58.5 → 59（half away from zero）
+      expect(
+        PaneResizeMath.cellsFor(0.75, 78),
+        59,
+      ); // 58.5 → 59（half away from zero）
     });
 
     test('0 除算ガード: container <= 0 は null', () {
@@ -55,45 +58,129 @@ void main() {
 
   group('PaneResizeMath.estimateRatio', () {
     test('横並び 2 pane: 幅比率で推定される', () {
-      const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 50, height: 20);
-      const p2 = MultiplexerPane(index: 2, id: 'w1:p2', left: 50, top: 0, width: 50, height: 20);
+      const p1 = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
+      const p2 = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 50,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(p1, [p1, p2]), 0.5);
       expect(PaneResizeMath.estimateRatio(p2, [p1, p2]), 0.5);
     });
 
     test('非 0 起点 fixture でも正規化により同一の比率になる', () {
-      const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 26, top: 1, width: 50, height: 20);
-      const p2 = MultiplexerPane(index: 2, id: 'w1:p2', left: 76, top: 1, width: 50, height: 20);
+      const p1 = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 26,
+        top: 1,
+        width: 50,
+        height: 20,
+      );
+      const p2 = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 76,
+        top: 1,
+        width: 50,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(p1, [p1, p2]), 0.5);
     });
 
     test('縦並び 2 pane: 高さ比率で推定される', () {
-      const top = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 100, height: 20);
-      const bottom = MultiplexerPane(index: 2, id: 'w1:p2', left: 0, top: 20, width: 100, height: 20);
+      const top = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 20,
+      );
+      const bottom = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 0,
+        top: 20,
+        width: 100,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(top, [top, bottom]), 0.5);
       expect(PaneResizeMath.estimateRatio(bottom, [top, bottom]), 0.5);
     });
 
     test('1 pane のみ: paneWidth == containerWidth なので高さ比率パスになる', () {
       // 幅がコンテナ幅と等しい（横分割でない）ため高さ比率 20/20 = 1.0
-      const single = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 100, height: 20);
+      const single = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(single, [single]), 1.0);
     });
 
     test('サイズ不明（width=0）は null（0 除算しない・E1）', () {
-      const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 0, height: 20);
-      const p2 = MultiplexerPane(index: 2, id: 'w1:p2', left: 50, top: 0, width: 50, height: 20);
+      const p1 = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 20,
+      );
+      const p2 = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 50,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(p1, [p1, p2]), isNull);
     });
 
     test('panes 内にサイズ不明 pane が含まれる場合も null', () {
-      const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 50, height: 20);
-      const p2 = MultiplexerPane(index: 2, id: 'w1:p2', left: 50, top: 0, width: 0, height: 20);
+      const p1 = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
+      const p2 = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 50,
+        top: 0,
+        width: 0,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(p1, [p1, p2]), isNull);
     });
 
     test('空リストは null', () {
-      const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 50, height: 20);
+      const p1 = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
       expect(PaneResizeMath.estimateRatio(p1, const []), isNull);
     });
   });
@@ -172,8 +259,22 @@ void main() {
 
   group('PaneResizeMath.resolveDirection', () {
     // 横並び 2 pane（0 起点・コンテナ 100x20）。
-    const p1 = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 50, height: 20);
-    const p2 = MultiplexerPane(index: 2, id: 'w1:p2', left: 50, top: 0, width: 50, height: 20);
+    const p1 = MultiplexerPane(
+      index: 1,
+      id: 'w1:p1',
+      left: 0,
+      top: 0,
+      width: 50,
+      height: 20,
+    );
+    const p2 = MultiplexerPane(
+      index: 2,
+      id: 'w1:p2',
+      left: 50,
+      top: 0,
+      width: 50,
+      height: 20,
+    );
 
     test('横並び 2 pane: 左端は右隣があるので right・右端は left', () {
       expect(
@@ -197,8 +298,22 @@ void main() {
     });
 
     test('縦並び 2 pane: 上は下隣があるので down・下は up', () {
-      const top = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 100, height: 20);
-      const bottom = MultiplexerPane(index: 2, id: 'w1:p2', left: 0, top: 20, width: 100, height: 20);
+      const top = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 100,
+        height: 20,
+      );
+      const bottom = MultiplexerPane(
+        index: 2,
+        id: 'w1:p2',
+        left: 0,
+        top: 20,
+        width: 100,
+        height: 20,
+      );
       expect(
         PaneResizeMath.resolveDirection(
           target: top,
@@ -220,7 +335,14 @@ void main() {
     });
 
     test('3 pane 真ん中: 両隣ありは grow で優先方向が変わる', () {
-      const p3 = MultiplexerPane(index: 3, id: 'w1:p3', left: 100, top: 0, width: 50, height: 20);
+      const p3 = MultiplexerPane(
+        index: 3,
+        id: 'w1:p3',
+        left: 100,
+        top: 0,
+        width: 50,
+        height: 20,
+      );
       // grow=true（対象を成長）: 右優先。
       expect(
         PaneResizeMath.resolveDirection(
@@ -256,7 +378,14 @@ void main() {
     });
 
     test('サイズ不明（width=0）の pane は判定対象外（null）', () {
-      const unknown = MultiplexerPane(index: 1, id: 'w1:p1', left: 0, top: 0, width: 0, height: 20);
+      const unknown = MultiplexerPane(
+        index: 1,
+        id: 'w1:p1',
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 20,
+      );
       expect(
         PaneResizeMath.resolveDirection(
           target: unknown,

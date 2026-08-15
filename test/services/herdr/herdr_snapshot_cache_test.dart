@@ -8,13 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/fake_ssh_client.dart';
 
 HerdrSnapshot _snap(String tag) => HerdrSnapshot(
-      protocol: 17,
-      version: tag,
-      focusedPaneId: 'w1:p1',
-      workspaces: const [HerdrWorkspace(id: 'w1', label: 'ws', number: 1)],
-      tabs: const [HerdrTab(id: 'w1:t1', workspaceId: 'w1', label: '1', number: 1)],
-      panes: const [HerdrPane(id: 'w1:p1', workspaceId: 'w1', tabId: 'w1:t1')],
-    );
+  protocol: 17,
+  version: tag,
+  focusedPaneId: 'w1:p1',
+  workspaces: const [HerdrWorkspace(id: 'w1', label: 'ws', number: 1)],
+  tabs: const [HerdrTab(id: 'w1:t1', workspaceId: 'w1', label: '1', number: 1)],
+  panes: const [HerdrPane(id: 'w1:p1', workspaceId: 'w1', tabId: 'w1:t1')],
+);
 
 /// [HerdrAdapter] の snapshot を差し替え可能にした fake。
 ///
@@ -32,7 +32,9 @@ class _FakeSnapshotAdapter extends HerdrAdapter {
     snapshotCalls++;
     if (gate != null) await gate!.future;
     final index = snapshotCalls - 1;
-    return _responses[index >= _responses.length ? _responses.length - 1 : index];
+    return _responses[index >= _responses.length
+        ? _responses.length - 1
+        : index];
   }
 }
 
@@ -50,7 +52,9 @@ class _FailingOnceAdapter extends _FakeSnapshotAdapter {
       throw StateError('fetch failed');
     }
     final index = snapshotCalls - 1;
-    return _responses[index >= _responses.length ? _responses.length - 1 : index];
+    return _responses[index >= _responses.length
+        ? _responses.length - 1
+        : index];
   }
 }
 
@@ -58,7 +62,10 @@ void main() {
   group('HerdrSnapshotCache TTL', () {
     test('TTL 内はキャッシュを返し adapter.snapshot を呼ばない', () async {
       final adapter = _FakeSnapshotAdapter([_snap('a')]);
-      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+      final cache = HerdrSnapshotCache(
+        () => adapter,
+        ttl: const Duration(seconds: 5),
+      );
 
       final first = await cache.get();
       expect(first.version, 'a');
@@ -192,7 +199,10 @@ void main() {
   group('HerdrSnapshotCache invalidate', () {
     test('invalidate 後は次回 get で再取得する', () async {
       final adapter = _FakeSnapshotAdapter([_snap('a'), _snap('b')]);
-      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+      final cache = HerdrSnapshotCache(
+        () => adapter,
+        ttl: const Duration(seconds: 5),
+      );
 
       await cache.get();
       expect(cache.hasSnapshot, isTrue);
@@ -212,8 +222,14 @@ void main() {
   group('HerdrSnapshotCache joinInflight', () {
     test('joinInflight:false は進行中 fetch を待ってから新規 fetch する', () async {
       final gate = Completer<void>();
-      final adapter = _FakeSnapshotAdapter([_snap('a'), _snap('b')], gate: gate);
-      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+      final adapter = _FakeSnapshotAdapter([
+        _snap('a'),
+        _snap('b'),
+      ], gate: gate);
+      final cache = HerdrSnapshotCache(
+        () => adapter,
+        ttl: const Duration(seconds: 5),
+      );
 
       // 1 回目の fetch を開始（gate でブロック中）。
       final firstFuture = cache.get();
@@ -236,7 +252,10 @@ void main() {
 
     test('前回 fetch 失敗は無視して新規 fetch する（joinInflight:false）', () async {
       final adapter = _FailingOnceAdapter([_snap('a')]);
-      final cache = HerdrSnapshotCache(() => adapter, ttl: const Duration(seconds: 5));
+      final cache = HerdrSnapshotCache(
+        () => adapter,
+        ttl: const Duration(seconds: 5),
+      );
 
       // 1 回目は失敗（throw が伝播）。
       await expectLater(

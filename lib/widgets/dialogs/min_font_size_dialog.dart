@@ -9,10 +9,7 @@ import 'package:flutter/material.dart';
 class MinFontSizeDialog extends StatefulWidget {
   final double currentSize;
 
-  const MinFontSizeDialog({
-    super.key,
-    required this.currentSize,
-  });
+  const MinFontSizeDialog({super.key, required this.currentSize});
 
   @override
   State<MinFontSizeDialog> createState() => _MinFontSizeDialogState();

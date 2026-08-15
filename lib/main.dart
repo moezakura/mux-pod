@@ -24,16 +24,14 @@ void main() {
   LicenseService.registerLicenses();
 
   // ステータスバーを透明に
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
-
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
     ),
   );
+
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -98,7 +96,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
 
-    final connection = ref.read(connectionsProvider.notifier)
+    final connection = ref
+        .read(connectionsProvider.notifier)
         .findByDeepLinkIdOrName(data.server!);
 
     if (connection == null) {

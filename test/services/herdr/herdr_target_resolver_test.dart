@@ -61,36 +61,11 @@ HerdrSnapshot _multiWorkspaceSnapshot() {
         focused: true,
         cwd: '/tmp',
       ),
-      HerdrPane(
-        id: 'w1:p2',
-        workspaceId: 'w1',
-        tabId: 'w1:t1',
-        focused: false,
-      ),
-      HerdrPane(
-        id: 'w1:p3',
-        workspaceId: 'w1',
-        tabId: 'w1:t2',
-        focused: false,
-      ),
-      HerdrPane(
-        id: 'w1:p4',
-        workspaceId: 'w1',
-        tabId: 'w1:t2',
-        focused: false,
-      ),
-      HerdrPane(
-        id: 'w2:p1',
-        workspaceId: 'w2',
-        tabId: 'w2:t1',
-        focused: false,
-      ),
-      HerdrPane(
-        id: 'w2:p2',
-        workspaceId: 'w2',
-        tabId: 'w2:t1',
-        focused: true,
-      ),
+      HerdrPane(id: 'w1:p2', workspaceId: 'w1', tabId: 'w1:t1', focused: false),
+      HerdrPane(id: 'w1:p3', workspaceId: 'w1', tabId: 'w1:t2', focused: false),
+      HerdrPane(id: 'w1:p4', workspaceId: 'w1', tabId: 'w1:t2', focused: false),
+      HerdrPane(id: 'w2:p1', workspaceId: 'w2', tabId: 'w2:t1', focused: false),
+      HerdrPane(id: 'w2:p2', workspaceId: 'w2', tabId: 'w2:t1', focused: true),
     ],
   );
 }
@@ -101,20 +76,14 @@ void main() {
   group('HerdrTargetResolver.resolve 直接 pane 指定', () {
     test('paneIds の最初に存在する pane を返す', () {
       expect(
-        HerdrTargetResolver.resolve(
-          snapshot,
-          paneIds: ['w1:p1'],
-        ),
+        HerdrTargetResolver.resolve(snapshot, paneIds: ['w1:p1']),
         'w1:p1',
       );
     });
 
     test('paneIds が存在しないものなら次を試す（initial → last 優先順）', () {
       expect(
-        HerdrTargetResolver.resolve(
-          snapshot,
-          paneIds: ['gone:p1', 'w2:p2'],
-        ),
+        HerdrTargetResolver.resolve(snapshot, paneIds: ['gone:p1', 'w2:p2']),
         'w2:p2',
       );
     });
@@ -147,14 +116,8 @@ void main() {
     });
 
     test('workspaceId 指定で一致 workspace を選ぶ', () {
-      expect(
-        HerdrTargetResolver.resolve(snapshot, workspaceId: 'w1'),
-        'w1:p1',
-      );
-      expect(
-        HerdrTargetResolver.resolve(snapshot, workspaceId: 'w2'),
-        'w2:p2',
-      );
+      expect(HerdrTargetResolver.resolve(snapshot, workspaceId: 'w1'), 'w1:p1');
+      expect(HerdrTargetResolver.resolve(snapshot, workspaceId: 'w2'), 'w2:p2');
     });
 
     test('workspace 未指定なら先頭 workspace のフォーカス pane', () {
@@ -188,10 +151,7 @@ void main() {
     });
 
     test('tabId 指定でフォーカス pane があればそれを返す', () {
-      expect(
-        HerdrTargetResolver.resolve(snapshot, tabId: 'w1:t1'),
-        'w1:p1',
-      );
+      expect(HerdrTargetResolver.resolve(snapshot, tabId: 'w1:t1'), 'w1:p1');
     });
 
     test('workspaceId + tabId + paneId の組み合わせ', () {

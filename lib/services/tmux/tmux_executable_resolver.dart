@@ -59,19 +59,21 @@ class TmuxExecutableResolver {
       );
       if (result.exitCode == 0) {
         _tmuxPath = path;
-        debugPrint('TmuxExecutableResolver: user-specified path verified: $_tmuxPath');
+        debugPrint(
+          'TmuxExecutableResolver: user-specified path verified: $_tmuxPath',
+        );
         return;
       }
-      debugPrint('TmuxExecutableResolver: user-specified path not found: $path');
+      debugPrint(
+        'TmuxExecutableResolver: user-specified path not found: $path',
+      );
       _tmuxPath = null;
       return;
     }
 
     // Step 1: ログインシェル経由で検出
     try {
-      final output = await detector.exec(
-        r"$SHELL -lc 'command -v tmux'",
-      );
+      final output = await detector.exec(r"$SHELL -lc 'command -v tmux'");
       final path = output.trim();
       if (path.isNotEmpty && path.startsWith('/')) {
         _tmuxPath = path;

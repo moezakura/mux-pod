@@ -35,7 +35,9 @@ class SftpService {
     final timestamp =
         '${now.year}${_pad(now.month)}${_pad(now.day)}_${_pad(now.hour)}${_pad(now.minute)}${_pad(now.second)}';
     final shortUuid = _uuid.v4().substring(0, 4);
-    final sanitizedExt = extension.startsWith('.') ? extension.substring(1) : extension;
+    final sanitizedExt = extension.startsWith('.')
+        ? extension.substring(1)
+        : extension;
     return '${sanitizeFilename(prefix)}${timestamp}_$shortUuid.$sanitizedExt';
   }
 
@@ -62,7 +64,9 @@ class SftpService {
     required Uint8List bytes,
     void Function(double progress)? onProgress,
   }) async {
-    final dir = remoteDir.endsWith('/') ? remoteDir.substring(0, remoteDir.length - 1) : remoteDir;
+    final dir = remoteDir.endsWith('/')
+        ? remoteDir.substring(0, remoteDir.length - 1)
+        : remoteDir;
     final remotePath = '$dir/$filename';
 
     await ensureDirectory(sftp, dir);
@@ -71,7 +75,10 @@ class SftpService {
     try {
       file = await sftp.open(
         remotePath,
-        mode: SftpFileOpenMode.create | SftpFileOpenMode.write | SftpFileOpenMode.truncate,
+        mode:
+            SftpFileOpenMode.create |
+            SftpFileOpenMode.write |
+            SftpFileOpenMode.truncate,
       );
 
       final totalBytes = bytes.length;
@@ -81,7 +88,9 @@ class SftpService {
       const chunkSize = 32 * 1024; // 32KB
       final chunks = <Uint8List>[];
       for (var offset = 0; offset < totalBytes; offset += chunkSize) {
-        final end = (offset + chunkSize > totalBytes) ? totalBytes : offset + chunkSize;
+        final end = (offset + chunkSize > totalBytes)
+            ? totalBytes
+            : offset + chunkSize;
         chunks.add(bytes.sublist(offset, end));
       }
 

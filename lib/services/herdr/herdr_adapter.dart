@@ -28,10 +28,8 @@ class HerdrAdapter {
   final BackendAdapter _backend;
   final String? _userExecutablePath;
 
-  HerdrAdapter(
-    this._backend, {
-    String? userExecutablePath,
-  }) : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath;
+  HerdrAdapter(this._backend, {String? userExecutablePath})
+    : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath;
 
   /// 接続中かどうか。
   bool get isConnected => _backend.isConnected;
@@ -42,8 +40,10 @@ class HerdrAdapter {
   /// server 未稼働の場合は [HerdrServerNotRunningException]、
   /// protocol が 17 以外の場合は [HerdrProtocolMismatchException] を投げる。
   Future<HerdrStatus> preflight({Duration? timeout}) async {
-    final stdout =
-        await _execChecked(HerdrCommands.preflightCommand(), timeout: timeout);
+    final stdout = await _execChecked(
+      HerdrCommands.preflightCommand(),
+      timeout: timeout,
+    );
     final HerdrStatus status;
     try {
       status = HerdrStatusParser.parse(stdout);
@@ -58,8 +58,10 @@ class HerdrAdapter {
   // inventory: HERDR-ADAPTER-003
   /// 全階層スナップショット（workspace/tab/pane）を取得する。
   Future<HerdrSnapshot> snapshot({Duration? timeout}) async {
-    final stdout =
-        await _execChecked(HerdrCommands.snapshot(), timeout: timeout);
+    final stdout = await _execChecked(
+      HerdrCommands.snapshot(),
+      timeout: timeout,
+    );
     try {
       return HerdrSnapshotParser.parse(stdout);
     } on FormatException catch (e) {
@@ -164,18 +166,14 @@ class HerdrAdapter {
     String paneId,
     String direction, {
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.paneFocus(paneId, direction),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.paneFocus(paneId, direction),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-024
   /// 隣接方向の有無を返す（navigableDirections 表示に直結）。
-  Future<HerdrMutationResult> edges(
-    String paneId, {
-    Duration? timeout,
-  }) =>
+  Future<HerdrMutationResult> edges(String paneId, {Duration? timeout}) =>
       _execMutation(HerdrCommands.paneEdges(paneId), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-025
@@ -188,11 +186,10 @@ class HerdrAdapter {
     String direction,
     double amount, {
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.paneResize(paneId, direction, amount),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.paneResize(paneId, direction, amount),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-026
   /// zoom（Q-02）。
@@ -202,11 +199,10 @@ class HerdrAdapter {
     String paneId, {
     String mode = 'toggle',
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.paneZoom(paneId, mode: mode),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.paneZoom(paneId, mode: mode),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-027
   /// ラベル変更（Q-02）。
@@ -215,20 +211,14 @@ class HerdrAdapter {
     String label, {
     Duration? timeout,
   }) =>
-      _execMutation(
-        HerdrCommands.paneRename(paneId, label),
-        timeout: timeout,
-      );
+      _execMutation(HerdrCommands.paneRename(paneId, label), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-028
   /// pane を閉じる（**破壊的 close の唯一経路**・Q-03）。
   ///
   /// 対象不在は `pane_not_found` → [HerdrTargetNotFoundException]
   /// （`isHerdrTargetNotFound` で分類・再解決へ）。
-  Future<HerdrMutationResult> closePane(
-    String paneId, {
-    Duration? timeout,
-  }) =>
+  Future<HerdrMutationResult> closePane(String paneId, {Duration? timeout}) =>
       _execMutation(HerdrCommands.paneClose(paneId), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-029
@@ -242,11 +232,10 @@ class HerdrAdapter {
     double? ratio,
     String? cwd,
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.paneSplit(paneId, direction, ratio: ratio, cwd: cwd),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.paneSplit(paneId, direction, ratio: ratio, cwd: cwd),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-032
   /// tab を作成する（Q-05）。
@@ -265,21 +254,17 @@ class HerdrAdapter {
     String? cwd,
     bool? focus,
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.tabCreate(workspaceId, label: label, cwd: cwd, focus: focus),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.tabCreate(workspaceId, label: label, cwd: cwd, focus: focus),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-033
   /// tab を閉じる（Q-05）。
   ///
   /// workspace の最後の tab を閉じると workspace も連鎖終了する。
   /// 対象不在は `tab_not_found` → [HerdrTargetNotFoundException]。
-  Future<HerdrMutationResult> tabClose(
-    String tabId, {
-    Duration? timeout,
-  }) =>
+  Future<HerdrMutationResult> tabClose(String tabId, {Duration? timeout}) =>
       _execMutation(HerdrCommands.tabClose(tabId), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-034
@@ -288,15 +273,11 @@ class HerdrAdapter {
     String tabId,
     String label, {
     Duration? timeout,
-  }) =>
-      _execMutation(HerdrCommands.tabRename(tabId, label), timeout: timeout);
+  }) => _execMutation(HerdrCommands.tabRename(tabId, label), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-035
   /// tab へフォーカスする（Q-05）。
-  Future<HerdrMutationResult> tabFocus(
-    String tabId, {
-    Duration? timeout,
-  }) =>
+  Future<HerdrMutationResult> tabFocus(String tabId, {Duration? timeout}) =>
       _execMutation(HerdrCommands.tabFocus(tabId), timeout: timeout);
 
   // inventory: HERDR-ADAPTER-036
@@ -313,11 +294,10 @@ class HerdrAdapter {
     String? cwd,
     bool? focus,
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.workspaceCreate(label: label, cwd: cwd, focus: focus),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.workspaceCreate(label: label, cwd: cwd, focus: focus),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-037
   /// workspace を閉じる（Q-05）。
@@ -326,8 +306,10 @@ class HerdrAdapter {
   Future<HerdrMutationResult> workspaceClose(
     String workspaceId, {
     Duration? timeout,
-  }) =>
-      _execMutation(HerdrCommands.workspaceClose(workspaceId), timeout: timeout);
+  }) => _execMutation(
+    HerdrCommands.workspaceClose(workspaceId),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-038
   /// workspace のラベルを変更する（Q-05）。
@@ -335,19 +317,20 @@ class HerdrAdapter {
     String workspaceId,
     String label, {
     Duration? timeout,
-  }) =>
-      _execMutation(
-        HerdrCommands.workspaceRename(workspaceId, label),
-        timeout: timeout,
-      );
+  }) => _execMutation(
+    HerdrCommands.workspaceRename(workspaceId, label),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-039
   /// workspace へフォーカスする（Q-05）。
   Future<HerdrMutationResult> workspaceFocus(
     String workspaceId, {
     Duration? timeout,
-  }) =>
-      _execMutation(HerdrCommands.workspaceFocus(workspaceId), timeout: timeout);
+  }) => _execMutation(
+    HerdrCommands.workspaceFocus(workspaceId),
+    timeout: timeout,
+  );
 
   // inventory: HERDR-ADAPTER-030
   /// mutation コマンドを実行し [HerdrMutationResult] を返す。
@@ -605,11 +588,7 @@ class HerdrMutationResult {
   /// 応答に含まれるレイアウト（resize/zoom/focus/edges。無ければ null）。
   final HerdrLayout? layout;
 
-  const HerdrMutationResult({
-    this.changed = true,
-    this.reason,
-    this.layout,
-  });
+  const HerdrMutationResult({this.changed = true, this.reason, this.layout});
 
   /// 隣接 pane が無い（soft 失敗・情報通知）。
   bool get isNoNeighbor => reason == 'no_neighbor';

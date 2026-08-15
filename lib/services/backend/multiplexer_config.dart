@@ -14,17 +14,11 @@ class MultiplexerConfig {
   /// copyWith のクリア用センチネル。
   static const _kClearSentinel = Object();
 
-  const MultiplexerConfig({
-    required this.backend,
-    this.executablePath,
-  });
+  const MultiplexerConfig({required this.backend, this.executablePath});
 
   /// tmux backend 用の簡易コンストラクタ。
   const MultiplexerConfig.tmux([String? executablePath])
-      : this(
-          backend: BackendType.tmux,
-          executablePath: executablePath,
-        );
+    : this(backend: BackendType.tmux, executablePath: executablePath);
 
   /// 部分的に値を更新したコピーを返す。
   ///
@@ -43,10 +37,7 @@ class MultiplexerConfig {
 
   /// JSON としてシリアライズする。
   Map<String, dynamic> toJson() {
-    return {
-      'backend': backend.toJson(),
-      'executablePath': executablePath,
-    };
+    return {'backend': backend.toJson(), 'executablePath': executablePath};
   }
 
   /// JSON から復元する。
@@ -55,9 +46,7 @@ class MultiplexerConfig {
   factory MultiplexerConfig.fromJson(Map<String, dynamic> json) {
     final backendValue = json['backend'];
     if (backendValue is! String) {
-      throw FormatException(
-        'backend must be a string: ${json['backend']}',
-      );
+      throw FormatException('backend must be a string: ${json['backend']}');
     }
     final backend = BackendType.fromJson(backendValue);
     return MultiplexerConfig(

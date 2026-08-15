@@ -53,13 +53,13 @@ final class PaneFrame {
 
   /// 共通 snapshot 形式へ変換する（表示コアはこの抽象に依存）。
   MultiplexerPaneSnapshot toSnapshot() => MultiplexerPaneSnapshot(
-        content: content,
-        geometry: geometry,
-        cursorX: cursorX,
-        cursorY: cursorY,
-        paneMode: paneMode,
-        hasAnsi: hasAnsi,
-      );
+    content: content,
+    geometry: geometry,
+    cursorX: cursorX,
+    cursorY: cursorY,
+    paneMode: paneMode,
+    hasAnsi: hasAnsi,
+  );
 }
 
 /// ペイン表示フレームの読み取り抽象。

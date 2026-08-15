@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:developer' as developer;
 
@@ -20,12 +19,7 @@ final class DeepLinkData {
   // inventory: LEGACY-0096
   final int? pane;
 
-  const DeepLinkData({
-    this.server,
-    this.session,
-    this.window,
-    this.pane,
-  });
+  const DeepLinkData({this.server, this.session, this.window, this.pane});
 
   // inventory: DEEPLINK-006
   // inventory: LEGACY-0097

@@ -28,7 +28,12 @@ void main() {
 
     test('paneRead appends --raw when ansi is requested', () {
       expect(
-        HerdrCommands.paneRead('w1:p1', source: 'visible', lines: 50, ansi: true),
+        HerdrCommands.paneRead(
+          'w1:p1',
+          source: 'visible',
+          lines: 50,
+          ansi: true,
+        ),
         'herdr pane read w1:p1 --source visible --lines 50 --raw',
       );
     });
@@ -112,10 +117,7 @@ void main() {
     });
 
     test('paneEdges uses --pane', () {
-      expect(
-        HerdrCommands.paneEdges('w1:p1'),
-        'herdr pane edges --pane w1:p1',
-      );
+      expect(HerdrCommands.paneEdges('w1:p1'), 'herdr pane edges --pane w1:p1');
     });
 
     test('paneResize passes direction and float amount', () {
@@ -152,10 +154,7 @@ void main() {
     });
 
     test('paneClose uses the plain pane id', () {
-      expect(
-        HerdrCommands.paneClose('w1:p1'),
-        'herdr pane close w1:p1',
-      );
+      expect(HerdrCommands.paneClose('w1:p1'), 'herdr pane close w1:p1');
     });
 
     test('paneSplit supports direction, ratio and cwd', () {
@@ -174,10 +173,7 @@ void main() {
     });
 
     test('tabCreate emits --workspace with optional label/cwd/focus', () {
-      expect(
-        HerdrCommands.tabCreate('w1'),
-        'herdr tab create --workspace w1',
-      );
+      expect(HerdrCommands.tabCreate('w1'), 'herdr tab create --workspace w1');
       expect(
         HerdrCommands.tabCreate('w1', label: 'logs'),
         "herdr tab create --workspace w1 --label 'logs'",
@@ -197,10 +193,7 @@ void main() {
     });
 
     test('tabClose uses the plain tab id', () {
-      expect(
-        HerdrCommands.tabClose('w1:t1'),
-        'herdr tab close w1:t1',
-      );
+      expect(HerdrCommands.tabClose('w1:t1'), 'herdr tab close w1:t1');
     });
 
     test('tabRename quotes the label', () {
@@ -211,17 +204,11 @@ void main() {
     });
 
     test('tabFocus uses the plain tab id', () {
-      expect(
-        HerdrCommands.tabFocus('w1:t1'),
-        'herdr tab focus w1:t1',
-      );
+      expect(HerdrCommands.tabFocus('w1:t1'), 'herdr tab focus w1:t1');
     });
 
     test('workspaceCreate emits optional label/cwd/focus', () {
-      expect(
-        HerdrCommands.workspaceCreate(),
-        'herdr workspace create',
-      );
+      expect(HerdrCommands.workspaceCreate(), 'herdr workspace create');
       expect(
         HerdrCommands.workspaceCreate(label: 'api'),
         "herdr workspace create --label 'api'",
@@ -241,10 +228,7 @@ void main() {
     });
 
     test('workspaceClose uses the plain workspace id', () {
-      expect(
-        HerdrCommands.workspaceClose('w1'),
-        'herdr workspace close w1',
-      );
+      expect(HerdrCommands.workspaceClose('w1'), 'herdr workspace close w1');
     });
 
     test('workspaceRename quotes the label', () {
@@ -255,10 +239,7 @@ void main() {
     });
 
     test('workspaceFocus uses the plain workspace id', () {
-      expect(
-        HerdrCommands.workspaceFocus('w1'),
-        'herdr workspace focus w1',
-      );
+      expect(HerdrCommands.workspaceFocus('w1'), 'herdr workspace focus w1');
     });
   });
 
@@ -267,12 +248,11 @@ void main() {
       int client = 17,
       int server = 17,
       bool running = true,
-    }) =>
-        HerdrStatus(
-          clientProtocol: client,
-          serverProtocol: server,
-          running: running,
-        );
+    }) => HerdrStatus(
+      clientProtocol: client,
+      serverProtocol: server,
+      running: running,
+    );
 
     test('accepts protocol 17 on both client and server', () {
       final result = HerdrPreflight.validate(status());
@@ -280,13 +260,15 @@ void main() {
       expect(result.clientProtocol, 17);
     });
 
-    test('throws HerdrServerNotRunningException when server is not running',
-        () {
-      expect(
-        () => HerdrPreflight.validate(status(running: false)),
-        throwsA(isA<HerdrServerNotRunningException>()),
-      );
-    });
+    test(
+      'throws HerdrServerNotRunningException when server is not running',
+      () {
+        expect(
+          () => HerdrPreflight.validate(status(running: false)),
+          throwsA(isA<HerdrServerNotRunningException>()),
+        );
+      },
+    );
 
     test('server-not-running check wins over protocol mismatch', () {
       // 実測の未稼働 JSON 相当（running:false + protocol:0）でも
@@ -299,28 +281,35 @@ void main() {
       );
     });
 
-    test('throws HerdrProtocolMismatchException when server protocol is 16',
-        () {
-      expect(
-        () => HerdrPreflight.validate(status(server: 16)),
-        throwsA(
-          isA<HerdrProtocolMismatchException>()
-              .having((e) => e.actual, 'actual', 16)
-              .having((e) => e.supported, 'supported', 17),
-        ),
-      );
-    });
+    test(
+      'throws HerdrProtocolMismatchException when server protocol is 16',
+      () {
+        expect(
+          () => HerdrPreflight.validate(status(server: 16)),
+          throwsA(
+            isA<HerdrProtocolMismatchException>()
+                .having((e) => e.actual, 'actual', 16)
+                .having((e) => e.supported, 'supported', 17),
+          ),
+        );
+      },
+    );
 
-    test('throws HerdrProtocolMismatchException when client protocol is 18',
-        () {
-      expect(
-        () => HerdrPreflight.validate(status(client: 18)),
-        throwsA(
-          isA<HerdrProtocolMismatchException>()
-              .having((e) => e.actual, 'actual', 18),
-        ),
-      );
-    });
+    test(
+      'throws HerdrProtocolMismatchException when client protocol is 18',
+      () {
+        expect(
+          () => HerdrPreflight.validate(status(client: 18)),
+          throwsA(
+            isA<HerdrProtocolMismatchException>().having(
+              (e) => e.actual,
+              'actual',
+              18,
+            ),
+          ),
+        );
+      },
+    );
 
     test('throws when protocol fields are missing (0)', () {
       expect(

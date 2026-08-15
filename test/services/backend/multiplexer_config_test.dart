@@ -26,10 +26,7 @@ void main() {
 
     test('toJson preserves null executablePath', () {
       const config = MultiplexerConfig.tmux();
-      expect(config.toJson(), {
-        'backend': 'tmux',
-        'executablePath': null,
-      });
+      expect(config.toJson(), {'backend': 'tmux', 'executablePath': null});
     });
 
     test('fromJson restores a tmux config', () {
@@ -42,9 +39,7 @@ void main() {
     });
 
     test('fromJson treats missing executablePath as null', () {
-      final config = MultiplexerConfig.fromJson({
-        'backend': 'tmux',
-      });
+      final config = MultiplexerConfig.fromJson({'backend': 'tmux'});
       expect(config.backend, BackendType.tmux);
       expect(config.executablePath, isNull);
     });
@@ -61,9 +56,7 @@ void main() {
 
     test('fromJson throws FormatException when backend is not a string', () {
       expect(
-        () => MultiplexerConfig.fromJson({
-          'backend': 123,
-        }),
+        () => MultiplexerConfig.fromJson({'backend': 123}),
         throwsA(isA<FormatException>()),
       );
     });
@@ -97,7 +90,10 @@ void main() {
 
     test('equality and hashCode are value-based', () {
       const a = MultiplexerConfig.tmux('/usr/bin/tmux');
-      const b = MultiplexerConfig(backend: BackendType.tmux, executablePath: '/usr/bin/tmux');
+      const b = MultiplexerConfig(
+        backend: BackendType.tmux,
+        executablePath: '/usr/bin/tmux',
+      );
       const c = MultiplexerConfig.tmux('/opt/bin/tmux');
 
       expect(a, b);

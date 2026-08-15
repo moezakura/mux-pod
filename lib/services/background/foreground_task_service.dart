@@ -103,10 +103,7 @@ class SshForegroundTaskService {
   }
 
   /// 通知テキストを更新
-  Future<void> updateNotification({
-    String? title,
-    String? text,
-  }) async {
+  Future<void> updateNotification({String? title, String? text}) async {
     if (!Platform.isAndroid || !_isRunning) return;
 
     await FlutterForegroundTask.updateService(
@@ -174,4 +171,3 @@ class _SshTaskHandler extends TaskHandler {
     // 通知がスワイプで削除された時
   }
 }
-

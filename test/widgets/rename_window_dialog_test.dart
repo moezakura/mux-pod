@@ -43,10 +43,13 @@ void main() {
     testWidgets('empty name shows error and keeps dialog open', (tester) async {
       String? result;
       var completed = false;
-      await openDialog(tester, onResult: (r) {
-        result = r;
-        completed = true;
-      });
+      await openDialog(
+        tester,
+        onResult: (r) {
+          result = r;
+          completed = true;
+        },
+      );
 
       await tester.enterText(find.byType(TextFormField), '');
       await tester.tap(find.text('Rename'));

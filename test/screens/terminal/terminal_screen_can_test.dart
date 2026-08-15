@@ -107,16 +107,22 @@ void main() {
           PaneCapabilities(workspaceCrud: true),
           PaneCapabilities(tabCrud: true),
         ]) {
-          expect(state.canForTesting(required), isTrue,
-              reason: 'capability ${required.toString()} must be true');
+          expect(
+            state.canForTesting(required),
+            isTrue,
+            reason: 'capability ${required.toString()} must be true',
+          );
         }
         // 設計上 false の能力（copy-mode なし・相対 resize のみ・Q-04）。
         for (final required in [
           PaneCapabilities(copyMode: true),
           PaneCapabilities(absoluteResize: true),
         ]) {
-          expect(state.canForTesting(required), isFalse,
-              reason: 'capability ${required.toString()} must be false');
+          expect(
+            state.canForTesting(required),
+            isFalse,
+            reason: 'capability ${required.toString()} must be false',
+          );
         }
         final caps = state.paneCapabilitiesForTesting();
         expect(caps.sendText, isTrue);
@@ -167,8 +173,11 @@ void main() {
       final state = _state(tester);
       // readOnly 明示なしの tmux は全 capability true
       for (final required in kAllCapabilityRequirements) {
-        expect(state.canForTesting(required), isTrue,
-            reason: 'capability ${required.toString()} must be true');
+        expect(
+          state.canForTesting(required),
+          isTrue,
+          reason: 'capability ${required.toString()} must be true',
+        );
       }
       // 複数能力の同時要求も満たす（要求 ⊆ 現在能力）
       expect(

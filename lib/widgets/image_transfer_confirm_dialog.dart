@@ -160,8 +160,12 @@ class _ImageTransferConfirmDialogState
     final s = widget.settings;
     _pathController = TextEditingController(text: widget.remotePath);
     _pathFormatController = TextEditingController(text: s.imagePathFormat);
-    _maxWidthController = TextEditingController(text: s.imageMaxWidth.toString());
-    _maxHeightController = TextEditingController(text: s.imageMaxHeight.toString());
+    _maxWidthController = TextEditingController(
+      text: s.imageMaxWidth.toString(),
+    );
+    _maxHeightController = TextEditingController(
+      text: s.imageMaxHeight.toString(),
+    );
     _outputFormat = s.imageOutputFormat;
     _jpegQuality = s.imageJpegQuality;
     _resizePreset = ImageResizePreset.fromString(s.imageResizePreset);
@@ -220,10 +224,13 @@ class _ImageTransferConfirmDialogState
                   child: Image.memory(
                     widget.imageBytes,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const SizedBox(
-                      height: 100,
-                      child: Center(child: Icon(Icons.broken_image, size: 48)),
-                    ),
+                    errorBuilder: (context, error, stackTrace) =>
+                        const SizedBox(
+                          height: 100,
+                          child: Center(
+                            child: Icon(Icons.broken_image, size: 48),
+                          ),
+                        ),
                   ),
                 ),
               ),
@@ -240,7 +247,9 @@ class _ImageTransferConfirmDialogState
                     ),
                   Text(
                     _formatSize(widget.imageBytes.length),
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                    ),
                   ),
                 ],
               ),
@@ -258,7 +267,8 @@ class _ImageTransferConfirmDialogState
                   ButtonSegment(value: 'jpeg', label: Text('JPEG')),
                 ],
                 selected: {_outputFormat},
-                onSelectionChanged: (v) => setState(() => _outputFormat = v.first),
+                onSelectionChanged: (v) =>
+                    setState(() => _outputFormat = v.first),
                 showSelectedIcon: false,
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
@@ -272,13 +282,30 @@ class _ImageTransferConfirmDialogState
               const SizedBox(height: 4),
               SegmentedButton<ImageResizePreset>(
                 segments: const [
-                  ButtonSegment(value: ImageResizePreset.original, label: Text('Original')),
-                  ButtonSegment(value: ImageResizePreset.small, label: Text('S')),
-                  ButtonSegment(value: ImageResizePreset.medium, label: Text('M')),
-                  ButtonSegment(value: ImageResizePreset.large, label: Text('L')),
+                  ButtonSegment(
+                    value: ImageResizePreset.original,
+                    label: Text('Original'),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.small,
+                    label: Text('S'),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.medium,
+                    label: Text('M'),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.large,
+                    label: Text('L'),
+                  ),
                 ],
-                selected: {_resizePreset == ImageResizePreset.custom ? ImageResizePreset.original : _resizePreset},
-                onSelectionChanged: (v) => setState(() => _resizePreset = v.first),
+                selected: {
+                  _resizePreset == ImageResizePreset.custom
+                      ? ImageResizePreset.original
+                      : _resizePreset,
+                },
+                onSelectionChanged: (v) =>
+                    setState(() => _resizePreset = v.first),
                 showSelectedIcon: false,
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
@@ -291,7 +318,10 @@ class _ImageTransferConfirmDialogState
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('Bracketed Paste', style: theme.textTheme.bodyMedium),
+                title: Text(
+                  'Bracketed Paste',
+                  style: theme.textTheme.bodyMedium,
+                ),
                 value: _bracketedPaste,
                 onChanged: (v) => setState(() => _bracketedPaste = v),
               ),
@@ -300,7 +330,12 @@ class _ImageTransferConfirmDialogState
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
-                title: Text('Advanced', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+                title: Text(
+                  'Advanced',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey,
+                  ),
+                ),
                 children: [
                   // Remote Path
                   _label('Remote Path'),
@@ -313,7 +348,10 @@ class _ImageTransferConfirmDialogState
                   const SizedBox(height: 2),
                   Text(
                     'Use {path} as placeholder. e.g. @{path}',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey,
+                      fontSize: 11,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   _textField(_pathFormatController),
@@ -325,14 +363,18 @@ class _ImageTransferConfirmDialogState
                       children: [
                         _label('JPEG Quality'),
                         const Spacer(),
-                        Text('$_jpegQuality%', style: theme.textTheme.bodySmall),
+                        Text(
+                          '$_jpegQuality%',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ],
                     ),
                     Slider(
                       value: _jpegQuality.toDouble(),
                       min: 1,
                       max: 100,
-                      onChanged: (v) => setState(() => _jpegQuality = v.round()),
+                      onChanged: (v) =>
+                          setState(() => _jpegQuality = v.round()),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -354,7 +396,9 @@ class _ImageTransferConfirmDialogState
                       ),
                       const SizedBox(width: 8),
                       TextButton(
-                        onPressed: () => setState(() => _resizePreset = ImageResizePreset.custom),
+                        onPressed: () => setState(
+                          () => _resizePreset = ImageResizePreset.custom,
+                        ),
                         style: TextButton.styleFrom(
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -376,8 +420,16 @@ class _ImageTransferConfirmDialogState
                   SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text('Auto Enter', style: theme.textTheme.bodyMedium),
-                    subtitle: Text('Send Enter after path injection', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                    title: Text(
+                      'Auto Enter',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    subtitle: Text(
+                      'Send Enter after path injection',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                    ),
                     value: _autoEnter,
                     onChanged: (v) => setState(() => _autoEnter = v),
                   ),
@@ -408,7 +460,9 @@ class _ImageTransferConfirmDialogState
   Widget _label(String text) {
     return Text(
       text,
-      style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+      style: Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
     );
   }
 

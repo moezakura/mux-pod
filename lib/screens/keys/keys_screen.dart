@@ -82,7 +82,9 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
         IconButton(
           icon: Icon(
             Icons.settings,
-            color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+            color: isDark
+                ? DesignColors.textSecondary
+                : DesignColors.textSecondaryLight,
           ),
           onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
           tooltip: 'Settings',
@@ -138,16 +140,22 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+                  color: isDark
+                      ? DesignColors.surfaceDark
+                      : DesignColors.surfaceLight,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+                    color: isDark
+                        ? DesignColors.borderDark
+                        : DesignColors.borderLight,
                   ),
                 ),
                 child: Icon(
                   Icons.vpn_key_off,
                   size: 64,
-                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                  color: isDark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                 ),
               ),
               const SizedBox(height: 24),
@@ -156,7 +164,9 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                  color: isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight,
                 ),
               ),
               const SizedBox(height: 8),
@@ -164,7 +174,9 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                 'Tap the button below to add a key',
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 14,
-                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                  color: isDark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                 ),
               ),
             ],
@@ -175,24 +187,21 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
 
     // 鍵一覧
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final keyMeta = state.keys[index];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: KeyTile(
-              keyMeta: keyMeta,
-              onCopyPublicKey: () {
-                _copyPublicKey(context, keyMeta);
-              },
-              onDelete: () {
-                _showDeleteConfirmation(context, ref, keyMeta);
-              },
-            ),
-          );
-        },
-        childCount: state.keys.length,
-      ),
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final keyMeta = state.keys[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: KeyTile(
+            keyMeta: keyMeta,
+            onCopyPublicKey: () {
+              _copyPublicKey(context, keyMeta);
+            },
+            onDelete: () {
+              _showDeleteConfirmation(context, ref, keyMeta);
+            },
+          ),
+        );
+      }, childCount: state.keys.length),
     );
   }
 
@@ -206,7 +215,10 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
   }
 
   void _showDeleteConfirmation(
-      BuildContext context, WidgetRef ref, SshKeyMeta keyMeta) {
+    BuildContext context,
+    WidgetRef ref,
+    SshKeyMeta keyMeta,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -236,7 +248,10 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
   }
 
   Future<void> _deleteKey(
-      BuildContext context, WidgetRef ref, SshKeyMeta keyMeta) async {
+    BuildContext context,
+    WidgetRef ref,
+    SshKeyMeta keyMeta,
+  ) async {
     try {
       final storage = ref.read(secureStorageProvider);
       final keysNotifier = ref.read(keysProvider.notifier);
@@ -328,9 +343,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '秘密鍵を読み出せない鍵があります。削除するか、そのまま残すかを選択してください。',
-                    ),
+                    const Text('秘密鍵を読み出せない鍵があります。削除するか、そのまま残すかを選択してください。'),
                     const SizedBox(height: 12),
                     Flexible(
                       child: ListView(
@@ -408,8 +421,6 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
   /// フィンガープリントの先頭を短縮表示する
   String _shortFingerprint(String? fingerprint) {
     if (fingerprint == null) return '';
-    return fingerprint.length > 12
-        ? fingerprint.substring(0, 12)
-        : fingerprint;
+    return fingerprint.length > 12 ? fingerprint.substring(0, 12) : fingerprint;
   }
 }

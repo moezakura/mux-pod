@@ -90,8 +90,11 @@ class MultiplexerWindowTile extends StatelessWidget {
                     value: 'rename',
                     child: Row(
                       children: [
-                        Icon(Icons.drive_file_rename_outline, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.drive_file_rename_outline,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
                         const Text('Rename Window'),
                       ],
@@ -102,8 +105,11 @@ class MultiplexerWindowTile extends StatelessWidget {
                     value: 'resize',
                     child: Row(
                       children: [
-                        Icon(Icons.aspect_ratio, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.aspect_ratio,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
                         Text(resizeLabel ?? 'Resize Window'),
                       ],
@@ -116,7 +122,10 @@ class MultiplexerWindowTile extends StatelessWidget {
                       children: [
                         Icon(Icons.close, size: 18, color: DesignColors.error),
                         const SizedBox(width: 8),
-                        Text('Close Window', style: TextStyle(color: DesignColors.error)),
+                        Text(
+                          'Close Window',
+                          style: TextStyle(color: DesignColors.error),
+                        ),
                       ],
                     ),
                   ),
@@ -218,8 +227,11 @@ class MultiplexerPaneTile extends StatelessWidget {
                     value: 'resize',
                     child: Row(
                       children: [
-                        Icon(Icons.aspect_ratio, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.aspect_ratio,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
                         const Text('Resize Pane'),
                       ],
@@ -232,8 +244,10 @@ class MultiplexerPaneTile extends StatelessWidget {
                       children: [
                         Icon(Icons.close, size: 18, color: DesignColors.error),
                         const SizedBox(width: 8),
-                        Text('Close Pane',
-                            style: TextStyle(color: DesignColors.error)),
+                        Text(
+                          'Close Pane',
+                          style: TextStyle(color: DesignColors.error),
+                        ),
                       ],
                     ),
                   ),

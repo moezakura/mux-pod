@@ -12,10 +12,8 @@ void main() {
 
   List<int> b(String s) => utf8.encode(s);
 
-  ShellMarkerScanner newScanner() => ShellMarkerScanner(
-        startMarker: b(startStr),
-        endMarker: b(endStr),
-      );
+  ShellMarkerScanner newScanner() =>
+      ShellMarkerScanner(startMarker: b(startStr), endMarker: b(endStr));
 
   String? decode(List<int>? bytes) =>
       bytes == null ? null : utf8.decode(bytes, allowMalformed: true);

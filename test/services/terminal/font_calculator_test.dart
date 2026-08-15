@@ -240,27 +240,63 @@ void main() {
 
     group('getCharDisplayWidth', () {
       test('returns 1 for ASCII characters', () {
-        expect(FontCalculator.getCharDisplayWidth('a'.codeUnitAt(0)), equals(1));
-        expect(FontCalculator.getCharDisplayWidth('Z'.codeUnitAt(0)), equals(1));
-        expect(FontCalculator.getCharDisplayWidth('0'.codeUnitAt(0)), equals(1));
-        expect(FontCalculator.getCharDisplayWidth('!'.codeUnitAt(0)), equals(1));
-        expect(FontCalculator.getCharDisplayWidth(' '.codeUnitAt(0)), equals(1));
+        expect(
+          FontCalculator.getCharDisplayWidth('a'.codeUnitAt(0)),
+          equals(1),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('Z'.codeUnitAt(0)),
+          equals(1),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('0'.codeUnitAt(0)),
+          equals(1),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('!'.codeUnitAt(0)),
+          equals(1),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth(' '.codeUnitAt(0)),
+          equals(1),
+        );
       });
 
       test('returns 2 for Japanese hiragana', () {
-        expect(FontCalculator.getCharDisplayWidth('あ'.codeUnitAt(0)), equals(2));
-        expect(FontCalculator.getCharDisplayWidth('い'.codeUnitAt(0)), equals(2));
-        expect(FontCalculator.getCharDisplayWidth('う'.codeUnitAt(0)), equals(2));
+        expect(
+          FontCalculator.getCharDisplayWidth('あ'.codeUnitAt(0)),
+          equals(2),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('い'.codeUnitAt(0)),
+          equals(2),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('う'.codeUnitAt(0)),
+          equals(2),
+        );
       });
 
       test('returns 2 for Japanese katakana', () {
-        expect(FontCalculator.getCharDisplayWidth('ア'.codeUnitAt(0)), equals(2));
-        expect(FontCalculator.getCharDisplayWidth('イ'.codeUnitAt(0)), equals(2));
+        expect(
+          FontCalculator.getCharDisplayWidth('ア'.codeUnitAt(0)),
+          equals(2),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('イ'.codeUnitAt(0)),
+          equals(2),
+        );
       });
 
       test('returns 2 for CJK ideographs (kanji)', () {
-        expect(FontCalculator.getCharDisplayWidth('漢'.codeUnitAt(0)), equals(2));
-        expect(FontCalculator.getCharDisplayWidth('字'.codeUnitAt(0)), equals(2));
+        expect(
+          FontCalculator.getCharDisplayWidth('漢'.codeUnitAt(0)),
+          equals(2),
+        );
+        expect(
+          FontCalculator.getCharDisplayWidth('字'.codeUnitAt(0)),
+          equals(2),
+        );
       });
 
       test('returns 2 for fullwidth characters', () {
@@ -279,7 +315,10 @@ void main() {
 
       test('returns 0 for control characters', () {
         expect(FontCalculator.getCharDisplayWidth(0x00), equals(0)); // NUL
-        expect(FontCalculator.getCharDisplayWidth(0x1F), equals(0)); // Unit Separator
+        expect(
+          FontCalculator.getCharDisplayWidth(0x1F),
+          equals(0),
+        ); // Unit Separator
         expect(FontCalculator.getCharDisplayWidth(0x7F), equals(0)); // DEL
       });
 
@@ -413,20 +452,44 @@ void main() {
         // え: 1 code unit, 2 columns -> cu 10
         // お: 1 code unit, 2 columns -> cu 11
 
-        expect(FontCalculator.columnToCharOffset(text, 0), equals(0));  // Start
-        expect(FontCalculator.columnToCharOffset(text, 2), equals(1));  // After ＊, start of ✡
-        expect(FontCalculator.columnToCharOffset(text, 4), equals(3));  // After ✡️, start of 💩
-        expect(FontCalculator.columnToCharOffset(text, 6), equals(5));  // After 💩, start of first 'a'
-        expect(FontCalculator.columnToCharOffset(text, 8), equals(7));  // After 'aa', start of 'あ'
-        expect(FontCalculator.columnToCharOffset(text, 18), equals(12)); // End of text
+        expect(FontCalculator.columnToCharOffset(text, 0), equals(0)); // Start
+        expect(
+          FontCalculator.columnToCharOffset(text, 2),
+          equals(1),
+        ); // After ＊, start of ✡
+        expect(
+          FontCalculator.columnToCharOffset(text, 4),
+          equals(3),
+        ); // After ✡️, start of 💩
+        expect(
+          FontCalculator.columnToCharOffset(text, 6),
+          equals(5),
+        ); // After 💩, start of first 'a'
+        expect(
+          FontCalculator.columnToCharOffset(text, 8),
+          equals(7),
+        ); // After 'aa', start of 'あ'
+        expect(
+          FontCalculator.columnToCharOffset(text, 18),
+          equals(12),
+        ); // End of text
       });
 
       test('handles text with multiple surrogate pairs', () {
         const text = '💩💩a'; // 2 + 2 + 1 = 5 columns, 2 + 2 + 1 = 5 code units
         expect(FontCalculator.columnToCharOffset(text, 0), equals(0));
-        expect(FontCalculator.columnToCharOffset(text, 2), equals(2)); // After first 💩
-        expect(FontCalculator.columnToCharOffset(text, 4), equals(4)); // After second 💩
-        expect(FontCalculator.columnToCharOffset(text, 5), equals(5)); // After 'a'
+        expect(
+          FontCalculator.columnToCharOffset(text, 2),
+          equals(2),
+        ); // After first 💩
+        expect(
+          FontCalculator.columnToCharOffset(text, 4),
+          equals(4),
+        ); // After second 💩
+        expect(
+          FontCalculator.columnToCharOffset(text, 5),
+          equals(5),
+        ); // After 'a'
       });
 
       test('returns 0 for empty string', () {
@@ -493,7 +556,10 @@ void main() {
           equals(1),
         );
         expect(
-          FontCalculator.getCharDisplayWidthWithContext(0x2721, 'a'.codeUnitAt(0)),
+          FontCalculator.getCharDisplayWidthWithContext(
+            0x2721,
+            'a'.codeUnitAt(0),
+          ),
           equals(1),
         );
       });
