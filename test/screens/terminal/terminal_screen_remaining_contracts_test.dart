@@ -138,7 +138,9 @@ void main() {
       tester,
     ) async {
       await TerminalTestScaffold.pumpTerminalScreen(tester);
-      expect(find.text('0ms'), findsOneWidget);
+      // レイテンシは実壁時計 (DateTime.now) で測定されるため、環境速度により
+      // 0ms になるとは限らない。表示されていることのみを検証する。
+      expect(find.textContaining(RegExp(r'^\d+ms$')), findsOneWidget);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(TerminalScreen)),
       );
