@@ -4,5 +4,146 @@
   "languageSystem": "システム",
   "languageSystemDescription": "システム（端末に従う）",
   "languageJapanese": "日本語",
-  "languageEnglish": "English"
+  "languageEnglish": "English",
+  "appCancel": "キャンセル",
+  "appServerNotFound": "サーバーが見つかりません: {server}",
+  "@appServerNotFound": {
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
+  },
+  "appWindowCount": "{count}ウィンドウ",
+  "@appWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileHideHiddenFiles": "隠しファイルを非表示",
+  "fileShowHiddenFiles": "隠しファイルを表示",
+  "fileSort": "並べ替え",
+  "fileSortAscending": "昇順",
+  "fileSortDescending": "降順",
+  "fileSortName": "名前",
+  "fileSortSize": "サイズ",
+  "fileSortDate": "更新日時",
+  "fileSortType": "種類",
+  "fileLoading": "読み込み中...",
+  "fileErrorOccurred": "エラーが発生しました",
+  "fileRetry": "再試行",
+  "fileEmptyDirectory": "このディレクトリは空です",
+  "fileOpen": "開く",
+  "fileRename": "名前を変更",
+  "fileRenameConfirm": "変更",
+  "fileRenameSuccess": "名前を変更しました",
+  "fileRenameFailure": "名前の変更に失敗しました",
+  "fileDelete": "削除",
+  "fileDeleteConfirmTitle": "削除の確認",
+  "fileDeleteConfirmMessage": "{type}「{name}」を削除しますか？\nこの操作は取り消せません。",
+  "@fileDeleteConfirmMessage": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fileTypeDirectory": "ディレクトリ",
+  "fileTypeFile": "ファイル",
+  "fileDeleteSuccess": "削除しました",
+  "fileDeleteFailure": "削除に失敗しました",
+  "fileNewFolder": "新しいフォルダ",
+  "fileFolderNameHint": "フォルダ名",
+  "fileCreate": "作成",
+  "fileCreateFolderSuccess": "フォルダを作成しました",
+  "fileCreateFolderFailure": "フォルダの作成に失敗しました",
+  "notifAlerts": "アラート",
+  "notifRefreshAlerts": "アラートを更新",
+  "notifNoAlerts": "アラートはありません",
+  "notifAllPanesQuiet": "すべてのペインは静かです",
+  "notifDismiss": "閉じる",
+  "notifFlagBell": "ベル",
+  "notifFlagActivity": "アクティビティ",
+  "notifFlagSilence": "サイレンス",
+  "notifFlagAlert": "アラート",
+  "dashRecentSessions": "最近のセッション",
+  "dashNoRecentSessions": "最近のセッションはありません",
+  "dashConnectToServerToStart": "サーバーに接続して始めましょう",
+  "dashRemove": "削除",
+  "dashRemoveFromHistoryTitle": "履歴から削除しますか？",
+  "dashRemoveFromHistoryMessage": "「{name}」を最近のセッションから削除しますか？\n\ntmuxセッションはサーバー上で継続します。",
+  "@dashRemoveFromHistoryMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dashDamagedKeyInUse": "破損した鍵を使用中",
+  "dashTimeJustNow": "たった今",
+  "dashTimeMinutesAgo": "{count}分前",
+  "@dashTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeHoursAgo": "{count}時間前",
+  "@dashTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeDaysAgo": "{count}日前",
+  "@dashTimeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeWeeksAgo": "{count}週間前",
+  "@dashTimeWeeksAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeServers": "サーバー",
+  "homeKeys": "鍵",
+  "homeNotify": "通知",
+  "homeSettings": "設定",
+  "homeActiveSessions": "アクティブなセッション",
+  "homeReloadSessions": "セッションを再読み込み",
+  "homeNoActiveSessions": "アクティブなセッションはありません",
+  "homeConnectToServerToStartTerminal": "サーバーに接続してターミナルセッションを開始してください",
+  "homeCloseSessionTitle": "セッションを閉じますか？",
+  "homeCloseSessionMessage": "「{name}」をアクティブなセッションから削除しますか？",
+  "@homeCloseSessionMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeClose": "閉じる",
+  "homeLastWindow": "最後: W{index}",
+  "@homeLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAttached": "接続中",
+  "homeDetached": "未接続"
 }

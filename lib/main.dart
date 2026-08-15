@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/l10n/app_localizations.dart';
+import 'package:flutter_muxpod/l10n/l10n_ext.dart';
 import 'package:flutter_muxpod/screens/home_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/deep_link/deep_link_service.dart';
@@ -99,13 +100,16 @@ class _MyAppState extends ConsumerState<MyApp> {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
 
+    final server = data.server;
+    if (server == null) return;
+
     final connection = ref.read(connectionsProvider.notifier)
-        .findByDeepLinkIdOrName(data.server!);
+        .findByDeepLinkIdOrName(server);
 
     if (connection == null) {
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
-          content: Text('Server not found: ${data.server}'),
+          content: Text(navigator.context.l10n.appServerNotFound(server)),
           backgroundColor: Colors.red,
         ),
       );

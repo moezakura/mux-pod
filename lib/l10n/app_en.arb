@@ -4,5 +4,146 @@
   "languageSystem": "System",
   "languageSystemDescription": "System (follow device)",
   "languageJapanese": "日本語",
-  "languageEnglish": "English"
+  "languageEnglish": "English",
+  "appCancel": "Cancel",
+  "appServerNotFound": "Server not found: {server}",
+  "@appServerNotFound": {
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
+  },
+  "appWindowCount": "{count, plural, =1{1 window} other{{count} windows}}",
+  "@appWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileHideHiddenFiles": "Hide hidden files",
+  "fileShowHiddenFiles": "Show hidden files",
+  "fileSort": "Sort",
+  "fileSortAscending": "Ascending",
+  "fileSortDescending": "Descending",
+  "fileSortName": "Name",
+  "fileSortSize": "Size",
+  "fileSortDate": "Date modified",
+  "fileSortType": "Type",
+  "fileLoading": "Loading...",
+  "fileErrorOccurred": "An error occurred",
+  "fileRetry": "Retry",
+  "fileEmptyDirectory": "This directory is empty",
+  "fileOpen": "Open",
+  "fileRename": "Rename",
+  "fileRenameConfirm": "Change",
+  "fileRenameSuccess": "Renamed successfully",
+  "fileRenameFailure": "Failed to rename",
+  "fileDelete": "Delete",
+  "fileDeleteConfirmTitle": "Confirm deletion",
+  "fileDeleteConfirmMessage": "Delete {type} \"{name}\"?\nThis action cannot be undone.",
+  "@fileDeleteConfirmMessage": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fileTypeDirectory": "directory",
+  "fileTypeFile": "file",
+  "fileDeleteSuccess": "Deleted",
+  "fileDeleteFailure": "Failed to delete",
+  "fileNewFolder": "New Folder",
+  "fileFolderNameHint": "Folder name",
+  "fileCreate": "Create",
+  "fileCreateFolderSuccess": "Folder created",
+  "fileCreateFolderFailure": "Failed to create folder",
+  "notifAlerts": "Alerts",
+  "notifRefreshAlerts": "Refresh alerts",
+  "notifNoAlerts": "No alerts",
+  "notifAllPanesQuiet": "All panes are quiet",
+  "notifDismiss": "Dismiss",
+  "notifFlagBell": "Bell",
+  "notifFlagActivity": "Activity",
+  "notifFlagSilence": "Silence",
+  "notifFlagAlert": "Alert",
+  "dashRecentSessions": "Recent Sessions",
+  "dashNoRecentSessions": "No recent sessions",
+  "dashConnectToServerToStart": "Connect to a server to get started",
+  "dashRemove": "Remove",
+  "dashRemoveFromHistoryTitle": "Remove from History?",
+  "dashRemoveFromHistoryMessage": "Remove \"{name}\" from recent sessions?\n\nThe tmux session will remain active on the server.",
+  "@dashRemoveFromHistoryMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dashDamagedKeyInUse": "Damaged key in use",
+  "dashTimeJustNow": "Just now",
+  "dashTimeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "@dashTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@dashTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@dashTimeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeWeeksAgo": "{count, plural, =1{1 week ago} other{{count} weeks ago}}",
+  "@dashTimeWeeksAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeServers": "Servers",
+  "homeKeys": "Keys",
+  "homeNotify": "Notify",
+  "homeSettings": "Settings",
+  "homeActiveSessions": "Active Sessions",
+  "homeReloadSessions": "Reload sessions",
+  "homeNoActiveSessions": "No Active Sessions",
+  "homeConnectToServerToStartTerminal": "Connect to a server to start a terminal session",
+  "homeCloseSessionTitle": "Close Session?",
+  "homeCloseSessionMessage": "Remove \"{name}\" from active sessions?",
+  "@homeCloseSessionMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeClose": "Close",
+  "homeLastWindow": "Last: W{index}",
+  "@homeLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAttached": "Attached",
+  "homeDetached": "Detached"
 }

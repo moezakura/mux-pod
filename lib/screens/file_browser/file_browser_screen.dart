@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/file_browser_provider.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/sftp/file_entry.dart';
 import '../../theme/design_colors.dart';
 import 'widgets/file_action_menu.dart';
@@ -102,12 +103,14 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
           ),
           onPressed: () =>
               ref.read(fileBrowserProvider.notifier).toggleShowHidden(),
-          tooltip: state.showHidden ? 'Hide hidden files' : 'Show hidden files',
+          tooltip: state.showHidden
+              ? context.l10n.fileHideHiddenFiles
+              : context.l10n.fileShowHiddenFiles,
         ),
         // ソートメニュー
         PopupMenuButton<_SortSelection>(
           icon: const Icon(Icons.sort, size: 22),
-          tooltip: 'Sort',
+          tooltip: context.l10n.fileSort,
           onSelected: (selection) {
             if (selection.isDirectionToggle) {
               ref.read(fileBrowserProvider.notifier).setSort(
@@ -130,7 +133,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                           ? const Icon(Icons.check, size: 18)
                           : null,
                     ),
-                    Text(_sortOptionLabel(option)),
+                    Text(_sortOptionLabel(context, option)),
                   ],
                 ),
               ),
@@ -145,7 +148,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                     size: 18,
                   ),
                   const SizedBox(width: 8),
-                  Text(state.sortAscending ? '昇順' : '降順'),
+                  Text(state.sortAscending
+                      ? context.l10n.fileSortAscending
+                      : context.l10n.fileSortDescending),
                 ],
               ),
             ),
@@ -157,14 +162,14 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
   Widget _buildBody(BuildContext context, FileBrowserState state, bool isDark) {
     if (state.isLoading) {
-      return const SliverFillRemaining(
+      return SliverFillRemaining(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('読み込み中...'),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(context.l10n.fileLoading),
             ],
           ),
         ),
@@ -187,7 +192,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'エラーが発生しました',
+                  context.l10n.fileErrorOccurred,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -207,7 +212,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
                 ElevatedButton.icon(
                   onPressed: () => ref.read(fileBrowserProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh, size: 18),
-                  label: const Text('再試行'),
+                  label: Text(context.l10n.fileRetry),
                 ),
               ],
             ),
@@ -232,7 +237,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'このディレクトリは空です',
+                context.l10n.fileEmptyDirectory,
                 style: TextStyle(
                   fontSize: 15,
                   color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -309,12 +314,12 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('名前を変更'),
+        title: Text(context.l10n.fileRename),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            border: const OutlineInputBorder(),
           ),
           style: TextStyle(
             color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
@@ -324,11 +329,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
+            child: Text(context.l10n.appCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('変更'),
+            child: Text(context.l10n.fileRenameConfirm),
           ),
         ],
       ),
@@ -341,7 +346,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? '名前を変更しました' : '名前の変更に失敗しました'),
+            content: Text(
+              success ? context.l10n.fileRenameSuccess : context.l10n.fileRenameFailure,
+            ),
             backgroundColor: success ? DesignColors.success : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -354,19 +361,24 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('削除の確認'),
+        title: Text(context.l10n.fileDeleteConfirmTitle),
         content: Text(
-          '${entry.isDirectory ? "ディレクトリ" : "ファイル"} "${entry.name}" を削除しますか？\nこの操作は取り消せません。',
+          context.l10n.fileDeleteConfirmMessage(
+            entry.isDirectory
+                ? context.l10n.fileTypeDirectory
+                : context.l10n.fileTypeFile,
+            entry.name,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('キャンセル'),
+            child: Text(context.l10n.appCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('削除'),
+            child: Text(context.l10n.fileDelete),
           ),
         ],
       ),
@@ -377,7 +389,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? '削除しました' : '削除に失敗しました'),
+            content: Text(
+              success ? context.l10n.fileDeleteSuccess : context.l10n.fileDeleteFailure,
+            ),
             backgroundColor: success ? DesignColors.success : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -393,13 +407,13 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('新しいフォルダ'),
+        title: Text(context.l10n.fileNewFolder),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'フォルダ名',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: context.l10n.fileFolderNameHint,
+            border: const OutlineInputBorder(),
           ),
           style: TextStyle(
             color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
@@ -409,11 +423,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('キャンセル'),
+            child: Text(context.l10n.appCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('作成'),
+            child: Text(context.l10n.fileCreate),
           ),
         ],
       ),
@@ -426,7 +440,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'フォルダを作成しました' : 'フォルダの作成に失敗しました'),
+            content: Text(
+              success
+                  ? context.l10n.fileCreateFolderSuccess
+                  : context.l10n.fileCreateFolderFailure,
+            ),
             backgroundColor: success ? DesignColors.success : DesignColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -435,12 +453,13 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     }
   }
 
-  String _sortOptionLabel(SortOption option) {
+  String _sortOptionLabel(BuildContext context, SortOption option) {
+    final l10n = context.l10n;
     return switch (option) {
-      SortOption.name => '名前',
-      SortOption.size => 'サイズ',
-      SortOption.date => '更新日時',
-      SortOption.type => '種類',
+      SortOption.name => l10n.fileSortName,
+      SortOption.size => l10n.fileSortSize,
+      SortOption.date => l10n.fileSortDate,
+      SortOption.type => l10n.fileSortType,
     };
   }
 }
