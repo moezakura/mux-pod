@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../l10n/l10n_ext.dart';
 import '../providers/active_session_provider.dart';
 import '../providers/connection_provider.dart';
 import '../services/backend/backend_type.dart';
@@ -93,7 +94,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 0,
                     icon: Icons.dns,
-                    label: 'Servers',
+                    label: context.l10n.homeServers,
                     isSelected: currentTab == 0,
                   ),
                   // Keys（左寄り）
@@ -102,7 +103,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 1,
                     icon: Icons.key,
-                    label: 'Keys',
+                    label: context.l10n.homeKeys,
                     isSelected: currentTab == 1,
                   ),
                   // 中央スペーサー（Dashboardボタンの場所）
@@ -113,7 +114,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 3,
                     icon: Icons.notifications_outlined,
-                    label: 'Notify',
+                    label: context.l10n.homeNotify,
                     isSelected: currentTab == 3,
                   ),
                   // Settings（右端）
@@ -122,7 +123,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 4,
                     icon: Icons.settings,
-                    label: 'Settings',
+                    label: context.l10n.homeSettings,
                     isSelected: currentTab == 4,
                   ),
                 ],
@@ -325,7 +326,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
         title: Text(
-          'Active Sessions',
+          context.l10n.homeActiveSessions,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -350,7 +351,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
                   color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
                 ),
           onPressed: _isReloading ? null : _reloadSessions,
-          tooltip: 'Reload sessions',
+          tooltip: context.l10n.homeReloadSessions,
         ),
         IconButton(
           icon: Icon(
@@ -358,7 +359,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
           ),
           onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
-          tooltip: 'Settings',
+          tooltip: context.l10n.homeSettings,
         ),
         const SizedBox(width: 8),
       ],
@@ -500,7 +501,7 @@ class _EmptySessionsView extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'No Active Sessions',
+            context.l10n.homeNoActiveSessions,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -509,7 +510,7 @@ class _EmptySessionsView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Connect to a server to start a terminal session',
+            context.l10n.homeConnectToServerToStartTerminal,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
               color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -563,25 +564,27 @@ class _SessionCard extends StatelessWidget {
             return AlertDialog(
               backgroundColor: dialogColorScheme.surface,
               title: Text(
-                'Close Session?',
+                dialogContext.l10n.homeCloseSessionTitle,
                 style: GoogleFonts.spaceGrotesk(
                   fontWeight: FontWeight.w700,
                   color: dialogColorScheme.onSurface,
                 ),
               ),
               content: Text(
-                'Remove "${session.sessionName}" from active sessions?',
+                dialogContext.l10n.homeCloseSessionMessage(
+                  session.sessionName,
+                ),
                 style: GoogleFonts.spaceGrotesk(color: dialogColorScheme.onSurfaceVariant),
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('Cancel'),
+                  child: Text(dialogContext.l10n.appCancel),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
                   style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-                  child: const Text('Close'),
+                  child: Text(dialogContext.l10n.homeClose),
                 ),
               ],
             );
@@ -660,7 +663,7 @@ class _SessionCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          '${session.windowCount} windows',
+                          context.l10n.appWindowCount(session.windowCount),
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
                             color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -682,7 +685,9 @@ class _SessionCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            'Last: W${session.lastWindowIndex ?? 0}',
+                            context.l10n.homeLastWindow(
+                              session.lastWindowIndex ?? 0,
+                            ),
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 10,
                               color: DesignColors.primary.withValues(alpha: 0.7),
@@ -713,7 +718,7 @@ class _SessionCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  isAttached ? 'Attached' : 'Detached',
+                  isAttached ? context.l10n.homeAttached : context.l10n.homeDetached,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,

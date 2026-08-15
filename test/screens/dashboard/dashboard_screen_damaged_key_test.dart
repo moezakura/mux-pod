@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/active_session_provider.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/dashboard/dashboard_screen.dart';
@@ -88,6 +89,8 @@ void main() {
           ),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: DashboardScreen(),
         ),
       ),
@@ -95,7 +98,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 破損キー使用中のバッジと警告アイコンが表示される
-    expect(find.text('破損した鍵を使用中'), findsOneWidget);
+    expect(find.text('Damaged key in use'), findsOneWidget);
     expect(find.byIcon(Icons.warning_amber), findsWidgets);
   });
 }
