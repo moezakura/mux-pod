@@ -443,7 +443,7 @@ void main() {
       await _tapChooserResize(tester);
 
       // 絶対値 UI（tmux と同構造）: 概算プレビュー・Cols/Rows 入力・プリセット。
-      expect(find.text('概算(estimated)'), findsOneWidget);
+      expect(find.text('Estimated'), findsOneWidget);
       expect(find.text('Cols'), findsOneWidget);
       expect(find.text('Rows'), findsOneWidget);
       expect(find.text('80x24 (Standard)'), findsOneWidget);
@@ -708,7 +708,7 @@ void main() {
       await _tapResizeDialogAndConfirm(tester, colsPlus: 4);
 
       expect(
-        find.text('分割境界のため変更なし'),
+        find.text('No change at the split boundary'),
         findsOneWidget,
         reason: 'changed:false は soft 失敗として情報通知されること',
       );

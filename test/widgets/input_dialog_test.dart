@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 /// Helper that wraps the dialog content in a testable widget tree.
 Widget _buildWidget({
@@ -10,6 +11,8 @@ Widget _buildWidget({
   required Future<void> Function(String) onSend,
 }) {
   return MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
     home: Scaffold(
       body: buildInputDialogContentForTesting(
         initialValue: initialValue,

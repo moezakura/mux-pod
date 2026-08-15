@@ -1770,7 +1770,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(
-          find.text('このキーは herdr で送信できませんでした'),
+          find.text('This key could not be sent via herdr'),
           findsOneWidget,
           reason: 'invalid_key は防御的に SnackBar 通知されること',
         );

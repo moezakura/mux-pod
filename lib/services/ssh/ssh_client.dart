@@ -8,6 +8,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../backend/multiplexer_config.dart';
 import '../command/command_executor.dart';
+import '../../l10n/app_localizations.dart';
 import '../command/command_request.dart';
 import '../command/command_result.dart';
 import '../connection_error.dart';
@@ -173,6 +174,9 @@ class SshClient implements BackendAdapter {
   SshEvents _events = const SshEvents();
   String? _lastError;
 
+  /// ローカライズ文字列（[connect] の [l10n] 引数で設定。null 時は英語フォールバック）。
+  AppLocalizations? _l10n;
+
   StreamSubscription<Uint8List>? _stdoutSubscription;
   StreamSubscription<Uint8List>? _stderrSubscription;
 
@@ -296,7 +300,10 @@ class SshClient implements BackendAdapter {
   /// 呼び出し側で close() を呼んではならない。
   Future<SftpClient> openSftp() async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('SFTP requires an active SSH connection');
+      throw SshConnectionError(
+        _l10n?.sshSftpRequiresConnection ??
+            'SFTP requires an active SSH connection',
+      );
     }
     if (_cachedSftp != null) {
       debugPrint('[SshClient] openSftp: returning cached SftpClient');
@@ -321,7 +328,11 @@ class SshClient implements BackendAdapter {
     required String username,
     required SshConnectOptions options,
     bool lightweight = false,
+    AppLocalizations? l10n,
   }) async {
+    // ローカライズ文字列を保持（null 時は英語フォールバック・テスト互換）。
+    _l10n = l10n;
+
     // バリデーション
     // inventory: SSH-LIFE-016
     _validateConnectionParams(host, port, username, options);
@@ -432,18 +443,24 @@ class SshClient implements BackendAdapter {
       }
     } on SocketException catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Connection failed: ${e.message}';
+      _lastError =
+          _l10n?.connTestConnectionFailed(e.message) ??
+          'Connection failed: ${e.message}';
       // inventory: SSH-LIFE-020
       await _cleanup();
       throw SshConnectionError(_lastError!, e);
     } on SSHAuthFailError catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Authentication failed: ${e.message}';
+      _lastError =
+          _l10n?.connTestAuthFailed(e.message) ??
+          'Authentication failed: ${e.message}';
       await _cleanup();
       throw SshAuthenticationError(_lastError!, e);
     } catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Connection failed: $e';
+      _lastError =
+          _l10n?.connTestConnectionFailed(e.toString()) ??
+          'Connection failed: $e';
       await _cleanup();
       throw SshConnectionError(_lastError!, e);
     }
@@ -457,17 +474,22 @@ class SshClient implements BackendAdapter {
     SshConnectOptions options,
   ) {
     if (host.trim().isEmpty) {
-      throw SshConnectionError('Host is required');
+      throw SshConnectionError(_l10n?.sshHostRequired ?? 'Host is required');
     }
     if (username.trim().isEmpty) {
-      throw SshConnectionError('Username is required');
+      throw SshConnectionError(
+        _l10n?.sshUsernameRequired ?? 'Username is required',
+      );
     }
     if (port < 1 || port > 65535) {
-      throw SshConnectionError('Invalid port number: $port');
+      throw SshConnectionError(
+        _l10n?.sshInvalidPortNumber(port) ?? 'Invalid port number: $port',
+      );
     }
     if (options.password == null && options.privateKey == null) {
       throw SshAuthenticationError(
-        'Either password or privateKey must be provided',
+        _l10n?.sshCredentialRequired ??
+            'Either password or privateKey must be provided',
       );
     }
   }
@@ -536,19 +558,28 @@ class SshClient implements BackendAdapter {
       // SSHKeyPair.fromPem は List<SSHKeyPair> を返す
       final keyPairs = SSHKeyPair.fromPem(privateKey, passphrase);
       if (keyPairs.isEmpty) {
-        throw SshAuthenticationError('No valid key found in PEM data');
+        throw SshAuthenticationError(
+          _l10n?.sshNoValidKeyInPem ?? 'No valid key found in PEM data',
+        );
       }
       return keyPairs;
     } on FormatException catch (e) {
-      throw SshAuthenticationError('Invalid private key format: ${e.message}');
+      throw SshAuthenticationError(
+        _l10n?.sshInvalidPrivateKeyFormat(e.message) ??
+            'Invalid private key format: ${e.message}',
+      );
     } catch (e) {
       if (e is SshAuthenticationError) rethrow;
       if (passphrase == null && privateKey.contains('ENCRYPTED')) {
         throw SshAuthenticationError(
-          'Private key is encrypted, passphrase required',
+          _l10n?.sshPrivateKeyEncrypted ??
+              'Private key is encrypted, passphrase required',
         );
       }
-      throw SshAuthenticationError('Failed to parse private key: $e');
+      throw SshAuthenticationError(
+        _l10n?.sshParsePrivateKeyFailed(e.toString()) ??
+            'Failed to parse private key: $e',
+      );
     }
   }
 
@@ -635,7 +666,7 @@ class SshClient implements BackendAdapter {
     try {
       final factory = _persistentShellFactory;
       if (factory != null) return await factory(client);
-      final shell = PersistentShell(client);
+      final shell = PersistentShell(client, l10n: _l10n);
       await shell.start();
       return shell;
     } catch (_) {
@@ -765,7 +796,8 @@ class SshClient implements BackendAdapter {
     } catch (e) {
       _adjustKeepAliveInterval(success: false);
       // Keep-alive失敗 = 接続切断
-      _lastError = 'Connection lost: $e';
+      _lastError =
+          _l10n?.sshConnectionLostDetail(e.toString()) ?? 'Connection lost: $e';
       _updateState(SshConnectionState.error);
       _events.onError?.call(SshConnectionError(_lastError!));
       _events.onClose?.call();
@@ -779,7 +811,7 @@ class SshClient implements BackendAdapter {
   /// [options] シェルオプション
   Future<void> startShell([ShellOptions options = const ShellOptions()]) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
 
     try {
@@ -806,7 +838,10 @@ class SshClient implements BackendAdapter {
         onError: _handleError,
       );
     } catch (e) {
-      throw SshConnectionError('Failed to start shell: $e', e);
+      throw SshConnectionError(
+        _l10n?.sshStartShellFailed(e.toString()) ?? 'Failed to start shell: $e',
+        e,
+      );
     }
   }
 
@@ -846,7 +881,7 @@ class SshClient implements BackendAdapter {
     required int rows,
   }) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
     // 二重 start: 既存 managed session を close（channel リーク防止）。
     final previous = _managedPty;
@@ -871,7 +906,10 @@ class SshClient implements BackendAdapter {
   // inventory: LEGACY-0155
   void write(String data) {
     if (!isConnected || _session == null) {
-      throw SshConnectionError('Not connected or shell not started');
+      throw SshConnectionError(
+        _l10n?.sshNotConnectedOrShellNotStarted ??
+            'Not connected or shell not started',
+      );
     }
     _session!.write(utf8.encode(data));
   }
@@ -883,7 +921,10 @@ class SshClient implements BackendAdapter {
   /// [data] 送信データ（バイト）
   void writeBytes(Uint8List data) {
     if (!isConnected || _session == null) {
-      throw SshConnectionError('Not connected or shell not started');
+      throw SshConnectionError(
+        _l10n?.sshNotConnectedOrShellNotStarted ??
+            'Not connected or shell not started',
+      );
     }
     _session!.write(data);
   }
@@ -920,7 +961,7 @@ class SshClient implements BackendAdapter {
   @override
   Future<CommandResult> execute(CommandRequest request) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
     if (!request.isValid) {
       throw ArgumentError(
@@ -947,7 +988,10 @@ class SshClient implements BackendAdapter {
     // persistent 経路（outputOnly / exitCode・PTY では merged になる）。
     if (_persistentShell == null || !_persistentShell!.isStarted) {
       if (request.transport == CommandTransportPreference.persistentOnly) {
-        throw SshConnectionError('Persistent shell is not available');
+        throw SshConnectionError(
+          _l10n?.sshPersistentShellUnavailable ??
+              'Persistent shell is not available',
+        );
       }
       final result = await _executeEphemeral(request);
       return CommandResult(
@@ -1024,7 +1068,7 @@ class SshClient implements BackendAdapter {
     CommandRequest request,
   ) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
 
     try {
@@ -1075,9 +1119,15 @@ class SshClient implements BackendAdapter {
         );
       });
     } on TimeoutException {
-      throw SshConnectionError('Command execution timed out');
+      throw SshConnectionError(
+        _l10n?.sshCommandTimedOut ?? 'Command execution timed out',
+      );
     } catch (e) {
-      throw SshConnectionError('Failed to execute command: $e', e);
+      throw SshConnectionError(
+        _l10n?.sshExecuteCommandFailed(e.toString()) ??
+            'Failed to execute command: $e',
+        e,
+      );
     }
   }
 

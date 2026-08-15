@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../../../providers/key_provider.dart';
 
 /// SSH鍵を表示するタイルウィジェット
@@ -72,13 +73,13 @@ class KeyTile extends StatelessWidget {
           }
         },
         itemBuilder: (context) => [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'copy',
             child: Row(
               children: [
-                Icon(Icons.copy),
-                SizedBox(width: 8),
-                Text('Copy Public Key'),
+                const Icon(Icons.copy),
+                const SizedBox(width: 8),
+                Text(context.l10n.keyMgmtCopyPublicKey),
               ],
             ),
           ),
@@ -89,7 +90,7 @@ class KeyTile extends StatelessWidget {
                 Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
                 const SizedBox(width: 8),
                 Text(
-                  'Delete',
+                  context.l10n.keyMgmtDelete,
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
               ],
@@ -132,7 +133,9 @@ class KeyTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        isGenerated ? 'Generated' : 'Imported',
+        isGenerated
+            ? context.l10n.keyMgmtGenerated
+            : context.l10n.keyMgmtImported,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 9,
           color: isGenerated
@@ -153,7 +156,7 @@ class KeyTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '使用不可',
+        context.l10n.keyMgmtUnavailable,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 9,
           color: colorScheme.onErrorContainer,

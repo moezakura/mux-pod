@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n_ext.dart';
+
 /// テーマ選択ダイアログ
 class ThemeDialog extends StatelessWidget {
   final bool isDarkMode;
@@ -10,13 +12,14 @@ class ThemeDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Theme'),
+      title: Text(l10n.themeTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           RadioListTile<bool>(
-            title: const Text('Dark'),
+            title: Text(l10n.themeDark),
             value: true,
             groupValue: isDarkMode,
             onChanged: (value) {
@@ -26,7 +29,7 @@ class ThemeDialog extends StatelessWidget {
             },
           ),
           RadioListTile<bool>(
-            title: const Text('Light'),
+            title: Text(l10n.themeLight),
             value: false,
             groupValue: isDarkMode,
             onChanged: (value) {
@@ -40,7 +43,7 @@ class ThemeDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
       ],
     );

@@ -6,6 +6,8 @@ library;
 
 import 'dart:async';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_lookup.dart';
 import '../command/command_request.dart';
 import 'tmux_command_builder.dart';
 import 'tmux_command_executor.dart';
@@ -21,6 +23,12 @@ final TmuxContract tmuxFacade = TmuxFacade();
 
 // inventory: TMUX-FACADE-002
 class TmuxFacade implements TmuxContract {
+  /// 任意のローカライズ文字列。null の場合は英語フォールバック（テスト互換）。
+  /// グローバルシングルトン [tmuxFacade] は生成時に渡されないため null のまま。
+  final AppLocalizations? _l10n;
+
+  TmuxFacade({AppLocalizations? l10n}) : _l10n = l10n;
+
   @override
   List<TmuxSession> parseSessions(String output) =>
       TmuxParser.parseSessions(output);
@@ -534,7 +542,9 @@ class TmuxFacade implements TmuxContract {
       throw TmuxCommandException(
         result.stderr.isNotEmpty
             ? result.stderr.trim()
-            : 'tmux command failed (exit code: ${result.exitCode})',
+            : (_l10n ?? lookupL10n()).connTmuxCommandFailed(
+                '${result.exitCode}',
+              ),
       );
     }
     return result.stdout;

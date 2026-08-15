@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../providers/key_provider.dart';
 import '../../services/keychain/ssh_key_service.dart';
 
@@ -30,7 +31,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Generate SSH Key')),
+      appBar: AppBar(title: Text(context.l10n.keyMgmtGenerateTitle)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -38,19 +39,19 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
           children: [
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Key Name',
-                hintText: 'My SSH Key',
+              decoration: InputDecoration(
+                labelText: context.l10n.keyMgmtKeyName,
+                hintText: context.l10n.keyMgmtKeyNameHint,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Please enter a name';
+                  return context.l10n.keyMgmtNameRequired;
                 }
                 return null;
               },
             ),
             const SizedBox(height: 24),
-            const Text('Key Type'),
+            Text(context.l10n.keyMgmtKeyType),
             const SizedBox(height: 8),
             SegmentedButton<String>(
               segments: const [
@@ -66,20 +67,20 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
             ),
             if (_keyType == 'rsa') ...[
               const SizedBox(height: 16),
-              const Text('RSA Key Size'),
+              Text(context.l10n.keyMgmtRsaKeySize),
               Slider(
                 value: _rsaBits.toDouble(),
                 min: 2048,
                 max: 4096,
                 divisions: 2,
-                label: '$_rsaBits bits',
+                label: context.l10n.keyMgmtBits(_rsaBits),
                 onChanged: (value) {
                   setState(() {
                     _rsaBits = value.toInt();
                   });
                 },
               ),
-              Center(child: Text('$_rsaBits bits')),
+              Center(child: Text(context.l10n.keyMgmtBits(_rsaBits))),
             ],
             const SizedBox(height: 32),
             FilledButton(
@@ -99,12 +100,12 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
                         ],
                       ],
                     )
-                  : const Text('Generate'),
+                  : Text(context.l10n.keyMgmtGenerate),
             ),
             if (_keyType == 'rsa') ...[
               const SizedBox(height: 8),
               Text(
-                'RSA key generation may take a few seconds',
+                context.l10n.keyMgmtRsaGenerationNote,
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),
@@ -120,7 +121,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
 
     setState(() {
       _isGenerating = true;
-      _statusMessage = 'Generating key...';
+      _statusMessage = context.l10n.keyMgmtGenerating;
     });
 
     try {
@@ -138,7 +139,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
       } else {
         // RSA生成は時間がかかる（UIをブロックするが許容範囲）
         setState(() {
-          _statusMessage = 'Generating RSA key...';
+          _statusMessage = context.l10n.keyMgmtGeneratingRsa;
         });
         // 一瞬UIを更新させるためにmicrotaskで実行
         await Future.delayed(const Duration(milliseconds: 50));
@@ -146,7 +147,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
       }
 
       setState(() {
-        _statusMessage = 'Saving key...';
+        _statusMessage = context.l10n.keyMgmtSaving;
       });
 
       // 秘密鍵をSecureStorageに保存
@@ -169,14 +170,14 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Key "$name" generated successfully')),
+          SnackBar(content: Text(context.l10n.keyMgmtGeneratedSuccess(name))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to generate key: $e'),
+            content: Text(context.l10n.keyMgmtGenerateFailed('$e')),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );

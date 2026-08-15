@@ -13,6 +13,8 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_lookup.dart';
 import '../backend/backend_adapter.dart';
 import '../command/command_request.dart';
 import '../command/command_result.dart';
@@ -28,8 +30,18 @@ class HerdrAdapter {
   final BackendAdapter _backend;
   final String? _userExecutablePath;
 
-  HerdrAdapter(this._backend, {String? userExecutablePath})
-    : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath;
+  /// 任意のローカライズ文字列。null の場合は英語フォールバック（テスト互換）。
+  final AppLocalizations? _l10n;
+
+  /// 解決済みローカライズ文字列。未指定時は設定言語キャッシュから解決する。
+  AppLocalizations get _strings => _l10n ?? lookupL10n();
+
+  HerdrAdapter(
+    this._backend, {
+    String? userExecutablePath,
+    AppLocalizations? l10n,
+  }) : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
+       _l10n = l10n;
 
   /// 接続中かどうか。
   bool get isConnected => _backend.isConnected;
@@ -49,10 +61,10 @@ class HerdrAdapter {
       status = HerdrStatusParser.parse(stdout);
     } on FormatException catch (e) {
       throw HerdrCommandException(
-        'Failed to parse herdr status output: ${e.message}',
+        _strings.connHerdrParseStatusFailed(e.message),
       );
     }
-    return HerdrPreflight.validate(status);
+    return HerdrPreflight.validate(status, l10n: _strings);
   }
 
   // inventory: HERDR-ADAPTER-003
@@ -66,7 +78,7 @@ class HerdrAdapter {
       return HerdrSnapshotParser.parse(stdout);
     } on FormatException catch (e) {
       throw HerdrCommandException(
-        'Failed to parse herdr snapshot output: ${e.message}',
+        _strings.connHerdrParseSnapshotFailed(e.message),
       );
     }
   }
@@ -362,9 +374,7 @@ class HerdrAdapter {
     final exitCode = result.exitCode;
 
     if (exitCode == null && result.stdout.trim().isEmpty && stderr.isEmpty) {
-      throw SshConnectionError(
-        'Command channel closed without exit status or output: $resolved',
-      );
+      throw SshConnectionError(_strings.connHerdrChannelClosed(resolved));
     }
 
     if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
@@ -493,9 +503,7 @@ class HerdrAdapter {
     final primary = result.primaryOutput;
 
     if (exitCode == null && primary.trim().isEmpty && stderr.isEmpty) {
-      throw SshConnectionError(
-        'Command channel closed without exit status or output: $resolved',
-      );
+      throw SshConnectionError(_strings.connHerdrChannelClosed(resolved));
     }
 
     if ((exitCode != null && exitCode != 0) || stderr.isNotEmpty) {
@@ -524,17 +532,30 @@ class HerdrAdapter {
   /// なく primaryOutput も対象にする（バグ2 根本対応）。
   String _buildErrorMessageFrom(CommandResult result) {
     final stderr = result.stderr.trim();
-    if (stderr.isNotEmpty) return 'herdr command failed: $stderr';
+    if (stderr.isNotEmpty) {
+      return _strings.connHerdrCommandFailed(stderr);
+    }
     final errorCode = _extractErrorCodeFrom(result);
     if (errorCode != null) {
-      return 'herdr command failed: $errorCode (exit code: ${result.exitCode})';
+      // エラーコードはサーバー由来（machine-readable）のためローカライズせず、
+      // プレフィックス部のみキー化する。元リテラルとの完全互換のため
+      // exitCode は null を含めて文字列化して渡す。
+      return _strings.connHerdrCommandFailedErrorCode(
+        errorCode,
+        '${result.exitCode}',
+      );
     }
     // 診断: 出力が空かどうか・何バイトあったかを付与する（コマンドは
     // 出力したが終了コードが異常・欠落したケースの判別用）。A8 のプライバシー
     // 規則に従い、出力の内容（snapshot JSON 等）は含めずバイト数のみ記録する。
     final primary = result.primaryOutput.trim();
-    final preview = primary.isEmpty ? '' : ', stdout(${primary.length}b)';
-    return 'herdr command failed (exit code: ${result.exitCode}$preview)';
+    if (primary.isEmpty) {
+      return _strings.connHerdrCommandFailedExitCode('${result.exitCode}');
+    }
+    return _strings.connHerdrCommandFailedExitCodePreview(
+      '${result.exitCode}',
+      primary.length,
+    );
   }
 
   /// 構造化エラー JSON の `error.code` を stdout / stderr の両方から探す

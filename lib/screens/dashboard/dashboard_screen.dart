@@ -6,6 +6,8 @@ import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
 import '../../providers/session_history_provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 import '../connections/connection_form_screen.dart';
 import '../terminal/terminal_screen.dart';
@@ -45,7 +47,7 @@ class DashboardScreen extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Text(
-                'Recent Sessions',
+                context.l10n.dashRecentSessions,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -108,7 +110,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'No recent sessions',
+            context.l10n.dashNoRecentSessions,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -119,7 +121,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Connect to a server to get started',
+            context.l10n.dashConnectToServerToStart,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
               color: isDark
@@ -225,7 +227,7 @@ class _SessionHistoryCard extends ConsumerWidget {
             const Icon(Icons.delete_outline, color: DesignColors.error),
             const SizedBox(height: 4),
             Text(
-              'Remove',
+              context.l10n.dashRemove,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 11,
                 color: DesignColors.error,
@@ -242,14 +244,16 @@ class _SessionHistoryCard extends ConsumerWidget {
                 return AlertDialog(
                   backgroundColor: dialogColorScheme.surface,
                   title: Text(
-                    'Remove from History?',
+                    dialogContext.l10n.dashRemoveFromHistoryTitle,
                     style: GoogleFonts.spaceGrotesk(
                       fontWeight: FontWeight.w700,
                       color: dialogColorScheme.onSurface,
                     ),
                   ),
                   content: Text(
-                    'Remove "${session.sessionName}" from recent sessions?\n\nThe tmux session will remain active on the server.',
+                    dialogContext.l10n.dashRemoveFromHistoryMessage(
+                      session.sessionName,
+                    ),
                     style: GoogleFonts.spaceGrotesk(
                       color: dialogColorScheme.onSurfaceVariant,
                     ),
@@ -257,14 +261,14 @@ class _SessionHistoryCard extends ConsumerWidget {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(dialogContext, false),
-                      child: const Text('Cancel'),
+                      child: Text(dialogContext.l10n.appCancel),
                     ),
                     TextButton(
                       onPressed: () => Navigator.pop(dialogContext, true),
                       style: TextButton.styleFrom(
                         foregroundColor: DesignColors.error,
                       ),
-                      child: const Text('Remove'),
+                      child: Text(dialogContext.l10n.dashRemove),
                     ),
                   ],
                 );
@@ -389,6 +393,7 @@ class _SessionHistoryCard extends ConsumerWidget {
                         ),
                         Text(
                           _formatRelativeTime(
+                            context.l10n,
                             session.lastAccessedAt ?? session.connectedAt,
                           ),
                           style: GoogleFonts.jetBrainsMono(
@@ -409,7 +414,7 @@ class _SessionHistoryCard extends ConsumerWidget {
                     Row(
                       children: [
                         Text(
-                          '${session.windowCount} windows',
+                          context.l10n.appWindowCount(session.windowCount),
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
                             color: isDark
@@ -434,7 +439,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            'W${session.lastWindowIndex ?? 0}',
+                            context.l10n.dashLastWindow(
+                              session.lastWindowIndex ?? 0,
+                            ),
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 10,
                               color: DesignColors.primary.withValues(
@@ -461,24 +468,20 @@ class _SessionHistoryCard extends ConsumerWidget {
     );
   }
 
-  String _formatRelativeTime(DateTime dateTime) {
+  String _formatRelativeTime(AppLocalizations l10n, DateTime dateTime) {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
     if (diff.inSeconds < 60) {
-      return 'Just now';
+      return l10n.dashTimeJustNow;
     } else if (diff.inMinutes < 60) {
-      final mins = diff.inMinutes;
-      return '$mins min${mins > 1 ? 's' : ''} ago';
+      return l10n.dashTimeMinutesAgo(diff.inMinutes);
     } else if (diff.inHours < 24) {
-      final hours = diff.inHours;
-      return '$hours hour${hours > 1 ? 's' : ''} ago';
+      return l10n.dashTimeHoursAgo(diff.inHours);
     } else if (diff.inDays < 7) {
-      final days = diff.inDays;
-      return '$days day${days > 1 ? 's' : ''} ago';
+      return l10n.dashTimeDaysAgo(diff.inDays);
     } else {
-      final weeks = (diff.inDays / 7).floor();
-      return '$weeks week${weeks > 1 ? 's' : ''} ago';
+      return l10n.dashTimeWeeksAgo((diff.inDays / 7).floor());
     }
   }
 
@@ -492,7 +495,7 @@ class _SessionHistoryCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '破損した鍵を使用中',
+        context.l10n.dashDamagedKeyInUse,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: 9,
           color: colorScheme.onErrorContainer,

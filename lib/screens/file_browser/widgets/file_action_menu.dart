@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../../../services/sftp/file_entry.dart';
 import '../../../theme/design_colors.dart';
 
@@ -99,21 +100,21 @@ class _FileActionMenuContent extends StatelessWidget {
               _buildActionTile(
                 context,
                 icon: Icons.folder_open,
-                label: '開く',
+                label: context.l10n.fileOpen,
                 action: FileAction.open,
                 textColor: textColor,
               ),
             _buildActionTile(
               context,
               icon: Icons.edit,
-              label: '名前を変更',
+              label: context.l10n.fileRename,
               action: FileAction.rename,
               textColor: textColor,
             ),
             _buildActionTile(
               context,
               icon: Icons.delete_outline,
-              label: '削除',
+              label: context.l10n.fileDelete,
               action: FileAction.delete,
               textColor: DesignColors.error,
               iconColor: DesignColors.error,

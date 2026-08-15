@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/multiplexer_config.dart';
 import '../../services/command/command_request.dart';
@@ -146,7 +147,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       leading: TextButton(
         onPressed: () => Navigator.of(context).pop(),
         child: Text(
-          'Cancel',
+          context.l10n.connCancel,
           style: GoogleFonts.spaceGrotesk(
             color: isDark
                 ? DesignColors.textMuted
@@ -157,7 +158,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       leadingWidth: 80,
       title: Text(
-        widget.isEditing ? 'Edit Connection' : 'Add Connection',
+        widget.isEditing
+            ? context.l10n.connEditTitle
+            : context.l10n.connAddTitle,
         style: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
@@ -174,7 +177,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Text(
-                  'Save',
+                  context.l10n.connSave,
                   style: GoogleFonts.spaceGrotesk(
                     color: colorScheme.primary,
                     fontWeight: FontWeight.w700,
@@ -210,7 +213,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader('Server'),
+        _buildSectionHeader(context.l10n.connSectionServer),
         Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
@@ -224,12 +227,12 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Connection name
-              _buildFieldLabel('CONNECTION NAME'),
+              _buildFieldLabel(context.l10n.connFieldConnectionName),
               const SizedBox(height: 8),
               _buildNameInput(),
               const SizedBox(height: 16),
               // Host field
-              _buildFieldLabel('HOST / IP ADDRESS'),
+              _buildFieldLabel(context.l10n.connFieldHost),
               const SizedBox(height: 8),
               _buildHostInput(),
               const SizedBox(height: 16),
@@ -241,7 +244,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildFieldLabel('PORT'),
+                        _buildFieldLabel(context.l10n.connFieldPort),
                         const SizedBox(height: 8),
                         _buildPortInput(),
                       ],
@@ -253,7 +256,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildFieldLabel('USERNAME'),
+                        _buildFieldLabel(context.l10n.connFieldUsername),
                         const SizedBox(height: 8),
                         _buildUsernameInput(),
                       ],
@@ -263,24 +266,24 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
               ),
               const SizedBox(height: 16),
               // backend toggle
-              _buildFieldLabel('BACKEND'),
+              _buildFieldLabel(context.l10n.connFieldBackend),
               const SizedBox(height: 8),
               _buildBackendToggle(),
               const SizedBox(height: 16),
               // multiplexer path
               _buildFieldLabel(
                 _backend == BackendType.herdr
-                    ? 'HERDR PATH (OPTIONAL)'
-                    : 'MULTIPLEXER PATH (OPTIONAL)',
+                    ? context.l10n.connFieldHerdrPath
+                    : context.l10n.connFieldMultiplexerPath,
               ),
               const SizedBox(height: 8),
               _buildMultiplexerPathInput(),
               const SizedBox(height: 16),
               // Deep Link ID
-              _buildFieldLabel('DEEP LINK ID (OPTIONAL)'),
+              _buildFieldLabel(context.l10n.connFieldDeepLinkId),
               const SizedBox(height: 4),
               Text(
-                'Stable identifier for muxpod:// URLs',
+                context.l10n.connDeepLinkIdDescription,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 10,
                   color: Theme.of(context).brightness == Brightness.dark
@@ -302,7 +305,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader('Authentication'),
+        _buildSectionHeader(context.l10n.connSectionAuth),
         Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
@@ -330,7 +333,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildFieldLabel(String label) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
-      label,
+      label.toUpperCase(),
       style: GoogleFonts.spaceGrotesk(
         fontSize: 10,
         fontWeight: FontWeight.w500,
@@ -357,7 +360,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: 'e.g. Production AWS',
+        hintText: context.l10n.connNameHint,
         hintStyle: GoogleFonts.spaceGrotesk(
           color: mutedColor.withValues(alpha: 0.5),
         ),
@@ -387,7 +390,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a name';
+          return context.l10n.connNameRequired;
         }
         return null;
       },
@@ -411,7 +414,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: '192.168.1.1 or example.com',
+        hintText: context.l10n.connHostHint,
         hintStyle: GoogleFonts.jetBrainsMono(
           color: mutedColor.withValues(alpha: 0.5),
         ),
@@ -461,7 +464,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a host';
+          return context.l10n.connHostRequired;
         }
         return null;
       },
@@ -515,11 +518,11 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Required';
+          return context.l10n.connPortRequired;
         }
         final port = int.tryParse(value);
         if (port == null || port < 1 || port > 65535) {
-          return 'Invalid';
+          return context.l10n.connPortInvalid;
         }
         return null;
       },
@@ -572,7 +575,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a username';
+          return context.l10n.connUsernameRequired;
         }
         return null;
       },
@@ -600,8 +603,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           ),
           decoration: InputDecoration(
             hintText: isHerdr
-                ? '/usr/local/bin/herdr (auto-detect if empty)'
-                : '/usr/bin/tmux (auto-detect if empty)',
+                ? context.l10n.connMultiplexerPathHint('/usr/local/bin/herdr')
+                : context.l10n.connMultiplexerPathHint('/usr/bin/tmux'),
             hintStyle: GoogleFonts.jetBrainsMono(
               color: mutedColor.withValues(alpha: 0.5),
             ),
@@ -636,17 +639,17 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           validator: (value) {
             if (value != null && value.isNotEmpty && !value.startsWith('/')) {
               return isHerdr
-                  ? 'Absolute path required (e.g., /usr/local/bin/herdr)'
-                  : 'Absolute path required (e.g., /usr/bin/tmux)';
+                  ? context.l10n.connAbsolutePathRequired(
+                      '/usr/local/bin/herdr',
+                    )
+                  : context.l10n.connAbsolutePathRequired('/usr/bin/tmux');
             }
             return null;
           },
         ),
         const SizedBox(height: 6),
         Text(
-          isHerdr
-              ? 'Leave empty for automatic detection'
-              : 'Leave empty for automatic detection',
+          context.l10n.connLeaveEmptyForAutoDetect,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 11,
             color: mutedColor.withValues(alpha: 0.7),
@@ -672,7 +675,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: 'e.g. macbook-pro',
+        hintText: context.l10n.connDeepLinkIdHint,
         hintStyle: GoogleFonts.jetBrainsMono(
           color: mutedColor.withValues(alpha: 0.5),
         ),
@@ -702,7 +705,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value != null && value.isNotEmpty && value.contains(' ')) {
-          return 'No spaces allowed (use hyphens or underscores)';
+          return context.l10n.connDeepLinkIdNoSpaces;
         }
         return null;
       },
@@ -831,7 +834,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                       : null,
                 ),
                 child: Text(
-                  'Password',
+                  context.l10n.connAuthPassword,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
@@ -865,7 +868,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                       : null,
                 ),
                 child: Text(
-                  'Private Key',
+                  context.l10n.connAuthPrivateKey,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
@@ -930,7 +933,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (!widget.isEditing && (value == null || value.isEmpty)) {
-          return 'Please enter a password';
+          return context.l10n.connPasswordRequired;
         }
         return null;
       },
@@ -996,19 +999,21 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           onChanged: (value) => setState(() => _selectedKeyId = value),
           validator: (value) {
             if (_authMethod == 'key' && value == null) {
-              return 'Please select an SSH key';
+              return context.l10n.connSelectKeyRequired;
             }
             return null;
           },
           hint: Text(
-            keysState.keys.isEmpty ? 'No keys available' : 'Select a key',
+            keysState.keys.isEmpty
+                ? context.l10n.connNoKeysAvailable
+                : context.l10n.connSelectKey,
             style: GoogleFonts.spaceGrotesk(color: mutedColor),
           ),
         ),
         if (_authMethod == 'key' && keysState.keys.isEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'No SSH keys found. Add keys in the Keys section.',
+            context.l10n.connNoKeysFoundAddInKeys,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 12,
               color: colorScheme.error,
@@ -1035,7 +1040,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '選択中の鍵は破損しています（秘密鍵を読み出せません）。別の鍵を選択するか、鍵を再インポートしてください。',
+        context.l10n.connDamagedKeyWarning,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           fontSize: 12,
           color: colorScheme.onErrorContainer,
@@ -1092,7 +1097,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                         const Icon(Icons.terminal, size: 20),
                         const SizedBox(width: 12),
                         Text(
-                          'TEST CONNECTION',
+                          context.l10n.connTestConnection,
                           style: GoogleFonts.spaceGrotesk(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -1109,6 +1114,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   }
 
   Future<void> _testConnection() async {
+    final l10n = context.l10n;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -1131,19 +1137,17 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       if (_authMethod == 'password') {
         password = _passwordController.text;
         if (password.isEmpty) {
-          throw SshAuthenticationError('Password is required');
+          throw SshAuthenticationError(l10n.connPasswordRequiredForTest);
         }
       } else if (_authMethod == 'key') {
         if (_selectedKeyId == null) {
-          throw SshAuthenticationError('SSH key is required');
+          throw SshAuthenticationError(l10n.connKeyRequiredForTest);
         }
         final storage = SecureStorageService();
         privateKey = await storage.getPrivateKey(_selectedKeyId!);
         passphrase = await storage.getPassphrase(_selectedKeyId!);
         if (privateKey == null) {
-          throw SshAuthenticationError(
-            'Private key is not readable. Please re-import the key.',
-          );
+          throw SshAuthenticationError(l10n.connPrivateKeyUnreadable);
         }
       }
 
@@ -1168,6 +1172,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   customPath.isNotEmpty ? customPath : null,
                 ),
         ),
+        l10n: l10n,
       );
 
       if (isHerdr) {
@@ -1178,16 +1183,18 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           herdrReady = true;
         } on HerdrProtocolMismatchException catch (e) {
           herdrReady = false;
-          herdrWarning =
-              'Herdr protocol ${e.actual} is not supported (expected ${e.supported}).';
+          herdrWarning = l10n.connHerdrProtocolMismatch(
+            '${e.actual}',
+            '${e.supported}',
+          );
         } on HerdrCommandException catch (_) {
           herdrReady = false;
           herdrWarning = customPath.isNotEmpty
-              ? 'custom herdr path not found or not executable: $customPath'
-              : 'herdr not found';
+              ? l10n.connHerdrPathNotFound(customPath)
+              : l10n.connHerdrNotFound;
         } catch (e) {
           herdrReady = false;
-          herdrWarning = 'herdr check failed: $e';
+          herdrWarning = l10n.connHerdrCheckFailed('$e');
         }
       } else {
         // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
@@ -1202,33 +1209,33 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           if (result.exitCode != null && result.exitCode != 0) {
             tmuxInstalled = false;
             tmuxWarning = customPath.isNotEmpty
-                ? 'custom tmux path not found or not executable: $customPath'
-                : 'tmux not found';
+                ? l10n.connTmuxPathNotFound(customPath)
+                : l10n.connTmuxNotFound;
           } else {
             final version = TmuxVersionInfo.parse(result.stdout);
             if (version != null) {
               tmuxInstalled = true;
             } else {
               tmuxInstalled = false;
-              tmuxWarning = 'tmux found, but version output was not recognized';
+              tmuxWarning = l10n.connTmuxVersionUnrecognized;
             }
           }
         } on SshConnectionError catch (_) {
           tmuxInstalled = false;
           tmuxWarning = customPath.isNotEmpty
-              ? 'custom tmux path not found or not executable: $customPath'
-              : 'tmux not found';
+              ? l10n.connTmuxPathNotFound(customPath)
+              : l10n.connTmuxNotFound;
         } catch (e) {
           tmuxInstalled = false;
-          tmuxWarning = 'tmux check failed: $e';
+          tmuxWarning = l10n.connTmuxCheckFailed('$e');
         }
       }
     } on SshAuthenticationError catch (e) {
-      errorMessage = 'Authentication failed: ${e.message}';
+      errorMessage = l10n.connTestAuthFailed(e.message);
     } on SshConnectionError catch (e) {
-      errorMessage = 'Connection failed: ${e.message}';
+      errorMessage = l10n.connTestConnectionFailed(e.message);
     } catch (e) {
-      errorMessage = 'Error: $e';
+      errorMessage = l10n.connTestError('$e');
     } finally {
       await sshClient?.dispose();
     }
@@ -1246,9 +1253,10 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         );
       } else if (_backend == BackendType.herdr) {
         final message = herdrReady
-            ? 'Connection successful! Herdr is available.'
-            : 'Connection successful! Warning: '
-                  '${herdrWarning ?? 'herdr not found'}.';
+            ? l10n.connTestSuccessHerdr
+            : l10n.connTestSuccessWarning(
+                herdrWarning ?? l10n.connHerdrNotFound,
+              );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -1260,8 +1268,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         );
       } else {
         final message = tmuxInstalled
-            ? 'Connection successful! tmux is available.'
-            : 'Connection successful! Warning: ${tmuxWarning ?? 'tmux not found'}.';
+            ? l10n.connTestSuccessTmux
+            : l10n.connTestSuccessWarning(tmuxWarning ?? l10n.connTmuxNotFound);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -1368,7 +1376,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving connection: $e'),
+            content: Text(context.l10n.connSaveError('$e')),
             backgroundColor: DesignColors.error,
           ),
         );

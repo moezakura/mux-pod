@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../providers/key_provider.dart';
 
 /// SSH鍵インポート画面
@@ -35,7 +36,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Import SSH Key')),
+      appBar: AppBar(title: Text(context.l10n.keyMgmtImportTitle)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -43,13 +44,13 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
           children: [
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Key Name',
-                hintText: 'My SSH Key',
+              decoration: InputDecoration(
+                labelText: context.l10n.keyMgmtKeyName,
+                hintText: context.l10n.keyMgmtKeyNameHint,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
-                  return 'Please enter a name';
+                  return context.l10n.keyMgmtNameRequired;
                 }
                 return null;
               },
@@ -61,19 +62,19 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
               label: Text(
                 _selectedFilePath != null
                     ? _selectedFilePath!.split('/').last
-                    : 'Select Private Key File',
+                    : context.l10n.keyMgmtSelectFile,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Or paste the private key below:',
+              context.l10n.keyMgmtOrPaste,
               style: TextStyle(color: Theme.of(context).colorScheme.outline),
             ),
             const SizedBox(height: 8),
             TextFormField(
               controller: _privateKeyController,
               decoration: InputDecoration(
-                labelText: 'Private Key (PEM format)',
+                labelText: context.l10n.keyMgmtPemLabel,
                 hintText: '-----BEGIN OPENSSH PRIVATE KEY-----',
                 alignLabelWithHint: true,
                 errorText: _pemValidationError,
@@ -84,7 +85,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
               validator: (value) {
                 if ((value == null || value.isEmpty) &&
                     _selectedFilePath == null) {
-                  return 'Please select a file or paste the private key';
+                  return context.l10n.keyMgmtKeyRequired;
                 }
                 if (_pemValidationError != null) {
                   return _pemValidationError;
@@ -98,16 +99,16 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
                 controller: _passphraseController,
                 decoration: InputDecoration(
                   labelText: _isEncrypted
-                      ? 'Passphrase (required - key is encrypted)'
-                      : 'Passphrase (optional)',
+                      ? context.l10n.keyMgmtPassphraseRequired
+                      : context.l10n.keyMgmtPassphraseOptional,
                   hintText: _isEncrypted
-                      ? 'Enter passphrase to decrypt'
-                      : 'Leave empty if key is not encrypted',
+                      ? context.l10n.keyMgmtPassphraseDecryptHint
+                      : context.l10n.keyMgmtPassphraseEmptyHint,
                 ),
                 obscureText: true,
                 validator: (value) {
                   if (_isEncrypted && (value == null || value.isEmpty)) {
-                    return 'Passphrase is required for encrypted keys';
+                    return context.l10n.keyMgmtPassphraseRequiredError;
                   }
                   return null;
                 },
@@ -121,7 +122,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
                     _showPassphrase = true;
                   });
                 },
-                child: const Text('Add passphrase (if key is encrypted)'),
+                child: Text(context.l10n.keyMgmtAddPassphrase),
               ),
             ],
             const SizedBox(height: 32),
@@ -133,7 +134,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Import'),
+                  : Text(context.l10n.keyMgmtImport),
             ),
           ],
         ),
@@ -155,7 +156,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
     // PEM形式の基本的なバリデーション
     if (!value.contains('-----BEGIN') || !value.contains('-----END')) {
       setState(() {
-        _pemValidationError = 'Invalid PEM format';
+        _pemValidationError = context.l10n.keyMgmtInvalidPem;
         _isEncrypted = false;
       });
       return;
@@ -173,7 +174,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       });
     } catch (e) {
       setState(() {
-        _pemValidationError = 'Invalid PEM format';
+        _pemValidationError = context.l10n.keyMgmtInvalidPem;
         _isEncrypted = false;
       });
     }
@@ -197,7 +198,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
         } else {
           // ファイルパスから読み取る（デスクトップ向け）
           setState(() {
-            _pemValidationError = 'Could not read file content';
+            _pemValidationError = context.l10n.keyMgmtCouldNotReadFile;
           });
           return;
         }
@@ -214,7 +215,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to pick file: $e'),
+            content: Text(context.l10n.keyMgmtPickFileFailed('$e')),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -245,6 +246,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       final keyPair = await keyService.parseFromPem(
         pemContent,
         passphrase: passphrase,
+        l10n: context.l10n,
       );
 
       // 秘密鍵をSecureStorageに保存
@@ -272,15 +274,15 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Key "$name" imported successfully')),
+          SnackBar(content: Text(context.l10n.keyMgmtImportedSuccess(name))),
         );
       }
     } on FormatException catch (e) {
       // 無効なPEM形式またはパスフレーズエラー
       if (mounted) {
         final message = e.message.contains('passphrase')
-            ? 'Wrong passphrase. Please check and try again.'
-            : 'Invalid key format: ${e.message}';
+            ? context.l10n.keyMgmtWrongPassphrase
+            : context.l10n.keyMgmtInvalidKeyFormat(e.message);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
@@ -292,7 +294,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to import key: $e'),
+            content: Text(context.l10n.keyMgmtImportFailed('$e')),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/connections/connection_form_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
@@ -71,6 +72,7 @@ class _TestSshClient extends FakeSshClient {
     required int port,
     required String username,
     required SshConnectOptions options,
+    AppLocalizations? l10n,
     bool lightweight = false,
   }) async {
     lastOptions = options;
@@ -113,6 +115,8 @@ Future<_FormHarness> _pumpForm(
         ),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: ConnectionFormScreen(connectionId: connectionId),
       ),
     ),
@@ -441,7 +445,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // 破損キー選択中の警告が表示される
-      expect(find.textContaining('破損しています'), findsOneWidget);
+      expect(
+        find.textContaining('The selected key is damaged'),
+        findsOneWidget,
+      );
     });
   });
 }

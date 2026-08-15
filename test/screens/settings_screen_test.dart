@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
 
 Widget _buildApp() {
-  return const ProviderScope(child: MaterialApp(home: SettingsScreen()));
+  return const ProviderScope(
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: SettingsScreen(),
+    ),
+  );
 }
 
 /// Scrolls until [finder] is visible in the first Scrollable of the tree.
+///
+/// ステップを小さく（50px）して、1ドラッグでタイル（約72px）を
+/// 飛び越えてオフステージ領域に落ちることを防ぐ。
 Future<void> scrollUntilFound(WidgetTester tester, Finder finder) async {
   final scrollable = find.byType(Scrollable).first;
-  await tester.scrollUntilVisible(finder, 200, scrollable: scrollable);
+  await tester.scrollUntilVisible(finder, 50, scrollable: scrollable);
 }
 
 void main() {
@@ -97,6 +107,30 @@ void main() {
 
       await scrollUntilFound(tester, find.text('Bracketed Paste'));
       expect(find.text('Bracketed Paste'), findsOneWidget);
+    });
+
+    testWidgets('displays Language setting and opens the picker', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      // Language is in the Appearance section - may need scroll
+      await scrollUntilFound(tester, find.text('Language'));
+      expect(find.text('Language'), findsOneWidget);
+      // 初期値は 'system' なので説明付き表記が表示される
+      expect(find.text('System (follow device)'), findsOneWidget);
+
+      // タップ位置が画面端にならないよう完全に画面内へスクロール
+      await tester.ensureVisible(find.text('Language'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Language'));
+      await tester.pumpAndSettle();
+
+      // 3択ダイアログ
+      expect(find.text('System'), findsOneWidget);
+      expect(find.text('日本語'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
     });
   });
 }

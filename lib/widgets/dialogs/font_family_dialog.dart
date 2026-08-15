@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/terminal/terminal_font_styles.dart';
+import '../../l10n/l10n_ext.dart';
 
 /// フォントファミリー選択ダイアログ
 class FontFamilyDialog extends StatefulWidget {
@@ -25,8 +26,9 @@ class _FontFamilyDialogState extends State<FontFamilyDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Font Family'),
+      title: Text(l10n.fontFamilyTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -64,7 +66,7 @@ class _FontFamilyDialogState extends State<FontFamilyDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
       ],
     );

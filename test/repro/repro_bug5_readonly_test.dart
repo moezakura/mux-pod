@@ -1,18 +1,14 @@
-// Repro: バグ5 TestConnection のときに「Readonly」と表示される
+// Repro: バグ5 TestConnection のときに「Readonly」と表示される（修正済み）
 //
-// 再現条件:
-// - connection_form_screen.dart:1083-1084: herdr 接続テスト成功時の SnackBar が
-//   'Connection successful! Herdr is available (read-only).' と表示する
-// - connection_form_screen.dart:1095-1096: tmux は
-//   'Connection successful! tmux is available.' と表示する
+// バグ内容:
+// - connection_form_screen.dart: herdr 接続テスト成功時の SnackBar が
+//   'Connection successful! Herdr is available (read-only).' と表示していた
 // - 0da0db9 で read-only 時代の文言として追加され、2c8f02b で mutation 解禁に
-//   なった際に更新漏れしている
-// - 既存テスト connection_form_screen_test.dart:234 がこの誤文言を期待して
-//   パスしている（バグの固定化）
+//   なった際に更新漏れしていた
 //
-// 期待される正しい動作: tmux と揃えて 'Connection successful! Herdr is available.'
-// 実際の動作（バグ）: '(read-only)' が付く
-@Tags(['repro'])
+// 修正: l10n 移行（connTestSuccessHerdr）で tmux と揃えて
+// 'Connection successful! Herdr is available.' になった。
+// 本テストは修正後の正しい挙動をアサートするリグレッションガードとして維持する。
 library;
 
 import 'package:flutter/material.dart';
@@ -20,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/connections/connection_form_screen.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
@@ -50,6 +47,7 @@ class _TestSshClient extends FakeSshClient {
     required String username,
     required SshConnectOptions options,
     bool lightweight = false,
+    AppLocalizations? l10n,
   }) async {
     state = SshConnectionState.connected;
   }
@@ -71,7 +69,11 @@ Future<_TestSshClient> _pumpForm(WidgetTester tester) async {
               () => fakeClient,
         ),
       ],
-      child: MaterialApp(home: ConnectionFormScreen(connectionId: null)),
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ConnectionFormScreen(connectionId: null),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -86,8 +88,8 @@ void main() {
     SecureStorageService.setTestValues({});
   });
 
-  group('Repro BUG-5: TestConnection 成功時に "(read-only)" が表示される', () {
-    testWidgets('herdr 接続テスト成功の SnackBar に "(read-only)" が含まれる（バグ）', (
+  group('Repro BUG-5: TestConnection 成功時に "(read-only)" が表示されない（修正確認）', () {
+    testWidgets('herdr 接続テスト成功の SnackBar に "(read-only)" が含まれない', (
       tester,
     ) async {
       final client = await _pumpForm(tester);
@@ -110,12 +112,13 @@ void main() {
       await tester.tap(find.text('TEST CONNECTION'));
       await tester.pumpAndSettle();
 
-      // バグの再現: read-only 文言が表示される
+      // 修正後: tmux と揃えて l10n.connTestSuccessHerdr の文言が表示される
       expect(
-        find.text('Connection successful! Herdr is available (read-only).'),
+        find.text('Connection successful! Herdr is available.'),
         findsOneWidget,
-        reason: 'バグ: 2c8f02b で mutation 解禁済みなのに read-only 文言が残っている',
+        reason: 'l10n.connTestSuccessHerdr の文言が表示されること',
       );
+      expect(find.textContaining('read-only'), findsNothing);
     });
 
     testWidgets('tmux 接続テスト成功の SnackBar には "(read-only)" が含まれない（比較対照）', (

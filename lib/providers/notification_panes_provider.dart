@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/l10n_lookup.dart';
 import '../services/keychain/secure_storage.dart';
 import '../services/ssh/ssh_client.dart';
 import '../services/tmux/tmux_facade.dart';
@@ -183,6 +184,7 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
         port: connection.port,
         username: connection.username,
         options: options,
+        l10n: lookupL10n(),
       );
 
       // 当該ウィンドウを選択してフラグをクリアし、元のウィンドウに戻す
@@ -234,6 +236,7 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
           port: connection.port,
           username: connection.username,
           options: options,
+          l10n: lookupL10n(),
         );
 
         final sessions = await _tmuxContract.listAllPanes(

@@ -1,5 +1,5 @@
 name: flutter_muxpod
-description: "A new Flutter project."
+description: "Your tmux sessions, in your pocket. A mobile-first tmux client — SSH in, navigate sessions, and stay productive on the go."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -63,6 +63,8 @@ dependencies:
   path: ^1.9.1
   intl: ^0.20.2
   path_provider: ^2.1.6
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -90,6 +92,9 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Enable code generation for localization (flutter gen-l10n on pub get)
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

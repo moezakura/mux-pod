@@ -826,9 +826,9 @@ void main() {
 
       // 分類別通知（target-not-found）。
       expect(
-        find.text('対象が消えました。再同期しました'),
+        find.text('Target pane disappeared. Re-synced.'),
         findsOneWidget,
-        reason: 'pane_not_found は「対象が消えました。再同期しました」を通知する',
+        reason: 'pane_not_found は「Target pane disappeared. Re-synced.」を通知する',
       );
       // 後続処理: 単一経路で強制再取得 → 再解決 → 別 pane へ遷移。
       final events = herdrSwitchEvents(tester);
@@ -893,7 +893,7 @@ void main() {
 
       // 対象が他端末で消えていた → 分類別通知 + 単一経路の再同期。
       expect(
-        find.text('対象が消えました。再同期しました'),
+        find.text('Target pane disappeared. Re-synced.'),
         findsOneWidget,
         reason: 'close の pane_not_found も target-not-found 分類で通知されること',
       );
@@ -915,7 +915,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 750));
     });
 
-    testWidgets('focus の no_neighbor は情報 SnackBar「その方向に pane はありません」'
+    testWidgets('focus の no_neighbor は情報 SnackBar「No pane in that direction」'
         'を表示し、force 再取得しない（T19/T20 no_neighbor 補完）', (tester) async {
       final client = await _pumpHerdrTerminal(
         tester,
@@ -940,7 +940,7 @@ void main() {
 
       // 分類別通知（no_neighbor → 情報 SnackBar）。
       expect(
-        find.text('その方向に pane はありません'),
+        find.text('No pane in that direction'),
         findsOneWidget,
         reason: 'focus の no_neighbor は情報 SnackBar で通知されること（S4/T19）',
       );
@@ -992,7 +992,7 @@ void main() {
 
         // 分類別通知（target-not-found）+ 単一経路の再同期。
         expect(
-          find.text('対象が消えました。再同期しました'),
+          find.text('Target pane disappeared. Re-synced.'),
           findsOneWidget,
           reason: 'rename pane の pane_not_found も target-not-found 分類で通知されること',
         );
@@ -1037,7 +1037,7 @@ void main() {
 
       // 分類別通知（target-not-found）+ 単一経路の再同期。
       expect(
-        find.text('対象が消えました。再同期しました'),
+        find.text('Target pane disappeared. Re-synced.'),
         findsOneWidget,
         reason: 'zoom の pane_not_found も target-not-found 分類で通知されること',
       );
@@ -1078,7 +1078,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(
-        find.text('対象が消えました。再同期しました'),
+        find.text('Target pane disappeared. Re-synced.'),
         findsOneWidget,
         reason: 'close tab の tab_not_found も target-not-found 分類で通知されること',
       );

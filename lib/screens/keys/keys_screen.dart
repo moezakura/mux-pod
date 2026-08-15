@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../l10n/l10n_ext.dart';
 import '../../providers/key_provider.dart';
 import '../../theme/design_colors.dart';
 import '../home_screen.dart';
@@ -69,7 +70,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
         title: Text(
-          'Keys',
+          context.l10n.keyMgmtTitle,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -87,7 +88,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                 : DesignColors.textSecondaryLight,
           ),
           onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
-          tooltip: 'Settings',
+          tooltip: context.l10n.keyMgmtSettings,
         ),
         const SizedBox(width: 8),
       ],
@@ -115,13 +116,13 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                 color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(height: 16),
-              Text('Error: ${state.error}'),
+              Text(context.l10n.keyMgmtLoadError('${state.error}')),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
                   ref.read(keysProvider.notifier).reload();
                 },
-                child: const Text('Retry'),
+                child: Text(context.l10n.keyMgmtRetry),
               ),
             ],
           ),
@@ -160,7 +161,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'No SSH keys yet',
+                context.l10n.keyMgmtEmpty,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
@@ -171,7 +172,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Tap the button below to add a key',
+                context.l10n.keyMgmtEmptyHint,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 14,
                   color: isDark
@@ -209,7 +210,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
     if (keyMeta.publicKey != null) {
       Clipboard.setData(ClipboardData(text: keyMeta.publicKey!));
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Public key copied to clipboard')),
+        SnackBar(content: Text(context.l10n.keyMgmtPublicKeyCopied)),
       );
     }
   }
@@ -222,15 +223,12 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Key?'),
-        content: Text(
-          'Are you sure you want to delete "${keyMeta.name}"?\n\n'
-          'This action cannot be undone.',
-        ),
+        title: Text(context.l10n.keyMgmtDeleteKeyTitle),
+        content: Text(context.l10n.keyMgmtDeleteKeyMessage(keyMeta.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.keyMgmtCancel),
           ),
           FilledButton(
             onPressed: () async {
@@ -240,7 +238,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('Delete'),
+            child: Text(context.l10n.keyMgmtDelete),
           ),
         ],
       ),
@@ -269,14 +267,14 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Key "${keyMeta.name}" deleted')),
+          SnackBar(content: Text(context.l10n.keyMgmtDeleted(keyMeta.name))),
         );
       }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to delete key: $e'),
+            content: Text(context.l10n.keyMgmtDeleteFailed('$e')),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
@@ -293,8 +291,8 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.add_circle),
-              title: const Text('Generate New Key'),
-              subtitle: const Text('Create a new RSA or Ed25519 key'),
+              title: Text(context.l10n.keyMgmtGenerateNew),
+              subtitle: Text(context.l10n.keyMgmtGenerateNewSubtitle),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -307,8 +305,8 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.file_upload),
-              title: const Text('Import Key'),
-              subtitle: const Text('Import an existing private key'),
+              title: Text(context.l10n.keyMgmtImportKey),
+              subtitle: Text(context.l10n.keyMgmtImportKeySubtitle),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -328,6 +326,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
   /// 破損鍵検出モーダル（削除 or 保持を選択）
   Future<void> _showDamagedKeysDialog(List<SshKeyMeta> damagedKeys) async {
     if (!mounted) return;
+    final l10n = context.l10n;
     final selected = <String>{};
 
     await showDialog<void>(
@@ -336,14 +335,14 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             return AlertDialog(
-              title: const Text('破損した鍵が見つかりました'),
+              title: Text(l10n.keyMgmtDamagedKeysTitle),
               content: SizedBox(
                 width: double.maxFinite,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('秘密鍵を読み出せない鍵があります。削除するか、そのまま残すかを選択してください。'),
+                    Text(l10n.keyMgmtDamagedKeysMessage),
                     const SizedBox(height: 12),
                     Flexible(
                       child: ListView(
@@ -375,7 +374,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('そのままにする'),
+                  child: Text(l10n.keyMgmtKeepDamaged),
                 ),
                 FilledButton(
                   onPressed: selected.isEmpty
@@ -386,7 +385,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
                             Navigator.pop(dialogContext);
                           }
                         },
-                  child: const Text('選択した鍵を削除'),
+                  child: Text(l10n.keyMgmtDeleteSelected),
                 ),
               ],
             );
@@ -410,7 +409,7 @@ class _KeysScreenState extends ConsumerState<KeysScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to delete key: $e'),
+            content: Text(context.l10n.keyMgmtDeleteFailed('$e')),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );

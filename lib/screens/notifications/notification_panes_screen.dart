@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/notification_panes_provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/tmux/tmux_models.dart';
 
 import '../../theme/design_colors.dart';
@@ -113,7 +115,7 @@ class _NotificationPanesScreenState
             else if (alertState.alertPanes.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: _buildEmptyState(isDark),
+                child: _buildEmptyState(context, isDark),
               )
             else
               SliverPadding(
@@ -155,7 +157,7 @@ class _NotificationPanesScreenState
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
         title: Text(
-          'Alerts',
+          context.l10n.notifAlerts,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -184,14 +186,14 @@ class _NotificationPanesScreenState
                       : DesignColors.textSecondaryLight,
                 ),
           onPressed: _isRefreshing ? null : _refresh,
-          tooltip: 'Refresh alerts',
+          tooltip: context.l10n.notifRefreshAlerts,
         ),
         const SizedBox(width: 8),
       ],
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(BuildContext context, bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -205,7 +207,7 @@ class _NotificationPanesScreenState
           ),
           const SizedBox(height: 16),
           Text(
-            'No alerts',
+            context.l10n.notifNoAlerts,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -216,7 +218,7 @@ class _NotificationPanesScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            'All panes are quiet',
+            context.l10n.notifAllPanesQuiet,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
               color: isDark
@@ -264,7 +266,7 @@ class _AlertPaneCard extends StatelessWidget {
             const Icon(Icons.notifications_off, color: DesignColors.error),
             const SizedBox(height: 4),
             Text(
-              'Dismiss',
+              context.l10n.notifDismiss,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 11,
                 color: DesignColors.error,
@@ -347,22 +349,33 @@ class _AlertPaneCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(
-                          'W${alert.windowIndex}: ${alert.windowName}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark
-                                ? DesignColors.textMuted
-                                : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifWindowPosition(
+                              alert.windowIndex,
+                              alert.windowName,
+                            ),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Text(
-                          ' • Pane ${alert.paneIndex}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark
-                                ? DesignColors.textMuted
-                                : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifPanePosition(alert.paneIndex),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (alert.currentCommand != null) ...[
@@ -408,7 +421,7 @@ class _AlertPaneCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  _flagLabel(alert.primaryFlag),
+                  _flagLabel(context.l10n, alert.primaryFlag),
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
@@ -495,12 +508,12 @@ class _AlertPaneCard extends StatelessWidget {
     };
   }
 
-  String _flagLabel(TmuxWindowFlag? flag) {
+  String _flagLabel(AppLocalizations l10n, TmuxWindowFlag? flag) {
     return switch (flag) {
-      TmuxWindowFlag.bell => 'Bell',
-      TmuxWindowFlag.activity => 'Activity',
-      TmuxWindowFlag.silence => 'Silence',
-      _ => 'Alert',
+      TmuxWindowFlag.bell => l10n.notifFlagBell,
+      TmuxWindowFlag.activity => l10n.notifFlagActivity,
+      TmuxWindowFlag.silence => l10n.notifFlagSilence,
+      _ => l10n.notifFlagAlert,
     };
   }
 }

@@ -9,6 +9,7 @@ import '../services/backend/multiplexer_config.dart';
 import '../services/connection/connection_migration.dart';
 import '../services/connection/connection_storage_schema.dart';
 import '../services/keychain/secure_storage.dart';
+import '../l10n/l10n_lookup.dart';
 
 /// 接続設定
 class Connection {
@@ -224,6 +225,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
   Future<void> _loadConnections() async {
     developer.log('_loadConnections() started', name: 'ConnectionsProvider');
+    final l10n = lookupL10n();
     try {
       final secure = SecureStorageService();
       String? jsonString = await secure.readValue(_storageKey);
@@ -254,6 +256,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
       final migrationResult = await ConnectionMigration.migrate(
         secure: secure,
         sourceJson: jsonString,
+        l10n: l10n,
       );
 
       // SharedPreferences コピーは schema migration が成功してから削除
@@ -307,7 +310,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
             corruptedRecords.add(
               CorruptedConnection(
                 id: id,
-                reason: 'Failed to load connection record: $e',
+                reason: l10n.connCorruptedRecordReason('$e'),
                 rawJson: record is Map<String, dynamic> ? record : null,
               ),
             );
@@ -328,8 +331,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
         String? warning;
         if (corruptedRecords.isNotEmpty) {
-          warning =
-              '${corruptedRecords.length} connections could not be loaded.';
+          warning = l10n.connCorruptedWarning(corruptedRecords.length);
         }
         if (migrationResult.warning != null) {
           warning = warning == null

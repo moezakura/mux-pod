@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import '../services/settings_migration.dart';
+import '../l10n/l10n_lookup.dart';
 
 /// アプリ設定
 class AppSettings {
@@ -38,6 +39,9 @@ class AppSettings {
 
   /// ペインナビゲーション方向の反転
   final bool invertPaneNavigation;
+
+  /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
+  final String language;
 
   // --- キーオーバーレイ設定 ---
   /// キーオーバーレイ全体ON/OFF
@@ -87,6 +91,7 @@ class AppSettings {
     this.directInputEnabled = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
+    this.language = 'system',
     this.showKeyOverlay = true,
     this.keyOverlayModifier = true,
     this.keyOverlaySpecial = true,
@@ -124,6 +129,7 @@ class AppSettings {
     bool? directInputEnabled,
     bool? showTerminalCursor,
     bool? invertPaneNavigation,
+    String? language,
     bool? showKeyOverlay,
     bool? keyOverlayModifier,
     bool? keyOverlaySpecial,
@@ -157,6 +163,7 @@ class AppSettings {
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
+      language: language ?? this.language,
       showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
       keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
       keyOverlaySpecial: keyOverlaySpecial ?? this.keyOverlaySpecial,
@@ -194,6 +201,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
+  static const String _languageKey = 'settings_language';
   static const String _imageRemotePathKey = 'settings_image_remote_path';
   static const String _imageOutputFormatKey = 'settings_image_output_format';
   static const String _imageJpegQualityKey = 'settings_image_jpeg_quality';
@@ -221,6 +229,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await SettingsMigrationRunner.run(prefs);
 
+    // コンテナ破棄後の state 更新を防止する (テスト等で async ギャップ後に破棄されるケース)。
+    if (!ref.mounted) return;
+
     state = AppSettings(
       darkMode: prefs.getBool(_darkModeKey) ?? true,
       fontSize: prefs.getDouble(_fontSizeKey) ?? 14.0,
@@ -238,6 +249,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
+      language: prefs.getString(_languageKey) ?? 'system',
       showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
       keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
       keyOverlaySpecial: prefs.getBool(_keyOverlaySpecialKey) ?? true,
@@ -255,6 +267,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
     );
+
+    // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
+    setCachedLanguage(state.language);
 
     await _applyScreenOrientation(state.screenOrientation);
     await _applyRefreshRate(state.refreshRate);
@@ -346,7 +361,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
       default:
         orientations = const <DeviceOrientation>[]; // すべて許可
     }
-    await SystemChrome.setPreferredOrientations(orientations);
+    // テスト等、binding が未初期化の環境では platform channel が利用できないため無視する。
+    try {
+      await SystemChrome.setPreferredOrientations(orientations);
+    } catch (_) {
+      // no-op: 向き設定の適用に失敗しても設定値自体は保持される
+    }
   }
 
   /// 最大リフレッシュレートを設定（即座に適用）
@@ -438,6 +458,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setInvertPaneNavigation(bool value) async {
     state = state.copyWith(invertPaneNavigation: value);
     await _saveSetting(_invertPaneNavKey, value);
+  }
+
+  /// 表示言語を設定（'system' / 'ja' / 'en'）
+  Future<void> setLanguage(String value) async {
+    state = state.copyWith(language: value);
+    setCachedLanguage(value);
+    await _saveSetting(_languageKey, value);
   }
 
   // --- キーオーバーレイ設定のsetter ---

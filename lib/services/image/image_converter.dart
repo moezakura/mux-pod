@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
 
+import '../../l10n/app_localizations.dart';
+
 /// 画像出力フォーマット
 enum ImageOutputFormat {
   original,
@@ -43,6 +45,7 @@ class ImageConverter {
   /// [autoResize] リサイズを行うか
   /// [maxWidth] 最大幅（0 = 無制限）
   /// [maxHeight] 最大高さ（0 = 無制限）
+  /// [l10n] は任意。null の場合は英語フォールバック（テスト互換）。
   static Future<ImageConvertResult> convert({
     required Uint8List bytes,
     required ImageOutputFormat format,
@@ -50,6 +53,7 @@ class ImageConverter {
     bool autoResize = false,
     int maxWidth = 1920,
     int maxHeight = 1080,
+    AppLocalizations? l10n,
   }) async {
     final detectedExt = detectExtension(bytes);
 
@@ -57,7 +61,7 @@ class ImageConverter {
     Uint8List processedBytes = bytes;
     String effectiveExt = detectedExt;
     if (detectedExt == 'heic') {
-      final converted = await _preProcessHeic(bytes);
+      final converted = await _preProcessHeic(bytes, l10n);
       processedBytes = converted.bytes;
       effectiveExt = converted.extension;
     }
@@ -77,12 +81,16 @@ class ImageConverter {
         maxWidth: maxWidth,
         maxHeight: maxHeight,
         sourceExtension: effectiveExt,
+        l10n: l10n,
       ),
     );
   }
 
   /// HEIC/HEIF をネイティブAPIでJPEGに変換
-  static Future<ImageConvertResult> _preProcessHeic(Uint8List bytes) async {
+  static Future<ImageConvertResult> _preProcessHeic(
+    Uint8List bytes,
+    AppLocalizations? l10n,
+  ) async {
     try {
       final result = await FlutterImageCompress.compressWithList(
         bytes,
@@ -90,8 +98,9 @@ class ImageConverter {
         format: CompressFormat.jpeg,
       );
       if (result.isEmpty) {
-        throw const FormatException(
-          'Native HEIC conversion returned empty result',
+        throw FormatException(
+          l10n?.imgTransferHeicEmptyResult ??
+              'Native HEIC conversion returned empty result',
         );
       }
       return ImageConvertResult(
@@ -100,7 +109,10 @@ class ImageConverter {
       );
     } catch (e) {
       if (e is FormatException) rethrow;
-      throw FormatException('Failed to convert HEIC image: $e');
+      throw FormatException(
+        l10n?.imgTransferHeicConvertFailed('$e') ??
+            'Failed to convert HEIC image: $e',
+      );
     }
   }
 
@@ -113,10 +125,13 @@ class ImageConverter {
     required int maxWidth,
     required int maxHeight,
     required String sourceExtension,
+    AppLocalizations? l10n,
   }) {
     final image = img.decodeImage(bytes);
     if (image == null) {
-      throw const FormatException('Failed to decode image');
+      throw FormatException(
+        l10n?.imgTransferDecodeFailed ?? 'Failed to decode image',
+      );
     }
 
     var processed = image;

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../tmux/tmux_backend.dart';
 import 'shell_marker_scanner.dart';
 
@@ -16,6 +17,9 @@ import 'shell_marker_scanner.dart';
 class PersistentShell implements TmuxInputTransport {
   final SSHClient _sshClient;
   SSHSession? _session;
+
+  /// ローカライズ文字列（null 時は英語フォールバック）。
+  final AppLocalizations? _l10n;
 
   // inventory: SHELL-002
   /// マーカーのコアテキスト（インスタンスごとにランダム生成するnonce）
@@ -96,7 +100,7 @@ class PersistentShell implements TmuxInputTransport {
   StreamSubscription<Uint8List>? _stdoutSubscription;
 
   // inventory: SHELL-006
-  PersistentShell(this._sshClient);
+  PersistentShell(this._sshClient, {AppLocalizations? l10n}) : _l10n = l10n;
 
   // inventory: SHELL-007
   /// 予測不能なマーカーID（16進16文字 = 64bit）を生成する。
@@ -215,15 +219,21 @@ class PersistentShell implements TmuxInputTransport {
     required bool captureExitCode,
   }) async {
     if (_session == null) {
-      throw PersistentShellError('Shell not started');
+      throw PersistentShellError(
+        _l10n?.sshShellNotStarted ?? 'Shell not started',
+      );
     }
 
     if (_isClosed) {
-      throw PersistentShellError('Shell session is closed');
+      throw PersistentShellError(
+        _l10n?.sshShellSessionIsClosed ?? 'Shell session is closed',
+      );
     }
 
     if (hasPendingCommand) {
-      throw PersistentShellError('Another command is already running');
+      throw PersistentShellError(
+        _l10n?.sshAnotherCommandRunning ?? 'Another command is already running',
+      );
     }
 
     final pending = PendingShellCommand(
@@ -256,7 +266,9 @@ class PersistentShell implements TmuxInputTransport {
       // timeout 後は shell を破棄して再起動する（stale frame 混入防止）。
       // 破棄のため pending はエラーで完了し、次回 exec は再起動後に受付ける。
       await _poisonAfterTimeout();
-      throw PersistentShellError('Command execution timed out');
+      throw PersistentShellError(
+        _l10n?.sshCommandTimedOut ?? 'Command execution timed out',
+      );
     }
   }
 
@@ -270,7 +282,9 @@ class PersistentShell implements TmuxInputTransport {
     final pending = _pendingCommand;
     if (pending != null && !pending.isCompleted) {
       pending.completer.completeError(
-        PersistentShellError('Command execution timed out'),
+        PersistentShellError(
+          _l10n?.sshCommandTimedOut ?? 'Command execution timed out',
+        ),
       );
     }
     _pendingCommand = null;
@@ -299,15 +313,22 @@ class PersistentShell implements TmuxInputTransport {
   void sendNoWait(String command) {
     final session = _session;
     if (session == null) {
-      throw TmuxTransportException('Shell not started');
+      throw TmuxTransportException(
+        _l10n?.sshShellNotStarted ?? 'Shell not started',
+      );
     }
     if (_isClosed) {
-      throw TmuxTransportException('Shell session is closed');
+      throw TmuxTransportException(
+        _l10n?.sshShellSessionIsClosed ?? 'Shell session is closed',
+      );
     }
     try {
       session.write(utf8.encode('$command\n'));
     } catch (e) {
-      throw TmuxTransportException('Failed to send to shell', e);
+      throw TmuxTransportException(
+        _l10n?.sshSendToShellFailed ?? 'Failed to send to shell',
+        e,
+      );
     }
   }
 
@@ -386,7 +407,9 @@ class PersistentShell implements TmuxInputTransport {
     final pending = _pendingCommand;
     if (pending != null && !pending.isCompleted) {
       pending.completer.completeError(
-        PersistentShellError('Shell session closed'),
+        PersistentShellError(
+          _l10n?.sshShellSessionClosed ?? 'Shell session closed',
+        ),
       );
     }
     _pendingCommand = null;
