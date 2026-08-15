@@ -8,6 +8,7 @@ import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
 import '../home_screen.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
 import '../../services/backend/domain/multiplexer_session.dart';
@@ -85,7 +86,7 @@ class ConnectionsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Connections',
+              context.l10n.connTitle,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
@@ -126,17 +127,17 @@ class ConnectionsScreen extends ConsumerWidget {
               ref.read(connectionSearchProvider.notifier).clear();
             }
           },
-          tooltip: isSearchVisible ? 'Close Search' : 'Search',
+          tooltip: isSearchVisible ? context.l10n.connCloseSearch : context.l10n.connSearch,
         ),
         IconButton(
           icon: Icon(Icons.sort, color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
           onPressed: () => _showSortDialog(context, ref),
-          tooltip: 'Sort',
+          tooltip: context.l10n.connSort,
         ),
         IconButton(
           icon: const Icon(Icons.settings, color: DesignColors.textSecondary),
           onPressed: () => _openSettings(context, ref),
-          tooltip: 'Settings',
+          tooltip: context.l10n.connSettings,
         ),
         const SizedBox(width: 8),
       ],
@@ -171,7 +172,7 @@ class ConnectionsScreen extends ConsumerWidget {
                     Icon(Icons.sort, color: sheetColorScheme.primary),
                     const SizedBox(width: 8),
                     Text(
-                      'Sort Connections',
+                      context.l10n.connSortTitle,
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -183,7 +184,7 @@ class ConnectionsScreen extends ConsumerWidget {
               ),
               Divider(height: 1, color: isDark ? DesignColors.borderDark : DesignColors.borderLight),
               _SortOptionTile(
-                title: 'Name (A-Z)',
+                title: context.l10n.connSortNameAsc,
                 option: ConnectionSortOption.nameAsc,
                 currentOption: currentSort,
                 onTap: () {
@@ -192,7 +193,7 @@ class ConnectionsScreen extends ConsumerWidget {
                 },
               ),
               _SortOptionTile(
-                title: 'Name (Z-A)',
+                title: context.l10n.connSortNameDesc,
                 option: ConnectionSortOption.nameDesc,
                 currentOption: currentSort,
                 onTap: () {
@@ -201,7 +202,7 @@ class ConnectionsScreen extends ConsumerWidget {
                 },
               ),
               _SortOptionTile(
-                title: 'Last Connected (Recent First)',
+                title: context.l10n.connSortLastConnectedDesc,
                 option: ConnectionSortOption.lastConnectedDesc,
                 currentOption: currentSort,
                 onTap: () {
@@ -210,7 +211,7 @@ class ConnectionsScreen extends ConsumerWidget {
                 },
               ),
               _SortOptionTile(
-                title: 'Last Connected (Oldest First)',
+                title: context.l10n.connSortLastConnectedAsc,
                 option: ConnectionSortOption.lastConnectedAsc,
                 currentOption: currentSort,
                 onTap: () {
@@ -219,7 +220,7 @@ class ConnectionsScreen extends ConsumerWidget {
                 },
               ),
               _SortOptionTile(
-                title: 'Host (A-Z)',
+                title: context.l10n.connSortHostAsc,
                 option: ConnectionSortOption.hostAsc,
                 currentOption: currentSort,
                 onTap: () {
@@ -228,7 +229,7 @@ class ConnectionsScreen extends ConsumerWidget {
                 },
               ),
               _SortOptionTile(
-                title: 'Host (Z-A)',
+                title: context.l10n.connSortHostDesc,
                 option: ConnectionSortOption.hostDesc,
                 currentOption: currentSort,
                 onTap: () {
@@ -333,7 +334,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'No matching connections',
+            context.l10n.connNoResults,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -342,7 +343,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Try a different search term',
+            context.l10n.connNoResultsHint,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
               color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -355,7 +356,7 @@ class ConnectionsScreen extends ConsumerWidget {
               ref.read(_searchVisibleProvider.notifier).hide();
             },
             icon: const Icon(Icons.clear),
-            label: const Text('Clear Search'),
+            label: Text(context.l10n.connClearSearch),
             style: TextButton.styleFrom(
               foregroundColor: colorScheme.primary,
             ),
@@ -373,7 +374,7 @@ class ConnectionsScreen extends ConsumerWidget {
           const Icon(Icons.error_outline, size: 64, color: DesignColors.error),
           const SizedBox(height: 16),
           Text(
-            'Error loading connections',
+            context.l10n.connLoadError,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -382,7 +383,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ElevatedButton.icon(
             onPressed: () => ref.read(connectionsProvider.notifier).reload(),
             icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
+            label: Text(context.l10n.connRetry),
           ),
         ],
       ),
@@ -410,7 +411,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'No connections yet',
+            context.l10n.connEmpty,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
@@ -419,7 +420,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Tap the button below to add your first server',
+            context.l10n.connEmptyHint,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
               color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -460,17 +461,17 @@ class ConnectionsScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Connection'),
-        content: Text('Are you sure you want to delete "${connection.name}"?'),
+        title: Text(context.l10n.connDeleteConfirmTitle),
+        content: Text(context.l10n.connDeleteConfirmMessage(connection.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Delete'),
+            child: Text(context.l10n.connDelete),
           ),
         ],
       ),
@@ -483,7 +484,7 @@ class ConnectionsScreen extends ConsumerWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${connection.name} deleted')),
+          SnackBar(content: Text(context.l10n.connDeletedMessage(connection.name))),
         );
       }
     }
@@ -718,6 +719,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   /// 認証情報を取得してSSH接続し、接続済みクライアントを返す。
   Future<SshClient> _connectSsh() async {
+    final l10n = context.l10n;
     final connection = widget.connection;
     final factory = widget.sshClientFactory;
     if (factory != null) return factory(connection);
@@ -726,9 +728,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await storage.getPrivateKey(connection.keyId!);
       if (privateKey == null) {
-        throw SshAuthenticationError(
-          'Private key is not readable. Please re-import the key.',
-        );
+        throw SshAuthenticationError(l10n.connPrivateKeyUnreadable);
       }
       final passphrase = await storage.getPassphrase(connection.keyId!);
       options = SshConnectOptions(
@@ -825,20 +825,17 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Kill Session'),
-        content: Text(
-          'Kill tmux session "$sessionName"? '
-          'Its windows and processes will be terminated.',
-        ),
+        title: Text(context.l10n.connKillSessionTitle),
+        content: Text(context.l10n.connKillSessionMessage(sessionName)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Kill'),
+            child: Text(context.l10n.connKill),
           ),
         ],
       ),
@@ -859,7 +856,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       await _reloadSessions(client);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Session $sessionName killed')),
+          SnackBar(content: Text(context.l10n.connSessionKilled(sessionName))),
         );
       }
     } catch (e) {
@@ -883,7 +880,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     if (workspaceId == null || workspaceId.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot close workspace without an ID')),
+          SnackBar(content: Text(context.l10n.connCannotCloseWorkspace)),
         );
       }
       return;
@@ -892,20 +889,17 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Close Workspace?'),
-        content: Text(
-          'Close herdr workspace "${workspace.name}"? '
-          'All tabs and panes in this workspace will be terminated.',
-        ),
+        title: Text(context.l10n.connCloseWorkspaceTitle),
+        content: Text(context.l10n.connCloseWorkspaceMessage(workspace.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Close'),
+            child: Text(context.l10n.connClose),
           ),
         ],
       ),
@@ -938,7 +932,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Workspace ${workspace.name} closed')),
+          SnackBar(content: Text(context.l10n.connWorkspaceClosed(workspace.name))),
         );
       }
     } catch (e) {
@@ -994,7 +988,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
             child: Row(
               children: [
                 Text(
-                  'ACTIVE SESSIONS',
+                  context.l10n.connActiveSessions,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
@@ -1014,7 +1008,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
                     ),
                     onPressed: _isLoadingSessions ? null : _fetchSessions,
-                    tooltip: 'Reload sessions',
+                    tooltip: context.l10n.connReloadSessions,
                   ),
                 ),
               ],
@@ -1048,8 +1042,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 _backendKind == MultiplexerBackendKind.herdr
-                    ? 'No herdr workspaces found'
-                    : 'No tmux sessions found',
+                    ? context.l10n.connNoWorkspacesFound
+                    : context.l10n.connNoSessionsFound,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
                   color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -1072,8 +1066,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               icon: const Icon(Icons.add, size: 16),
               label: Text(
                 _backendKind == MultiplexerBackendKind.herdr
-                    ? 'New Workspace'
-                    : 'New Session',
+                    ? context.l10n.connNewWorkspace
+                    : context.l10n.connNewSession,
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
@@ -1096,7 +1090,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   child: TextButton.icon(
                     onPressed: widget.onEdit,
                     icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Edit'),
+                    label: Text(context.l10n.connEdit),
                     style: TextButton.styleFrom(
                       foregroundColor: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
                     ),
@@ -1106,7 +1100,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   child: TextButton.icon(
                     onPressed: widget.onDelete,
                     icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('Delete'),
+                    label: Text(context.l10n.connDelete),
                     style: TextButton.styleFrom(
                       foregroundColor: DesignColors.error,
                     ),
@@ -1175,7 +1169,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Workspace $label created')),
+          SnackBar(content: Text(context.l10n.connWorkspaceCreated(label))),
         );
       }
     } catch (e) {
@@ -1240,7 +1234,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       ),
                     ),
                     Text(
-                      '$windowCount windows',
+                      context.l10n.connWindowsCount(windowCount),
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 11,
                         color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -1264,7 +1258,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   ),
                 ),
                 child: Text(
-                  isAttached ? 'Attached' : 'Detached',
+                  isAttached ? context.l10n.connAttached : context.l10n.connDetached,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
@@ -1287,8 +1281,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       ? null
                       : () => _killSession(session),
                   tooltip: _backendKind == MultiplexerBackendKind.herdr
-                      ? 'Kill workspace'
-                      : 'Kill session',
+                      ? context.l10n.connKillWorkspaceTooltip
+                      : context.l10n.connKillSessionTooltip,
                 ),
               ),
             ],
@@ -1308,7 +1302,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '破損した鍵を使用中',
+        context.l10n.connDamagedKeyBadge,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
               fontSize: 9,
               color: colorScheme.onErrorContainer,
@@ -1370,7 +1364,7 @@ class _SearchFieldState extends State<_SearchField> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: 'Search connections...',
+        hintText: context.l10n.connSearchHint,
         hintStyle: GoogleFonts.jetBrainsMono(
           fontSize: 12,
           color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -1474,13 +1468,13 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
 
   String? _validateSessionName(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter a session name';
+      return context.l10n.connSessionNameRequired;
     }
     if (!RegExp(r'^[a-zA-Z0-9_.-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - _ . allowed';
+      return context.l10n.connSessionNameInvalidChars;
     }
     if (widget.existingSessionNames.contains(value)) {
-      return 'Session "$value" already exists';
+      return context.l10n.connSessionNameExists(value);
     }
     return null;
   }
@@ -1497,7 +1491,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text(
-        'New Session',
+        context.l10n.connNewSession,
         style: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
         ),
@@ -1508,7 +1502,7 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
           controller: _nameController,
           autofocus: true,
           decoration: InputDecoration(
-            labelText: 'Session Name',
+            labelText: context.l10n.connSessionNameLabel,
             hintText: 'session-1',
             hintStyle: GoogleFonts.jetBrainsMono(
               fontSize: 14,
@@ -1541,11 +1535,11 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.connCancel),
         ),
         FilledButton(
           onPressed: _submit,
-          child: const Text('Create'),
+          child: Text(context.l10n.connCreate),
         ),
       ],
     );

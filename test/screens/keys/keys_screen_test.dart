@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/screens/keys/keys_screen.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +17,12 @@ void main() {
   Future<void> pumpKeysScreen(WidgetTester tester) async {
     await tester.pumpWidget(
       const ProviderScope(
-        child: MaterialApp(home: KeysScreen()),
+        child: MaterialApp(
+          locale: Locale('ja'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: KeysScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
