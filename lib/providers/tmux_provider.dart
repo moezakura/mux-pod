@@ -1,4 +1,3 @@
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/tmux/tmux_facade.dart';
@@ -56,9 +55,15 @@ class TmuxState {
     return TmuxState(
       sessions: sessions ?? this.sessions,
       activeSessionName: activeSessionName ?? this.activeSessionName,
-      activeWindowIndex: clearActiveWindowIndex ? null : (activeWindowIndex ?? this.activeWindowIndex),
-      activePaneIndex: clearActivePaneIndex ? null : (activePaneIndex ?? this.activePaneIndex),
-      activePaneId: clearActivePaneId ? null : (activePaneId ?? this.activePaneId),
+      activeWindowIndex: clearActiveWindowIndex
+          ? null
+          : (activeWindowIndex ?? this.activeWindowIndex),
+      activePaneIndex: clearActivePaneIndex
+          ? null
+          : (activePaneIndex ?? this.activePaneIndex),
+      activePaneId: clearActivePaneId
+          ? null
+          : (activePaneId ?? this.activePaneId),
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -146,9 +151,15 @@ class TmuxNotifier extends Notifier<TmuxState> {
   /// アクティブセッションを設定
   void setActiveSession(String sessionName) {
     // セッション内の最初のアクティブウィンドウとペインを自動選択
-    final session = state.sessions.where((s) => s.name == sessionName).firstOrNull;
-    final activeWindow = session?.windows.where((w) => w.active).firstOrNull ?? session?.windows.firstOrNull;
-    final activePane = activeWindow?.panes.where((p) => p.active).firstOrNull ?? activeWindow?.panes.firstOrNull;
+    final session = state.sessions
+        .where((s) => s.name == sessionName)
+        .firstOrNull;
+    final activeWindow =
+        session?.windows.where((w) => w.active).firstOrNull ??
+        session?.windows.firstOrNull;
+    final activePane =
+        activeWindow?.panes.where((p) => p.active).firstOrNull ??
+        activeWindow?.panes.firstOrNull;
 
     state = state.copyWith(
       activeSessionName: sessionName,
@@ -167,8 +178,12 @@ class TmuxNotifier extends Notifier<TmuxState> {
   void setActiveWindow(int windowIndex) {
     // ウィンドウ内の最初のアクティブペインを自動選択
     final session = state.activeSession;
-    final window = session?.windows.where((w) => w.index == windowIndex).firstOrNull;
-    final activePane = window?.panes.where((p) => p.active).firstOrNull ?? window?.panes.firstOrNull;
+    final window = session?.windows
+        .where((w) => w.index == windowIndex)
+        .firstOrNull;
+    final activePane =
+        window?.panes.where((p) => p.active).firstOrNull ??
+        window?.panes.firstOrNull;
 
     state = state.copyWith(
       activeWindowIndex: windowIndex,
@@ -183,10 +198,7 @@ class TmuxNotifier extends Notifier<TmuxState> {
   // inventory: LEGACY-0177
   /// アクティブペインを設定（pane index）
   void setActivePaneByIndex(int paneIndex, {String? paneId}) {
-    state = state.copyWith(
-      activePaneIndex: paneIndex,
-      activePaneId: paneId,
-    );
+    state = state.copyWith(activePaneIndex: paneIndex, activePaneId: paneId);
   }
 
   // inventory: PROV-TMUX-021
@@ -196,10 +208,7 @@ class TmuxNotifier extends Notifier<TmuxState> {
     // paneIdからindexを取得
     final window = state.activeWindow;
     final pane = window?.panes.where((p) => p.id == paneId).firstOrNull;
-    state = state.copyWith(
-      activePaneId: paneId,
-      activePaneIndex: pane?.index,
-    );
+    state = state.copyWith(activePaneId: paneId, activePaneIndex: pane?.index);
   }
 
   // inventory: PROV-TMUX-022

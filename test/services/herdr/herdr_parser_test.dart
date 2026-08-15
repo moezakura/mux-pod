@@ -43,7 +43,8 @@ const kStatusNotRunningFixture =
 
 // T0 実測⑥の layout JSON（5-pane / rect / splits 実測形）。
 // 元データ: tool/herdr-mutation-baseline/mutation-baseline-report.md §⑥
-const kLayoutFixture = '{"area":{"height":59,"width":78,"x":26,"y":1},'
+const kLayoutFixture =
+    '{"area":{"height":59,"width":78,"x":26,"y":1},'
     '"focused_pane_id":"w5:p1","panes":['
     '{"focused":true,"pane_id":"w5:p1","rect":{"height":59,"width":39,"x":26,"y":1}},'
     '{"focused":false,"pane_id":"w5:p4","rect":{"height":59,"width":39,"x":65,"y":1}}],'
@@ -149,7 +150,8 @@ void main() {
     });
 
     test('throws FormatException on error response', () {
-      const json = '{"error":{"code":"pane_not_found","message":"x"},'
+      const json =
+          '{"error":{"code":"pane_not_found","message":"x"},'
           '"id":"cli:pane:get"}';
       expect(
         () => HerdrSnapshotParser.parse(json),

@@ -25,9 +25,7 @@ void main() {
     testWidgets('current family is selected', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: FontFamilyDialog(currentFamily: 'Fira Code'),
-          ),
+          home: Scaffold(body: FontFamilyDialog(currentFamily: 'Fira Code')),
         ),
       );
 

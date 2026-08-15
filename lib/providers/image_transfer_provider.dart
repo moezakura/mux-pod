@@ -42,7 +42,8 @@ class ImageTransferState {
     this.pendingRemotePath,
   });
 
-  bool get canPick => phase == ImageTransferPhase.idle || phase == ImageTransferPhase.completed;
+  bool get canPick =>
+      phase == ImageTransferPhase.idle || phase == ImageTransferPhase.completed;
 
   ImageTransferState copyWith({
     ImageTransferPhase? phase,
@@ -81,11 +82,9 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
 
   /// 画像を選択
   Future<void> pickImage(ImageSource source) async {
-
     if (!state.canPick) return;
 
     state = const ImageTransferState(phase: ImageTransferPhase.picking);
-
 
     try {
       final xFile = await _imagePicker.pickImage(source: source);
@@ -122,7 +121,8 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
   Future<String?> confirmAndUpload({
     required ImageTransferOptions options,
   }) async {
-    if (state.phase != ImageTransferPhase.confirming || state.pickedImageBytes == null) {
+    if (state.phase != ImageTransferPhase.confirming ||
+        state.pickedImageBytes == null) {
       return null;
     }
 
@@ -154,7 +154,8 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
 
       // フォーマット変換・リサイズ（optionsから取得）
       final format = ImageOutputFormat.fromString(options.outputFormat);
-      final needsConvert = format != ImageOutputFormat.original || options.needsResize;
+      final needsConvert =
+          format != ImageOutputFormat.original || options.needsResize;
       if (needsConvert) {
         state = state.copyWith(phase: ImageTransferPhase.converting);
         final result = await ImageConverter.convert(
@@ -240,5 +241,5 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
 /// 画像転送プロバイダー
 final imageTransferProvider =
     NotifierProvider<ImageTransferNotifier, ImageTransferState>(() {
-  return ImageTransferNotifier();
-});
+      return ImageTransferNotifier();
+    });

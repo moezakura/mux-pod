@@ -141,9 +141,7 @@ bool isHerdrTargetNotFound(Object e) {
 ///
 /// Q-07 の全キー送信経路（`PaneKeyMap`）により通常は発生しないが、万一
 /// `send-keys` が未知のキー名を拒否した場合の**防御的**分類に使う（R9）。
-const Set<String> kHerdrInvalidKeyErrorCodes = {
-  'invalid_key',
-};
+const Set<String> kHerdrInvalidKeyErrorCodes = {'invalid_key'};
 
 // inventory: HERDR-ERR-012
 /// 非対応キーの判定述語。

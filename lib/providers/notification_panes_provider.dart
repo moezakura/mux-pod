@@ -279,5 +279,5 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
 /// 通知ペインプロバイダー
 final alertPanesProvider =
     NotifierProvider<AlertPanesNotifier, AlertPanesState>(() {
-  return AlertPanesNotifier();
-});
+      return AlertPanesNotifier();
+    });

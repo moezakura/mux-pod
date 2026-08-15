@@ -46,14 +46,12 @@ class HerdrTargetResolver {
     // 2. workspace 決定
     final HerdrWorkspace? workspace;
     if (workspaceId != null) {
-      workspace = workspaces
-          .where((w) => w.id == workspaceId)
-          .firstOrNull;
+      workspace = workspaces.where((w) => w.id == workspaceId).firstOrNull;
     } else if (workspaceLabel != null && workspaceLabel.isNotEmpty) {
       // label 一致 → id 一致（既存は label が空なら id を name として比較）
       workspace =
           workspaces.where((w) => w.label == workspaceLabel).firstOrNull ??
-              workspaces.where((w) => w.id == workspaceLabel).firstOrNull;
+          workspaces.where((w) => w.id == workspaceLabel).firstOrNull;
     } else {
       workspace = null;
     }
@@ -78,8 +76,9 @@ class HerdrTargetResolver {
     }
 
     // 5. workspace 内フォールバック（tab 解決不能・tab 内が空のとき）
-    final workspacePanes =
-        snapshot.panes.where((p) => p.workspaceId == targetWorkspace.id);
+    final workspacePanes = snapshot.panes.where(
+      (p) => p.workspaceId == targetWorkspace.id,
+    );
     final workspaceFocused = workspacePanes.where((p) => p.focused).firstOrNull;
     if (workspaceFocused != null) return workspaceFocused.id;
     final firstWorkspacePane = workspacePanes.firstOrNull;

@@ -114,7 +114,10 @@ class FontCalculator {
     final painter = TextPainter(
       text: TextSpan(
         text: testString,
-        style: TerminalFontStyles.getTextStyle(fontFamily, fontSize: baseFontSize),
+        style: TerminalFontStyles.getTextStyle(
+          fontFamily,
+          fontSize: baseFontSize,
+        ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -306,7 +309,9 @@ class FontCalculator {
     // Symbols and Pictographs Extended-B
     if (codePoint >= 0x1FA70 && codePoint <= 0x1FAFF) return true;
     // その他の絵文字になりうる記号
-    if (codePoint >= 0x2300 && codePoint <= 0x23FF) return true; // Misc Technical
+    if (codePoint >= 0x2300 && codePoint <= 0x23FF) {
+      return true; // Misc Technical
+    }
     if (codePoint >= 0x2B50 && codePoint <= 0x2B55) return true; // Stars etc
     // 数字キーキャップ用
     if (codePoint >= 0x0023 && codePoint <= 0x0039) return true; // # 0-9
@@ -314,11 +319,15 @@ class FontCalculator {
     if (codePoint == 0x00A9 || codePoint == 0x00AE) return true; // © ®
     if (codePoint == 0x2122) return true; // ™
     if (codePoint >= 0x2194 && codePoint <= 0x21AA) return true; // Arrows
-    if (codePoint >= 0x231A && codePoint <= 0x231B) return true; // Watch, Hourglass
+    if (codePoint >= 0x231A && codePoint <= 0x231B) {
+      return true; // Watch, Hourglass
+    }
     if (codePoint >= 0x25AA && codePoint <= 0x25AB) return true; // Squares
     if (codePoint >= 0x25B6 && codePoint <= 0x25C0) return true; // Triangles
     if (codePoint >= 0x25FB && codePoint <= 0x25FE) return true; // Squares
-    if (codePoint == 0x2614 || codePoint == 0x2615) return true; // Umbrella, Hot Beverage
+    if (codePoint == 0x2614 || codePoint == 0x2615) {
+      return true; // Umbrella, Hot Beverage
+    }
     if (codePoint >= 0x2648 && codePoint <= 0x2653) return true; // Zodiac
     if (codePoint == 0x267F) return true; // Wheelchair
     if (codePoint == 0x2693) return true; // Anchor
@@ -329,7 +338,9 @@ class FontCalculator {
     if (codePoint == 0x26CE) return true; // Ophiuchus
     if (codePoint == 0x26D4) return true; // No Entry
     if (codePoint == 0x26EA) return true; // Church
-    if (codePoint >= 0x26F2 && codePoint <= 0x26F3) return true; // Fountain, Golf
+    if (codePoint >= 0x26F2 && codePoint <= 0x26F3) {
+      return true; // Fountain, Golf
+    }
     if (codePoint == 0x26F5) return true; // Sailboat
     if (codePoint == 0x26FA) return true; // Tent
     if (codePoint == 0x26FD) return true; // Fuel Pump
@@ -338,13 +349,17 @@ class FontCalculator {
     if (codePoint == 0x270F) return true; // Pencil
     if (codePoint >= 0x2712 && codePoint <= 0x2714) return true; // Writing
     if (codePoint == 0x2716) return true; // X Mark
-    if (codePoint >= 0x271D && codePoint <= 0x2721) return true; // Religious symbols
+    if (codePoint >= 0x271D && codePoint <= 0x2721) {
+      return true; // Religious symbols
+    }
     if (codePoint == 0x2728) return true; // Sparkles
     if (codePoint >= 0x2733 && codePoint <= 0x2734) return true; // Asterisks
     if (codePoint == 0x2744) return true; // Snowflake
     if (codePoint == 0x2747) return true; // Sparkle
     if (codePoint >= 0x274C && codePoint <= 0x274E) return true; // X marks
-    if (codePoint >= 0x2753 && codePoint <= 0x2755) return true; // Question marks
+    if (codePoint >= 0x2753 && codePoint <= 0x2755) {
+      return true; // Question marks
+    }
     if (codePoint == 0x2757) return true; // Exclamation
     if (codePoint >= 0x2763 && codePoint <= 0x2764) return true; // Hearts
     if (codePoint >= 0x2795 && codePoint <= 0x2797) return true; // Math

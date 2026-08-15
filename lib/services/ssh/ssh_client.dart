@@ -856,11 +856,7 @@ class SshClient implements BackendAdapter {
     }
     final session = await _client!.execute(
       command,
-      pty: SSHPtyConfig(
-        type: 'xterm-256color',
-        width: cols,
-        height: rows,
-      ),
+      pty: SSHPtyConfig(type: 'xterm-256color', width: cols, height: rows),
     );
     final process = ManagedPtyProcess._(session);
     _managedPty = process;
@@ -935,7 +931,7 @@ class SshClient implements BackendAdapter {
 
     final useEphemeral =
         request.output == CommandOutputRequirement.separatedOutput ||
-            request.transport == CommandTransportPreference.ephemeralOnly;
+        request.transport == CommandTransportPreference.ephemeralOnly;
 
     if (useEphemeral) {
       final result = await _executeEphemeral(request);
@@ -963,8 +959,7 @@ class SshClient implements BackendAdapter {
       );
     }
 
-    final captureExitCode =
-        request.output == CommandOutputRequirement.exitCode;
+    final captureExitCode = request.output == CommandOutputRequirement.exitCode;
     try {
       final result = captureExitCode
           ? await _persistentShell!.execWithExitCode(
@@ -1173,7 +1168,9 @@ class ManagedPtyProcess {
       // シグナル非対応のサーバでは channel close で代替する。
     }
     try {
-      await _session.done.timeout(const Duration(milliseconds: _closeTimeoutMs));
+      await _session.done.timeout(
+        const Duration(milliseconds: _closeTimeoutMs),
+      );
     } catch (_) {
       // タイムアウトしても channel close で強制終了する。
     }

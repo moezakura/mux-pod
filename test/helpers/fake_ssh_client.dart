@@ -154,7 +154,7 @@ class FakeSshClient extends SshClient
     // それ以外（ephemeral）は execCommands 側で記録される。
     final usePersistent =
         request.transport == CommandTransportPreference.persistentPreferred ||
-            request.transport == CommandTransportPreference.persistentOnly;
+        request.transport == CommandTransportPreference.persistentOnly;
     final result = usePersistent
         ? await execPersistentWithExitCode(request.command)
         : await execWithExitCode(request.command);

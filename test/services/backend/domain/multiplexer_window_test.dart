@@ -40,14 +40,16 @@ void main() {
       expect(copy.id, isNull);
     });
 
-    test('equality and hashCode are based on index+id (mirrors TmuxWindow)',
-        () {
-      const a = MultiplexerWindow(index: 1, id: 'w1:t1', name: 'a');
-      const b = MultiplexerWindow(index: 1, id: 'w1:t1', name: 'b');
-      const c = MultiplexerWindow(index: 2, id: 'w1:t2', name: 'a');
-      expect(a, equals(b));
-      expect(a.hashCode, equals(b.hashCode));
-      expect(a, isNot(equals(c)));
-    });
+    test(
+      'equality and hashCode are based on index+id (mirrors TmuxWindow)',
+      () {
+        const a = MultiplexerWindow(index: 1, id: 'w1:t1', name: 'a');
+        const b = MultiplexerWindow(index: 1, id: 'w1:t1', name: 'b');
+        const c = MultiplexerWindow(index: 2, id: 'w1:t2', name: 'a');
+        expect(a, equals(b));
+        expect(a.hashCode, equals(b.hashCode));
+        expect(a, isNot(equals(c)));
+      },
+    );
   });
 }

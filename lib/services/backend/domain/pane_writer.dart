@@ -28,8 +28,7 @@ class UnsupportedPaneOperationException implements Exception {
   });
 
   @override
-  String toString() =>
-      'UnsupportedPaneOperationException($backend.$operation)';
+  String toString() => 'UnsupportedPaneOperationException($backend.$operation)';
 }
 
 /// 操作は実行されたが状態が変化しなかった（soft 失敗）ことを表す例外。

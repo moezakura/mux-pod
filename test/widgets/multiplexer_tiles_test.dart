@@ -133,8 +133,9 @@ void main() {
       expect(find.byIcon(Icons.more_vert), findsNothing);
     });
 
-    testWidgets('uses custom resize label when resizeLabel is provided',
-        (tester) async {
+    testWidgets('uses custom resize label when resizeLabel is provided', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

@@ -74,15 +74,14 @@ void main() {
       overlayState.dispose();
     });
 
-    Widget buildWidget({KeyOverlayPosition position = KeyOverlayPosition.aboveKeyboard}) {
+    Widget buildWidget({
+      KeyOverlayPosition position = KeyOverlayPosition.aboveKeyboard,
+    }) {
       return MaterialApp(
         home: Scaffold(
           body: Stack(
             children: [
-              KeyOverlayWidget(
-                overlayState: overlayState,
-                position: position,
-              ),
+              KeyOverlayWidget(overlayState: overlayState, position: position),
             ],
           ),
         ),
@@ -91,7 +90,9 @@ void main() {
 
     testWidgets('initially hidden when state text is null', (tester) async {
       await tester.pumpWidget(buildWidget());
-      final opacity = tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity));
+      final opacity = tester.widget<AnimatedOpacity>(
+        find.byType(AnimatedOpacity),
+      );
       expect(opacity.opacity, 0.0);
     });
 
@@ -110,7 +111,9 @@ void main() {
 
       overlayState.hide();
       await tester.pump();
-      final opacity = tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity));
+      final opacity = tester.widget<AnimatedOpacity>(
+        find.byType(AnimatedOpacity),
+      );
       expect(opacity.opacity, 0.0);
     });
 
@@ -126,7 +129,9 @@ void main() {
     });
 
     testWidgets('position aboveKeyboard uses bottom alignment', (tester) async {
-      await tester.pumpWidget(buildWidget(position: KeyOverlayPosition.aboveKeyboard));
+      await tester.pumpWidget(
+        buildWidget(position: KeyOverlayPosition.aboveKeyboard),
+      );
       overlayState.show('ESC');
       await tester.pump();
       final positioned = tester.widget<Positioned>(find.byType(Positioned));
@@ -135,7 +140,9 @@ void main() {
     });
 
     testWidgets('position belowHeader uses top alignment', (tester) async {
-      await tester.pumpWidget(buildWidget(position: KeyOverlayPosition.belowHeader));
+      await tester.pumpWidget(
+        buildWidget(position: KeyOverlayPosition.belowHeader),
+      );
       overlayState.show('ESC');
       await tester.pump();
       final positioned = tester.widget<Positioned>(find.byType(Positioned));

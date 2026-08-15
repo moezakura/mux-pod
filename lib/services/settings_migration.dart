@@ -14,7 +14,9 @@ class MigrateAutoFitToAdjustMode extends SettingsMigration {
   @override
   Future<void> migrate(SharedPreferences prefs) async {
     final hasLegacyAutoFit = prefs.containsKey('settings_auto_fit_enabled');
-    final hasLegacyAutoResize = prefs.containsKey('settings_auto_resize_enabled');
+    final hasLegacyAutoResize = prefs.containsKey(
+      'settings_auto_resize_enabled',
+    );
     if (!hasLegacyAutoFit && !hasLegacyAutoResize) return;
 
     final autoFit = prefs.getBool('settings_auto_fit_enabled') ?? true;

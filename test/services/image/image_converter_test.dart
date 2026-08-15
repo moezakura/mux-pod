@@ -7,7 +7,10 @@ import 'package:flutter_muxpod/services/image/image_converter.dart';
 void main() {
   group('ImageOutputFormat', () {
     test('fromString parses known values', () {
-      expect(ImageOutputFormat.fromString('original'), ImageOutputFormat.original);
+      expect(
+        ImageOutputFormat.fromString('original'),
+        ImageOutputFormat.original,
+      );
       expect(ImageOutputFormat.fromString('png'), ImageOutputFormat.png);
       expect(ImageOutputFormat.fromString('jpeg'), ImageOutputFormat.jpeg);
     });
@@ -115,15 +118,24 @@ void main() {
   });
 
   group('ImageConverter.convert', () {
-    test('returns original bytes when format is original and no resize', () async {
-      final jpegHeader = Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, ...List.filled(100, 0)]);
-      final result = await ImageConverter.convert(
-        bytes: jpegHeader,
-        format: ImageOutputFormat.original,
-        autoResize: false,
-      );
-      expect(result.bytes, jpegHeader);
-      expect(result.extension, 'jpg');
-    });
+    test(
+      'returns original bytes when format is original and no resize',
+      () async {
+        final jpegHeader = Uint8List.fromList([
+          0xFF,
+          0xD8,
+          0xFF,
+          0xE0,
+          ...List.filled(100, 0),
+        ]);
+        final result = await ImageConverter.convert(
+          bytes: jpegHeader,
+          format: ImageOutputFormat.original,
+          autoResize: false,
+        );
+        expect(result.bytes, jpegHeader);
+        expect(result.extension, 'jpg');
+      },
+    );
   });
 }

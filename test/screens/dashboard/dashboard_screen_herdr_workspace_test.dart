@@ -59,9 +59,7 @@ void main() {
             () => _MixedActiveSessionsNotifier(),
           ),
         ],
-        child: const MaterialApp(
-          home: DashboardScreen(),
-        ),
+        child: const MaterialApp(home: DashboardScreen()),
       ),
     );
     await tester.pumpAndSettle();

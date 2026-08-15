@@ -33,7 +33,8 @@ class AdaptivePollingInterval {
     }
 
     // 中間状態：線形補間
-    final ratio = (unchangedFrames - highFrequencyThreshold) /
+    final ratio =
+        (unchangedFrames - highFrequencyThreshold) /
         (lowFrequencyThreshold - highFrequencyThreshold);
     return (minInterval + (maxInterval - minInterval) * ratio).round();
   }

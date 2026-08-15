@@ -8,10 +8,7 @@ import '../../services/terminal/terminal_font_styles.dart';
 class FontFamilyDialog extends StatefulWidget {
   final String currentFamily;
 
-  const FontFamilyDialog({
-    super.key,
-    required this.currentFamily,
-  });
+  const FontFamilyDialog({super.key, required this.currentFamily});
 
   @override
   State<FontFamilyDialog> createState() => _FontFamilyDialogState();

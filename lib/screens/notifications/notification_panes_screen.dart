@@ -14,10 +14,12 @@ class NotificationPanesScreen extends ConsumerStatefulWidget {
   const NotificationPanesScreen({super.key});
 
   @override
-  ConsumerState<NotificationPanesScreen> createState() => _NotificationPanesScreenState();
+  ConsumerState<NotificationPanesScreen> createState() =>
+      _NotificationPanesScreenState();
 }
 
-class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScreen> {
+class _NotificationPanesScreenState
+    extends ConsumerState<NotificationPanesScreen> {
   bool _isRefreshing = false;
 
   @override
@@ -55,17 +57,19 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
     // tmux側のウィンドウフラグをクリア（バックグラウンド）
     notifier.clearWindowFlag(alert);
 
-    ref.read(activeSessionsProvider.notifier).addOrUpdateSession(
-      connectionId: alert.connectionId,
-      connectionName: alert.connectionName,
-      host: alert.host,
-      sessionName: alert.sessionName,
-      sessionId: alert.sessionId,
-      windowCount: 0,
-      isAttached: true,
-      lastWindowIndex: alert.windowIndex,
-      lastPaneId: alert.paneId,
-    );
+    ref
+        .read(activeSessionsProvider.notifier)
+        .addOrUpdateSession(
+          connectionId: alert.connectionId,
+          connectionName: alert.connectionName,
+          host: alert.host,
+          sessionName: alert.sessionName,
+          sessionId: alert.sessionId,
+          windowCount: 0,
+          isAttached: true,
+          lastWindowIndex: alert.windowIndex,
+          lastPaneId: alert.paneId,
+        );
 
     if (!mounted) return;
     Navigator.of(context).push(
@@ -115,32 +119,31 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final alert = alertState.alertPanes[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _AlertPaneCard(
-                          alert: alert,
-                          onTap: () => _openAlertPane(alert),
-                          onDismiss: () => _dismissAlert(alert),
-                        ),
-                      );
-                    },
-                    childCount: alertState.alertPanes.length,
-                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final alert = alertState.alertPanes[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _AlertPaneCard(
+                        alert: alert,
+                        onTap: () => _openAlertPane(alert),
+                        onDismiss: () => _dismissAlert(alert),
+                      ),
+                    );
+                  }, childCount: alertState.alertPanes.length),
                 ),
               ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 80),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAppBar(BuildContext context, bool isDark, ColorScheme colorScheme) {
+  Widget _buildAppBar(
+    BuildContext context,
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
     return SliverAppBar(
       floating: true,
       pinned: true,
@@ -169,12 +172,16 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                    color: isDark
+                        ? DesignColors.textSecondary
+                        : DesignColors.textSecondaryLight,
                   ),
                 )
               : Icon(
                   Icons.refresh,
-                  color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                  color: isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight,
                 ),
           onPressed: _isRefreshing ? null : _refresh,
           tooltip: 'Refresh alerts',
@@ -192,7 +199,9 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
           Icon(
             Icons.notifications_none,
             size: 64,
-            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
           ),
           const SizedBox(height: 16),
           Text(
@@ -200,7 +209,9 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
             style: GoogleFonts.spaceGrotesk(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
@@ -208,7 +219,9 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
             'All panes are quiet',
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
         ],
@@ -248,10 +261,7 @@ class _AlertPaneCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.notifications_off,
-              color: DesignColors.error,
-            ),
+            const Icon(Icons.notifications_off, color: DesignColors.error),
             const SizedBox(height: 4),
             Text(
               'Dismiss',
@@ -269,10 +279,14 @@ class _AlertPaneCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+            color: isDark
+                ? DesignColors.surfaceDark
+                : DesignColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+              color: isDark
+                  ? DesignColors.borderDark
+                  : DesignColors.borderLight,
             ),
             boxShadow: [
               BoxShadow(
@@ -323,7 +337,9 @@ class _AlertPaneCard extends StatelessWidget {
                       alert.host,
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 12,
-                        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        color: isDark
+                            ? DesignColors.textMuted
+                            : DesignColors.textMutedLight,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -335,14 +351,18 @@ class _AlertPaneCard extends StatelessWidget {
                           'W${alert.windowIndex}: ${alert.windowName}',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                         Text(
                           ' • Pane ${alert.paneIndex}',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                         if (alert.currentCommand != null) ...[
@@ -350,7 +370,9 @@ class _AlertPaneCard extends StatelessWidget {
                             ' • ',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 11,
-                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
                             ),
                           ),
                           Flexible(
@@ -358,7 +380,9 @@ class _AlertPaneCard extends StatelessWidget {
                               alert.currentCommand!,
                               style: GoogleFonts.jetBrainsMono(
                                 fontSize: 11,
-                                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                                color: isDark
+                                    ? DesignColors.textMuted
+                                    : DesignColors.textMutedLight,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -372,7 +396,10 @@ class _AlertPaneCard extends StatelessWidget {
               ),
               // Flag Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _flagBadgeBackground(alert.primaryFlag, isDark),
                   borderRadius: BorderRadius.circular(6),
@@ -416,9 +443,15 @@ class _AlertPaneCard extends StatelessWidget {
 
   Color _flagBackgroundColor(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.15 : 0.1),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.15 : 0.1),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.15 : 0.1),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }
@@ -434,18 +467,30 @@ class _AlertPaneCard extends StatelessWidget {
 
   Color _flagBadgeBackground(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.2 : 0.1),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.2 : 0.1),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.2 : 0.1),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }
 
   Color _flagBadgeBorder(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.4 : 0.3),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.4 : 0.3),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.4 : 0.3),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }

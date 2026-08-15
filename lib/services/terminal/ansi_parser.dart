@@ -62,8 +62,16 @@ class AnsiStyle {
           inverse == other.inverse;
 
   @override
-  int get hashCode => Object.hash(foreground, background, bold, italic,
-      underline, strikethrough, dim, inverse);
+  int get hashCode => Object.hash(
+    foreground,
+    background,
+    bold,
+    italic,
+    underline,
+    strikethrough,
+    dim,
+    inverse,
+  );
 
   static const AnsiStyle defaultStyle = AnsiStyle();
 }
@@ -84,10 +92,7 @@ class ParsedLine {
   /// この行の終了時のスタイル（次の行に引き継ぐ）
   final AnsiStyle endStyle;
 
-  const ParsedLine({
-    required this.segments,
-    required this.endStyle,
-  });
+  const ParsedLine({required this.segments, required this.endStyle});
 
   /// 空行かどうか
   bool get isEmpty => segments.isEmpty || segments.every((s) => s.text.isEmpty);
@@ -409,7 +414,9 @@ class AnsiParser {
             fontFamily,
             fontSize: fontSize,
             color: fg,
-            backgroundColor: (style.inverse || bg != defaultBackground) ? bg : null,
+            backgroundColor: (style.inverse || bg != defaultBackground)
+                ? bg
+                : null,
             fontWeight: style.bold ? FontWeight.bold : FontWeight.normal,
             fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
             decoration: TextDecoration.combine([
@@ -511,8 +518,11 @@ class AnsiParser {
         cached.fontFamily == fontFamily) {
       return cached.span;
     }
-    final span =
-        toTextSpan(line.segments, fontSize: fontSize, fontFamily: fontFamily);
+    final span = toTextSpan(
+      line.segments,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    );
     _spanCache[line] = _LineSpan(span, fontSize, fontFamily);
     return span;
   }

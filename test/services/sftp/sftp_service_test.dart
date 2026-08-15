@@ -21,14 +21,14 @@ void main() {
       });
 
       test('特殊文字はアンダースコアに置換される', () {
-        expect(
-          SftpService.sanitizeFilename('file@#\$%&.txt'),
-          'file_____.txt',
-        );
+        expect(SftpService.sanitizeFilename('file@#\$%&.txt'), 'file_____.txt');
       });
 
       test('パストラバーサル文字はサニタイズされる', () {
-        expect(SftpService.sanitizeFilename('../../../etc/passwd'), '.._.._.._etc_passwd');
+        expect(
+          SftpService.sanitizeFilename('../../../etc/passwd'),
+          '.._.._.._etc_passwd',
+        );
       });
 
       test('空文字列はunnamedを返す', () {

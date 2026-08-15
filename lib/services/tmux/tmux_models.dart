@@ -8,20 +8,18 @@ String _stripAnsiCodes(String text) {
   return text.replaceAll(RegExp(r'\x1b\[[0-9;]*[a-zA-Z]'), '');
 }
 
-
 // ===== データモデル =====
-
 
 // inventory: TMUX-FLAG-001
 /// ウィンドウフラグ
 enum TmuxWindowFlag {
-  current,  // * - 現在のウィンドウ
-  last,     // - - 最後にアクティブだったウィンドウ
+  current, // * - 現在のウィンドウ
+  last, // - - 最後にアクティブだったウィンドウ
   activity, // # - アクティビティ検出
-  bell,     // ! - ベル検出
-  silence,  // ~ - 無音検出
-  marked,   // M - マーク
-  zoomed,   // Z - ズーム
+  bell, // ! - ベル検出
+  silence, // ~ - 無音検出
+  marked, // M - マーク
+  zoomed, // Z - ズーム
 }
 
 // inventory: TMUX-DTO-001
@@ -73,14 +71,16 @@ class TmuxSession {
   String get target => name;
 
   @override
-  String toString() => 'TmuxSession($name, windows: $windowCount, attached: $attached)';
-
+  String toString() =>
+      'TmuxSession($name, windows: $windowCount, attached: $attached)';
 
   // inventory: TMUX-DTO-010
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TmuxSession && runtimeType == other.runtimeType && name == other.name;
+      other is TmuxSession &&
+          runtimeType == other.runtimeType &&
+          name == other.name;
 
   @override
   int get hashCode => name.hashCode;
@@ -103,7 +103,6 @@ class TmuxWindow {
   final Set<TmuxWindowFlag> flags;
   // inventory: TMUX-DTO-018
   final List<TmuxPane> panes;
-
 
   TmuxWindow({
     required this.index,
@@ -149,12 +148,16 @@ class TmuxWindow {
   bool get isZoomed => flags.contains(TmuxWindowFlag.zoomed);
 
   @override
-  String toString() => 'TmuxWindow($index: $name, panes: $paneCount, active: $active)';
+  String toString() =>
+      'TmuxWindow($index: $name, panes: $paneCount, active: $active)';
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is TmuxWindow && runtimeType == other.runtimeType && index == other.index && id == other.id;
+      other is TmuxWindow &&
+          runtimeType == other.runtimeType &&
+          index == other.index &&
+          id == other.id;
 
   @override
   int get hashCode => Object.hash(index, id);
@@ -238,13 +241,13 @@ class TmuxPane {
   /// ペインのターゲット文字列を取得
   String get target => id;
 
-
   // inventory: TMUX-DTO-030
   /// サイズを "80x24" 形式で取得
   String get sizeString => '${width}x$height';
 
   @override
-  String toString() => 'TmuxPane($index: $id, ${width}x$height, active: $active)';
+  String toString() =>
+      'TmuxPane($index: $id, ${width}x$height, active: $active)';
 
   @override
   bool operator ==(Object other) =>
@@ -289,11 +292,13 @@ class TmuxPaneContent {
 
   // inventory: TMUX-DTO-039
   /// 空かどうか
-  bool get isEmpty => lines.isEmpty || lines.every((line) => line.trim().isEmpty);
+  bool get isEmpty =>
+      lines.isEmpty || lines.every((line) => line.trim().isEmpty);
 
   @override
   // inventory: TMUX-DTO-040
-  String toString() => 'TmuxPaneContent(${width}x$height, ${lines.length} lines)';
+  String toString() =>
+      'TmuxPaneContent(${width}x$height, ${lines.length} lines)';
 }
 
 // inventory: TMUX-DTO-050

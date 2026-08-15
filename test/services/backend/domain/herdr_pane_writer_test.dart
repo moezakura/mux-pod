@@ -53,14 +53,8 @@ void main() {
     test('mapSpecialKey: PaneKeyMap の全キー送信経路を返す（Q-07）', () {
       expect(writer.mapSpecialKey('Enter'), isA<HerdrKeyRouteSendKeys>());
       expect(writer.mapSpecialKey('F5'), isA<HerdrKeyRouteSendKeys>());
-      expect(
-        writer.mapSpecialKey('Home'),
-        isA<HerdrKeyRouteSendTextEscape>(),
-      );
-      expect(
-        writer.mapSpecialKey('C-d'),
-        isA<HerdrKeyRouteSendTextControl>(),
-      );
+      expect(writer.mapSpecialKey('Home'), isA<HerdrKeyRouteSendTextEscape>());
+      expect(writer.mapSpecialKey('C-d'), isA<HerdrKeyRouteSendTextControl>());
     });
 
     test('sendText: send-text コマンドへ委譲する', () async {
@@ -87,51 +81,45 @@ void main() {
       expect(backend.commands.single, contains(r'\x04'));
     });
 
-    test(
-      'sendText: 入力シェルがあれば fire-and-forget（sendNoWait）で送信される'
-      '（バグ2: 直列化キューから除外）',
-      () async {
-        final sent = <String>[];
-        backend.fakeInputTransport = _FakeInputTransport(
-          onSend: sent.add,
-          started: true,
-        );
+    test('sendText: 入力シェルがあれば fire-and-forget（sendNoWait）で送信される'
+        '（バグ2: 直列化キューから除外）', () async {
+      final sent = <String>[];
+      backend.fakeInputTransport = _FakeInputTransport(
+        onSend: sent.add,
+        started: true,
+      );
 
-        await writer.sendText('w1:p1', 'hello');
+      await writer.sendText('w1:p1', 'hello');
 
-        // exec チャネル（commands）には乗らず、入力シェルへ即時送信される。
-        expect(backend.commands, isEmpty,
-            reason: 'バグ2: 入力シェルがある場合 sendText は exec を呼ばない');
-        expect(sent.single, 'herdr pane send-text w1:p1 \'hello\'');
-      },
-    );
+      // exec チャネル（commands）には乗らず、入力シェルへ即時送信される。
+      expect(
+        backend.commands,
+        isEmpty,
+        reason: 'バグ2: 入力シェルがある場合 sendText は exec を呼ばない',
+      );
+      expect(sent.single, 'herdr pane send-text w1:p1 \'hello\'');
+    });
 
-    test(
-      'sendKey: 入力シェルがあれば受理キーも fire-and-forget（sendNoWait）',
-      () async {
-        final sent = <String>[];
-        backend.fakeInputTransport = _FakeInputTransport(
-          onSend: sent.add,
-          started: true,
-        );
+    test('sendKey: 入力シェルがあれば受理キーも fire-and-forget（sendNoWait）', () async {
+      final sent = <String>[];
+      backend.fakeInputTransport = _FakeInputTransport(
+        onSend: sent.add,
+        started: true,
+      );
 
-        await writer.sendKey('w1:p1', 'Enter');
+      await writer.sendKey('w1:p1', 'Enter');
 
-        expect(backend.commands, isEmpty);
-        expect(sent.single, 'herdr pane send-keys w1:p1 Enter');
-      },
-    );
+      expect(backend.commands, isEmpty);
+      expect(sent.single, 'herdr pane send-keys w1:p1 Enter');
+    });
 
-    test(
-      'sendText: 入力シェルが無ければ exec チャネルにフォールバックする',
-      () async {
-        backend.fakeInputTransport = null;
+    test('sendText: 入力シェルが無ければ exec チャネルにフォールバックする', () async {
+      backend.fakeInputTransport = null;
 
-        await writer.sendText('w1:p1', 'hello');
+      await writer.sendText('w1:p1', 'hello');
 
-        expect(backend.commands.single, 'herdr pane send-text w1:p1 \'hello\'');
-      },
-    );
+      expect(backend.commands.single, 'herdr pane send-text w1:p1 \'hello\'');
+    });
 
     test('focusPaneDirection: pane focus へ委譲する', () async {
       await writer.focusPaneDirection('w1:p1', 'right');
@@ -141,33 +129,30 @@ void main() {
       );
     });
 
-    test(
-      'focusPaneDirection: changed:false（no_neighbor・隣接なし）は '
-      'PaneOperationNoopException（S4/T20）',
-      () async {
-        // T0 実測 5-b: focus の soft 失敗（changed:false + reason:no_neighbor）。
-        backend.execWithExitCodeResult = (
-          stdout:
-              '{"id":"cli:pane:focus","result":{"focus":{'
-              '"changed":false,"focused_pane_id":"w1:p1",'
-              '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
-              '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
-              '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false},'
-              '"reason":"no_neighbor","source_pane_id":"w1:p1"},'
-              '"type":"pane_focus_direction"}}',
-          stderr: '',
-          exitCode: 0,
-        );
-        await expectLater(
-          writer.focusPaneDirection('w1:p1', 'right'),
-          throwsA(
-            isA<PaneOperationNoopException>()
-                .having((e) => e.operation, 'operation', 'focusPaneDirection')
-                .having((e) => e.reason, 'reason', 'no_neighbor'),
-          ),
-        );
-      },
-    );
+    test('focusPaneDirection: changed:false（no_neighbor・隣接なし）は '
+        'PaneOperationNoopException（S4/T20）', () async {
+      // T0 実測 5-b: focus の soft 失敗（changed:false + reason:no_neighbor）。
+      backend.execWithExitCodeResult = (
+        stdout:
+            '{"id":"cli:pane:focus","result":{"focus":{'
+            '"changed":false,"focused_pane_id":"w1:p1",'
+            '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
+            '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
+            '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false},'
+            '"reason":"no_neighbor","source_pane_id":"w1:p1"},'
+            '"type":"pane_focus_direction"}}',
+        stderr: '',
+        exitCode: 0,
+      );
+      await expectLater(
+        writer.focusPaneDirection('w1:p1', 'right'),
+        throwsA(
+          isA<PaneOperationNoopException>()
+              .having((e) => e.operation, 'operation', 'focusPaneDirection')
+              .having((e) => e.reason, 'reason', 'no_neighbor'),
+        ),
+      );
+    });
 
     test('focusPaneDirection: changed:true（layout 応答）は例外なし', () async {
       // T0 実測 5-b の成功系（reason なし・layout 込み）→ soft 失敗にならない。
@@ -206,10 +191,7 @@ void main() {
 
     test('renamePane: pane rename へ委譲する', () async {
       await writer.renamePane('w1:p1', 'new label');
-      expect(
-        backend.commands.single,
-        'herdr pane rename w1:p1 \'new label\'',
-      );
+      expect(backend.commands.single, 'herdr pane rename w1:p1 \'new label\'');
     });
 
     test('zoomPane: pane zoom へ委譲する（mode 付き）', () async {
@@ -225,27 +207,30 @@ void main() {
       );
     });
 
-    test('resizePane: changed:false（分割境界外）は PaneOperationNoopException', () async {
-      // 応答 layout なし・changed:false（T0 実測 4-b の分割境界外）を返す。
-      backend.execWithExitCodeResult = (
-        stdout:
-            '{"result":{"resize":{"changed":false,"reason":"unchanged",'
-            '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
-            '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
-            '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}},'
-            '"type":"pane_resize"}}',
-        stderr: '',
-        exitCode: 0,
-      );
-      await expectLater(
-        writer.resizePane('w1:p1', 'right', 0.1),
-        throwsA(
-          isA<PaneOperationNoopException>()
-              .having((e) => e.operation, 'operation', 'resizePane')
-              .having((e) => e.reason, 'reason', 'unchanged'),
-        ),
-      );
-    });
+    test(
+      'resizePane: changed:false（分割境界外）は PaneOperationNoopException',
+      () async {
+        // 応答 layout なし・changed:false（T0 実測 4-b の分割境界外）を返す。
+        backend.execWithExitCodeResult = (
+          stdout:
+              '{"result":{"resize":{"changed":false,"reason":"unchanged",'
+              '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
+              '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
+              '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}},'
+              '"type":"pane_resize"}}',
+          stderr: '',
+          exitCode: 0,
+        );
+        await expectLater(
+          writer.resizePane('w1:p1', 'right', 0.1),
+          throwsA(
+            isA<PaneOperationNoopException>()
+                .having((e) => e.operation, 'operation', 'resizePane')
+                .having((e) => e.reason, 'reason', 'unchanged'),
+          ),
+        );
+      },
+    );
 
     test('pasteText: send-text で複数行を貼り付ける（Q-06）', () async {
       await writer.pasteText('w1:p1', 'a\nb');
@@ -321,8 +306,11 @@ void main() {
       expect(
         () => writer.imageTransfer('/tmp/a.png'),
         throwsA(
-          isA<UnsupportedPaneOperationException>()
-              .having((e) => e.operation, 'operation', 'imageTransfer'),
+          isA<UnsupportedPaneOperationException>().having(
+            (e) => e.operation,
+            'operation',
+            'imageTransfer',
+          ),
         ),
       );
     });
@@ -361,8 +349,8 @@ class _FakeBackend implements BackendAdapter {
   @override
   Future<CommandResult> execute(CommandRequest request) async {
     commands.add(request.command);
-    final result = execWithExitCodeResult ??
-        (stdout: '', stderr: '', exitCode: 0);
+    final result =
+        execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
     return CommandResult(
       stdout: result.stdout,
       stderr: result.stderr,

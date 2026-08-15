@@ -6,10 +6,7 @@ import 'package:flutter/material.dart';
 class ThemeDialog extends StatelessWidget {
   final bool isDarkMode;
 
-  const ThemeDialog({
-    super.key,
-    required this.isDarkMode,
-  });
+  const ThemeDialog({super.key, required this.isDarkMode});
 
   @override
   Widget build(BuildContext context) {

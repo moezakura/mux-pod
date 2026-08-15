@@ -64,22 +64,21 @@ class ImageConverter {
 
     // 変換不要の場合はそのまま返す
     if (format == ImageOutputFormat.original && !autoResize) {
-      return ImageConvertResult(
-        bytes: processedBytes,
-        extension: effectiveExt,
-      );
+      return ImageConvertResult(bytes: processedBytes, extension: effectiveExt);
     }
 
     // Isolate でバックグラウンド実行（UIスレッドブロック防止）
-    return await Isolate.run(() => _processImage(
-          bytes: processedBytes,
-          format: format,
-          jpegQuality: jpegQuality,
-          autoResize: autoResize,
-          maxWidth: maxWidth,
-          maxHeight: maxHeight,
-          sourceExtension: effectiveExt,
-        ));
+    return await Isolate.run(
+      () => _processImage(
+        bytes: processedBytes,
+        format: format,
+        jpegQuality: jpegQuality,
+        autoResize: autoResize,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        sourceExtension: effectiveExt,
+      ),
+    );
   }
 
   /// HEIC/HEIF をネイティブAPIでJPEGに変換
@@ -91,7 +90,9 @@ class ImageConverter {
         format: CompressFormat.jpeg,
       );
       if (result.isEmpty) {
-        throw const FormatException('Native HEIC conversion returned empty result');
+        throw const FormatException(
+          'Native HEIC conversion returned empty result',
+        );
       }
       return ImageConvertResult(
         bytes: Uint8List.fromList(result),
@@ -122,7 +123,8 @@ class ImageConverter {
 
     // リサイズ
     if (autoResize) {
-      final needsResize = (maxWidth > 0 && processed.width > maxWidth) ||
+      final needsResize =
+          (maxWidth > 0 && processed.width > maxWidth) ||
           (maxHeight > 0 && processed.height > maxHeight);
       if (needsResize) {
         // アスペクト比を維持してリサイズ
@@ -148,7 +150,9 @@ class ImageConverter {
         );
       case ImageOutputFormat.jpeg:
         return ImageConvertResult(
-          bytes: Uint8List.fromList(img.encodeJpg(processed, quality: jpegQuality)),
+          bytes: Uint8List.fromList(
+            img.encodeJpg(processed, quality: jpegQuality),
+          ),
           extension: 'jpg',
         );
       case ImageOutputFormat.original:
@@ -156,7 +160,9 @@ class ImageConverter {
         final ext = sourceExtension;
         if (ext == 'jpg' || ext == 'jpeg') {
           return ImageConvertResult(
-            bytes: Uint8List.fromList(img.encodeJpg(processed, quality: jpegQuality)),
+            bytes: Uint8List.fromList(
+              img.encodeJpg(processed, quality: jpegQuality),
+            ),
             extension: ext,
           );
         }
@@ -169,20 +175,43 @@ class ImageConverter {
 
   /// バイトデータのマジックバイトからファイルフォーマットを検出
   static String detectExtension(Uint8List bytes) {
-    if (bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
       return 'jpg';
     }
-    if (bytes.length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
       return 'png';
     }
-    if (bytes.length >= 3 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46) {
       return 'gif';
     }
     // HEIF/HEIC: ISOBMFF ftyp box
     if (bytes.length >= 12 &&
-        bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70) {
+        bytes[4] == 0x66 &&
+        bytes[5] == 0x74 &&
+        bytes[6] == 0x79 &&
+        bytes[7] == 0x70) {
       final brand = String.fromCharCodes(bytes.sublist(8, 12));
-      if (const {'heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1'}.contains(brand)) {
+      if (const {
+        'heic',
+        'heix',
+        'hevc',
+        'hevx',
+        'heim',
+        'heis',
+        'hevm',
+        'hevs',
+        'mif1',
+      }.contains(brand)) {
         return 'heic';
       }
     }

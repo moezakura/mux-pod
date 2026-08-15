@@ -83,7 +83,9 @@ void main() {
 
       expect(snapshot.content, 'deep-line-1\ndeep-line-2');
       expect(
-        client.execCommands.any((c) => c.contains('capture-pane -t %0 -p -e -S -100000')),
+        client.execCommands.any(
+          (c) => c.contains('capture-pane -t %0 -p -e -S -100000'),
+        ),
         isTrue,
       );
       // スクロールバックは exec チャネル（poll の persistent ではない）で実行される。
@@ -109,50 +111,54 @@ void main() {
   });
 
   group('HerdrPaneContentReader', () {
-    test('reads pane output with --raw and maps to a fallback snapshot',
-        () async {
-      final client = FakeSshClient();
-      client.execOutputs['herdr pane read'] = '\x1b[32mok\x1b[0m\nnext\n';
+    test(
+      'reads pane output with --raw and maps to a fallback snapshot',
+      () async {
+        final client = FakeSshClient();
+        client.execOutputs['herdr pane read'] = '\x1b[32mok\x1b[0m\nnext\n';
 
-      final reader = HerdrPaneContentReader(HerdrAdapter(client));
-      final snapshot = await reader.readPane(
-        PaneReadRequest.live(paneId: 'w1:p1'),
-      );
+        final reader = HerdrPaneContentReader(HerdrAdapter(client));
+        final snapshot = await reader.readPane(
+          PaneReadRequest.live(paneId: 'w1:p1'),
+        );
 
-      expect(
-        client.execCommands,
-        contains('herdr pane read w1:p1 --source recent --lines 120 --raw'),
-      );
-      expect(snapshot.content, '\x1b[32mok\x1b[0m\nnext');
-      expect(snapshot.hasAnsi, isTrue);
-      // herdr には無い情報はフォールバック値のまま。
-      expect(snapshot.cursorX, 0);
-      expect(snapshot.cursorY, 0);
-      expect(snapshot.paneMode, '');
-      expect(snapshot.geometry, isNull);
-    });
+        expect(
+          client.execCommands,
+          contains('herdr pane read w1:p1 --source recent --lines 120 --raw'),
+        );
+        expect(snapshot.content, '\x1b[32mok\x1b[0m\nnext');
+        expect(snapshot.hasAnsi, isTrue);
+        // herdr には無い情報はフォールバック値のまま。
+        expect(snapshot.cursorX, 0);
+        expect(snapshot.cursorY, 0);
+        expect(snapshot.paneMode, '');
+        expect(snapshot.geometry, isNull);
+      },
+    );
 
-    test('scrollback purpose requests the max lines via persistent channel',
-        () async {
-      final client = FakeSshClient();
-      client.execOutputs['herdr pane read'] = 'line1\nline2\n';
+    test(
+      'scrollback purpose requests the max lines via persistent channel',
+      () async {
+        final client = FakeSshClient();
+        client.execOutputs['herdr pane read'] = 'line1\nline2\n';
 
-      final reader = HerdrPaneContentReader(HerdrAdapter(client));
-      await reader.readPane(
-        PaneReadRequest.scrollback(paneId: 'w1:p1', maxLines: 10000),
-      );
+        final reader = HerdrPaneContentReader(HerdrAdapter(client));
+        await reader.readPane(
+          PaneReadRequest.scrollback(paneId: 'w1:p1', maxLines: 10000),
+        );
 
-      expect(
-        client.execCommands,
-        contains('herdr pane read w1:p1 --source recent --lines 10000 --raw'),
-      );
-      // herdr の read は persistent チャネルで統一される（live/deep 分離なし）。
-      expect(
-        client.execPersistentCommands.any(
-          (c) => c.contains('herdr pane read w1:p1 --source recent'),
-        ),
-        isTrue,
-      );
-    });
+        expect(
+          client.execCommands,
+          contains('herdr pane read w1:p1 --source recent --lines 10000 --raw'),
+        );
+        // herdr の read は persistent チャネルで統一される（live/deep 分離なし）。
+        expect(
+          client.execPersistentCommands.any(
+            (c) => c.contains('herdr pane read w1:p1 --source recent'),
+          ),
+          isTrue,
+        );
+      },
+    );
   });
 }

@@ -20,8 +20,12 @@ class FileListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight;
-    final subtitleColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final textColor = isDark
+        ? DesignColors.textPrimary
+        : DesignColors.textPrimaryLight;
+    final subtitleColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
 
     return ListTile(
       leading: _buildIcon(isDark),
@@ -57,7 +61,9 @@ class FileListTile extends StatelessWidget {
       color = DesignColors.secondary;
     } else {
       icon = _getFileIcon(entry.extension);
-      color = isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight;
+      color = isDark
+          ? DesignColors.textSecondary
+          : DesignColors.textSecondaryLight;
     }
 
     return Icon(icon, color: color, size: 24);
@@ -90,9 +96,36 @@ class FileListTile extends StatelessWidget {
   static IconData _getFileIcon(String extension) {
     return switch (extension) {
       'md' || 'txt' || 'log' || 'csv' => Icons.description,
-      'dart' || 'py' || 'js' || 'ts' || 'go' || 'rs' || 'java' || 'c' || 'cpp' || 'h' || 'rb' || 'sh' || 'bash' || 'zsh' => Icons.code,
-      'json' || 'yaml' || 'yml' || 'toml' || 'xml' || 'ini' || 'conf' || 'cfg' => Icons.settings,
-      'jpg' || 'jpeg' || 'png' || 'gif' || 'svg' || 'webp' || 'bmp' || 'ico' => Icons.image,
+      'dart' ||
+      'py' ||
+      'js' ||
+      'ts' ||
+      'go' ||
+      'rs' ||
+      'java' ||
+      'c' ||
+      'cpp' ||
+      'h' ||
+      'rb' ||
+      'sh' ||
+      'bash' ||
+      'zsh' => Icons.code,
+      'json' ||
+      'yaml' ||
+      'yml' ||
+      'toml' ||
+      'xml' ||
+      'ini' ||
+      'conf' ||
+      'cfg' => Icons.settings,
+      'jpg' ||
+      'jpeg' ||
+      'png' ||
+      'gif' ||
+      'svg' ||
+      'webp' ||
+      'bmp' ||
+      'ico' => Icons.image,
       'mp4' || 'mov' || 'avi' || 'mkv' || 'webm' => Icons.movie,
       'mp3' || 'wav' || 'flac' || 'ogg' || 'aac' => Icons.audio_file,
       'pdf' => Icons.picture_as_pdf,

@@ -40,7 +40,10 @@ void main() {
       });
 
       test('S-Enter returns special (not modifier)', () {
-        expect(TmuxKeyDisplay.categoryOf('S-Enter'), KeyOverlayCategory.special);
+        expect(
+          TmuxKeyDisplay.categoryOf('S-Enter'),
+          KeyOverlayCategory.special,
+        );
       });
 
       test('BSpace returns special', () {

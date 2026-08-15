@@ -54,13 +54,13 @@ class _KeyOverlayWidgetState extends State<KeyOverlayWidget>
       duration: const Duration(milliseconds: 150),
       vsync: this,
     );
-    _pulseAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.2), weight: 1),
-      TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 1),
-    ]).animate(CurvedAnimation(
-      parent: _pulseController,
-      curve: Curves.easeInOut,
-    ));
+    _pulseAnimation =
+        TweenSequence<double>([
+          TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.2), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: 1.2, end: 1.0), weight: 1),
+        ]).animate(
+          CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+        );
     widget.overlayState.addListener(_onStateChanged);
   }
 
@@ -93,9 +93,7 @@ class _KeyOverlayWidgetState extends State<KeyOverlayWidget>
 
     if (widget.position == KeyOverlayPosition.center) {
       return Positioned.fill(
-        child: IgnorePointer(
-          child: Center(child: _buildOverlay(text)),
-        ),
+        child: IgnorePointer(child: Center(child: _buildOverlay(text))),
       );
     }
 
@@ -104,9 +102,7 @@ class _KeyOverlayWidgetState extends State<KeyOverlayWidget>
       bottom: widget.position == KeyOverlayPosition.aboveKeyboard ? 8 : null,
       left: 0,
       right: 0,
-      child: IgnorePointer(
-        child: Center(child: _buildOverlay(text)),
-      ),
+      child: IgnorePointer(child: Center(child: _buildOverlay(text))),
     );
   }
 

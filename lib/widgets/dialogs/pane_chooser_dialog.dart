@@ -148,7 +148,9 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
         ),
         FilledButton(
           // 未選択・空リスト時は disabled（tmux L7501 の前例）
-          onPressed: selected != null ? () => widget.onResize(selected.id) : null,
+          onPressed: selected != null
+              ? () => widget.onResize(selected.id)
+              : null,
           style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
           child: const Text('Resize'),
         ),

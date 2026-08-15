@@ -62,7 +62,8 @@ class AppSettings {
   final String imageRemotePath;
   final String imageOutputFormat;
   final int imageJpegQuality;
-  final String imageResizePreset; // 'original'/'small'/'medium'/'large'/'custom'
+  final String
+  imageResizePreset; // 'original'/'small'/'medium'/'large'/'custom'
   final int imageMaxWidth;
   final int imageMaxHeight;
   final String imagePathFormat;
@@ -201,7 +202,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _imageMaxHeightKey = 'settings_image_max_height';
   static const String _imagePathFormatKey = 'settings_image_path_format';
   static const String _imageAutoEnterKey = 'settings_image_auto_enter';
-  static const String _imageBracketedPasteKey = 'settings_image_bracketed_paste';
+  static const String _imageBracketedPasteKey =
+      'settings_image_bracketed_paste';
   static const String _showKeyOverlayKey = 'settings_show_key_overlay';
   static const String _keyOverlayModifierKey = 'settings_key_overlay_modifier';
   static const String _keyOverlaySpecialKey = 'settings_key_overlay_special';
@@ -241,7 +243,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       keyOverlaySpecial: prefs.getBool(_keyOverlaySpecialKey) ?? true,
       keyOverlayArrow: prefs.getBool(_keyOverlayArrowKey) ?? true,
       keyOverlayShortcut: prefs.getBool(_keyOverlayShortcutKey) ?? true,
-      keyOverlayPosition: prefs.getString(_keyOverlayPositionKey) ?? 'aboveKeyboard',
+      keyOverlayPosition:
+          prefs.getString(_keyOverlayPositionKey) ?? 'aboveKeyboard',
       imageRemotePath: prefs.getString(_imageRemotePathKey) ?? '/tmp/muxpod/',
       imageOutputFormat: prefs.getString(_imageOutputFormatKey) ?? 'original',
       imageJpegQuality: prefs.getInt(_imageJpegQualityKey) ?? 85,
@@ -378,8 +381,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       bool ok(DisplayMode m) => m.refreshRate > 0 && m.refreshRate <= cap + 0.5;
       // まず同一解像度で上限以下、無ければ全体から上限以下を選ぶ
       var pool = modes
-          .where((m) =>
-              m.width == active.width && m.height == active.height && ok(m))
+          .where(
+            (m) =>
+                m.width == active.width && m.height == active.height && ok(m),
+          )
           .toList();
       if (pool.isEmpty) {
         pool = modes.where(ok).toList();

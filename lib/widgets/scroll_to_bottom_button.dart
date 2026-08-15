@@ -12,10 +12,7 @@ import '../theme/design_colors.dart';
 class ScrollToBottomButton extends StatefulWidget {
   final VoidCallback onPressed;
 
-  const ScrollToBottomButton({
-    super.key,
-    required this.onPressed,
-  });
+  const ScrollToBottomButton({super.key, required this.onPressed});
 
   @override
   State<ScrollToBottomButton> createState() => ScrollToBottomButtonState();
@@ -66,7 +63,9 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
     final colorScheme = Theme.of(context).colorScheme;
 
     final bgColor = _active
-        ? (isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight)
+        ? (isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight)
         : Colors.transparent;
 
     final borderColor = _active
@@ -103,11 +102,8 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
         child: TweenAnimationBuilder<Color?>(
           tween: ColorTween(end: iconColor),
           duration: const Duration(milliseconds: 300),
-          builder: (context, color, _) => Icon(
-            Icons.keyboard_double_arrow_down,
-            size: 18,
-            color: color,
-          ),
+          builder: (context, color, _) =>
+              Icon(Icons.keyboard_double_arrow_down, size: 18, color: color),
         ),
       ),
     );

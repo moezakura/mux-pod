@@ -16,7 +16,10 @@ void main() {
       expect(keyPair.privateKeyBytes.length, equals(32));
       expect(keyPair.publicKeyBytes.length, equals(32));
       expect(keyPair.fingerprint, startsWith('SHA256:'));
-      expect(keyPair.privatePem, contains('-----BEGIN OPENSSH PRIVATE KEY-----'));
+      expect(
+        keyPair.privatePem,
+        contains('-----BEGIN OPENSSH PRIVATE KEY-----'),
+      );
       expect(keyPair.privatePem, contains('-----END OPENSSH PRIVATE KEY-----'));
       expect(keyPair.publicKeyString, startsWith('ssh-ed25519 '));
     });
@@ -82,7 +85,10 @@ void main() {
       final keyPair = await service.generateEd25519();
 
       // PEMが正しい形式であることを確認
-      expect(keyPair.privatePem, contains('-----BEGIN OPENSSH PRIVATE KEY-----'));
+      expect(
+        keyPair.privatePem,
+        contains('-----BEGIN OPENSSH PRIVATE KEY-----'),
+      );
       expect(keyPair.privatePem, contains('-----END OPENSSH PRIVATE KEY-----'));
 
       // dartssh2で再パース可能か確認
@@ -174,11 +180,14 @@ void main() {
 
       expect(parsed.fingerprint, equals(original.fingerprint));
       // dartssh2はRSA鍵を'rsa-sha2-256'として報告することがある
-      expect(parsed.publicKeyString, anyOf(
-        contains('ssh-rsa'),
-        contains('rsa-sha2-256'),
-        contains('rsa-sha2-512'),
-      ));
+      expect(
+        parsed.publicKeyString,
+        anyOf(
+          contains('ssh-rsa'),
+          contains('rsa-sha2-256'),
+          contains('rsa-sha2-512'),
+        ),
+      );
     });
 
     test('returns correct key type for Ed25519', () async {
@@ -218,10 +227,7 @@ invalid content here
     });
 
     test('throws FormatException for empty string', () {
-      expect(
-        () => service.parseFromPem(''),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => service.parseFromPem(''), throwsA(isA<FormatException>()));
     });
 
     test('throws FormatException for non-PEM text', () {

@@ -28,10 +28,7 @@ class TmuxPaneContentReader implements PaneContentReader {
       );
       return MultiplexerPaneSnapshot(
         content: content.rawText,
-        geometry: PaneGeometry(
-          width: content.width,
-          height: content.height,
-        ),
+        geometry: PaneGeometry(width: content.width, height: content.height),
         hasAnsi: content.hasAnsiColors,
       );
     }

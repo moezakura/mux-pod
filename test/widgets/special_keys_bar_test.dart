@@ -57,28 +57,31 @@ void main() {
   }
 
   Finder horizontalScroller() => find.byWidgetPredicate(
-        (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
-      );
+    (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
+  );
 
   group('SpecialKeysBar', () {
-    testWidgets('direct input toolbar does not overflow at narrow phone width',
-        (tester) async {
-      await tester.binding.setSurfaceSize(const Size(320, 640));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+    testWidgets(
+      'direct input toolbar does not overflow at narrow phone width',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(320, 640));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      await tester.pumpWidget(
-        buildWidget(directInputEnabled: true, onImagePickRequested: () {}),
-      );
-      await tester.pump();
+        await tester.pumpWidget(
+          buildWidget(directInputEnabled: true, onImagePickRequested: () {}),
+        );
+        await tester.pump();
 
-      expect(tester.takeException(), isNull);
-      expect(find.byType(SingleChildScrollView), findsOneWidget);
-      expect(find.text('PgUp'), findsOneWidget);
-      expect(find.text('4'), findsOneWidget);
-    });
+        expect(tester.takeException(), isNull);
+        expect(find.byType(SingleChildScrollView), findsOneWidget);
+        expect(find.text('PgUp'), findsOneWidget);
+        expect(find.text('4'), findsOneWidget);
+      },
+    );
 
-    testWidgets('command input label stays compact in non-direct toolbar',
-        (tester) async {
+    testWidgets('command input label stays compact in non-direct toolbar', (
+      tester,
+    ) async {
       await tester.binding.setSurfaceSize(const Size(320, 640));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -93,8 +96,9 @@ void main() {
     // Regression: with direct input on, the arrow row gains fixed-width number
     // keys (1-4). The old fixed Row + Spacer overflowed on narrow phones; the
     // row is now wrapped in a horizontal scroll view so it never overflows.
-    testWidgets('direct-input arrow row is horizontally scrollable',
-        (tester) async {
+    testWidgets('direct-input arrow row is horizontally scrollable', (
+      tester,
+    ) async {
       await tester.pumpWidget(harness(directInput: true));
       await tester.pump();
 
@@ -103,13 +107,15 @@ void main() {
       expect(find.text('4'), findsOneWidget);
     });
 
-    testWidgets('default arrow row keeps the expanded Input button, no scroller',
-        (tester) async {
-      await tester.pumpWidget(harness(directInput: false));
-      await tester.pump();
+    testWidgets(
+      'default arrow row keeps the expanded Input button, no scroller',
+      (tester) async {
+        await tester.pumpWidget(harness(directInput: false));
+        await tester.pump();
 
-      expect(horizontalScroller(), findsNothing);
-      expect(find.text('Cmd'), findsOneWidget);
-    });
+        expect(horizontalScroller(), findsNothing);
+        expect(find.text('Cmd'), findsOneWidget);
+      },
+    );
   });
 }

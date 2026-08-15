@@ -62,15 +62,15 @@ class PaneHistoryPolicyResolver {
   }) {
     return switch (backend) {
       MultiplexerBackendKind.tmux => PaneHistoryPolicy(
-          scrollbackStrategy: HistoryRetrievalStrategy.ephemeral,
-        ),
+        scrollbackStrategy: HistoryRetrievalStrategy.ephemeral,
+      ),
       MultiplexerBackendKind.herdr => PaneHistoryPolicy(
-          scrollbackLimit: configuredScrollbackLines.clamp(
-            PaneHistoryPolicy.minScrollbackLimit,
-            PaneHistoryPolicy.maxScrollbackLimit,
-          ),
-          scrollbackStrategy: HistoryRetrievalStrategy.persistent,
+        scrollbackLimit: configuredScrollbackLines.clamp(
+          PaneHistoryPolicy.minScrollbackLimit,
+          PaneHistoryPolicy.maxScrollbackLimit,
         ),
+        scrollbackStrategy: HistoryRetrievalStrategy.persistent,
+      ),
       MultiplexerBackendKind.unknown => const PaneHistoryPolicy(),
     };
   }

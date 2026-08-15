@@ -37,14 +37,17 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: const Text('Show terminal cursor indicator'),
                   value: settings.showTerminalCursor,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setShowTerminalCursor(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setShowTerminalCursor(value);
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.tune),
                   title: const Text('Adjust Mode'),
                   subtitle: Text(_adjustModeLabel(settings.adjustMode)),
-                  onTap: () => _showAdjustModePicker(context, ref, settings.adjustMode),
+                  onTap: () =>
+                      _showAdjustModePicker(context, ref, settings.adjustMode),
                 ),
                 ListTile(
                   leading: const Icon(Icons.text_fields),
@@ -60,12 +63,13 @@ class SettingsScreen extends ConsumerWidget {
                       : () async {
                           final size = await showDialog<double>(
                             context: context,
-                            builder: (context) => FontSizeDialog(
-                              currentSize: settings.fontSize,
-                            ),
+                            builder: (context) =>
+                                FontSizeDialog(currentSize: settings.fontSize),
                           );
                           if (size != null) {
-                            ref.read(settingsProvider.notifier).setFontSize(size);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setFontSize(size);
                           }
                         },
                 ),
@@ -76,9 +80,8 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: () async {
                     final family = await showDialog<String>(
                       context: context,
-                      builder: (context) => FontFamilyDialog(
-                        currentFamily: settings.fontFamily,
-                      ),
+                      builder: (context) =>
+                          FontFamilyDialog(currentFamily: settings.fontFamily),
                     );
                     if (family != null) {
                       ref.read(settingsProvider.notifier).setFontFamily(family);
@@ -103,7 +106,9 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                           );
                           if (size != null) {
-                            ref.read(settingsProvider.notifier).setMinFontSize(size);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setMinFontSize(size);
                           }
                         }
                       : null,
@@ -113,10 +118,14 @@ class SettingsScreen extends ConsumerWidget {
                 SwitchListTile(
                   secondary: const Icon(Icons.visibility),
                   title: const Text('Key Overlay'),
-                  subtitle: const Text('Show key name overlay on special key press'),
+                  subtitle: const Text(
+                    'Show key name overlay on special key press',
+                  ),
                   value: settings.showKeyOverlay,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setShowKeyOverlay(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setShowKeyOverlay(value);
                   },
                 ),
                 if (settings.showKeyOverlay) ...[
@@ -126,7 +135,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: const Text('Ctrl, Alt, Shift combinations'),
                     value: settings.keyOverlayModifier,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayModifier(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayModifier(value);
                     },
                   ),
                   SwitchListTile(
@@ -135,7 +146,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: const Text('ESC, TAB, ENTER, Shift+Enter'),
                     value: settings.keyOverlaySpecial,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlaySpecial(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlaySpecial(value);
                     },
                   ),
                   SwitchListTile(
@@ -144,7 +157,9 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: const Text('Up, Down, Left, Right'),
                     value: settings.keyOverlayArrow,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayArrow(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayArrow(value);
                     },
                   ),
                   SwitchListTile(
@@ -153,33 +168,50 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: const Text('/, -, 1, 2, 3, 4'),
                     value: settings.keyOverlayShortcut,
                     onChanged: (value) {
-                      ref.read(settingsProvider.notifier).setKeyOverlayShortcut(value);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setKeyOverlayShortcut(value);
                     },
                   ),
                   ListTile(
                     leading: const Icon(Icons.place),
                     title: const Text('Overlay Position'),
-                    subtitle: Text(
-                      switch (settings.keyOverlayPosition) {
-                        'center' => 'Center of terminal',
-                        'belowHeader' => 'Below header',
-                        _ => 'Above keyboard',
-                      },
-                    ),
+                    subtitle: Text(switch (settings.keyOverlayPosition) {
+                      'center' => 'Center of terminal',
+                      'belowHeader' => 'Below header',
+                      _ => 'Above keyboard',
+                    }),
                     onTap: () async {
                       final result = await showDialog<String>(
                         context: context,
                         builder: (context) => SimpleDialog(
                           title: const Text('Overlay Position'),
                           children: [
-                            _buildPositionOption(context, 'aboveKeyboard', 'Above Keyboard', settings.keyOverlayPosition),
-                            _buildPositionOption(context, 'center', 'Center of Terminal', settings.keyOverlayPosition),
-                            _buildPositionOption(context, 'belowHeader', 'Below Header', settings.keyOverlayPosition),
+                            _buildPositionOption(
+                              context,
+                              'aboveKeyboard',
+                              'Above Keyboard',
+                              settings.keyOverlayPosition,
+                            ),
+                            _buildPositionOption(
+                              context,
+                              'center',
+                              'Center of Terminal',
+                              settings.keyOverlayPosition,
+                            ),
+                            _buildPositionOption(
+                              context,
+                              'belowHeader',
+                              'Below Header',
+                              settings.keyOverlayPosition,
+                            ),
                           ],
                         ),
                       );
                       if (result != null) {
-                        ref.read(settingsProvider.notifier).setKeyOverlayPosition(result);
+                        ref
+                            .read(settingsProvider.notifier)
+                            .setKeyOverlayPosition(result);
                       }
                     },
                   ),
@@ -192,7 +224,9 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: const Text('Vibrate on key press'),
                   value: settings.enableVibration,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setEnableVibration(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setEnableVibration(value);
                   },
                 ),
                 SwitchListTile(
@@ -227,10 +261,14 @@ class SettingsScreen extends ConsumerWidget {
                 SwitchListTile(
                   secondary: const Icon(Icons.swipe),
                   title: const Text('Invert Pane Navigation'),
-                  subtitle: const Text('Reverse swipe direction for pane switching'),
+                  subtitle: const Text(
+                    'Reverse swipe direction for pane switching',
+                  ),
                   value: settings.invertPaneNavigation,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setInvertPaneNavigation(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setInvertPaneNavigation(value);
                   },
                 ),
                 const Divider(),
@@ -242,9 +280,8 @@ class SettingsScreen extends ConsumerWidget {
                   onTap: () async {
                     final isDark = await showDialog<bool>(
                       context: context,
-                      builder: (context) => ThemeDialog(
-                        isDarkMode: settings.darkMode,
-                      ),
+                      builder: (context) =>
+                          ThemeDialog(isDarkMode: settings.darkMode),
                     );
                     if (isDark != null) {
                       ref.read(settingsProvider.notifier).setDarkMode(isDark);
@@ -258,17 +295,24 @@ class SettingsScreen extends ConsumerWidget {
                   title: const Text('Remote Path'),
                   subtitle: Text(settings.imageRemotePath),
                   onTap: () => _showTextInputDialog(
-                    context, ref,
+                    context,
+                    ref,
                     title: 'Remote Path',
                     currentValue: settings.imageRemotePath,
-                    onSave: (v) => ref.read(settingsProvider.notifier).setImageRemotePath(v),
+                    onSave: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setImageRemotePath(v),
                   ),
                 ),
                 ListTile(
                   leading: const Icon(Icons.image),
                   title: const Text('Output Format'),
                   subtitle: Text(settings.imageOutputFormat),
-                  onTap: () => _showFormatPicker(context, ref, settings.imageOutputFormat),
+                  onTap: () => _showFormatPicker(
+                    context,
+                    ref,
+                    settings.imageOutputFormat,
+                  ),
                 ),
                 if (settings.imageOutputFormat == 'jpeg')
                   ListTile(
@@ -276,18 +320,26 @@ class SettingsScreen extends ConsumerWidget {
                     title: const Text('JPEG Quality'),
                     subtitle: Text('${settings.imageJpegQuality}%'),
                     onTap: () => _showSliderDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: 'JPEG Quality',
                       value: settings.imageJpegQuality.toDouble(),
-                      min: 1, max: 100,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageJpegQuality(v.round()),
+                      min: 1,
+                      max: 100,
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageJpegQuality(v.round()),
                     ),
                   ),
                 ListTile(
                   leading: const Icon(Icons.photo_size_select_large),
                   title: const Text('Resize'),
                   subtitle: Text(settings.imageResizePreset.toUpperCase()),
-                  onTap: () => _showResizePresetPicker(context, ref, settings.imageResizePreset),
+                  onTap: () => _showResizePresetPicker(
+                    context,
+                    ref,
+                    settings.imageResizePreset,
+                  ),
                 ),
                 if (settings.imageResizePreset == 'custom') ...[
                   ListTile(
@@ -295,10 +347,13 @@ class SettingsScreen extends ConsumerWidget {
                     title: const Text('Max Width'),
                     subtitle: Text('${settings.imageMaxWidth}px'),
                     onTap: () => _showNumberInputDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: 'Max Width',
                       currentValue: settings.imageMaxWidth,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageMaxWidth(v),
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageMaxWidth(v),
                     ),
                   ),
                   ListTile(
@@ -306,10 +361,13 @@ class SettingsScreen extends ConsumerWidget {
                     title: const Text('Max Height'),
                     subtitle: Text('${settings.imageMaxHeight}px'),
                     onTap: () => _showNumberInputDialog(
-                      context, ref,
+                      context,
+                      ref,
                       title: 'Max Height',
                       currentValue: settings.imageMaxHeight,
-                      onSave: (v) => ref.read(settingsProvider.notifier).setImageMaxHeight(v),
+                      onSave: (v) => ref
+                          .read(settingsProvider.notifier)
+                          .setImageMaxHeight(v),
                     ),
                   ),
                 ],
@@ -318,11 +376,14 @@ class SettingsScreen extends ConsumerWidget {
                   title: const Text('Path Format'),
                   subtitle: Text(settings.imagePathFormat),
                   onTap: () => _showTextInputDialog(
-                    context, ref,
+                    context,
+                    ref,
                     title: 'Path Format',
                     currentValue: settings.imagePathFormat,
                     hint: 'Use {path} as placeholder. e.g. @{path}',
-                    onSave: (v) => ref.read(settingsProvider.notifier).setImagePathFormat(v),
+                    onSave: (v) => ref
+                        .read(settingsProvider.notifier)
+                        .setImagePathFormat(v),
                   ),
                 ),
                 SwitchListTile(
@@ -330,14 +391,17 @@ class SettingsScreen extends ConsumerWidget {
                   title: const Text('Auto Enter'),
                   subtitle: const Text('Send Enter after path injection'),
                   value: settings.imageAutoEnter,
-                  onChanged: (v) => ref.read(settingsProvider.notifier).setImageAutoEnter(v),
+                  onChanged: (v) =>
+                      ref.read(settingsProvider.notifier).setImageAutoEnter(v),
                 ),
                 SwitchListTile(
                   secondary: const Icon(Icons.paste),
                   title: const Text('Bracketed Paste'),
                   subtitle: const Text('Use bracketed paste protocol'),
                   value: settings.imageBracketedPaste,
-                  onChanged: (v) => ref.read(settingsProvider.notifier).setImageBracketedPaste(v),
+                  onChanged: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setImageBracketedPaste(v),
                 ),
                 const Divider(),
                 const _SectionHeader(title: 'About'),
@@ -351,9 +415,14 @@ class SettingsScreen extends ConsumerWidget {
                   title: const Text('Source Code'),
                   subtitle: const Text('github.com/moezakura/mux-pod'),
                   onTap: () async {
-                    final url = Uri.parse('https://github.com/moezakura/mux-pod');
+                    final url = Uri.parse(
+                      'https://github.com/moezakura/mux-pod',
+                    );
                     if (await canLaunchUrl(url)) {
-                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                      await launchUrl(
+                        url,
+                        mode: LaunchMode.externalApplication,
+                      );
                     }
                   },
                 ),
@@ -399,7 +468,10 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               onSave(controller.text.trim());
@@ -430,7 +502,10 @@ class SettingsScreen extends ConsumerWidget {
           decoration: const InputDecoration(border: OutlineInputBorder()),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               final v = int.tryParse(controller.text.trim());
@@ -462,12 +537,20 @@ class SettingsScreen extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Slider(value: current, min: min, max: max, onChanged: (v) => setState(() => current = v)),
+              Slider(
+                value: current,
+                min: min,
+                max: max,
+                onChanged: (v) => setState(() => current = v),
+              ),
               Text('${current.round()}'),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () {
                 onSave(current);
@@ -493,7 +576,9 @@ class SettingsScreen extends ConsumerWidget {
               value: format,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setImageOutputFormat(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setImageOutputFormat(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -513,7 +598,11 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showAdjustModePicker(BuildContext context, WidgetRef ref, String current) {
+  void _showAdjustModePicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -530,7 +619,9 @@ class SettingsScreen extends ConsumerWidget {
               value: entry.$1,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setAdjustMode(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setAdjustMode(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -550,7 +641,11 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showOrientationPicker(BuildContext context, WidgetRef ref, String current) {
+  void _showOrientationPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -591,7 +686,11 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showRefreshRatePicker(BuildContext context, WidgetRef ref, String current) {
+  void _showRefreshRatePicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -620,7 +719,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  void _showResizePresetPicker(BuildContext context, WidgetRef ref, String current) {
+  void _showResizePresetPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) {
     showDialog(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -638,7 +741,9 @@ class SettingsScreen extends ConsumerWidget {
               value: entry.$1,
               groupValue: current,
               onChanged: (v) {
-                if (v != null) ref.read(settingsProvider.notifier).setImageResizePreset(v);
+                if (v != null) {
+                  ref.read(settingsProvider.notifier).setImageResizePreset(v);
+                }
                 Navigator.pop(ctx);
               },
             ),
@@ -681,7 +786,9 @@ class SettingsScreen extends ConsumerWidget {
       child: Row(
         children: [
           Icon(
-            value == currentValue ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+            value == currentValue
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -714,4 +821,3 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-

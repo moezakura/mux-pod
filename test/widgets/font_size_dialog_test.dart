@@ -9,9 +9,7 @@ void main() {
     testWidgets('displays all font size options', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: FontSizeDialog(currentSize: 14.0),
-          ),
+          home: Scaffold(body: FontSizeDialog(currentSize: 14.0)),
         ),
       );
 
@@ -27,16 +25,16 @@ void main() {
     testWidgets('current size is selected', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: FontSizeDialog(currentSize: 16.0),
-          ),
+          home: Scaffold(body: FontSizeDialog(currentSize: 16.0)),
         ),
       );
 
       // Find the selected radio button
       final radio16 = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<double> && widget.value == 16.0 && widget.groupValue == 16.0,
+            widget is RadioListTile<double> &&
+            widget.value == 16.0 &&
+            widget.groupValue == 16.0,
       );
       expect(radio16, findsOneWidget);
     });
@@ -52,7 +50,8 @@ void main() {
                 onPressed: () async {
                   selectedSize = await showDialog<double>(
                     context: context,
-                    builder: (context) => const FontSizeDialog(currentSize: 14.0),
+                    builder: (context) =>
+                        const FontSizeDialog(currentSize: 14.0),
                   );
                 },
                 child: const Text('Open'),
@@ -82,7 +81,8 @@ void main() {
                 onPressed: () async {
                   selectedSize = await showDialog<double>(
                     context: context,
-                    builder: (context) => const FontSizeDialog(currentSize: 14.0),
+                    builder: (context) =>
+                        const FontSizeDialog(currentSize: 14.0),
                   );
                 },
                 child: const Text('Open'),

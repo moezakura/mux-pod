@@ -52,7 +52,6 @@ class TmuxParser {
     return sessions;
   }
 
-
   // inventory: TMUX-PARSER-003
   /// 単一のセッション行をパース
   static TmuxSession? parseSessionLine(
@@ -90,11 +89,13 @@ class TmuxParser {
 
       final parts = trimmed.split(':');
       if (parts.length >= 3) {
-        sessions.add(TmuxSession(
-          name: parts[0],
-          windowCount: int.tryParse(parts[1]) ?? 0,
-          attached: parts[2] == '1',
-        ));
+        sessions.add(
+          TmuxSession(
+            name: parts[0],
+            windowCount: int.tryParse(parts[1]) ?? 0,
+            attached: parts[2] == '1',
+          ),
+        );
       }
     }
 
@@ -102,7 +103,6 @@ class TmuxParser {
   }
 
   // ===== ウィンドウ =====
-
 
   // inventory: TMUX-PARSER-005
   /// ウィンドウ一覧をパース
@@ -125,7 +125,6 @@ class TmuxParser {
         windows.add(window);
       }
     }
-
 
     return windows;
   }
@@ -165,12 +164,14 @@ class TmuxParser {
 
       final parts = trimmed.split(':');
       if (parts.length >= 4) {
-        windows.add(TmuxWindow(
-          index: int.tryParse(parts[0]) ?? 0,
-          name: parts[1],
-          active: parts[2] == '1',
-          paneCount: int.tryParse(parts[3]) ?? 1,
-        ));
+        windows.add(
+          TmuxWindow(
+            index: int.tryParse(parts[0]) ?? 0,
+            name: parts[1],
+            active: parts[2] == '1',
+            paneCount: int.tryParse(parts[3]) ?? 1,
+          ),
+        );
       }
     }
 
@@ -246,13 +247,15 @@ class TmuxParser {
       final parts = trimmed.split(':');
       if (parts.length >= 4) {
         final size = _parseSize(parts[3]);
-        panes.add(TmuxPane(
-          index: int.tryParse(parts[0]) ?? 0,
-          id: parts[1],
-          active: parts[2] == '1',
-          width: size.width,
-          height: size.height,
-        ));
+        panes.add(
+          TmuxPane(
+            index: int.tryParse(parts[0]) ?? 0,
+            id: parts[1],
+            active: parts[2] == '1',
+            width: size.width,
+            height: size.height,
+          ),
+        );
       }
     }
 
@@ -334,11 +337,17 @@ class TmuxParser {
       final paneHeight = parts.length > 10 ? int.tryParse(parts[10]) ?? 24 : 24;
       final paneLeft = parts.length > 11 ? int.tryParse(parts[11]) ?? 0 : 0;
       final paneTop = parts.length > 12 ? int.tryParse(parts[12]) ?? 0 : 0;
-      final paneTitle = parts.length > 13 && parts[13].isNotEmpty ? parts[13] : null;
-      final paneCurrentCommand = parts.length > 14 && parts[14].isNotEmpty ? parts[14] : null;
+      final paneTitle = parts.length > 13 && parts[13].isNotEmpty
+          ? parts[13]
+          : null;
+      final paneCurrentCommand = parts.length > 14 && parts[14].isNotEmpty
+          ? parts[14]
+          : null;
       final cursorX = parts.length > 15 ? int.tryParse(parts[15]) ?? 0 : 0;
       final cursorY = parts.length > 16 ? int.tryParse(parts[16]) ?? 0 : 0;
-      final paneCurrentPath = parts.length > 17 && parts[17].isNotEmpty ? parts[17] : null;
+      final paneCurrentPath = parts.length > 17 && parts[17].isNotEmpty
+          ? parts[17]
+          : null;
 
       // セッションを取得または作成
       sessionsMap.putIfAbsent(
@@ -346,7 +355,9 @@ class TmuxParser {
         () => TmuxSession(name: sessionName, id: sessionId),
       );
 
-      final windowFlags = parts.length > 18 ? _parseWindowFlags(parts[18]) : const <TmuxWindowFlag>{};
+      final windowFlags = parts.length > 18
+          ? _parseWindowFlags(parts[18])
+          : const <TmuxWindowFlag>{};
 
       // ウィンドウマップを取得または作成
       windowsMap.putIfAbsent(sessionName, () => {});
@@ -365,20 +376,22 @@ class TmuxParser {
       );
 
       // ペインを追加
-      windows[windowIndex]!.panes.add(TmuxPane(
-        index: paneIndex,
-        id: paneId,
-        active: paneActive,
-        width: paneWidth,
-        height: paneHeight,
-        left: paneLeft,
-        top: paneTop,
-        title: paneTitle,
-        currentCommand: paneCurrentCommand,
-        cursorX: cursorX,
-        cursorY: cursorY,
-        currentPath: paneCurrentPath,
-      ));
+      windows[windowIndex]!.panes.add(
+        TmuxPane(
+          index: paneIndex,
+          id: paneId,
+          active: paneActive,
+          width: paneWidth,
+          height: paneHeight,
+          left: paneLeft,
+          top: paneTop,
+          title: paneTitle,
+          currentCommand: paneCurrentCommand,
+          cursorX: cursorX,
+          cursorY: cursorY,
+          currentPath: paneCurrentPath,
+        ),
+      );
     }
 
     // ツリーを構築
@@ -393,10 +406,12 @@ class TmuxParser {
           .map((w) => w.copyWith(paneCount: w.panes.length))
           .toList();
 
-      sessions.add(session.copyWith(
-        windows: windowsWithPaneCount,
-        windowCount: windowsWithPaneCount.length,
-      ));
+      sessions.add(
+        session.copyWith(
+          windows: windowsWithPaneCount,
+          windowCount: windowsWithPaneCount.length,
+        ),
+      );
     }
 
     return sessions;
@@ -421,7 +436,6 @@ class TmuxParser {
       height: parts.length > 1 ? int.tryParse(parts[1]) ?? 24 : 24,
     );
   }
-
 
   // inventory: TMUX-PARSER-016
   /// ウィンドウフラグをパース
@@ -508,4 +522,3 @@ class TmuxParser {
     return null;
   }
 }
-

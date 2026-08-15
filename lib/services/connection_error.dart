@@ -21,5 +21,6 @@ class SshConnectionError implements Exception {
   @override
   // inventory: CONN-ERR-004
   // inventory: LEGACY-0127
-  String toString() => 'SshConnectionError: $message${cause != null ? ' ($cause)' : ''}';
+  String toString() =>
+      'SshConnectionError: $message${cause != null ? ' ($cause)' : ''}';
 }

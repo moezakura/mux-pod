@@ -30,10 +30,7 @@ void main() {
     });
 
     test('fromJson throws FormatException for empty string', () {
-      expect(
-        () => BackendType.fromJson(''),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => BackendType.fromJson(''), throwsA(isA<FormatException>()));
     });
   });
 }

@@ -63,9 +63,7 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
     return AlertDialog(
       title: Text(
         'Rename Window',
-        style: GoogleFonts.spaceGrotesk(
-          fontWeight: FontWeight.w700,
-        ),
+        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
       ),
       content: Form(
         key: _formKey,
@@ -76,7 +74,9 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
           decoration: InputDecoration(
             labelText: 'Window Name',
             filled: true,
-            fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+            fillColor: isDark
+                ? DesignColors.inputDark
+                : DesignColors.inputLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -104,10 +104,7 @@ class _RenameWindowDialogState extends State<RenameWindowDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Rename'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Rename')),
       ],
     );
   }

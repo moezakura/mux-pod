@@ -22,15 +22,17 @@ void main() {
       expect(await storage.getPrivateKey('k1'), 'PRIVATE_KEY');
     });
 
-    test('returns null when read throws PlatformException (unreadable key)',
-        () async {
-      // 復号不能（Keystore キー欠如）をシミュレート
-      SecureStorageService.setTestValues({'privatekey_k1': 'X'});
-      SecureStorageService.setTestThrowKeys({'privatekey_k1'});
-      final storage = SecureStorageService();
+    test(
+      'returns null when read throws PlatformException (unreadable key)',
+      () async {
+        // 復号不能（Keystore キー欠如）をシミュレート
+        SecureStorageService.setTestValues({'privatekey_k1': 'X'});
+        SecureStorageService.setTestThrowKeys({'privatekey_k1'});
+        final storage = SecureStorageService();
 
-      expect(await storage.getPrivateKey('k1'), isNull);
-    });
+        expect(await storage.getPrivateKey('k1'), isNull);
+      },
+    );
 
     test('returns stored key when not in throw keys', () async {
       SecureStorageService.setTestValues({'privatekey_k1': 'PRIVATE_KEY'});

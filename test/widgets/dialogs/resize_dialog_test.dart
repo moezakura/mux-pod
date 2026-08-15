@@ -104,9 +104,7 @@ void main() {
       expect(find.text('Other pane sizes may also change.'), findsOneWidget);
     });
 
-    testWidgets('レイアウト: プレビュー（概算）・Cols/Rows 入力・絶対値プリセット', (
-      tester,
-    ) async {
+    testWidgets('レイアウト: プレビュー（概算）・Cols/Rows 入力・絶対値プリセット', (tester) async {
       await openDialog(tester, panes: [p1, p2]);
 
       // プレビュー（概算ラベル・0 起点正規化）。
@@ -128,7 +126,12 @@ void main() {
     });
 
     testWidgets('Cols/Rows の◀▶ ステッパーで値が変わる', (tester) async {
-      await openDialog(tester, panes: [p1, p2], currentCols: 100, currentRows: 70);
+      await openDialog(
+        tester,
+        panes: [p1, p2],
+        currentCols: 100,
+        currentRows: 70,
+      );
 
       // 初期値（currentCols / currentRows）。
       expect(find.text('100'), findsOneWidget);
@@ -166,7 +169,9 @@ void main() {
       expect(find.text('Resize Pane'), findsNothing);
     });
 
-    testWidgets('Resize で ResizeResult(cols, rows) が返る（初期値のまま）', (tester) async {
+    testWidgets('Resize で ResizeResult(cols, rows) が返る（初期値のまま）', (
+      tester,
+    ) async {
       final harness = await openDialog(
         tester,
         panes: [p1, p2],
@@ -181,9 +186,7 @@ void main() {
       expect(harness.result!.rows, 70);
     });
 
-    testWidgets('サイズ不明 pane（width=0）はプレビューに「サイズ不明」表示（E1）', (
-      tester,
-    ) async {
+    testWidgets('サイズ不明 pane（width=0）はプレビューに「サイズ不明」表示（E1）', (tester) async {
       const unknown = MultiplexerPane(
         index: 1,
         id: 'w1:p1',

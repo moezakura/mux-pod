@@ -40,21 +40,21 @@ class HerdrPaneWriter implements PaneWriter {
   /// パス注入は `_injectImagePath` → [pasteText]（`send-text`）が担う。
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
-        sendText: true,
-        sendKeys: true,
-        focus: true,
-        split: true,
-        close: true,
-        rename: true,
-        zoom: true,
-        resize: true,
-        paste: true,
-        copyMode: false,
-        imageTransfer: true,
-        workspaceCrud: true,
-        tabCrud: true,
-        absoluteResize: false,
-      );
+    sendText: true,
+    sendKeys: true,
+    focus: true,
+    split: true,
+    close: true,
+    rename: true,
+    zoom: true,
+    resize: true,
+    paste: true,
+    copyMode: false,
+    imageTransfer: true,
+    workspaceCrud: true,
+    tabCrud: true,
+    absoluteResize: false,
+  );
 
   /// tmux キー名を herdr 送信経路へ変換する（Q-07）。
   ///
@@ -138,7 +138,11 @@ class HerdrPaneWriter implements PaneWriter {
   /// 分割境界外（`changed:false` + `reason:"unchanged"`）は soft 失敗として
   /// [PaneOperationNoopException] を投げる（UI は情報通知・S4）。
   @override
-  Future<void> resizePane(String paneId, String direction, double amount) async {
+  Future<void> resizePane(
+    String paneId,
+    String direction,
+    double amount,
+  ) async {
     final result = await _adapter.resizePane(paneId, direction, amount);
     if (!result.changed) {
       throw PaneOperationNoopException(
@@ -232,13 +236,15 @@ class HerdrPaneWriter implements PaneWriter {
   /// [PaneWriter.imageTransfer] は paneId を持たないため直接は呼ばれず、型付き
   /// 例外で明示する（`_injectImagePath` 経路が正・R4/R9）。
   @override
-  Future<void> imageTransfer(String path) => throw UnsupportedPaneOperationException(
+  Future<void> imageTransfer(String path) =>
+      throw UnsupportedPaneOperationException(
         operation: 'imageTransfer',
         backend: 'herdr',
         message: '画像転送は _injectImagePath（SFTP アップロード + send-text）経路で行います',
       );
 
-  Never _unsupported(String operation) => throw UnsupportedPaneOperationException(
+  Never _unsupported(String operation) =>
+      throw UnsupportedPaneOperationException(
         operation: operation,
         backend: 'herdr',
         message: 'この操作は herdr で未対応です',

@@ -101,94 +101,83 @@ Future<FakeSshClient> _openHerdrPaneSelector(
 
 void main() {
   group('T17: C-c 送信（Q-03/R1）', () {
-    testWidgets(
-      'C-c は確認ダイアログなしで即送信される（tmux と同様）',
-      (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
+    testWidgets('C-c は確認ダイアログなしで即送信される（tmux と同様）', (tester) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
 
-        final dynamic state = tester.state(find.byType(TerminalScreen));
-        state.sendSpecialKeyForTesting('C-c');
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      state.sendSpecialKeyForTesting('C-c');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        // 初回確認ダイアログは表示されない（C-c は tmux と完全に同様）。
-        expect(find.text('Send Ctrl-C?'), findsNothing);
-        expect(
-          find.textContaining('シェルを終了させる場合があります'),
-          findsNothing,
-        );
+      // 初回確認ダイアログは表示されない（C-c は tmux と完全に同様）。
+      expect(find.text('Send Ctrl-C?'), findsNothing);
+      expect(find.textContaining('シェルを終了させる場合があります'), findsNothing);
 
-        // 確認なしで PaneKeyMap 経由の send-keys C-c が送信される。
-        expect(
-          client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
-          isTrue,
-          reason: 'C-c は確認なしで PaneKeyMap 経由の send-keys が送信されること（Q-07①）',
-        );
+      // 確認なしで PaneKeyMap 経由の send-keys C-c が送信される。
+      expect(
+        client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
+        isTrue,
+        reason: 'C-c は確認なしで PaneKeyMap 経由の send-keys が送信されること（Q-07①）',
+      );
 
-        // キーオーバーレイの 1500ms タイマーを消化してクリーンに終了。
-        await tester.pump(const Duration(milliseconds: 1500));
-      },
-    );
+      // キーオーバーレイの 1500ms タイマーを消化してクリーンに終了。
+      await tester.pump(const Duration(milliseconds: 1500));
+    });
 
-    testWidgets(
-      'C-c を連続送信しても毎回確認なしで送信される',
-      (tester) async {
-        final client = await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
+    testWidgets('C-c を連続送信しても毎回確認なしで送信される', (tester) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
 
-        final dynamic state = tester.state(find.byType(TerminalScreen));
+      final dynamic state = tester.state(find.byType(TerminalScreen));
 
-        // 1 回目: 確認なしで `herdr pane send-keys w1:p1 C-c` が発行される。
-        state.sendSpecialKeyForTesting('C-c');
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(
-          client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
-          isTrue,
-          reason: '1 回目の C-c は確認なしで送信されること',
-        );
+      // 1 回目: 確認なしで `herdr pane send-keys w1:p1 C-c` が発行される。
+      state.sendSpecialKeyForTesting('C-c');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        client.execCommands.any((c) => c == 'herdr pane send-keys w1:p1 C-c'),
+        isTrue,
+        reason: '1 回目の C-c は確認なしで送信されること',
+      );
 
-        // 2 回目: フラグ等を挟まず同様に確認なしで送信される。
-        final before = client.execCommands.length;
-        state.sendSpecialKeyForTesting('C-c');
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
-        expect(find.text('Send Ctrl-C?'), findsNothing);
-        expect(
-          client.execCommands.length,
-          greaterThan(before),
-          reason: '2 回目以降も確認なしで送信されること（tmux と同様）',
-        );
-        expect(
-          client.execCommands.where((c) => c.contains('C-c')).length,
-          greaterThanOrEqualTo(2),
-        );
+      // 2 回目: フラグ等を挟まず同様に確認なしで送信される。
+      final before = client.execCommands.length;
+      state.sendSpecialKeyForTesting('C-c');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Send Ctrl-C?'), findsNothing);
+      expect(
+        client.execCommands.length,
+        greaterThan(before),
+        reason: '2 回目以降も確認なしで送信されること（tmux と同様）',
+      );
+      expect(
+        client.execCommands.where((c) => c.contains('C-c')).length,
+        greaterThanOrEqualTo(2),
+      );
 
-        // キーオーバーレイの 1500ms タイマーを消化してクリーンに終了。
-        await tester.pump(const Duration(milliseconds: 1500));
-      },
-    );
+      // キーオーバーレイの 1500ms タイマーを消化してクリーンに終了。
+      await tester.pump(const Duration(milliseconds: 1500));
+    });
 
-    testWidgets('mutation 解禁時も C-c 警告バッジは表示されない（tmux と同様）', (
-      tester,
-    ) async {
+    testWidgets('mutation 解禁時も C-c 警告バッジは表示されない（tmux と同様）', (tester) async {
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
@@ -209,9 +198,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('readOnly 明示時は Read-only バッジ', (
-      tester,
-    ) async {
+    testWidgets('readOnly 明示時は Read-only バッジ', (tester) async {
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
@@ -232,132 +219,117 @@ void main() {
   });
 
   group('T17: 連鎖 close 確認（Q-03/R2）', () {
-    testWidgets(
-      'pane セレクタの Close は確認ダイアログを経由して pane close を発行する',
-      (tester) async {
-        final client = await _openHerdrPaneSelector(
-          tester,
-          execOutputs: {'herdr api snapshot': kHerdrTwoPanesSnapshotFixture},
-        );
+    testWidgets('pane セレクタの Close は確認ダイアログを経由して pane close を発行する', (
+      tester,
+    ) async {
+      final client = await _openHerdrPaneSelector(
+        tester,
+        execOutputs: {'herdr api snapshot': kHerdrTwoPanesSnapshotFixture},
+      );
 
-        // タイルの ⋮ → Close Pane。
-        await tester.tap(find.byIcon(Icons.more_vert).first);
-        // PopupMenu の表示アニメーションを消化する。
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.tap(find.text('Close Pane'));
-        // _closeSelectorThen の 200ms 遅延後に確認ダイアログが開く。
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
+      // タイルの ⋮ → Close Pane。
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      // PopupMenu の表示アニメーションを消化する。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Close Pane'));
+      // _closeSelectorThen の 200ms 遅延後に確認ダイアログが開く。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
-        // 最後の pane ではないため通常の確認文言。
-        expect(find.text('Close Pane?'), findsOneWidget);
-        expect(
-          find.textContaining('Are you sure you want to close pane'),
-          findsOneWidget,
-        );
+      // 最後の pane ではないため通常の確認文言。
+      expect(find.text('Close Pane?'), findsOneWidget);
+      expect(
+        find.textContaining('Are you sure you want to close pane'),
+        findsOneWidget,
+      );
 
-        await tester.tap(find.text('Close'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Close'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 300));
 
-        expect(
-          client.execCommands.any(
-            (c) =>
-                c == 'herdr pane close w1:p1' ||
-                c == 'herdr pane close w1:p2',
-          ),
-          isTrue,
-          reason: '破壊的 close は PaneWriter.closePane（herdr pane close）で行うこと',
-        );
+      expect(
+        client.execCommands.any(
+          (c) => c == 'herdr pane close w1:p1' || c == 'herdr pane close w1:p2',
+        ),
+        isTrue,
+        reason: '破壊的 close は PaneWriter.closePane（herdr pane close）で行うこと',
+      );
 
-        // _scrollToCaret の遅延タイマーを消化してクリーンに終了。
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      // _scrollToCaret の遅延タイマーを消化してクリーンに終了。
+      await tester.pump(const Duration(milliseconds: 200));
+    });
 
-    testWidgets(
-      '最後の pane を閉じると tab/workspace 連鎖終了を警告する',
-      (tester) async {
-        // 単一 workspace / 単一 tab / 単一 pane の snapshot。
-        await _openHerdrPaneSelector(tester);
+    testWidgets('最後の pane を閉じると tab/workspace 連鎖終了を警告する', (tester) async {
+      // 単一 workspace / 単一 tab / 単一 pane の snapshot。
+      await _openHerdrPaneSelector(tester);
 
-        await tester.tap(find.byIcon(Icons.more_vert).first);
-        // PopupMenu の表示アニメーションを消化する。
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.tap(find.text('Close Pane'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      // PopupMenu の表示アニメーションを消化する。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Close Pane'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
-        expect(find.text('Close Pane?'), findsOneWidget);
-        expect(
-          find.textContaining(
-            'last pane in the last tab',
-          ),
-          findsOneWidget,
-          reason: '最後の pane + 最後の tab は tab と workspace の連鎖終了を警告すること',
-        );
-        expect(
-          find.textContaining('close the tab and the workspace'),
-          findsOneWidget,
-        );
+      expect(find.text('Close Pane?'), findsOneWidget);
+      expect(
+        find.textContaining('last pane in the last tab'),
+        findsOneWidget,
+        reason: '最後の pane + 最後の tab は tab と workspace の連鎖終了を警告すること',
+      );
+      expect(
+        find.textContaining('close the tab and the workspace'),
+        findsOneWidget,
+      );
 
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      await tester.pump(const Duration(milliseconds: 200));
+    });
 
-    testWidgets(
-      '連鎖 close 確認後に pane close が発行され、再解決で終端通知になる',
-      (tester) async {
-        final client = await _openHerdrPaneSelector(
-          tester,
-          // 接続時: 単一 pane / close 後の force 再取得: 空（workspace 消滅）。
-          execOutputQueues: {
-            'herdr api snapshot': [
-              kHerdrSnapshotFixture,
-              kHerdrEmptySnapshotFixture,
-            ],
-          },
-        );
+    testWidgets('連鎖 close 確認後に pane close が発行され、再解決で終端通知になる', (tester) async {
+      final client = await _openHerdrPaneSelector(
+        tester,
+        // 接続時: 単一 pane / close 後の force 再取得: 空（workspace 消滅）。
+        execOutputQueues: {
+          'herdr api snapshot': [
+            kHerdrSnapshotFixture,
+            kHerdrEmptySnapshotFixture,
+          ],
+        },
+      );
 
-        await tester.tap(find.byIcon(Icons.more_vert).first);
-        // PopupMenu の表示アニメーションを消化する。
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.tap(find.text('Close Pane'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 250));
-        await tester.tap(find.text('Close'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
-        await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      // PopupMenu の表示アニメーションを消化する。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Close Pane'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.tap(find.text('Close'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 300));
 
-        // 破壊的 close は `herdr pane close`（send-keys C-c ではない）。
-        expect(
-          client.execCommands.any(
-            (c) => c == 'herdr pane close w1:p1',
-          ),
-          isTrue,
-          reason: 'C-c ではなく pane close が破壊的 close の唯一経路であること',
-        );
+      // 破壊的 close は `herdr pane close`（send-keys C-c ではない）。
+      expect(
+        client.execCommands.any((c) => c == 'herdr pane close w1:p1'),
+        isTrue,
+        reason: 'C-c ではなく pane close が破壊的 close の唯一経路であること',
+      );
 
-        // close 後の H5 単一経路（強制再取得）が実行されること。
-        expect(
-          client.execCommands.any(
-            (c) => c.contains('herdr api snapshot'),
-          ),
-          isTrue,
-          reason: 'close 後の H5 単一経路（強制再取得）が実行されること',
-        );
+      // close 後の H5 単一経路（強制再取得）が実行されること。
+      expect(
+        client.execCommands.any((c) => c.contains('herdr api snapshot')),
+        isTrue,
+        reason: 'close 後の H5 単一経路（強制再取得）が実行されること',
+      );
 
-        // _scrollToCaret の遅延タイマーを消化してクリーンに終了。
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      // _scrollToCaret の遅延タイマーを消化してクリーンに終了。
+      await tester.pump(const Duration(milliseconds: 200));
+    });
   });
 }
