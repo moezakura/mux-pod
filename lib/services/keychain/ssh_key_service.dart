@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -64,10 +65,14 @@ class SshKeyService {
   Future<SshKeyPair> generateRsa({required int bits, String? comment}) async {
     assert(bits == 2048 || bits == 3072 || bits == 4096);
 
+    // シードはOSのCSPRNG(Random.secure = getrandom(2))から採る。
+    // 旧実装は DateTime.now().millisecondsSinceEpoch % 256 の同一値32バイト
+    // をシードにしており、同一ミリ秒に2回生成すると同一の鍵が生成分割れる
+    // 欠陥があった(コンテナ等の時計粒度が粗い環境で実際に発生)。
     final secureRandom = pc.FortunaRandom();
     final seedSource = List<int>.generate(
       32,
-      (i) => DateTime.now().millisecondsSinceEpoch % 256,
+      (_) => Random.secure().nextInt(256),
     );
     secureRandom.seed(pc.KeyParameter(Uint8List.fromList(seedSource)));
 
