@@ -39,6 +39,9 @@ class AppSettings {
   /// ペインナビゲーション方向の反転
   final bool invertPaneNavigation;
 
+  /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
+  final String language;
+
   // --- キーオーバーレイ設定 ---
   /// キーオーバーレイ全体ON/OFF
   final bool showKeyOverlay;
@@ -86,6 +89,7 @@ class AppSettings {
     this.directInputEnabled = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
+    this.language = 'system',
     this.showKeyOverlay = true,
     this.keyOverlayModifier = true,
     this.keyOverlaySpecial = true,
@@ -123,6 +127,7 @@ class AppSettings {
     bool? directInputEnabled,
     bool? showTerminalCursor,
     bool? invertPaneNavigation,
+    String? language,
     bool? showKeyOverlay,
     bool? keyOverlayModifier,
     bool? keyOverlaySpecial,
@@ -156,6 +161,7 @@ class AppSettings {
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
+      language: language ?? this.language,
       showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
       keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
       keyOverlaySpecial: keyOverlaySpecial ?? this.keyOverlaySpecial,
@@ -193,6 +199,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
+  static const String _languageKey = 'settings_language';
   static const String _imageRemotePathKey = 'settings_image_remote_path';
   static const String _imageOutputFormatKey = 'settings_image_output_format';
   static const String _imageJpegQualityKey = 'settings_image_jpeg_quality';
@@ -236,6 +243,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
+      language: prefs.getString(_languageKey) ?? 'system',
       showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
       keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
       keyOverlaySpecial: prefs.getBool(_keyOverlaySpecialKey) ?? true,
@@ -433,6 +441,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setInvertPaneNavigation(bool value) async {
     state = state.copyWith(invertPaneNavigation: value);
     await _saveSetting(_invertPaneNavKey, value);
+  }
+
+  /// 表示言語を設定（'system' / 'ja' / 'en'）
+  Future<void> setLanguage(String value) async {
+    state = state.copyWith(language: value);
+    await _saveSetting(_languageKey, value);
   }
 
   // --- キーオーバーレイ設定のsetter ---

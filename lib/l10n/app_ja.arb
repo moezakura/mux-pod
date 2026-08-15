@@ -1,0 +1,8 @@
+{
+  "@@locale": "ja",
+  "settingsLanguage": "言語",
+  "languageSystem": "システム",
+  "languageSystemDescription": "システム（端末に従う）",
+  "languageJapanese": "日本語",
+  "languageEnglish": "English"
+}

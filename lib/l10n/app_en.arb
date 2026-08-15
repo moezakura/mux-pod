@@ -1,0 +1,8 @@
+{
+  "@@locale": "en",
+  "settingsLanguage": "Language",
+  "languageSystem": "System",
+  "languageSystemDescription": "System (follow device)",
+  "languageJapanese": "日本語",
+  "languageEnglish": "English"
+}

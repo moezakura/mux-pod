@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/settings_provider.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/dialogs/font_size_dialog.dart';
 import '../../widgets/dialogs/font_family_dialog.dart';
@@ -250,6 +251,12 @@ class SettingsScreen extends ConsumerWidget {
                       ref.read(settingsProvider.notifier).setDarkMode(isDark);
                     }
                   },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.language),
+                  title: Text(context.l10n.settingsLanguage),
+                  subtitle: Text(_languageLabel(context, settings.language)),
+                  onTap: () => _showLanguagePicker(context, ref, settings.language),
                 ),
                 const Divider(),
                 const _SectionHeader(title: 'Image Transfer'),
@@ -548,6 +555,52 @@ class SettingsScreen extends ConsumerWidget {
       default:
         return 'Auto (follow device)';
     }
+  }
+
+  /// 言語設定の現在値ラベル
+  String _languageLabel(BuildContext context, String value) {
+    final l10n = context.l10n;
+    switch (value) {
+      case 'ja':
+        return l10n.languageJapanese;
+      case 'en':
+        return l10n.languageEnglish;
+      default:
+        // 'system' は説明付き表記（例: System (follow device)）
+        return l10n.languageSystemDescription;
+    }
+  }
+
+  /// 言語設定ピッカー: System / 日本語 / English の3択
+  void _showLanguagePicker(BuildContext context, WidgetRef ref, String current) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final l10n = ctx.l10n;
+        return SimpleDialog(
+          title: Text(l10n.settingsLanguage),
+          children: [
+            for (final entry in [
+              ('system', l10n.languageSystem, l10n.languageSystemDescription),
+              ('ja', l10n.languageJapanese, null),
+              ('en', l10n.languageEnglish, null),
+            ])
+              RadioListTile<String>(
+                title: Text(entry.$2),
+                subtitle: entry.$3 != null ? Text(entry.$3!) : null,
+                value: entry.$1,
+                groupValue: current,
+                onChanged: (v) {
+                  if (v != null) {
+                    ref.read(settingsProvider.notifier).setLanguage(v);
+                  }
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        );
+      },
+    );
   }
 
   void _showOrientationPicker(BuildContext context, WidgetRef ref, String current) {
