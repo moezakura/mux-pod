@@ -118,7 +118,11 @@ class TmuxCommands {
     String? startDirectory,
     bool background = false,
   }) {
-    final parts = ['tmux', 'new-window', '-t', _escapeArg(sessionName)];
+    // セッション名にコロンを付与し、数値セッション名（例: "1"）が
+    // tmux によりウィンドウインデックスと誤解釈されるのを防ぐ。
+    // （`tmux new-window -t 1` は「現在セッションのウィンドウ番号1」を指す。
+    //   `-t 1:` とすればセッション「1」として正しく解決される）
+    final parts = ['tmux', 'new-window', '-t', _escapeArg('$sessionName:')];
     if (background) parts.add('-d');
     if (windowName != null) parts.addAll(['-n', _escapeArg(windowName)]);
     if (startDirectory != null) parts.addAll(['-c', _escapeArg(startDirectory)]);
