@@ -7,6 +7,8 @@ import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:dartssh2/dartssh2.dart';
 import 'package:pointycastle/export.dart' as pc;
 
+import '../../l10n/app_localizations.dart';
+
 /// SSH鍵ペアのデータクラス
 class SshKeyPair {
   final String type; // 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096'
@@ -108,13 +110,19 @@ class SshKeyService {
   }
 
   /// PEM文字列から鍵をパース
+  ///
+  /// [l10n] は任意。null の場合は英語フォールバック（テスト互換）。
   Future<SshKeyPair> parseFromPem(
     String pemContent, {
     String? passphrase,
+    AppLocalizations? l10n,
   }) async {
     final keyPairs = SSHKeyPair.fromPem(pemContent, passphrase);
     if (keyPairs.isEmpty) {
-      throw const FormatException('Invalid PEM format or wrong passphrase');
+      throw FormatException(
+        l10n?.keyMgmtInvalidPemOrWrongPassphrase ??
+            'Invalid PEM format or wrong passphrase',
+      );
     }
 
     final keyPair = keyPairs.first;

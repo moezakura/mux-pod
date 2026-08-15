@@ -50,6 +50,7 @@ import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
 
 import '../../services/tmux/tmux_version.dart';
+import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../widgets/dialogs/pane_chooser_dialog.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
@@ -282,21 +283,21 @@ String? _herdrTabIdFromPaneId(String paneId) {
 /// 末尾セグメントから番号を抽出する（"w1:p1" → "Pane 1"）。抽出できない場合
 /// は "Pane 0" を返す。A10 の currentPath 優先ルールはセレクタ側
 /// （[_herdrPaneLabel]）で適用し、ブレッドクラムは番号ベースで統一する。
-String _herdrPaneSegmentLabel(String paneId) {
+String _herdrPaneSegmentLabel(String paneId, AppLocalizations l10n) {
   final last = paneId.split(':').last;
   final digits = last.replaceAll(RegExp(r'\D'), '');
   final index = int.tryParse(digits) ?? 0;
-  return 'Pane $index';
+  return l10n.termPaneLabel(index);
 }
 
 /// A10: herdr pane の表示名（3 段セレクタ用）。
 ///
 /// 現在ディレクトリ（currentPath = cwd ?? foregroundCwd）を優先し、無ければ
 /// 'Pane N'（index）をフォールバックする。
-String _herdrPaneLabel(MultiplexerPane pane) {
+String _herdrPaneLabel(MultiplexerPane pane, AppLocalizations l10n) {
   final cwd = pane.currentPath;
   if (cwd != null && cwd.isNotEmpty) return cwd;
-  return 'Pane ${pane.index}';
+  return l10n.termPaneLabel(pane.index);
 }
 
 // inventory: TERM-BREAD-000
@@ -1173,6 +1174,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // inventory: TERM-RESIZE-003
         _scheduleInitialAutoResize();
       }
+    } on SshAuthenticationError {
+      // 注意: SshAuthenticationError 全種をこの文言にマップしている。現在の throw
+      // 元は _getAuthOptions の秘密鍵読み取り失敗のみ。将来 throw 元が増える
+      // 場合は例外の種別に応じた文言選択が必要。
+      if (!mounted) return;
+      final message = context.l10n.connPrivateKeyUnreadable;
+      setState(() {
+        _isConnecting = false;
+        _connectionError = message;
+      });
+      // inventory: TERM-DIALOG-001
+      _showErrorSnackBar(message);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -3651,7 +3664,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       window: isReadOnly ? null : (tmuxState.activeWindow?.name ?? ''),
       pane: isReadOnly || activePane == null
           ? null
-          : 'Pane ${activePane.index}',
+          : context.l10n.termPaneLabel(activePane.index),
       readOnlyBadge: isReadOnly,
       onSessionTap: isReadOnly ? null : () => _showSessionSelector(tmuxState),
       onWindowTap: isReadOnly ? null : () => _showWindowSelector(tmuxState),
@@ -3675,7 +3688,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // M-4: tab セグメントは数字抽出（旧 _herdrTabSegmentLabel）ではなく、
       // snapshot 解決済みの実ラベル（tabLabel = tab.label ?? tab.id 相当）を表示する。
       window: tabId != null ? (display?.tabLabel ?? tabId) : null,
-      pane: paneId != null ? _herdrPaneSegmentLabel(paneId) : null,
+      pane: paneId != null
+          ? _herdrPaneSegmentLabel(paneId, context.l10n)
+          : null,
       readOnlyBadge: isExplicitReadOnly,
       onSessionTap: () => _showHerdrWorkspaceSelector(),
       onWindowTap: () => _showHerdrTabSelector(),
@@ -3920,7 +3935,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               MultiplexerPaneTile(
                 key: ValueKey('mux-sel-pane-${pane.id}'),
                 pane: pane,
-                paneTitle: _herdrPaneLabel(pane),
+                paneTitle: _herdrPaneLabel(pane, l10n),
                 isActive: _isCurrentPane(pane, current),
                 onTap: () {
                   Navigator.pop(context);
@@ -3932,7 +3947,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         // 行い、連鎖 close を確認してから `pane close` を実行する。
                         _confirmAndKillHerdrPane(
                           paneId: pane.id,
-                          paneTitle: _herdrPaneLabel(pane),
+                          paneTitle: _herdrPaneLabel(pane, context.l10n),
                           isLastPane: window.panes.length == 1,
                           isLastTab: workspace.windows.length == 1,
                         );
@@ -3949,7 +3964,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     ? () => _closeSelectorThen(() {
                         _confirmAndKillHerdrPane(
                           paneId: pane.id,
-                          paneTitle: _herdrPaneLabel(pane),
+                          paneTitle: _herdrPaneLabel(pane, context.l10n),
                           isLastPane: window.panes.length == 1,
                           isLastTab: workspace.windows.length == 1,
                         );
@@ -4345,7 +4360,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           MultiplexerPaneTile(
             key: ValueKey('mux-sel-pane-${pane.id}'),
             pane: pane,
-            paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+            paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id, context.l10n),
             subtitle: _tmuxPaneSubtitleFor(tmuxState, pane),
             isActive: _isCurrentPane(pane, current),
             onTap: () {
@@ -4357,7 +4372,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     // inventory: TERM-CRUD-004
                     _confirmAndKillPane(
                       paneId: pane.id,
-                      paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+                      paneTitle: _tmuxPaneLabelFor(
+                        tmuxState,
+                        pane.id,
+                        context.l10n,
+                      ),
                       isLastPane: window.panes.length == 1,
                       isLastWindow: session.windows.length == 1,
                     );
@@ -4373,7 +4392,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     // inventory: TERM-CRUD-004
                     _confirmAndKillPane(
                       paneId: pane.id,
-                      paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+                      paneTitle: _tmuxPaneLabelFor(
+                        tmuxState,
+                        pane.id,
+                        context.l10n,
+                      ),
                       isLastPane: window.panes.length == 1,
                       isLastWindow: session.windows.length == 1,
                     );
@@ -4699,7 +4722,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return PaneChooserDialog(
           panes: window.panes,
           initialPaneId: _targetSource?.currentPaneId,
-          labelBuilder: _herdrPaneLabel,
+          labelBuilder: (pane) => _herdrPaneLabel(pane, context.l10n),
           onResize: (paneId) {
             Navigator.pop(dialogContext);
             // 実行前再検証（条件11）: sessions 内に引当できない pane は中断。
@@ -6434,11 +6457,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _inputQueue.enqueue(key);
         if (!wasOverflow && _inputQueue.isOverflow && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Input queue is full; some keystrokes may be lost.',
-              ),
-            ),
+            SnackBar(content: Text(context.l10n.termInputQueueFull)),
           );
         }
         if (mounted) setState(() {}); // キューイング状態を更新
@@ -7951,14 +7970,18 @@ TmuxPane? _findTmuxPaneIn(TmuxState tmuxState, String paneId) {
 /// 既存 3 セレクタ（L3604-3608 相当）のタイトル優先ルールを共通シート向けに
 /// 移設したもの。ツリーから引き当てできない pane ID は 'Pane 0' を返す
 /// （防御的フォールバック。実際にはシートの pane は同一ツリー由来のため不発）。
-String _tmuxPaneLabelFor(TmuxState tmuxState, String paneId) {
+String _tmuxPaneLabelFor(
+  TmuxState tmuxState,
+  String paneId,
+  AppLocalizations l10n,
+) {
   final pane = _findTmuxPaneIn(tmuxState, paneId);
-  if (pane == null) return 'Pane 0';
+  if (pane == null) return l10n.termPaneLabel(0);
   final title = pane.title;
   if (title != null && title.isNotEmpty) return title;
   final command = pane.currentCommand;
   if (command != null && command.isNotEmpty) return command;
-  return 'Pane ${pane.index}';
+  return l10n.termPaneLabel(pane.index);
 }
 
 /// tmux の pane サブタイトル（'WxH'・M-2）。引き当て不可なら null。

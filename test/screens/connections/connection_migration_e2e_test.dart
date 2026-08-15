@@ -28,6 +28,7 @@ class _TestSshClient extends FakeSshClient {
     required int port,
     required String username,
     required SshConnectOptions options,
+    AppLocalizations? l10n,
     bool lightweight = false,
   }) async {
     lastOptions = options;

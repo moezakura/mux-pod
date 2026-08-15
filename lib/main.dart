@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/l10n/app_localizations.dart';
@@ -148,6 +149,12 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
+    // settings の言語設定解決後に Intl.defaultLocale を設定
+    // （'system' は端末ロケールの languageCode へ解決）
+    Intl.defaultLocale = settings.language == 'system'
+        ? PlatformDispatcher.instance.locale.languageCode
+        : settings.language;
+
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: 'MuxPod',
@@ -158,6 +165,15 @@ class _MyAppState extends ConsumerState<MyApp> {
       locale: settings.language == 'system' ? null : Locale(settings.language),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
+      // languageCode が supportedLocales に一致すればそれを採用、無ければ en
+      localeResolutionCallback: (locale, supportedLocales) {
+        for (final supported in supportedLocales) {
+          if (supported.languageCode == locale?.languageCode) {
+            return supported;
+          }
+        }
+        return const Locale('en');
+      },
       home: const HomeScreen(),
       debugShowCheckedModeBanner: false,
     );

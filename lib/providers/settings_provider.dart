@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import '../services/settings_migration.dart';
+import '../l10n/l10n_lookup.dart';
 
 /// アプリ設定
 class AppSettings {
@@ -228,6 +229,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = await SharedPreferences.getInstance();
     await SettingsMigrationRunner.run(prefs);
 
+    // コンテナ破棄後の state 更新を防止する (テスト等で async ギャップ後に破棄されるケース)。
+    if (!ref.mounted) return;
+
     state = AppSettings(
       darkMode: prefs.getBool(_darkModeKey) ?? true,
       fontSize: prefs.getDouble(_fontSizeKey) ?? 14.0,
@@ -263,6 +267,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
     );
+
+    // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
+    setCachedLanguage(state.language);
 
     await _applyScreenOrientation(state.screenOrientation);
     await _applyRefreshRate(state.refreshRate);
@@ -354,7 +361,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
       default:
         orientations = const <DeviceOrientation>[]; // すべて許可
     }
-    await SystemChrome.setPreferredOrientations(orientations);
+    // テスト等、binding が未初期化の環境では platform channel が利用できないため無視する。
+    try {
+      await SystemChrome.setPreferredOrientations(orientations);
+    } catch (_) {
+      // no-op: 向き設定の適用に失敗しても設定値自体は保持される
+    }
   }
 
   /// 最大リフレッシュレートを設定（即座に適用）
@@ -451,6 +463,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   /// 表示言語を設定（'system' / 'ja' / 'en'）
   Future<void> setLanguage(String value) async {
     state = state.copyWith(language: value);
+    setCachedLanguage(value);
     await _saveSetting(_languageKey, value);
   }
 

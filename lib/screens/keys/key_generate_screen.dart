@@ -105,7 +105,7 @@ class _KeyGenerateScreenState extends ConsumerState<KeyGenerateScreen> {
             if (_keyType == 'rsa') ...[
               const SizedBox(height: 8),
               Text(
-                'RSA key generation may take a few seconds',
+                context.l10n.keyMgmtRsaGenerationNote,
                 style: Theme.of(context).textTheme.bodySmall,
                 textAlign: TextAlign.center,
               ),

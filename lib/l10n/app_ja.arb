@@ -1038,5 +1038,372 @@
   "muxCloseWindow": "ウィンドウを閉じる",
   "muxResizePane": "ペインをリサイズ",
   "muxClosePane": "ペインを閉じる",
-  "keyBarTypeHere": "ここに入力..."
+  "keyBarTypeHere": "ここに入力...",
+  "termPaneLabel": "ペイン {index}",
+  "@termPaneLabel": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifPanePosition": " • ペイン {index}",
+  "@notifPanePosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "dashLastWindow": "W{index}",
+  "@dashLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifWindowPosition": "W{index}: {name}",
+  "@notifWindowPosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizeHerdrPtyHeader": "Herdr (PTY)  {cols} x {rows}",
+  "@resizeHerdrPtyHeader": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizePanelLabel": "パネル",
+  "notifSshConnectedTitle": "SSH接続中: {name}",
+  "@notifSshConnectedTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "notifHost": "ホスト: {host}",
+  "@notifHost": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "notifChannelName": "SSH 接続",
+  "notifChannelDescription": "バックグラウンドで SSH 接続を維持します",
+  "sshHostRequired": "ホストが必要です",
+  "sshUsernameRequired": "ユーザー名が必要です",
+  "sshInvalidPortNumber": "無効なポート番号: {port}",
+  "@sshInvalidPortNumber": {
+    "placeholders": {
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "sshCredentialRequired": "パスワードまたは秘密鍵のいずれかを指定してください",
+  "sshNoValidKeyInPem": "PEM データに有効な鍵が見つかりません",
+  "sshInvalidPrivateKeyFormat": "秘密鍵の形式が無効です: {error}",
+  "@sshInvalidPrivateKeyFormat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshPrivateKeyEncrypted": "秘密鍵は暗号化されています。パスフレーズが必要です",
+  "sshParsePrivateKeyFailed": "秘密鍵の解析に失敗しました: {error}",
+  "@sshParsePrivateKeyFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshSftpRequiresConnection": "SFTP を使用するにはアクティブな SSH 接続が必要です",
+  "sshStartShellFailed": "シェルの起動に失敗しました: {error}",
+  "@sshStartShellFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshNotConnected": "未接続",
+  "sshNotConnectedOrShellNotStarted": "未接続、またはシェルが開始されていません",
+  "sshPersistentShellUnavailable": "永続シェルは利用できません",
+  "sshCommandTimedOut": "コマンドの実行がタイムアウトしました",
+  "sshExecuteCommandFailed": "コマンドの実行に失敗しました: {error}",
+  "@sshExecuteCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshShellNotStarted": "シェルが開始されていません",
+  "sshShellSessionIsClosed": "シェルセッションは閉じられています",
+  "sshAnotherCommandRunning": "別のコマンドが既に実行中です",
+  "sshShellSessionClosed": "シェルセッションは閉じられました",
+  "sshSendToShellFailed": "シェルへの送信に失敗しました",
+  "sshConnectionLost": "接続が切断されました",
+  "sshMaxReconnectAttemptsReached": "再接続の最大試行回数に達しました",
+  "sshReconnectFailed": "再接続に失敗しました: {error}",
+  "@sshReconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrServerNotRunning": "Herdr サーバーが実行されていません。先に 'herdr server' を起動してください。",
+  "connHerdrParseStatusFailed": "herdr のステータス出力の解析に失敗しました: {error}",
+  "@connHerdrParseStatusFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrParseSnapshotFailed": "herdr のスナップショット出力の解析に失敗しました: {error}",
+  "@connHerdrParseSnapshotFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrChannelClosed": "終了ステータスも出力もないままコマンドチャネルが閉じられました: {command}",
+  "@connHerdrChannelClosed": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailed": "herdr コマンドが失敗しました: {error}",
+  "@connHerdrCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCode": "herdr コマンドが失敗しました（終了コード: {code}）",
+  "@connHerdrCommandFailedExitCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxCommandFailed": "tmux コマンドが失敗しました（終了コード: {code}）",
+  "@connTmuxCommandFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupCreateFailed": "マイグレーション前にバックアップの作成に失敗しました。プライマリストレージは変更されていません。",
+  "connMigrationBackupCreateFailedWarning": "マイグレーションのバックアップ作成に失敗しました: {error}",
+  "@connMigrationBackupCreateFailedWarning": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupValidationFailed": "バックアップの検証に失敗しました。データ損失を避けるため、マイグレーションは実行されませんでした。",
+  "connMigrationWriteRollbackFailed": "マイグレーション済みストレージの書き込みに失敗し、データのロールバックも失敗しました: {error}",
+  "@connMigrationWriteRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationOriginalError": "元のエラー: {error}",
+  "@connMigrationOriginalError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationWriteRestored": "マイグレーション済みストレージの書き込みに失敗しました: {error}。元のデータを復元しました。",
+  "@connMigrationWriteRestored": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRollbackFailed": "マイグレーション済みストレージの検証に失敗し、データのロールバックも失敗しました: {error}",
+  "@connMigrationValidationRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRestored": "マイグレーション済みストレージの検証に失敗しました。元のデータを復元しました。ストレージの空き容量を確認するか、アプリを再インストールしてください。",
+  "connMigrationRestoreFailed": "バックアップからの接続データの復元に失敗しました。ストレージの空き容量を確認するか、アプリを再インストールしてください。",
+  "connMigrationRecoverUsingBackup": "保存済みの接続が無効だったため、利用可能なバックアップを使用しました。エラー: {error}。プライマリの復元に失敗しました: {restoreError}",
+  "@connMigrationRecoverUsingBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      },
+      "restoreError": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecoveredFromBackup": "保存済みの接続が無効だったため、バックアップから復元しました。エラー: {error}",
+  "@connMigrationRecoveredFromBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationNoUsableBackup": "保存済みの接続が無効で、利用可能なバックアップもありません。接続を再追加するか、アプリのデータをクリアしてください。",
+  "keyMgmtInvalidPemOrWrongPassphrase": "無効な PEM 形式、またはパスフレーズが正しくありません",
+  "imgTransferHeicEmptyResult": "ネイティブ HEIC 変換が空の結果を返しました",
+  "imgTransferHeicConvertFailed": "HEIC 画像の変換に失敗しました: {error}",
+  "@imgTransferHeicConvertFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferDecodeFailed": "画像のデコードに失敗しました",
+  "fileDeleteFailureDetail": "削除に失敗しました: {error}",
+  "@fileDeleteFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileRenameFailureDetail": "名前の変更に失敗しました: {error}",
+  "@fileRenameFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileCreateFolderFailureDetail": "フォルダの作成に失敗しました: {error}",
+  "@fileCreateFolderFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileLoadHomeFailed": "ホームディレクトリの取得に失敗しました: {error}",
+  "@fileLoadHomeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSshConnectionLost": "SSH 接続が切断されました",
+  "imgTransferPickFailed": "画像の選択に失敗しました: {error}",
+  "@imgTransferPickFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferSshNotAvailable": "SSH 接続を利用できません",
+  "imgTransferSshLostDuringUpload": "アップロード中に SSH 接続が切断されました",
+  "imgTransferUploadFailed": "アップロードに失敗しました: {error}",
+  "@imgTransferUploadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedRecordReason": "接続レコードの読み込みに失敗しました: {error}",
+  "@connCorruptedRecordReason": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedWarning": "{count} 件の接続を読み込めませんでした",
+  "@connCorruptedWarning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "connHerdrCommandFailedErrorCode": "herdr コマンドが失敗しました: {code}（終了コード: {exitCode}）",
+  "@connHerdrCommandFailedErrorCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "exitCode": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCodePreview": "herdr コマンドが失敗しました（終了コード: {code}、stdout({bytes}b)）",
+  "@connHerdrCommandFailedExitCodePreview": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "connMigrationRecordRollbackFailed": "接続レコードの移行に失敗し、データのロールバックにも失敗しました。{error}",
+  "@connMigrationRecordRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecordFailedPreserved": "接続レコードの移行に失敗しました: {error}。元のデータは保持されています。",
+  "@connMigrationRecordFailedPreserved": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshConnectionLostDetail": "接続が失われました: {error}",
+  "@sshConnectionLostDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -439,7 +439,9 @@ class _SessionHistoryCard extends ConsumerWidget {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            'W${session.lastWindowIndex ?? 0}',
+                            context.l10n.dashLastWindow(
+                              session.lastWindowIndex ?? 0,
+                            ),
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 10,
                               color: DesignColors.primary.withValues(

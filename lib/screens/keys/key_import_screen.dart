@@ -246,6 +246,7 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
       final keyPair = await keyService.parseFromPem(
         pemContent,
         passphrase: passphrase,
+        l10n: context.l10n,
       );
 
       // 秘密鍵をSecureStorageに保存

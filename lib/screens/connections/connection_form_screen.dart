@@ -1172,6 +1172,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   customPath.isNotEmpty ? customPath : null,
                 ),
         ),
+        l10n: l10n,
       );
 
       if (isHerdr) {

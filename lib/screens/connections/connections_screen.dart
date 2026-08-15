@@ -854,6 +854,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       username: connection.username,
       options: options,
       lightweight: true,
+      l10n: l10n,
     );
     return sshClient;
   }

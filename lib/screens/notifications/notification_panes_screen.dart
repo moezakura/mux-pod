@@ -349,22 +349,33 @@ class _AlertPaneCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(
-                          'W${alert.windowIndex}: ${alert.windowName}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark
-                                ? DesignColors.textMuted
-                                : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifWindowPosition(
+                              alert.windowIndex,
+                              alert.windowName,
+                            ),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Text(
-                          ' • Pane ${alert.paneIndex}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark
-                                ? DesignColors.textMuted
-                                : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifPanePosition(alert.paneIndex),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (alert.currentCommand != null) ...[

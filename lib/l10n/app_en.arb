@@ -1038,5 +1038,372 @@
   "muxCloseWindow": "Close Window",
   "muxResizePane": "Resize Pane",
   "muxClosePane": "Close Pane",
-  "keyBarTypeHere": "Type here..."
+  "keyBarTypeHere": "Type here...",
+  "termPaneLabel": "Pane {index}",
+  "@termPaneLabel": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifPanePosition": " • Pane {index}",
+  "@notifPanePosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "dashLastWindow": "W{index}",
+  "@dashLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifWindowPosition": "W{index}: {name}",
+  "@notifWindowPosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizeHerdrPtyHeader": "Herdr (PTY)  {cols} x {rows}",
+  "@resizeHerdrPtyHeader": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizePanelLabel": "Panel",
+  "notifSshConnectedTitle": "SSH connected: {name}",
+  "@notifSshConnectedTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "notifHost": "Host: {host}",
+  "@notifHost": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "notifChannelName": "SSH Connection",
+  "notifChannelDescription": "Keeps SSH connection alive in background",
+  "sshHostRequired": "Host is required",
+  "sshUsernameRequired": "Username is required",
+  "sshInvalidPortNumber": "Invalid port number: {port}",
+  "@sshInvalidPortNumber": {
+    "placeholders": {
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "sshCredentialRequired": "Either password or privateKey must be provided",
+  "sshNoValidKeyInPem": "No valid key found in PEM data",
+  "sshInvalidPrivateKeyFormat": "Invalid private key format: {error}",
+  "@sshInvalidPrivateKeyFormat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshPrivateKeyEncrypted": "Private key is encrypted, passphrase required",
+  "sshParsePrivateKeyFailed": "Failed to parse private key: {error}",
+  "@sshParsePrivateKeyFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshSftpRequiresConnection": "SFTP requires an active SSH connection",
+  "sshStartShellFailed": "Failed to start shell: {error}",
+  "@sshStartShellFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshNotConnected": "Not connected",
+  "sshNotConnectedOrShellNotStarted": "Not connected or shell not started",
+  "sshPersistentShellUnavailable": "Persistent shell is not available",
+  "sshCommandTimedOut": "Command execution timed out",
+  "sshExecuteCommandFailed": "Failed to execute command: {error}",
+  "@sshExecuteCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshShellNotStarted": "Shell not started",
+  "sshShellSessionIsClosed": "Shell session is closed",
+  "sshAnotherCommandRunning": "Another command is already running",
+  "sshShellSessionClosed": "Shell session closed",
+  "sshSendToShellFailed": "Failed to send to shell",
+  "sshConnectionLost": "Connection lost",
+  "sshMaxReconnectAttemptsReached": "Max reconnect attempts reached",
+  "sshReconnectFailed": "Reconnect failed: {error}",
+  "@sshReconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrServerNotRunning": "Herdr server is not running. Start it with 'herdr server' first.",
+  "connHerdrParseStatusFailed": "Failed to parse herdr status output: {error}",
+  "@connHerdrParseStatusFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrParseSnapshotFailed": "Failed to parse herdr snapshot output: {error}",
+  "@connHerdrParseSnapshotFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrChannelClosed": "Command channel closed without exit status or output: {command}",
+  "@connHerdrChannelClosed": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailed": "herdr command failed: {error}",
+  "@connHerdrCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCode": "herdr command failed (exit code: {code})",
+  "@connHerdrCommandFailedExitCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxCommandFailed": "tmux command failed (exit code: {code})",
+  "@connTmuxCommandFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupCreateFailed": "Failed to create backup before migration. Primary storage was not changed.",
+  "connMigrationBackupCreateFailedWarning": "Migration backup creation failed: {error}",
+  "@connMigrationBackupCreateFailedWarning": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupValidationFailed": "Backup validation failed. Migration was not performed to avoid data loss.",
+  "connMigrationWriteRollbackFailed": "Failed to write migrated storage and data rollback also failed. {error}",
+  "@connMigrationWriteRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationOriginalError": "Original error: {error}",
+  "@connMigrationOriginalError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationWriteRestored": "Failed to write migrated storage: {error}. Original data restored.",
+  "@connMigrationWriteRestored": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRollbackFailed": "Migrated storage validation failed and data rollback also failed. {error}",
+  "@connMigrationValidationRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRestored": "Migrated storage validation failed. Original data restored. Please check storage space or reinstall the app.",
+  "connMigrationRestoreFailed": "Failed to restore connection data from backup. Please check storage space or reinstall the app.",
+  "connMigrationRecoverUsingBackup": "Stored connections were invalid; using available backup. Error: {error}. Primary restore failed: {restoreError}",
+  "@connMigrationRecoverUsingBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      },
+      "restoreError": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecoveredFromBackup": "Stored connections were invalid; restored from backup. Error: {error}",
+  "@connMigrationRecoveredFromBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationNoUsableBackup": "Stored connections are invalid and no usable backup is available. Please re-add your connections or clear app data.",
+  "keyMgmtInvalidPemOrWrongPassphrase": "Invalid PEM format or wrong passphrase",
+  "imgTransferHeicEmptyResult": "Native HEIC conversion returned empty result",
+  "imgTransferHeicConvertFailed": "Failed to convert HEIC image: {error}",
+  "@imgTransferHeicConvertFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferDecodeFailed": "Failed to decode image",
+  "fileDeleteFailureDetail": "Failed to delete: {error}",
+  "@fileDeleteFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileRenameFailureDetail": "Failed to rename: {error}",
+  "@fileRenameFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileCreateFolderFailureDetail": "Failed to create folder: {error}",
+  "@fileCreateFolderFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileLoadHomeFailed": "Failed to get home directory: {error}",
+  "@fileLoadHomeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSshConnectionLost": "SSH connection lost",
+  "imgTransferPickFailed": "Failed to pick image: {error}",
+  "@imgTransferPickFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferSshNotAvailable": "SSH connection not available",
+  "imgTransferSshLostDuringUpload": "SSH connection lost during upload",
+  "imgTransferUploadFailed": "Upload failed: {error}",
+  "@imgTransferUploadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedRecordReason": "Failed to load connection record: {error}",
+  "@connCorruptedRecordReason": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedWarning": "{count, plural, =1{1 connection could not be loaded.} other{{count} connections could not be loaded.}}",
+  "@connCorruptedWarning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "connHerdrCommandFailedErrorCode": "herdr command failed: {code} (exit code: {exitCode})",
+  "@connHerdrCommandFailedErrorCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "exitCode": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCodePreview": "herdr command failed (exit code: {code}, stdout({bytes}b))",
+  "@connHerdrCommandFailedExitCodePreview": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "connMigrationRecordRollbackFailed": "Migration of a connection record failed and data rollback also failed. {error}",
+  "@connMigrationRecordRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecordFailedPreserved": "Migration of a connection record failed: {error}. Original data preserved.",
+  "@connMigrationRecordFailedPreserved": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshConnectionLostDetail": "Connection lost: {error}",
+  "@sshConnectionLostDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
 }

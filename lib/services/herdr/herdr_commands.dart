@@ -5,6 +5,8 @@
 /// [BackendAdapter.execWithExitCode] 経由で実行される。
 library;
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_lookup.dart';
 import 'herdr_models.dart';
 
 // inventory: HERDR-CMD-PROTO-001
@@ -409,9 +411,10 @@ class HerdrServerNotRunningException implements Exception {
   /// ユーザー向けの案内文。
   final String message;
 
-  HerdrServerNotRunningException()
-    : message =
-          "Herdr server is not running. Start it with 'herdr server' first.";
+  /// [l10n] は任意。null の場合は [lookupL10n]（設定言語キャッシュ）で解決する。
+  /// キャッシュ未設定時は端末ロケール（テストでは en）となるため英語互換。
+  HerdrServerNotRunningException({AppLocalizations? l10n})
+    : message = (l10n ?? lookupL10n()).connHerdrServerNotRunning;
 
   @override
   String toString() => 'HerdrServerNotRunningException: $message';
@@ -439,12 +442,12 @@ class HerdrPreflight {
   /// 2. client/server protocol が 17 以外なら [HerdrProtocolMismatchException]。
   ///
   /// 検証に成功した場合は [status] をそのまま返す。
-  static HerdrStatus validate(HerdrStatus status) {
+  static HerdrStatus validate(HerdrStatus status, {AppLocalizations? l10n}) {
     // server 未稼働は protocol 不整合より先に専用例外で報告する。
     // 実測では未稼働時に `server.protocol` が null となり `_asInt` が 0 へ
     // 変換されるため、protocol 判定だけでは「protocol 0 が非対応」と誤報告する。
     if (!status.running) {
-      throw HerdrServerNotRunningException();
+      throw HerdrServerNotRunningException(l10n: l10n);
     }
     final client = status.clientProtocol;
     final server = status.serverProtocol;

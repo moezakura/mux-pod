@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../l10n/app_localizations.dart';
 import '../backend/multiplexer_config.dart';
 import '../keychain/secure_storage.dart';
 import 'connection_storage_schema.dart';
@@ -42,6 +43,7 @@ class ConnectionMigration {
   static Future<ConnectionMigrationResult> migrate({
     required SecureStorageService secure,
     required String? sourceJson,
+    AppLocalizations? l10n,
   }) async {
     if (sourceJson == null) {
       // 古い backup が残っている場合は削除しておく
@@ -60,7 +62,7 @@ class ConnectionMigration {
       sourceList = decoded;
     } catch (e) {
       // Source invalid; try backup
-      return _recoverFromBackup(secure, e);
+      return _recoverFromBackup(secure, e, l10n: l10n);
     }
 
     // マイグレーションが必要かチェック
@@ -77,8 +79,11 @@ class ConnectionMigration {
       return ConnectionMigrationResult(
         json: sourceJson,
         error:
+            l10n?.connMigrationBackupCreateFailed ??
             'Failed to create backup before migration. Primary storage was not changed.',
-        warning: 'Migration backup creation failed: $e',
+        warning:
+            l10n?.connMigrationBackupCreateFailedWarning('$e') ??
+            'Migration backup creation failed: $e',
       );
     }
 
@@ -89,6 +94,7 @@ class ConnectionMigration {
       return ConnectionMigrationResult(
         json: sourceJson,
         error:
+            l10n?.connMigrationBackupValidationFailed ??
             'Backup validation failed. Migration was not performed to avoid data loss.',
       );
     }
@@ -101,18 +107,21 @@ class ConnectionMigration {
           .toList();
     } catch (e) {
       // Migration of a record failed; rollback and return source
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
           error:
+              l10n?.connMigrationRecordRollbackFailed(rollbackError) ??
               'Migration of a connection record failed and data rollback also failed. $rollbackError',
-          warning: 'Original error: $e',
+          warning:
+              l10n?.connMigrationOriginalError('$e') ?? 'Original error: $e',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
         warning:
+            l10n?.connMigrationRecordFailedPreserved('$e') ??
             'Migration of a connection record failed: $e. Original data preserved.',
       );
     }
@@ -122,18 +131,21 @@ class ConnectionMigration {
     try {
       await secure.writeValue(_storageKey, migratedJson);
     } catch (e) {
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
           error:
+              l10n?.connMigrationWriteRollbackFailed(rollbackError) ??
               'Failed to write migrated storage and data rollback also failed. $rollbackError',
-          warning: 'Original error: $e',
+          warning:
+              l10n?.connMigrationOriginalError('$e') ?? 'Original error: $e',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
         warning:
+            l10n?.connMigrationWriteRestored('$e') ??
             'Failed to write migrated storage: $e. Original data restored.',
       );
     }
@@ -149,17 +161,19 @@ class ConnectionMigration {
       }
     }
     if (primaryReadJson == null || !primaryValid) {
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
           error:
+              l10n?.connMigrationValidationRollbackFailed(rollbackError) ??
               'Migrated storage validation failed and data rollback also failed. $rollbackError',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
         error:
+            l10n?.connMigrationValidationRestored ??
             'Migrated storage validation failed. Original data restored. Please check storage space or reinstall the app.',
       );
     }
@@ -217,8 +231,9 @@ class ConnectionMigration {
   /// primary を復旧する。それでも失敗したら非機密エラーメッセージを返す。
   static Future<String?> _rollback(
     SecureStorageService secure,
-    String sourceJson,
-  ) async {
+    String sourceJson, {
+    AppLocalizations? l10n,
+  }) async {
     try {
       await secure.writeValue(_storageKey, sourceJson);
       return null;
@@ -231,14 +246,16 @@ class ConnectionMigration {
           return null;
         } catch (_) {}
       }
-      return 'Failed to restore connection data from backup. Please check storage space or reinstall the app.';
+      return l10n?.connMigrationRestoreFailed ??
+          'Failed to restore connection data from backup. Please check storage space or reinstall the app.';
     }
   }
 
   static Future<ConnectionMigrationResult> _recoverFromBackup(
     SecureStorageService secure,
-    Object cause,
-  ) async {
+    Object cause, {
+    AppLocalizations? l10n,
+  }) async {
     final backupJson = await secure.readValue(_backupKey);
     if (backupJson != null) {
       try {
@@ -252,12 +269,14 @@ class ConnectionMigration {
             return ConnectionMigrationResult(
               json: backupJson,
               warning:
+                  l10n?.connMigrationRecoverUsingBackup('$cause', '$e') ??
                   'Stored connections were invalid; using available backup. Error: $cause. Primary restore failed: $e',
             );
           }
           return ConnectionMigrationResult(
             json: backupJson,
             warning:
+                l10n?.connMigrationRecoveredFromBackup('$cause') ??
                 'Stored connections were invalid; restored from backup. Error: $cause',
           );
         }
@@ -267,8 +286,11 @@ class ConnectionMigration {
     }
     return ConnectionMigrationResult(
       error:
+          l10n?.connMigrationNoUsableBackup ??
           'Stored connections are invalid and no usable backup is available. Please re-add your connections or clear app data.',
-      warning: 'Original error: $cause',
+      warning:
+          l10n?.connMigrationOriginalError('$cause') ??
+          'Original error: $cause',
     );
   }
 

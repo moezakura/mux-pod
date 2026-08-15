@@ -90,7 +90,7 @@ class _PaneChooserDialogState extends State<PaneChooserDialog> {
   String _labelFor(MultiplexerPane pane) {
     final custom = widget.labelBuilder?.call(pane);
     if (custom != null && custom.isNotEmpty) return custom;
-    return 'Pane ${pane.index}';
+    return context.l10n.termPaneLabel(pane.index);
   }
 
   /// サイズ表記（width/height <= 0 のサイズ不明 pane は「サイズ不明」・E1）。

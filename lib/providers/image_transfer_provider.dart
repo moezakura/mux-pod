@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../services/image/image_converter.dart';
 import '../services/sftp/sftp_service.dart';
 import '../widgets/image_transfer_confirm_dialog.dart';
+import '../l10n/l10n_lookup.dart';
 import 'settings_provider.dart';
 import 'ssh_provider.dart';
 
@@ -110,7 +111,7 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
     } catch (e) {
       state = ImageTransferState(
         phase: ImageTransferPhase.error,
-        errorMessage: 'Failed to pick image: $e',
+        errorMessage: lookupL10n().imgTransferPickFailed('$e'),
       );
     }
   }
@@ -130,7 +131,7 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
     if (sshClient == null || !sshClient.isConnected) {
       state = ImageTransferState(
         phase: ImageTransferPhase.error,
-        errorMessage: 'SSH connection not available',
+        errorMessage: lookupL10n().imgTransferSshNotAvailable,
       );
       return null;
     }
@@ -142,7 +143,7 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
           state.phase == ImageTransferPhase.converting) {
         state = ImageTransferState(
           phase: ImageTransferPhase.error,
-          errorMessage: 'SSH connection lost during upload',
+          errorMessage: lookupL10n().imgTransferSshLostDuringUpload,
         );
       }
     });
@@ -165,6 +166,7 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
           autoResize: options.needsResize,
           maxWidth: options.effectiveMaxWidth,
           maxHeight: options.effectiveMaxHeight,
+          l10n: lookupL10n(),
         );
         bytes = result.bytes;
         // 拡張子が変わった場合はパスを更新
@@ -210,7 +212,7 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
     } catch (e) {
       state = ImageTransferState(
         phase: ImageTransferPhase.error,
-        errorMessage: 'Upload failed: $e',
+        errorMessage: lookupL10n().imgTransferUploadFailed('$e'),
       );
       return null;
     } finally {

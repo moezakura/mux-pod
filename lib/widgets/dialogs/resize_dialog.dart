@@ -581,7 +581,7 @@ class _HerdrResizeTerminalDialogState extends State<HerdrResizeTerminalDialog> {
               ),
             ),
             child: Text(
-              'Herdr (PTY)  $_cols x $_rows',
+              context.l10n.resizeHerdrPtyHeader(_cols, _rows),
               style: const TextStyle(
                 fontSize: 11,
                 color: DesignColors.primary,
@@ -675,7 +675,7 @@ class _HerdrResizeTerminalDialogState extends State<HerdrResizeTerminalDialog> {
                       height: previewH - tabRowH,
                       child: Center(
                         child: Text(
-                          'Panel',
+                          context.l10n.resizePanelLabel,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,

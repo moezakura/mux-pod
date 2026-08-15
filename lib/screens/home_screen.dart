@@ -376,6 +376,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
   }
 
   Future<void> _reloadSessions() async {
+    final l10n = context.l10n;
     setState(() => _isReloading = true);
 
     try {
@@ -415,6 +416,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             port: connection.port,
             username: connection.username,
             options: options,
+            l10n: l10n,
           );
 
           final isHerdr = connection.multiplexer.backend == BackendType.herdr;
