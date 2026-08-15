@@ -873,5 +873,170 @@
   "imgTransferAutoEnter": "自動Enter",
   "imgTransferAutoEnterSubtitle": "パス注入後にEnterを送信",
   "imgTransferCancel": "キャンセル",
-  "imgTransferUpload": "アップロード"
+  "imgTransferUpload": "アップロード",
+  "settingsTitle": "設定",
+  "commonCancel": "キャンセル",
+  "commonSave": "保存",
+  "settingsSectionTerminal": "ターミナル",
+  "settingsSectionKeyOverlay": "キーオーバーレイ",
+  "settingsSectionBehavior": "操作",
+  "settingsSectionAppearance": "外観",
+  "settingsSectionImageTransfer": "画像転送",
+  "settingsSectionAbout": "このアプリについて",
+  "settingsShowCursor": "カーソルを表示",
+  "settingsShowCursorDescription": "ターミナルのカーソルインジケーターを表示",
+  "settingsAdjustMode": "調整モード",
+  "settingsAdjustModeNone": "なし",
+  "settingsAdjustModeAutoFit": "自動フィット",
+  "settingsAdjustModeAutoResize": "自動リサイズ",
+  "settingsAdjustModeNoneDescription": "フォントとペインサイズを手動で調整",
+  "settingsAdjustModeAutoFitDescription": "画面幅に合わせてフォントサイズを調整",
+  "settingsAdjustModeAutoResizeDescription": "画面に合わせてtmuxペインをリサイズ",
+  "settingsFontSize": "フォントサイズ",
+  "settingsFontSizeAutoFit": "{size} pt（自動フィット有効）",
+  "@settingsFontSizeAutoFit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsFontFamily": "フォントファミリー",
+  "settingsMinimumFontSize": "最小フォントサイズ",
+  "settingsMinFontSizeAutoFitLimit": "{size} pt（自動フィットの下限）",
+  "@settingsMinFontSizeAutoFitLimit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsMinFontSizeNotUsed": "{size} pt（未使用）",
+  "@settingsMinFontSizeNotUsed": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsKeyOverlay": "キーオーバーレイ",
+  "settingsKeyOverlayDescription": "特殊キー押下時にキー名オーバーレイを表示",
+  "settingsModifierKeys": "修飾キー",
+  "settingsModifierKeysDescription": "Ctrl、Alt、Shiftの組み合わせ",
+  "settingsSpecialKeys": "特殊キー",
+  "settingsSpecialKeysDescription": "ESC、TAB、ENTER、Shift+Enter",
+  "settingsArrowKeys": "矢印キー",
+  "settingsArrowKeysDescription": "Up、Down、Left、Right",
+  "settingsShortcutKeys": "ショートカットキー",
+  "settingsShortcutKeysDescription": "/, -, 1, 2, 3, 4",
+  "settingsOverlayPosition": "オーバーレイ位置",
+  "settingsOverlayPositionCenter": "ターミナル中央",
+  "settingsOverlayPositionBelowHeader": "ヘッダー下",
+  "settingsOverlayPositionAboveKeyboard": "キーボード上",
+  "settingsHapticFeedback": "バイブレーション",
+  "settingsHapticFeedbackDescription": "キー押下時に振動",
+  "settingsKeepScreenOn": "画面をスリープさせない",
+  "settingsKeepScreenOnDescription": "画面がスリープするのを防ぐ",
+  "settingsScreenOrientation": "画面の向き",
+  "settingsOrientationAuto": "自動（端末に従う）",
+  "settingsOrientationPortrait": "縦向き",
+  "settingsOrientationLandscape": "横向き",
+  "settingsOrientationAutoDescription": "端末の回転に従う",
+  "settingsOrientationPortraitDescription": "縦向きに固定",
+  "settingsOrientationLandscapeDescription": "横向きに固定",
+  "settingsMaxRefreshRate": "最大リフレッシュレート",
+  "settingsRefreshRateAuto": "自動（最高）",
+  "settingsRefreshRateAutoDescription": "利用可能な最大値を使用",
+  "settingsRefreshRateCap": "{rate} Hzに制限",
+  "@settingsRefreshRateCap": {
+    "placeholders": {
+      "rate": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvertPaneNavigation": "ペイン切り替えを反転",
+  "settingsInvertPaneNavigationDescription": "ペイン切り替えのスワイプ方向を反転",
+  "settingsTheme": "テーマ",
+  "settingsRemotePath": "リモートパス",
+  "settingsOutputFormat": "出力形式",
+  "settingsJpegQuality": "JPEG品質",
+  "settingsResize": "リサイズ",
+  "settingsResizePreset": "リサイズプリセット",
+  "settingsResizePresetOriginal": "オリジナル",
+  "settingsResizePresetSmall": "小（{width}px）",
+  "@settingsResizePresetSmall": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetMedium": "中（{width}px）",
+  "@settingsResizePresetMedium": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetLarge": "大（{width}px）",
+  "@settingsResizePresetLarge": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetCustom": "カスタム",
+  "settingsMaxWidth": "最大幅",
+  "settingsMaxHeight": "最大高さ",
+  "settingsPathFormat": "パス形式",
+  "settingsPathFormatHint": "{path} をプレースホルダーとして使用。例: @{path}",
+  "@settingsPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAutoEnter": "自動Enter",
+  "settingsAutoEnterDescription": "パス挿入後にEnterを送信",
+  "settingsBracketedPaste": "ブラケットペースト",
+  "settingsBracketedPasteDescription": "ブラケットペーストプロトコルを使用",
+  "settingsVersion": "バージョン",
+  "settingsSourceCode": "ソースコード",
+  "settingsLicenses": "ライセンス",
+  "settingsLicensesDescription": "オープンソースライセンス",
+  "themeTitle": "テーマ",
+  "themeDark": "ダーク",
+  "themeLight": "ライト",
+  "fontFamilyTitle": "フォントファミリー",
+  "fontSizeTitle": "フォントサイズ",
+  "minFontSizeTitle": "最小フォントサイズ",
+  "minFontSizeDescription": "フォントサイズはこの値を下回りません。広いペインでは水平スクロールが有効になります。",
+  "licensesTitle": "ライセンス",
+  "licensesCopyright": "© 2025 mox",
+  "muxWindowCount": "{count} ウィンドウ",
+  "@muxWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxPaneCount": "{count} ペイン",
+  "@muxPaneCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxRenameWindow": "ウィンドウ名を変更",
+  "muxResizeWindow": "ウィンドウをリサイズ",
+  "muxCloseWindow": "ウィンドウを閉じる",
+  "muxResizePane": "ペインをリサイズ",
+  "muxClosePane": "ペインを閉じる",
+  "keyBarTypeHere": "ここに入力..."
 }

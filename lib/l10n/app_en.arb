@@ -873,5 +873,170 @@
   "imgTransferAutoEnter": "Auto Enter",
   "imgTransferAutoEnterSubtitle": "Send Enter after path injection",
   "imgTransferCancel": "Cancel",
-  "imgTransferUpload": "Upload"
+  "imgTransferUpload": "Upload",
+  "settingsTitle": "Settings",
+  "commonCancel": "Cancel",
+  "commonSave": "Save",
+  "settingsSectionTerminal": "Terminal",
+  "settingsSectionKeyOverlay": "Key Overlay",
+  "settingsSectionBehavior": "Behavior",
+  "settingsSectionAppearance": "Appearance",
+  "settingsSectionImageTransfer": "Image Transfer",
+  "settingsSectionAbout": "About",
+  "settingsShowCursor": "Show Cursor",
+  "settingsShowCursorDescription": "Show terminal cursor indicator",
+  "settingsAdjustMode": "Adjust Mode",
+  "settingsAdjustModeNone": "None",
+  "settingsAdjustModeAutoFit": "Auto Fit",
+  "settingsAdjustModeAutoResize": "Auto Resize",
+  "settingsAdjustModeNoneDescription": "Manual font and pane size",
+  "settingsAdjustModeAutoFitDescription": "Adjust font size to fit screen width",
+  "settingsAdjustModeAutoResizeDescription": "Resize tmux pane to fit screen",
+  "settingsFontSize": "Font Size",
+  "settingsFontSizeAutoFit": "{size} pt (auto-fit enabled)",
+  "@settingsFontSizeAutoFit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsFontFamily": "Font Family",
+  "settingsMinimumFontSize": "Minimum Font Size",
+  "settingsMinFontSizeAutoFitLimit": "{size} pt (auto-fit limit)",
+  "@settingsMinFontSizeAutoFitLimit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsMinFontSizeNotUsed": "{size} pt (not used)",
+  "@settingsMinFontSizeNotUsed": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsKeyOverlay": "Key Overlay",
+  "settingsKeyOverlayDescription": "Show key name overlay on special key press",
+  "settingsModifierKeys": "Modifier Keys",
+  "settingsModifierKeysDescription": "Ctrl, Alt, Shift combinations",
+  "settingsSpecialKeys": "Special Keys",
+  "settingsSpecialKeysDescription": "ESC, TAB, ENTER, Shift+Enter",
+  "settingsArrowKeys": "Arrow Keys",
+  "settingsArrowKeysDescription": "Up, Down, Left, Right",
+  "settingsShortcutKeys": "Shortcut Keys",
+  "settingsShortcutKeysDescription": "/, -, 1, 2, 3, 4",
+  "settingsOverlayPosition": "Overlay Position",
+  "settingsOverlayPositionCenter": "Center of Terminal",
+  "settingsOverlayPositionBelowHeader": "Below Header",
+  "settingsOverlayPositionAboveKeyboard": "Above Keyboard",
+  "settingsHapticFeedback": "Haptic Feedback",
+  "settingsHapticFeedbackDescription": "Vibrate on key press",
+  "settingsKeepScreenOn": "Keep Screen On",
+  "settingsKeepScreenOnDescription": "Prevent screen from sleeping",
+  "settingsScreenOrientation": "Screen Orientation",
+  "settingsOrientationAuto": "Auto (follow device)",
+  "settingsOrientationPortrait": "Portrait",
+  "settingsOrientationLandscape": "Landscape",
+  "settingsOrientationAutoDescription": "Follow device rotation",
+  "settingsOrientationPortraitDescription": "Lock to portrait",
+  "settingsOrientationLandscapeDescription": "Lock to landscape",
+  "settingsMaxRefreshRate": "Max Refresh Rate",
+  "settingsRefreshRateAuto": "Auto (highest)",
+  "settingsRefreshRateAutoDescription": "Use the highest available",
+  "settingsRefreshRateCap": "Cap at {rate} Hz",
+  "@settingsRefreshRateCap": {
+    "placeholders": {
+      "rate": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvertPaneNavigation": "Invert Pane Navigation",
+  "settingsInvertPaneNavigationDescription": "Reverse swipe direction for pane switching",
+  "settingsTheme": "Theme",
+  "settingsRemotePath": "Remote Path",
+  "settingsOutputFormat": "Output Format",
+  "settingsJpegQuality": "JPEG Quality",
+  "settingsResize": "Resize",
+  "settingsResizePreset": "Resize Preset",
+  "settingsResizePresetOriginal": "Original",
+  "settingsResizePresetSmall": "Small ({width}px)",
+  "@settingsResizePresetSmall": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetMedium": "Medium ({width}px)",
+  "@settingsResizePresetMedium": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetLarge": "Large ({width}px)",
+  "@settingsResizePresetLarge": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetCustom": "Custom",
+  "settingsMaxWidth": "Max Width",
+  "settingsMaxHeight": "Max Height",
+  "settingsPathFormat": "Path Format",
+  "settingsPathFormatHint": "Use {path} as placeholder. e.g. @{path}",
+  "@settingsPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAutoEnter": "Auto Enter",
+  "settingsAutoEnterDescription": "Send Enter after path injection",
+  "settingsBracketedPaste": "Bracketed Paste",
+  "settingsBracketedPasteDescription": "Use bracketed paste protocol",
+  "settingsVersion": "Version",
+  "settingsSourceCode": "Source Code",
+  "settingsLicenses": "Licenses",
+  "settingsLicensesDescription": "Open source licenses",
+  "themeTitle": "Theme",
+  "themeDark": "Dark",
+  "themeLight": "Light",
+  "fontFamilyTitle": "Font Family",
+  "fontSizeTitle": "Font Size",
+  "minFontSizeTitle": "Minimum Font Size",
+  "minFontSizeDescription": "Font size will not go below this value. Horizontal scroll is enabled for wider panes.",
+  "licensesTitle": "Licenses",
+  "licensesCopyright": "© 2025 mox",
+  "muxWindowCount": "{count} windows",
+  "@muxWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxPaneCount": "{count} panes",
+  "@muxPaneCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxRenameWindow": "Rename Window",
+  "muxResizeWindow": "Resize Window",
+  "muxCloseWindow": "Close Window",
+  "muxResizePane": "Resize Pane",
+  "muxClosePane": "Close Pane",
+  "keyBarTypeHere": "Type here..."
 }
