@@ -168,28 +168,28 @@ void main() {
       client.execOutputQueues['herdr api snapshot'] = [
         kHerdrSnapshotFixture,
         '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
-        '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
-        '"focused_workspace_id":"w1","layouts":[],'
-        '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
-        '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
-        '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
-        '"viewport_rows":23},"tab_id":"w1:t1",'
-        '"terminal_id":"term_1","workspace_id":"w1"},'
-        '{"agent_status":"unknown","cwd":"/root","focused":false,'
-        '"foreground_cwd":"/root","pane_id":"w2:p1","revision":0,'
-        '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
-        '"viewport_rows":23},"tab_id":"w2:t1",'
-        '"terminal_id":"term_2","workspace_id":"w2"}],"protocol":17,'
-        '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
-        '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"},'
-        '{"agent_status":"unknown","focused":false,"label":"1","number":1,'
-        '"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"}],'
-        '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
-        '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
-        '"pane_count":1,"tab_count":1,"workspace_id":"w1"},'
-        '{"active_tab_id":"w2:t1","agent_status":"unknown","focused":false,'
-        '"label":"api","number":2,"pane_count":1,"tab_count":1,'
-        '"workspace_id":"w2"}]},"type":"session_snapshot"}}',
+            '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+            '"focused_workspace_id":"w1","layouts":[],'
+            '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+            '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+            '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+            '"viewport_rows":23},"tab_id":"w1:t1",'
+            '"terminal_id":"term_1","workspace_id":"w1"},'
+            '{"agent_status":"unknown","cwd":"/root","focused":false,'
+            '"foreground_cwd":"/root","pane_id":"w2:p1","revision":0,'
+            '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+            '"viewport_rows":23},"tab_id":"w2:t1",'
+            '"terminal_id":"term_2","workspace_id":"w2"}],"protocol":17,'
+            '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+            '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"},'
+            '{"agent_status":"unknown","focused":false,"label":"1","number":1,'
+            '"pane_count":1,"tab_id":"w2:t1","workspace_id":"w2"}],'
+            '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+            '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+            '"pane_count":1,"tab_count":1,"workspace_id":"w1"},'
+            '{"active_tab_id":"w2:t1","agent_status":"unknown","focused":false,'
+            '"label":"api","number":2,"pane_count":1,"tab_count":1,'
+            '"workspace_id":"w2"}]},"type":"session_snapshot"}}',
       ];
 
       await tester.pumpWidget(
@@ -268,10 +268,10 @@ void main() {
       client.execOutputQueues['herdr api snapshot'] = [
         kHerdrSnapshotFixture,
         '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
-        '"focused_pane_id":null,"focused_tab_id":null,'
-        '"focused_workspace_id":null,"layouts":[],"panes":[],"protocol":17,'
-        '"tabs":[],"version":"0.7.5","workspaces":[]},'
-        '"type":"session_snapshot"}}',
+            '"focused_pane_id":null,"focused_tab_id":null,'
+            '"focused_workspace_id":null,"layouts":[],"panes":[],"protocol":17,'
+            '"tabs":[],"version":"0.7.5","workspaces":[]},'
+            '"type":"session_snapshot"}}',
       ];
 
       await tester.pumpWidget(
@@ -346,8 +346,9 @@ void main() {
     },
   );
 
-  testWidgets('tmux connection keeps the existing session UI unchanged',
-      (tester) async {
+  testWidgets('tmux connection keeps the existing session UI unchanged', (
+    tester,
+  ) async {
     final connection = Connection(
       id: 'connection-tmux',
       name: 'Tmux Server',

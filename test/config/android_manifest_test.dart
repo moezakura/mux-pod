@@ -4,8 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('AndroidManifest.xml disables backup with allowBackup=false', () {
-    final manifest =
-        File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
 
     expect(
       manifest,

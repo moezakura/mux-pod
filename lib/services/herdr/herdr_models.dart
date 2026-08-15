@@ -182,12 +182,7 @@ class HerdrRect {
   /// 高さ（文字セル数）。
   final int height;
 
-  const HerdrRect({
-    this.x = 0,
-    this.y = 0,
-    this.width = 0,
-    this.height = 0,
-  });
+  const HerdrRect({this.x = 0, this.y = 0, this.width = 0, this.height = 0});
 }
 
 // inventory: HERDR-MODELS-LAYOUT-PANE-001
@@ -355,7 +350,8 @@ class HerdrPaneContent {
   });
 
   /// 空かどうか。
-  bool get isEmpty => lines.isEmpty || lines.every((line) => line.trim().isEmpty);
+  bool get isEmpty =>
+      lines.isEmpty || lines.every((line) => line.trim().isEmpty);
 
   @override
   String toString() =>

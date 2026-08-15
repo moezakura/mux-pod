@@ -53,14 +53,20 @@ class _PathBarState extends State<PathBar> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       color: bgColor,
-      child: _isEditing ? _buildEditMode(context, isDark) : _buildBreadcrumb(isDark),
+      child: _isEditing
+          ? _buildEditMode(context, isDark)
+          : _buildBreadcrumb(isDark),
     );
   }
 
   Widget _buildBreadcrumb(bool isDark) {
     final segments = _pathSegments(widget.currentPath);
-    final textColor = isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight;
-    final activeColor = isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight;
+    final textColor = isDark
+        ? DesignColors.textSecondary
+        : DesignColors.textSecondaryLight;
+    final activeColor = isDark
+        ? DesignColors.textPrimary
+        : DesignColors.textPrimaryLight;
 
     return GestureDetector(
       onLongPress: () => setState(() => _isEditing = true),
@@ -73,23 +79,24 @@ class _PathBarState extends State<PathBar> {
               if (i > 0)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Icon(
-                    Icons.chevron_right,
-                    size: 16,
-                    color: textColor,
-                  ),
+                  child: Icon(Icons.chevron_right, size: 16, color: textColor),
                 ),
               InkWell(
                 onTap: () => widget.onPathSelected(segments[i].path),
                 borderRadius: BorderRadius.circular(4),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
                   child: Text(
                     segments[i].label,
                     style: TextStyle(
                       fontSize: 13,
                       color: i == segments.length - 1 ? activeColor : textColor,
-                      fontWeight: i == segments.length - 1 ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: i == segments.length - 1
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                   ),
                 ),
@@ -102,7 +109,9 @@ class _PathBarState extends State<PathBar> {
   }
 
   Widget _buildEditMode(BuildContext context, bool isDark) {
-    final borderColor = isDark ? DesignColors.borderDark : DesignColors.borderLight;
+    final borderColor = isDark
+        ? DesignColors.borderDark
+        : DesignColors.borderLight;
 
     return Row(
       children: [
@@ -112,11 +121,16 @@ class _PathBarState extends State<PathBar> {
             autofocus: true,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
+              color: isDark
+                  ? DesignColors.textPrimary
+                  : DesignColors.textPrimaryLight,
             ),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: borderColor),
@@ -149,9 +163,7 @@ class _PathBarState extends State<PathBar> {
   }
 
   List<_PathSegment> _pathSegments(String path) {
-    final segments = <_PathSegment>[
-      _PathSegment(label: '/', path: '/'),
-    ];
+    final segments = <_PathSegment>[_PathSegment(label: '/', path: '/')];
 
     final parts = path.split('/').where((p) => p.isNotEmpty).toList();
     for (var i = 0; i < parts.length; i++) {

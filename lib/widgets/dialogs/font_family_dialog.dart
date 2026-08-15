@@ -9,10 +9,7 @@ import '../../l10n/l10n_ext.dart';
 class FontFamilyDialog extends StatefulWidget {
   final String currentFamily;
 
-  const FontFamilyDialog({
-    super.key,
-    required this.currentFamily,
-  });
+  const FontFamilyDialog({super.key, required this.currentFamily});
 
   @override
   State<FontFamilyDialog> createState() => _FontFamilyDialogState();

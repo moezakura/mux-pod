@@ -53,8 +53,7 @@ void main() {
       expect(call.$3, isTrue, reason: 'テキストはリテラル送信（-l）');
     });
 
-    test('sendKey: send-keys を非リテラルで委譲する（従来の _sendSpecialKey 相当）',
-        () async {
+    test('sendKey: send-keys を非リテラルで委譲する（従来の _sendSpecialKey 相当）', () async {
       final facade = _FakeTmuxContract();
       final writer = TmuxPaneWriter(facade, _FakeExecutor());
       await writer.sendKey('%0', 'Escape');

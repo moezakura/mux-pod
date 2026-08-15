@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -177,10 +176,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
     } catch (e) {
       _log('loadDirectory ERROR: $e');
       if (version != _listVersion) return;
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -348,10 +344,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
     _connectionSub = client.connectionStateStream.listen((connState) {
       if (connState == SshConnectionState.disconnected ||
           connState == SshConnectionState.error) {
-        state = state.copyWith(
-          error: 'SSH connection lost',
-          isLoading: false,
-        );
+        state = state.copyWith(error: 'SSH connection lost', isLoading: false);
       }
     });
   }
@@ -371,7 +364,9 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   // inventory: FILE-028
   String _getParentPath(String path) {
     if (path == '/') return '/';
-    final normalized = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final normalized = path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
     final lastSlash = normalized.lastIndexOf('/');
     if (lastSlash <= 0) return '/';
     return normalized.substring(0, lastSlash);
@@ -383,7 +378,9 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   void _log(String message) {
     if (message.contains('openSftp OK')) _sftpOpenCount++;
     if (message.contains('sftp.close()')) _sftpCloseCount++;
-    debugPrint('[FileBrowser] $message (open=$_sftpOpenCount, close=$_sftpCloseCount, leaked=${_sftpOpenCount - _sftpCloseCount})');
+    debugPrint(
+      '[FileBrowser] $message (open=$_sftpOpenCount, close=$_sftpCloseCount, leaked=${_sftpOpenCount - _sftpCloseCount})',
+    );
   }
 }
 
@@ -391,5 +388,5 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
 /// ファイルブラウザ Provider
 final fileBrowserProvider =
     NotifierProvider<FileBrowserNotifier, FileBrowserState>(
-  FileBrowserNotifier.new,
-);
+      FileBrowserNotifier.new,
+    );

@@ -8,30 +8,30 @@ class AppTheme {
 
   /// Space Grotesk ベースのテキストテーマ
   static TextTheme get _textTheme {
-    return GoogleFonts.spaceGroteskTextTheme(const TextTheme(
-      displayLarge: TextStyle(fontWeight: FontWeight.w700),
-      displayMedium: TextStyle(fontWeight: FontWeight.w700),
-      displaySmall: TextStyle(fontWeight: FontWeight.w700),
-      headlineLarge: TextStyle(fontWeight: FontWeight.w700),
-      headlineMedium: TextStyle(fontWeight: FontWeight.w700),
-      headlineSmall: TextStyle(fontWeight: FontWeight.w600),
-      titleLarge: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.5),
-      titleMedium: TextStyle(fontWeight: FontWeight.w600),
-      titleSmall: TextStyle(fontWeight: FontWeight.w500),
-      bodyLarge: TextStyle(fontWeight: FontWeight.w400),
-      bodyMedium: TextStyle(fontWeight: FontWeight.w400),
-      bodySmall: TextStyle(fontWeight: FontWeight.w400),
-      labelLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.5),
-      labelMedium: TextStyle(fontWeight: FontWeight.w500),
-      labelSmall: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0.5),
-    ));
+    return GoogleFonts.spaceGroteskTextTheme(
+      const TextTheme(
+        displayLarge: TextStyle(fontWeight: FontWeight.w700),
+        displayMedium: TextStyle(fontWeight: FontWeight.w700),
+        displaySmall: TextStyle(fontWeight: FontWeight.w700),
+        headlineLarge: TextStyle(fontWeight: FontWeight.w700),
+        headlineMedium: TextStyle(fontWeight: FontWeight.w700),
+        headlineSmall: TextStyle(fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(fontWeight: FontWeight.w700, letterSpacing: -0.5),
+        titleMedium: TextStyle(fontWeight: FontWeight.w600),
+        titleSmall: TextStyle(fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(fontWeight: FontWeight.w400),
+        bodyMedium: TextStyle(fontWeight: FontWeight.w400),
+        bodySmall: TextStyle(fontWeight: FontWeight.w400),
+        labelLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 0.5),
+        labelMedium: TextStyle(fontWeight: FontWeight.w500),
+        labelSmall: TextStyle(fontWeight: FontWeight.w500, letterSpacing: 0.5),
+      ),
+    );
   }
 
   /// JetBrains Mono モノスペースフォント
   static TextStyle get monoTextStyle {
-    return GoogleFonts.jetBrainsMono(
-      fontWeight: FontWeight.w400,
-    );
+    return GoogleFonts.jetBrainsMono(fontWeight: FontWeight.w400);
   }
 
   /// ダークテーマ
@@ -77,9 +77,7 @@ class AppTheme {
         backgroundColor: DesignColors.primary,
         foregroundColor: Colors.black,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         extendedTextStyle: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
           fontSize: 16,
@@ -114,9 +112,14 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: DesignColors.error),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         labelStyle: const TextStyle(color: DesignColors.textMuted),
-        hintStyle: TextStyle(color: DesignColors.textMuted.withValues(alpha: 0.7)),
+        hintStyle: TextStyle(
+          color: DesignColors.textMuted.withValues(alpha: 0.7),
+        ),
       ),
       listTileTheme: const ListTileThemeData(
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -165,15 +168,11 @@ class AppTheme {
         color: DesignColors.borderDark,
         thickness: 1,
       ),
-      iconTheme: const IconThemeData(
-        color: DesignColors.textSecondary,
-      ),
+      iconTheme: const IconThemeData(color: DesignColors.textSecondary),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: DesignColors.primary,
-          textStyle: GoogleFonts.spaceGrotesk(
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -292,9 +291,7 @@ class AppTheme {
         backgroundColor: DesignColors.primary,
         foregroundColor: Colors.white,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         extendedTextStyle: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
           fontSize: 16,
@@ -329,9 +326,14 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: DesignColors.error),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         labelStyle: const TextStyle(color: DesignColors.textMutedLight),
-        hintStyle: TextStyle(color: DesignColors.textMutedLight.withValues(alpha: 0.7)),
+        hintStyle: TextStyle(
+          color: DesignColors.textMutedLight.withValues(alpha: 0.7),
+        ),
       ),
       listTileTheme: const ListTileThemeData(
         contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -380,15 +382,11 @@ class AppTheme {
         color: DesignColors.borderLight,
         thickness: 1,
       ),
-      iconTheme: const IconThemeData(
-        color: DesignColors.textSecondaryLight,
-      ),
+      iconTheme: const IconThemeData(color: DesignColors.textSecondaryLight),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: DesignColors.primary,
-          textStyle: GoogleFonts.spaceGrotesk(
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w600),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(

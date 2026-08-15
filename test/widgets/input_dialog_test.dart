@@ -27,11 +27,13 @@ void main() {
   group('InputDialogContent – Enter key behaviour', () {
     testWidgets('plain Enter calls onSend exactly once', (tester) async {
       int sendCount = 0;
-      await tester.pumpWidget(_buildWidget(
-        initialValue: 'hello',
-        onValueChanged: (_) {},
-        onSend: (v) async => sendCount++,
-      ));
+      await tester.pumpWidget(
+        _buildWidget(
+          initialValue: 'hello',
+          onValueChanged: (_) {},
+          onSend: (v) async => sendCount++,
+        ),
+      );
       await tester.pump();
 
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
@@ -40,15 +42,18 @@ void main() {
       expect(sendCount, 1);
     });
 
-    testWidgets('Shift+Enter inserts newline and does not call onSend',
-        (tester) async {
+    testWidgets('Shift+Enter inserts newline and does not call onSend', (
+      tester,
+    ) async {
       int sendCount = 0;
       String? lastValue;
-      await tester.pumpWidget(_buildWidget(
-        initialValue: 'hello',
-        onValueChanged: (v) => lastValue = v,
-        onSend: (v) async => sendCount++,
-      ));
+      await tester.pumpWidget(
+        _buildWidget(
+          initialValue: 'hello',
+          onValueChanged: (v) => lastValue = v,
+          onSend: (v) async => sendCount++,
+        ),
+      );
       await tester.pump();
 
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -60,20 +65,23 @@ void main() {
       expect(lastValue, contains('\n'));
     });
 
-    testWidgets(
-        'Enter while composing range is active does not call onSend',
-        (tester) async {
+    testWidgets('Enter while composing range is active does not call onSend', (
+      tester,
+    ) async {
       int sendCount = 0;
-      await tester.pumpWidget(_buildWidget(
-        initialValue: '',
-        onValueChanged: (_) {},
-        onSend: (v) async => sendCount++,
-      ));
+      await tester.pumpWidget(
+        _buildWidget(
+          initialValue: '',
+          onValueChanged: (_) {},
+          onSend: (v) async => sendCount++,
+        ),
+      );
       await tester.pump();
 
       // Simulate IME composition: set composing range to a non-collapsed range.
-      final TextField textField =
-          tester.widget<TextField>(find.byType(TextField));
+      final TextField textField = tester.widget<TextField>(
+        find.byType(TextField),
+      );
       final TextEditingController controller = textField.controller!;
       controller.value = const TextEditingValue(
         text: 'あ',

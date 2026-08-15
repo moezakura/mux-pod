@@ -112,9 +112,7 @@ void main() {
         String.fromCharCodes(client._session.written.first),
         'exec bash --norc\n',
       );
-      final initialization = String.fromCharCodes(
-        client._session.written.last,
-      );
+      final initialization = String.fromCharCodes(client._session.written.last);
       expect(initialization, contains('HISTFILE=/dev/null'));
       expect(initialization, contains('stty -echo'));
       await shell.dispose();
@@ -355,43 +353,51 @@ void main() {
   });
 
   group('PersistentShell timeout safety', () {
-    test('timeout poisons the shell and no stale frame leaks to next command',
-        () async {
-      final client = _FakeSSHClient();
-      final shell = PersistentShell(client);
-      await shell.start();
-      final firstSession = client._session;
+    test(
+      'timeout poisons the shell and no stale frame leaks to next command',
+      () async {
+        final client = _FakeSSHClient();
+        final shell = PersistentShell(client);
+        await shell.start();
+        final firstSession = client._session;
 
-      // 第1コマンド: 応答が返らず timeout する。
-      await expectLater(
-        shell.exec('slow-command', timeout: const Duration(milliseconds: 50)),
-        throwsA(isA<PersistentShellError>()),
-      );
+        // 第1コマンド: 応答が返らず timeout する。
+        await expectLater(
+          shell.exec('slow-command', timeout: const Duration(milliseconds: 50)),
+          throwsA(isA<PersistentShellError>()),
+        );
 
-      // timeout 後は shell が破棄され、旧 session は閉じられる。
-      expect(shell.isStarted, isFalse,
-          reason: 'timeout 後は shell が破棄されること（stale frame 混入防止）');
-      expect(firstSession.closed, isTrue,
-          reason: '旧 session は閉じられ、遅延フレームを読まないこと');
+        // timeout 後は shell が破棄され、旧 session は閉じられる。
+        expect(
+          shell.isStarted,
+          isFalse,
+          reason: 'timeout 後は shell が破棄されること（stale frame 混入防止）',
+        );
+        expect(
+          firstSession.closed,
+          isTrue,
+          reason: '旧 session は閉じられ、遅延フレームを読まないこと',
+        );
 
-      // 再起動すると新しい session になる。
-      await shell.start();
-      expect(client.shellCalls, 2);
-      expect(shell.isStarted, isTrue);
+        // 再起動すると新しい session になる。
+        await shell.start();
+        expect(client.shellCalls, 2);
+        expect(shell.isStarted, isTrue);
 
-      // 新 session でコマンドが正常に実行できる。
-      final resultFuture = shell.exec('whoami');
-      final command = String.fromCharCodes(client._session.written.last);
-      final markerId = RegExp(
-        r'START_([0-9a-f]{16})',
-      ).firstMatch(command)!.group(1)!;
-      client._session.emitStdout(
-        '\x01###START_$markerId###\x01\nalice\r\n'
-        '\x01###END_$markerId###\x01\r\n',
-      );
-      expect(await resultFuture, 'alice');
-      await shell.dispose();
-    });
+        // 新 session でコマンドが正常に実行できる。
+        final resultFuture = shell.exec('whoami');
+        final command = String.fromCharCodes(client._session.written.last);
+        final markerId = RegExp(
+          r'START_([0-9a-f]{16})',
+        ).firstMatch(command)!.group(1)!;
+        client._session.emitStdout(
+          '\x01###START_$markerId###\x01\nalice\r\n'
+          '\x01###END_$markerId###\x01\r\n',
+        );
+        expect(await resultFuture, 'alice');
+        await shell.dispose();
+      },
+    );
 
     test('timeout command is not auto-retried', () async {
       final client = _FakeSSHClient();
@@ -413,11 +419,7 @@ void main() {
             !String.fromCharCodes(w).contains('HISTFILE=/dev/null') &&
             String.fromCharCodes(w) != 'exec bash --norc\n',
       );
-      expect(
-        newWrites,
-        isEmpty,
-        reason: 'timeout コマンドの自動再実行が無いこと',
-      );
+      expect(newWrites, isEmpty, reason: 'timeout コマンドの自動再実行が無いこと');
       expect(beforeTimeout, greaterThanOrEqualTo(0));
       await shell.dispose();
     });

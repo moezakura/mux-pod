@@ -129,19 +129,19 @@ class _FakePaneWriter implements PaneWriter {
 
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
-        sendText: true,
-        sendKeys: true,
-        focus: true,
-        split: true,
-        close: true,
-        rename: true,
-        zoom: true,
-        resize: true,
-        paste: true,
-        imageTransfer: true,
-        workspaceCrud: true,
-        tabCrud: true,
-      );
+    sendText: true,
+    sendKeys: true,
+    focus: true,
+    split: true,
+    close: true,
+    rename: true,
+    zoom: true,
+    resize: true,
+    paste: true,
+    imageTransfer: true,
+    workspaceCrud: true,
+    tabCrud: true,
+  );
 
   @override
   HerdrKeyRoute mapSpecialKey(String tmuxKey) =>
@@ -202,7 +202,11 @@ class _FakePaneWriter implements PaneWriter {
   }
 
   @override
-  Future<void> createTab(String workspaceId, {String? label, bool? focus}) async {
+  Future<void> createTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
     calls.add('createTab');
   }
 

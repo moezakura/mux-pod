@@ -106,7 +106,10 @@ HerdrSnapshot snapshot({
     version: '0.8.0',
     focusedTabId: tabId,
     layouts: [
-      HerdrLayout(area: HerdrRect(width: width, height: height), tabId: tabId),
+      HerdrLayout(
+        area: HerdrRect(width: width, height: height),
+        tabId: tabId,
+      ),
     ],
   );
 }
@@ -155,9 +158,7 @@ void main() {
       // resize は 120x40 を送る。
       expect(client.processes.single.resizes, contains((120, 40)));
       // 収束確認は fresh snapshot（force + joinInflight:false）で area == 94x39。
-      final converged = cache.getLog.any(
-        (l) => l.force && !l.joinInflight,
-      );
+      final converged = cache.getLog.any((l) => l.force && !l.joinInflight);
       expect(converged, isTrue);
     });
 
@@ -373,42 +374,37 @@ void main() {
       expect(client.lastCommand, "'/path with space/herdr'");
     });
 
-    test('収束確認は joinInflight:false（window-change 送信後に開始された fetch を保証）', () async {
-      final client = _FakeResizeClient();
-      final cache = _FakeCache();
-      cache.snapshotProvider = () => snapshot(width: 74, height: 29);
-      final bridge = _bridge(
-        client: client,
-        cache: cache,
-        // 収束しない（74x29 のまま）ためタイムアウトまで実待ちしないよう短縮。
-        convergeTimeout: const Duration(milliseconds: 150),
-        convergePollInterval: const Duration(milliseconds: 20),
-      );
+    test(
+      '収束確認は joinInflight:false（window-change 送信後に開始された fetch を保証）',
+      () async {
+        final client = _FakeResizeClient();
+        final cache = _FakeCache();
+        cache.snapshotProvider = () => snapshot(width: 74, height: 29);
+        final bridge = _bridge(
+          client: client,
+          cache: cache,
+          // 収束しない（74x29 のまま）ためタイムアウトまで実待ちしないよう短縮。
+          convergeTimeout: const Duration(milliseconds: 150),
+          convergePollInterval: const Duration(milliseconds: 20),
+        );
 
-      await bridge.resize(120, 40);
-      final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
-      expect(convergenceGets, isNotEmpty);
-      expect(convergenceGets.every((l) => l.force), isTrue);
-    });
+        await bridge.resize(120, 40);
+        final convergenceGets = cache.getLog.where((l) => !l.joinInflight);
+        expect(convergenceGets, isNotEmpty);
+        expect(convergenceGets.every((l) => l.force), isTrue);
+      },
+    );
 
     test('matchesRequestedArea は実測変換式（width/height 個別比較）', () {
       final client = _FakeResizeClient();
       final cache = _FakeCache();
       final bridge = _bridge(client: client, cache: cache);
       expect(
-        bridge.matchesRequestedArea(
-          HerdrRect(width: 94, height: 39),
-          120,
-          40,
-        ),
+        bridge.matchesRequestedArea(HerdrRect(width: 94, height: 39), 120, 40),
         isTrue,
       );
       expect(
-        bridge.matchesRequestedArea(
-          HerdrRect(width: 94, height: 40),
-          120,
-          40,
-        ),
+        bridge.matchesRequestedArea(HerdrRect(width: 94, height: 40), 120, 40),
         isFalse,
       );
     });

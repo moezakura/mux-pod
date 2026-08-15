@@ -27,10 +27,31 @@ class PaneKeyMap {
   /// `BSpace` は tmux 側のキー名で、herdr の受理名 `Backspace` に正規化して
   /// から送る（mapSpecialKey 内で変換）。
   static const Set<String> _sendKeysAccepted = {
-    'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
-    'Enter', 'Tab', 'Space', 'Backspace', 'BS', 'BSpace', 'Escape',
-    'Up', 'Down', 'Left', 'Right',
-    'C-c', 'c-c',
+    'F1',
+    'F2',
+    'F3',
+    'F4',
+    'F5',
+    'F6',
+    'F7',
+    'F8',
+    'F9',
+    'F10',
+    'F11',
+    'F12',
+    'Enter',
+    'Tab',
+    'Space',
+    'Backspace',
+    'BS',
+    'BSpace',
+    'Escape',
+    'Up',
+    'Down',
+    'Left',
+    'Right',
+    'C-c',
+    'c-c',
   };
 
   /// 無修飾の拒否キー → send-text エスケープシーケンス（T0 実測②）。
@@ -178,8 +199,14 @@ class PaneKeyMap {
     }
 
     // Home / End。
-    if (base == 'Home') return '\x1b[1;$mod' 'H';
-    if (base == 'End') return '\x1b[1;$mod' 'F';
+    if (base == 'Home') {
+      return '\x1b[1;$mod'
+          'H';
+    }
+    if (base == 'End') {
+      return '\x1b[1;$mod'
+          'F';
+    }
 
     // PgUp / PgDn / Delete / Insert: `\x1b[<param>;<mod>~`。
     final navParam = _navParams[base];

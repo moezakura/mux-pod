@@ -40,9 +40,9 @@ class HerdrResizeBridge {
     required this.tabIdProvider,
     Duration? convergeTimeout,
     Duration? convergePollInterval,
-  })  : convergeTimeout = convergeTimeout ?? defaultConvergeTimeout,
-        convergePollInterval =
-            convergePollInterval ?? defaultConvergePollInterval;
+  }) : convergeTimeout = convergeTimeout ?? defaultConvergeTimeout,
+       convergePollInterval =
+           convergePollInterval ?? defaultConvergePollInterval;
 
   /// 実測確定の chrome サイズ（herdr デフォルト表示設定・0.7.5/0.8.0 共通）:
   /// サイドバー 26 列・タブ行 1 行。
@@ -57,8 +57,9 @@ class HerdrResizeBridge {
   /// herdr TUI の 100ms 周期 resize ポーリングと daemon 適用遅延（30〜150ms・
   /// 実測）を考慮し、5 秒間 100ms 間隔で収束を確認する（ユーザー決定）。
   static const Duration defaultConvergeTimeout = Duration(seconds: 5);
-  static const Duration defaultConvergePollInterval =
-      Duration(milliseconds: 100);
+  static const Duration defaultConvergePollInterval = Duration(
+    milliseconds: 100,
+  );
 
   /// 収束確認のタイムアウト / ポーリング間隔（テストで短縮可能）。
   final Duration convergeTimeout;
@@ -100,10 +101,7 @@ class HerdrResizeBridge {
       final snapshot = await cache.get(force: true);
       final area = _areaForTab(snapshot);
       if (area != null && area.width > 0 && area.height > 0) {
-        return (
-          cols: area.width + chromeCols,
-          rows: area.height + chromeRows,
-        );
+        return (cols: area.width + chromeCols, rows: area.height + chromeRows);
       }
     } catch (_) {}
     return (cols: 80, rows: 24);

@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -39,15 +38,24 @@ class PersistentShell implements TmuxInputTransport {
   late final String _endMarker = '\x01###END_$_markerId###\x01';
 
   /// printf用のマーカー文字列（シェルコマンド内で使用）
-  late final String _printfStartMarker = r'\x01###START_' '$_markerId' r'###\x01';
-  late final String _printfEndMarker = r'\x01###END_' '$_markerId' r'###\x01';
+  late final String _printfStartMarker =
+      r'\x01###START_'
+      '$_markerId'
+      r'###\x01';
+  late final String _printfEndMarker =
+      r'\x01###END_'
+      '$_markerId'
+      r'###\x01';
 
   /// RC（終了コード）エコーのマーカー（printf用・文字列版）。
   ///
   /// `\x01###RC_<markerId>###:<code>\n` の形で出力される。マーカー内に
   /// ランダムな [markerId] を含めることで、コマンド出力に偶然現れる
   /// リテラル文字列との衝突を防ぐ（START/END マーカーと同じ方針）。
-  late final String _printfRcMarker = r'\x01###RC_' '$_markerId' r'###:';
+  late final String _printfRcMarker =
+      r'\x01###RC_'
+      '$_markerId'
+      r'###:';
 
   /// RC エコーを出力から抽出するための文字列版マーカー。
   late final String _rcMarker = '\x01###RC_$_markerId###:';
@@ -142,11 +150,13 @@ class PersistentShell implements TmuxInputTransport {
     // Bashのヒストリー記録を無効化し、プロンプトを抑制する。
     // - export HISTFILE=... : スタートアップファイル後にも履歴を保存しない
     // - set +H : 入力中のリテラル`!`のヒストリー展開を無効化
-    _session!.write(utf8.encode(
-      'export HISTFILE=/dev/null HISTSIZE=0 HISTFILESIZE=0 SAVEHIST=0 2>/dev/null;'
-      ' set +H 2>/dev/null;'
-      ' export PS1="" PS2="" 2>/dev/null; stty -echo -onlcr -opost\n',
-    ));
+    _session!.write(
+      utf8.encode(
+        'export HISTFILE=/dev/null HISTSIZE=0 HISTFILESIZE=0 SAVEHIST=0 2>/dev/null;'
+        ' set +H 2>/dev/null;'
+        ' export PS1="" PS2="" 2>/dev/null; stty -echo -onlcr -opost\n',
+      ),
+    );
     await Future.delayed(const Duration(milliseconds: 100));
 
     // バッファをクリア（bash起動・初期化コマンドのエコーを破棄）
@@ -319,7 +329,7 @@ class PersistentShell implements TmuxInputTransport {
         debugPrint(
           '[PersistentShell] UTF-8 boundary split detected!'
           ' chunk_size=${data.length}'
-          ' last_bytes=${lastBytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ')}'
+          ' last_bytes=${lastBytes.map((b) => '0x${b.toRadixString(16).padLeft(2, '0')}').join(' ')}',
         );
       }
       return true;
@@ -375,7 +385,9 @@ class PersistentShell implements TmuxInputTransport {
     _isClosed = true;
     final pending = _pendingCommand;
     if (pending != null && !pending.isCompleted) {
-      pending.completer.completeError(PersistentShellError('Shell session closed'));
+      pending.completer.completeError(
+        PersistentShellError('Shell session closed'),
+      );
     }
     _pendingCommand = null;
   }
@@ -385,7 +397,9 @@ class PersistentShell implements TmuxInputTransport {
     _isClosed = true;
     final pending = _pendingCommand;
     if (pending != null && !pending.isCompleted) {
-      pending.completer.completeError(PersistentShellError('Shell error: $error'));
+      pending.completer.completeError(
+        PersistentShellError('Shell error: $error'),
+      );
     }
     _pendingCommand = null;
   }

@@ -36,45 +36,51 @@ void main() {
       );
     });
 
-    test('accepts persistentPreferred + separatedOutput by routing to ephemeral',
-        () {
-      const request = CommandRequest(
-        command: 'cmd',
-        transport: CommandTransportPreference.persistentPreferred,
-        output: CommandOutputRequirement.separatedOutput,
-      );
-      expect(request.isValid, isTrue);
-    });
+    test(
+      'accepts persistentPreferred + separatedOutput by routing to ephemeral',
+      () {
+        const request = CommandRequest(
+          command: 'cmd',
+          transport: CommandTransportPreference.persistentPreferred,
+          output: CommandOutputRequirement.separatedOutput,
+        );
+        expect(request.isValid, isTrue);
+      },
+    );
   });
 
   group('CommandResult', () {
-    test('separated result carries stdout/stderr and primaryOutput is stdout',
-        () {
-      const result = CommandResult(
-        stdout: 'out',
-        stderr: 'err',
-        exitCode: 1,
-        outputSeparation: CommandOutputSeparation.separated,
-        actualTransport: CommandTransport.ephemeral,
-      );
-      expect(result.stdout, 'out');
-      expect(result.stderr, 'err');
-      expect(result.mergedOutput, isNull);
-      expect(result.primaryOutput, 'out');
-    });
+    test(
+      'separated result carries stdout/stderr and primaryOutput is stdout',
+      () {
+        const result = CommandResult(
+          stdout: 'out',
+          stderr: 'err',
+          exitCode: 1,
+          outputSeparation: CommandOutputSeparation.separated,
+          actualTransport: CommandTransport.ephemeral,
+        );
+        expect(result.stdout, 'out');
+        expect(result.stderr, 'err');
+        expect(result.mergedOutput, isNull);
+        expect(result.primaryOutput, 'out');
+      },
+    );
 
-    test('merged result carries only mergedOutput and primaryOutput maps to it',
-        () {
-      const result = CommandResult(
-        mergedOutput: 'merged text',
-        exitCode: 0,
-        outputSeparation: CommandOutputSeparation.merged,
-        actualTransport: CommandTransport.persistent,
-      );
-      expect(result.stdout, '');
-      expect(result.stderr, '');
-      expect(result.mergedOutput, 'merged text');
-      expect(result.primaryOutput, 'merged text');
-    });
+    test(
+      'merged result carries only mergedOutput and primaryOutput maps to it',
+      () {
+        const result = CommandResult(
+          mergedOutput: 'merged text',
+          exitCode: 0,
+          outputSeparation: CommandOutputSeparation.merged,
+          actualTransport: CommandTransport.persistent,
+        );
+        expect(result.stdout, '');
+        expect(result.stderr, '');
+        expect(result.mergedOutput, 'merged text');
+        expect(result.primaryOutput, 'merged text');
+      },
+    );
   });
 }

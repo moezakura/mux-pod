@@ -248,10 +248,15 @@ void main() {
         isHerdrInvalidKey(HerdrCommandException('boom', exitCode: 1)),
         isFalse,
       );
-      expect(isHerdrInvalidKey(HerdrTargetNotFoundException(
-        kind: HerdrTargetNotFoundKind.pane,
-        message: 'no pane',
-      )), isFalse);
+      expect(
+        isHerdrInvalidKey(
+          HerdrTargetNotFoundException(
+            kind: HerdrTargetNotFoundKind.pane,
+            message: 'no pane',
+          ),
+        ),
+        isFalse,
+      );
       expect(isHerdrInvalidKey(Exception('other')), isFalse);
     });
   });

@@ -24,8 +24,7 @@ class SecureStorageService {
     _testThrowKeys = keys != null ? Set.of(keys) : null;
   }
 
-  SecureStorageService()
-      : _storage = const FlutterSecureStorage();
+  SecureStorageService() : _storage = const FlutterSecureStorage();
 
   // ===== パスワード管理 =====
 
@@ -60,11 +59,15 @@ class SecureStorageService {
       return await _readValue('privatekey_$keyId');
     } on PlatformException catch (e) {
       // Keystore 復号不能（Failed to unwrap key）など → 破損鍵として null 扱い
-      debugPrint('[SecureStorage] getPrivateKey failed for id=$keyId: ${e.code}');
+      debugPrint(
+        '[SecureStorage] getPrivateKey failed for id=$keyId: ${e.code}',
+      );
       return null;
     } catch (e) {
       // 一時障害・実装エラーは再スロー（破損と誤判定しない）
-      debugPrint('[SecureStorage] getPrivateKey unexpected error for id=$keyId: $e');
+      debugPrint(
+        '[SecureStorage] getPrivateKey unexpected error for id=$keyId: $e',
+      );
       rethrow;
     }
   }
@@ -112,7 +115,8 @@ class SecureStorageService {
   Future<String?> readValue(String key) async => _readValue(key);
 
   /// 任意の値を書き込む。
-  Future<void> writeValue(String key, String value) async => _writeValue(key, value);
+  Future<void> writeValue(String key, String value) async =>
+      _writeValue(key, value);
 
   /// 任意の値を削除する。
   Future<void> deleteValue(String key) async => _deleteValue(key);

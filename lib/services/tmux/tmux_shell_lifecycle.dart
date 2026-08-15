@@ -7,7 +7,8 @@ import 'tmux_executable_resolver.dart';
 ///
 /// リモートへの書き込み自体は呼び出し側（[TmuxCommandExecutor] 実装）の責務。
 class TmuxShellLifecycle {
-  TmuxShellLifecycle({required TmuxExecutableResolver resolver}) : _resolver = resolver;
+  TmuxShellLifecycle({required TmuxExecutableResolver resolver})
+    : _resolver = resolver;
 
   final TmuxExecutableResolver _resolver;
 

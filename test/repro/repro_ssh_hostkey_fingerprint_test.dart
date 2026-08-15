@@ -17,6 +17,7 @@
 //   - ローカル sshd が ed25519 ホスト鍵で稼働している
 //   - /tmp/bugfix-repro-key の公開鍵が authorized_keys に登録されている
 //   - /tmp/bugfix-repro-key-wrong は authorized_keys に未登録（認証失敗用）
+@Tags(['repro'])
 library;
 
 import 'dart:convert';
@@ -30,8 +31,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// ローカル sshd の ed25519 ホスト鍵 blob（KEX で渡される host key そのもの）。
 Uint8List _localHostKeyBlob() {
-  final pubLine =
-      File('/etc/ssh/ssh_host_ed25519_key.pub').readAsLinesSync().first;
+  final pubLine = File(
+    '/etc/ssh/ssh_host_ed25519_key.pub',
+  ).readAsLinesSync().first;
   return base64.decode(pubLine.split(' ')[1]);
 }
 

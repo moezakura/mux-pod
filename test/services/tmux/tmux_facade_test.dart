@@ -20,10 +20,12 @@ class _FakeExecutor implements TmuxCommandExecutor {
   @override
   Future<CommandResult> execute(CommandRequest request) async {
     commands.add(request.command);
-    final stdout = outputs.entries
-        .where((e) => request.command.contains(e.key))
-        .map((e) => e.value)
-        .firstOrNull ?? '';
+    final stdout =
+        outputs.entries
+            .where((e) => request.command.contains(e.key))
+            .map((e) => e.value)
+            .firstOrNull ??
+        '';
     return CommandResult(
       stdout: stdout,
       stderr: '',

@@ -15,10 +15,7 @@ enum CommandOutputSeparation {
 }
 
 /// 実際に使用されたトランスポート。
-enum CommandTransport {
-  ephemeral,
-  persistent,
-}
+enum CommandTransport { ephemeral, persistent }
 
 /// コマンド実行の結果。
 final class CommandResult {
@@ -59,10 +56,9 @@ final class CommandResult {
   ///
   /// `combinedOutput` とはしない（separated stream の正しい相互順序を
   /// 復元できないため）。
-  String get primaryOutput =>
-      outputSeparation == CommandOutputSeparation.merged
-          ? (mergedOutput ?? '')
-          : stdout;
+  String get primaryOutput => outputSeparation == CommandOutputSeparation.merged
+      ? (mergedOutput ?? '')
+      : stdout;
 
   /// separated の出力から (stdout, stderr) を返す。
   ///

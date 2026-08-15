@@ -27,10 +27,7 @@ class KeyImportResult {
   final SSHKey key;
   final bool requiresPassphrase;
 
-  const KeyImportResult({
-    required this.key,
-    required this.requiresPassphrase,
-  });
+  const KeyImportResult({required this.key, required this.requiresPassphrase});
 }
 
 /// 鍵サービスインターフェース
@@ -62,10 +59,7 @@ abstract class KeyService {
   });
 
   /// 秘密鍵取得（認証用）
-  Future<String> getPrivateKey({
-    required String keyId,
-    String? passphrase,
-  });
+  Future<String> getPrivateKey({required String keyId, String? passphrase});
 
   /// 公開鍵取得（OpenSSH形式）
   Future<String> getPublicKey(String keyId);
@@ -74,10 +68,7 @@ abstract class KeyService {
   Future<void> deleteKey(String keyId);
 
   /// 鍵名更新
-  Future<void> updateKeyName({
-    required String keyId,
-    required String name,
-  });
+  Future<void> updateKeyName({required String keyId, required String name});
 
   /// デフォルト鍵設定
   Future<void> setDefaultKey(String keyId);

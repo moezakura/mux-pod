@@ -12,6 +12,7 @@
 // このテストは「sshProvider の state 変化 → 親 rebuild → シートが閉じるか」を
 // widget テストで確認する。実機では SSH 接続状態の遷移（keep-alive タイムアウト
 // → 再接続、ネットワーク断など）が同様の変化を引き起こす。
+@Tags(['repro'])
 library;
 
 import 'package:flutter/material.dart';
@@ -67,83 +68,89 @@ Connection _herdrConnection() {
 
 void main() {
   group('Repro BUG-3: ボトムシートが sshProvider 変化で閉じる', () {
-    testWidgets(
-      'セレクタ表示中に sshProvider の state が変化するとシートが閉じる',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          readOnly: true,
-          execOutputs: {
-            'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
-            'herdr pane read w1:p1': 'content from p1\n',
-            'herdr pane read w2:p1': 'content from p2\n',
-          },
-          settle: false,
-        );
+    testWidgets('セレクタ表示中に sshProvider の state が変化するとシートが閉じる', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
+          'herdr pane read w1:p1': 'content from p1\n',
+          'herdr pane read w2:p1': 'content from p2\n',
+        },
+        settle: false,
+      );
 
-        // workspace セレクタ（Select Session）を開く
-        await tester.tap(find.text('lab-ws1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Session'), findsOneWidget,
-            reason: '前提: シートが表示されている');
+      // workspace セレクタ（Select Session）を開く
+      await tester.tap(find.text('lab-ws1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.text('Select Session'),
+        findsOneWidget,
+        reason: '前提: シートが表示されている',
+      );
 
-        // sshProvider の state を変更（再接続 → disconnected に遷移）し、
-        // 親 rebuild（L788-791 の setState）を誘発する。
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(TerminalScreen)),
-        );
-        final notifier =
-            container.read(sshProvider.notifier) as FakeSshNotifier;
-        await notifier.reconnect();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+      // sshProvider の state を変更（再接続 → disconnected に遷移）し、
+      // 親 rebuild（L788-791 の setState）を誘発する。
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TerminalScreen)),
+      );
+      final notifier = container.read(sshProvider.notifier) as FakeSshNotifier;
+      await notifier.reconnect();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-        // シートがまだ表示されているか（バグがあれば閉じている）
-        final sheetStillVisible = find.text('Select Session').evaluate().isNotEmpty;
-        debugPrint(
-          '[Repro BUG-3] sshProvider 変化後のシート表示状態: '
-          '${sheetStillVisible ? "表示継続" : "閉じた"}',
-        );
-        // NOTE: これは再現観察用。テスト環境では実機と挙動が異なる可能性があるため、
-        // ここでは「閉じた場合にバグとして記録する」形にせず、観察結果を出力する。
-        expect(sheetStillVisible, isTrue,
-            reason: 'バグ再現: sshProvider の state 変化でボトムシートが閉じた。'
-                '実機では SSH 接続状態遷移（keep-alive タイムアウト / 再接続 / '
-                'ネットワーク断）が同様にシートを閉じる');
-      },
-    );
+      // シートがまだ表示されているか（バグがあれば閉じている）
+      final sheetStillVisible = find
+          .text('Select Session')
+          .evaluate()
+          .isNotEmpty;
+      debugPrint(
+        '[Repro BUG-3] sshProvider 変化後のシート表示状態: '
+        '${sheetStillVisible ? "表示継続" : "閉じた"}',
+      );
+      // NOTE: これは再現観察用。テスト環境では実機と挙動が異なる可能性があるため、
+      // ここでは「閉じた場合にバグとして記録する」形にせず、観察結果を出力する。
+      expect(
+        sheetStillVisible,
+        isTrue,
+        reason:
+            'バグ再現: sshProvider の state 変化でボトムシートが閉じた。'
+            '実機では SSH 接続状態遷移（keep-alive タイムアウト / 再接続 / '
+            'ネットワーク断）が同様にシートを閉じる',
+      );
+    });
 
-    testWidgets(
-      'セレクタ表示中に sshProvider が変化しなければシートは安定表示される'
-      '（比較対象: T10 正常系）',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          readOnly: true,
-          execOutputs: {
-            'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
-            'herdr pane read w1:p1': 'content from p1\n',
-            'herdr pane read w2:p1': 'content from p2\n',
-          },
-          settle: false,
-        );
+    testWidgets('セレクタ表示中に sshProvider が変化しなければシートは安定表示される'
+        '（比較対象: T10 正常系）', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
+          'herdr pane read w1:p1': 'content from p1\n',
+          'herdr pane read w2:p1': 'content from p2\n',
+        },
+        settle: false,
+      );
 
-        await tester.tap(find.text('lab-ws1'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Session'), findsOneWidget);
+      await tester.tap(find.text('lab-ws1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Select Session'), findsOneWidget);
 
-        // 状態変化なしでポーリングを進めてもシートは表示されたまま
-        await tester.pump(const Duration(milliseconds: 500));
-        await tester.pump(const Duration(milliseconds: 500));
-        expect(find.text('Select Session'), findsOneWidget,
-            reason: 'sshProvider が変化しない限りシートは安定表示される');
-      },
-    );
+      // 状態変化なしでポーリングを進めてもシートは表示されたまま
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        find.text('Select Session'),
+        findsOneWidget,
+        reason: 'sshProvider が変化しない限りシートは安定表示される',
+      );
+    });
   });
 }

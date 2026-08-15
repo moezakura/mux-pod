@@ -43,9 +43,9 @@ void main() {
     addTearDown(() => SecureStorageService.setTestValues(null));
   });
 
-  testWidgets(
-      'shows damaged key badge for connection using a broken key',
-      (tester) async {
+  testWidgets('shows damaged key badge for connection using a broken key', (
+    tester,
+  ) async {
     // 鍵メタデータはあるが秘密鍵が読めない（破損鍵）状態を用意
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
@@ -106,8 +106,9 @@ void main() {
     expect(find.byIcon(Icons.warning_amber), findsWidgets);
   });
 
-  testWidgets('does not show damaged key badge for healthy key connection',
-      (tester) async {
+  testWidgets('does not show damaged key badge for healthy key connection', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
       'ssh_keys_meta': jsonEncode([
         {

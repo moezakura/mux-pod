@@ -52,7 +52,10 @@ class PaneResizeMath {
   /// - 縦分割（上下に並ぶ）: 上記以外 → 高さ比率
   /// - サイズ不明（[pane] または [panes] 内の width/height <= 0・コンテナ
   ///   サイズが 0 以下）は null（0 除算しない・E1）
-  static double? estimateRatio(MultiplexerPane pane, List<MultiplexerPane> panes) {
+  static double? estimateRatio(
+    MultiplexerPane pane,
+    List<MultiplexerPane> panes,
+  ) {
     if (panes.isEmpty) return null;
     if (pane.width <= 0 || pane.height <= 0) return null;
 

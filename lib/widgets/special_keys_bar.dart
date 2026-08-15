@@ -245,8 +245,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final currentValue = _directInputController.value;
-      final hasActiveComposing = currentValue.composing.isValid &&
-          !currentValue.composing.isCollapsed;
+      final hasActiveComposing =
+          currentValue.composing.isValid && !currentValue.composing.isCollapsed;
       // composing進行中ならiOSの入力を尊重して再リセットしない
       if (!hasActiveComposing && _directInputController.text != _sentinel) {
         _directInputController.value = TextEditingValue(
@@ -420,10 +420,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? DesignColors.footerBackground : DesignColors.footerBackgroundLight,
-        border: Border(
-          top: BorderSide(color: colorScheme.outline, width: 1),
-        ),
+        color: isDark
+            ? DesignColors.footerBackground
+            : DesignColors.footerBackgroundLight,
+        border: Border(top: BorderSide(color: colorScheme.outline, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -485,7 +485,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             color: DesignColors.secondary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: DesignColors.secondary.withValues(alpha: 0.5), width: 2),
+              bottom: BorderSide(
+                color: DesignColors.secondary.withValues(alpha: 0.5),
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -527,7 +530,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             color: DesignColors.primary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: DesignColors.primary.withValues(alpha: 0.5), width: 2),
+              bottom: BorderSide(
+                color: DesignColors.primary.withValues(alpha: 0.5),
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -678,7 +684,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         decoration: BoxDecoration(
           color: DesignColors.success.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: DesignColors.success.withValues(alpha: 0.4)),
+          border: Border.all(
+            color: DesignColors.success.withValues(alpha: 0.4),
+          ),
         ),
         child: Row(
           children: [
@@ -739,7 +747,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                     color: DesignColors.success.withValues(alpha: 0.5),
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
                   isDense: true,
                 ),
               ),
@@ -766,10 +777,15 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+            color: isDark
+                ? DesignColors.keyBackground
+                : DesignColors.keyBackgroundLight,
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: isDark ? Colors.black : Colors.grey.shade400, width: 2),
+              bottom: BorderSide(
+                color: isDark ? Colors.black : Colors.grey.shade400,
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -810,10 +826,15 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+            color: isDark
+                ? DesignColors.keyBackground
+                : DesignColors.keyBackgroundLight,
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: isDark ? Colors.black : Colors.grey.shade400, width: 2),
+              bottom: BorderSide(
+                color: isDark ? Colors.black : Colors.grey.shade400,
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -838,7 +859,11 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  Widget _buildModifierButton(String label, bool isPressed, VoidCallback onPressed) {
+  Widget _buildModifierButton(
+    String label,
+    bool isPressed,
+    VoidCallback onPressed,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
@@ -853,11 +878,17 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isPressed ? colorScheme.primary : (isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight),
+            color: isPressed
+                ? colorScheme.primary
+                : (isDark
+                      ? DesignColors.keyBackground
+                      : DesignColors.keyBackgroundLight),
             borderRadius: BorderRadius.circular(4),
             border: Border(
               bottom: BorderSide(
-                color: isPressed ? colorScheme.primary : (isDark ? Colors.black : Colors.grey.shade400),
+                color: isPressed
+                    ? colorScheme.primary
+                    : (isDark ? Colors.black : Colors.grey.shade400),
                 width: 2,
               ),
             ),
@@ -898,15 +929,13 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: colorScheme.onSurface,
-        ),
+        child: Icon(icon, size: 16, color: colorScheme.onSurface),
       ),
     );
   }
@@ -925,7 +954,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -958,7 +989,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -986,7 +1019,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -1012,7 +1047,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         decoration: BoxDecoration(
           color: DesignColors.primary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: DesignColors.primary.withValues(alpha: 0.2)),
+          border: Border.all(
+            color: DesignColors.primary.withValues(alpha: 0.2),
+          ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Center(

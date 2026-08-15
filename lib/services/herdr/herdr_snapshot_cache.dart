@@ -45,8 +45,8 @@ class HerdrSnapshotCache {
     this._adapterProvider, {
     Duration ttl = const Duration(seconds: 5),
     DateTime Function()? clock,
-  })  : _ttl = ttl,
-        _clock = clock ?? DateTime.now;
+  }) : _ttl = ttl,
+       _clock = clock ?? DateTime.now;
 
   /// snapshot の世代（adapter 差し替え / force 再取得で増える）。
   ///

@@ -73,7 +73,8 @@ class SshState {
 /// SSH接続を管理するNotifier
 class SshNotifier extends Notifier<SshState> {
   SshClient? _client;
-  final SshForegroundTaskService _foregroundService = SshForegroundTaskService();
+  final SshForegroundTaskService _foregroundService =
+      SshForegroundTaskService();
 
   // 再接続用のキャッシュ
   Connection? _lastConnection;
@@ -126,7 +127,9 @@ class SshNotifier extends Notifier<SshState> {
   /// ネットワーク状態の監視を開始
   void _startNetworkMonitoring() {
     final monitor = ref.read(networkMonitorProvider);
-    _networkStatusSubscription = monitor.statusStream.listen(_onNetworkStatusChanged);
+    _networkStatusSubscription = monitor.statusStream.listen(
+      _onNetworkStatusChanged,
+    );
   }
 
   /// ネットワーク状態変化のハンドラ
@@ -197,9 +200,7 @@ class SshNotifier extends Notifier<SshState> {
 
       await _client!.startShell();
 
-      state = state.copyWith(
-        connectionState: SshConnectionState.connected,
-      );
+      state = state.copyWith(connectionState: SshConnectionState.connected);
 
       // 最終接続日時を更新
       ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
@@ -236,7 +237,10 @@ class SshNotifier extends Notifier<SshState> {
   /// SSH接続を確立（シェルなし - tmuxコマンド方式用）
   ///
   /// exec()のみ使用するため、シェルは起動しない。
-  Future<void> connectWithoutShell(Connection connection, SshConnectOptions options) async {
+  Future<void> connectWithoutShell(
+    Connection connection,
+    SshConnectOptions options,
+  ) async {
     // 再接続用にキャッシュ
     _lastConnection = connection;
     _lastOptions = options;
@@ -314,7 +318,7 @@ class SshNotifier extends Notifier<SshState> {
     // 接続中の状態から切断/エラーになった場合
     if (state.isConnected &&
         (newState == SshConnectionState.error ||
-         newState == SshConnectionState.disconnected)) {
+            newState == SshConnectionState.disconnected)) {
       // 状態を更新
       state = state.copyWith(
         connectionState: newState,
@@ -470,10 +474,7 @@ class SshNotifier extends Notifier<SshState> {
   /// 今すぐ再接続を試みる（ユーザー操作用）
   Future<bool> reconnectNow() async {
     _reconnectTimer?.cancel();
-    state = state.copyWith(
-      reconnectAttempt: 0,
-      isPaused: false,
-    );
+    state = state.copyWith(reconnectAttempt: 0, isPaused: false);
     return _doReconnect();
   }
 

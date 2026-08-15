@@ -19,7 +19,10 @@ void main() {
       // 接続前の画面ローカル初期値としてのみ使う（A7 / L0-b-14）。
       // 永続化はしない: JSON 化は ActiveSession.toJson の backend.name
       // 経由だが、unknown が永続化される経路は存在しない。
-      expect(MultiplexerBackendKind.values.first, MultiplexerBackendKind.unknown);
+      expect(
+        MultiplexerBackendKind.values.first,
+        MultiplexerBackendKind.unknown,
+      );
     });
   });
 }
