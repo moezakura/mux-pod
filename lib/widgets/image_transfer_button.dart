@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../l10n/l10n_ext.dart';
 import '../providers/image_transfer_provider.dart';
 
 /// 画像転送ボタン
@@ -53,7 +54,7 @@ class ImageTransferButton extends ConsumerWidget {
                 minWidth: 36,
                 minHeight: 36,
               ),
-              tooltip: 'Send image',
+              tooltip: context.l10n.imgTransferSendImage,
             ),
     );
   }
@@ -82,7 +83,7 @@ class ImageTransferButton extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Gallery'),
+              title: Text(context.l10n.imgTransferGallery),
               onTap: () {
                 Navigator.pop(context);
                 ref.read(imageTransferProvider.notifier).pickImage(ImageSource.gallery);
@@ -90,7 +91,7 @@ class ImageTransferButton extends ConsumerWidget {
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('Camera'),
+              title: Text(context.l10n.imgTransferCamera),
               onTap: () {
                 Navigator.pop(context);
                 ref.read(imageTransferProvider.notifier).pickImage(ImageSource.camera);

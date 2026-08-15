@@ -50,6 +50,7 @@ import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
 
 import '../../services/tmux/tmux_version.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../widgets/dialogs/pane_chooser_dialog.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
 import '../../widgets/dialogs/rename_window_dialog.dart';
@@ -1863,7 +1864,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _recordHerdrSwitchEvent(
           '$eventLabel: snapshot fetch error (${e.runtimeType})',
         );
-        _showHerdrErrorSnackBar('Failed to load herdr tree: $e');
+        _showHerdrErrorSnackBar(context.l10n.termFailedToLoadHerdrTree(e.toString()));
       }
       return null;
     }
@@ -2087,7 +2088,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _suspendPollingAfterError();
     _herdrSnapshotCache?.invalidate();
     if (mounted && !_isDisposed) {
-      _showHerdrErrorSnackBar('Herdr server is not responding: $e');
+      _showHerdrErrorSnackBar(context.l10n.termHerdrServerNotResponding(e.toString()));
     }
   }
 
@@ -2095,7 +2096,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _notifyHerdrTargetLost() {
     if (!mounted || _isDisposed) return;
     _suspendPollingAfterError();
-    _showHerdrErrorSnackBar('Herdr target pane not found');
+    _showHerdrErrorSnackBar(context.l10n.termHerdrTargetPaneNotFound);
   }
 
   /// ポーリングを停止し、[_scheduleNextPoll] による再スケジュールを抑止する。
@@ -2121,7 +2122,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         content: Text(message),
         backgroundColor: Colors.red,
         action: SnackBarAction(
-          label: 'Retry',
+          label: context.l10n.termRetry,
           textColor: Colors.white,
           onPressed: _resumePollingAfterError,
         ),
@@ -2140,14 +2141,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// T19/S4: target-not-found の通知（SnackBar「対象が消えました。再同期しました」）。
   void _showHerdrTargetNotFoundSnackBar() {
-    _showHerdrMutationSnackBar('対象が消えました。再同期しました');
+    _showHerdrMutationSnackBar(context.l10n.termHerdrTargetLost);
   }
 
   /// T19/S4: 非対応キー（`invalid_key`）の防御的通知。
   ///
   /// Q-07 の全キー送信経路（[PaneKeyMap]）により通常は発生しない（R9）。
   void _showHerdrInvalidKeySnackBar() {
-    _showHerdrMutationSnackBar('このキーは herdr で送信できませんでした');
+    _showHerdrMutationSnackBar(context.l10n.termHerdrInvalidKey);
   }
 
   /// T19/S4: 方向なし / no-op（soft 失敗）の情報通知。
@@ -2156,10 +2157,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// `no_neighbor`（隣接 pane なし）→「その方向に pane はありません」/
   /// `unchanged`（分割境界外 resize）→「分割境界のため変更なし」。
   void _showHerdrMutationNoopSnackBar(PaneOperationNoopException e) {
+    final l10n = context.l10n;
     final message = switch (e.reason) {
-      'no_neighbor' => 'その方向に pane はありません',
-      'unchanged' => '分割境界のため変更なし',
-      _ => '操作は実行されましたが状態は変わりませんでした',
+      'no_neighbor' => l10n.termHerdrNoNeighbor,
+      'unchanged' => l10n.termHerdrUnchanged,
+      _ => l10n.termHerdrNoopGeneric,
     };
     _showHerdrMutationSnackBar(message);
   }
@@ -2217,7 +2219,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           _attemptReconnect();
         }
       } else {
-        _showHerdrMutationSnackBar('$operationLabel failed: $e');
+        _showHerdrMutationSnackBar(
+          context.l10n.termOperationFailed(operationLabel, e.toString()),
+        );
       }
     }
   }
@@ -2404,7 +2408,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         content: Text(message),
         backgroundColor: Colors.red,
         action: SnackBarAction(
-          label: 'Retry',
+          label: context.l10n.termRetry,
           textColor: Colors.white,
           // inventory: TERM-LIFE-011
           onPressed: _connectAndSetup,
@@ -2998,8 +3002,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _inputQueue.enqueue(data);
       if (!wasOverflow && _inputQueue.isOverflow && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Input queue is full; some keystrokes may be lost.'),
+          SnackBar(
+            content: Text(context.l10n.termInputQueueFull),
           ),
         );
       }
@@ -3377,8 +3381,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             // inventory: LEGACY-0090
             Text(
               isWaitingForNetwork
-                  ? 'Waiting for network...'
-                  : (error ?? 'Connection error'),
+                  ? context.l10n.termWaitingForNetwork
+                  : (error ?? context.l10n.termConnectionError),
               style: TextStyle(color: colorScheme.onSurface),
               textAlign: TextAlign.center,
             ),
@@ -3401,7 +3405,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     Icon(Icons.keyboard, size: 16, color: DesignColors.primary),
                     const SizedBox(width: 8),
                     Text(
-                      '$queuedCount chars queued',
+                      context.l10n.termCharsQueued(queuedCount),
                       style: TextStyle(
                         color: DesignColors.primary,
                         fontSize: 12,
@@ -3432,7 +3436,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   onPressed: () {
                     ref.read(sshProvider.notifier).reconnectNow();
                   },
-                  child: const Text('Retry Now'),
+                  child: Text(context.l10n.termRetryNow),
                 ),
                 if (_sshState.isReconnecting) ...[
                   const SizedBox(width: 12),
@@ -3516,7 +3520,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       // セレクタ導線は各セグメントのタップに移行した）
                       _buildBreadcrumbSeparator(),
                       _buildBreadcrumbItem(
-                        'Read-only',
+                        context.l10n.termReadOnlyBadge,
                         icon: Icons.lock_outline,
                         isActive: false,
                         onTap: data.onReadOnlyTap,
@@ -3603,7 +3607,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(),
-                tooltip: 'File Browser',
+                tooltip: context.l10n.termFileBrowser,
               ),
             // Settings button
             IconButton(
@@ -3695,11 +3699,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 再タップしてもシートは既に open されており、以後のタップは modal
     // barrier に吸収される（app の共有 boolean ガードは不要）。
     _showMultiplexerSheet(
-      title: 'Select Session',
+      title: context.l10n.termSelectSession,
       icon: Icons.folder,
       asyncContent: () async {
         // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
         final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
         final sessions = await _fetchHerdrSessions(
           eventLabel: 'selector snapshot',
           isTerminal: false,
@@ -3713,7 +3718,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           if (canResize)
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
-              tooltip: 'Resize Terminal',
+              tooltip: l10n.termResizeTerminal,
               onPressed: () => _closeSelectorThen(
                 () => _handleHerdrResizeTerminal(),
               ),
@@ -3760,11 +3765,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
     // loading → data/error と表示する（再タップは modal barrier が吸収）。
     _showMultiplexerSheet(
-      title: 'Select Window',
+      title: context.l10n.termSelectWindow,
       icon: Icons.tab,
       asyncContent: () async {
         // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
         final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
         final sessions = await _fetchHerdrSessions(
           eventLabel: 'selector snapshot',
           isTerminal: false,
@@ -3787,7 +3793,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           if (canTabCrud && workspace.id != null)
             IconButton(
               icon: Icon(Icons.add, color: primary),
-              tooltip: 'New Tab',
+              tooltip: l10n.termNewTab,
               onPressed: () => _closeSelectorThen(
                 () => _showHerdrCreateTabDialog(workspace),
               ),
@@ -3846,13 +3852,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
     // loading → data/error と表示する（再タップは modal barrier が吸収）。
     _showMultiplexerSheet(
-      title: 'Select Pane',
+      title: context.l10n.termSelectPane,
       icon: Icons.terminal,
       // 分割プレビューがローディング中から確定するため maxHeight 0.7 固定。
       topExpected: true,
       asyncContent: () async {
         // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
         final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
         final sessions = await _fetchHerdrSessions(
           eventLabel: 'selector snapshot',
           isTerminal: false,
@@ -3876,7 +3883,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           if (canResize)
             IconButton(
               icon: Icon(Icons.open_in_full, color: primary),
-              tooltip: 'Resize Pane',
+              tooltip: l10n.termResizePane,
               onPressed: () => _closeSelectorThen(
                 // ヘッダーの Resize は選択モーダル経由（初期選択=現在表示中 pane）。
                 () => _showHerdrResizePaneChooser(sessions, window),
@@ -4107,7 +4114,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final sessions = tmuxState.sessions.map((s) => s.toDomain()).toList();
     final current = _selectorContextOf(tmuxState);
     _showMultiplexerSheet(
-      title: 'Select Session',
+      title: context.l10n.termSelectSession,
       icon: Icons.folder,
       children: [
         for (final session in sessions)
@@ -4144,20 +4151,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
-      title: 'Select Window',
+      title: context.l10n.termSelectWindow,
       icon: Icons.tab,
       headerActions: [
         if (canResize)
           IconButton(
             icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Window',
+            tooltip: context.l10n.termResizeWindow,
             onPressed: () =>
                 _closeSelectorThen(() => _showResizeWindowChooser(tmuxState)),
           ),
         if (canTabCrud)
           IconButton(
             icon: Icon(Icons.add, color: primary),
-            tooltip: 'New Window',
+            tooltip: context.l10n.termNewWindow,
             onPressed: () =>
                 _closeSelectorThen(() => _showCreateWindowDialog(session)),
           ),
@@ -4296,7 +4303,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
-      title: 'Select Pane',
+      title: context.l10n.termSelectPane,
       icon: Icons.terminal,
       top: _buildPaneLayoutVisualizer(
         domainWindow,
@@ -4316,7 +4323,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         if (canResize)
           IconButton(
             icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Pane',
+            tooltip: context.l10n.termResizePane,
             onPressed: () =>
                 _closeSelectorThen(() => _showResizePaneChooser(tmuxState)),
           ),
@@ -4413,7 +4420,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (sshClient == null || !sshClient.isConnected) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SSH connection is not available')),
+            SnackBar(content: Text(context.l10n.termSshNotAvailable)),
           );
         }
         return;
@@ -4455,8 +4462,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
       if (command != null && !commandDispatched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Window created, but the command could not be sent'),
+          SnackBar(
+            content: Text(context.l10n.termWindowCreatedCommandNotSent),
           ),
         );
       }
@@ -4465,7 +4472,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to create window: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.termFailedToCreateWindow(e.toString()),
+            ),
+          ),
+        );
       }
     } finally {
       _isCreatingWindow = false;
@@ -4484,7 +4497,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Window created, but the command failed: $e')),
+          SnackBar(
+            content: Text(
+              context.l10n.termWindowCreatedCommandFailed(e.toString()),
+            ),
+          ),
         );
       }
     }
@@ -4499,7 +4516,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -4533,7 +4550,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       } else if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to split pane: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.termFailedToSplitPane(e.toString()),
+            ),
+          ),
+        );
       }
     }
   }
@@ -4554,7 +4577,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Pane?',
+            context.l10n.termClosePaneTitle,
             style: TextStyle(
               color: isDark
                   ? DesignColors.textPrimary
@@ -4563,10 +4586,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           ),
           content: Text(
             isLastPane && isLastWindow
-                ? 'This is the last pane in the last window. Closing it will end the session and disconnect from the server.'
+                ? context.l10n.termClosePaneLastWindowLastPane
                 : isLastPane
-                ? 'This is the last pane in this window. Closing it will also close the window.'
-                : 'Are you sure you want to close pane "$paneTitle"?',
+                ? context.l10n.termClosePaneLastPane
+                : context.l10n.termClosePaneConfirm(paneTitle),
             style: TextStyle(
               color: isDark
                   ? DesignColors.textSecondary
@@ -4577,7 +4600,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark
                       ? DesignColors.textSecondary
@@ -4594,8 +4617,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     !currentWindow.panes.any((p) => p.id == paneId)) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('This pane no longer exists'),
+                      SnackBar(
+                        content: Text(context.l10n.termPaneNoLongerExists),
                       ),
                     );
                   }
@@ -4612,7 +4635,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -4864,7 +4887,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Resize failed: $e')));
+        ).showSnackBar(SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))));
       }
     } finally {
       _isResizing = false;
@@ -5114,7 +5137,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // 接続断・bridge 未生成時は通知（_killPane と同型）。
       if (mounted && !_isDisposed) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5153,11 +5176,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // （サイドバー幅・タブ行）が原因の可能性が高い。
         if (mounted && !_isDisposed) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Resize failed. The terminal size could not be applied. '
-                'Check herdr display settings or try again.',
-              ),
+            SnackBar(
+              content: Text(context.l10n.termResizeFailedHerdr),
             ),
           );
         }
@@ -5235,7 +5255,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Resize failed: $e')));
+        ).showSnackBar(SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))));
       }
     } finally {
       _isResizing = false;
@@ -5255,7 +5275,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5317,7 +5337,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to close pane: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToClosePane(e.toString())),
+          ),
+        );
       }
     } finally {
       // ポーリング再開
@@ -5438,7 +5462,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     Icon(Icons.tune, color: DesignColors.primary),
                     const SizedBox(width: 8),
                     Text(
-                      'Terminal Options',
+                      context.l10n.termTerminalOptions,
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -5464,8 +5488,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
                 title: Text(
                   _terminalMode == TerminalMode.scroll
-                      ? 'Scroll & Select Mode'
-                      : 'Normal Mode',
+                      ? context.l10n.termScrollSelectMode
+                      : context.l10n.termNormalMode,
                   style: TextStyle(
                     color: _terminalMode == TerminalMode.scroll
                         ? DesignColors.warning
@@ -5477,8 +5501,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
                 subtitle: Text(
                   _terminalMode == TerminalMode.scroll
-                      ? 'Tap to return to normal mode'
-                      : 'Tap to enable text selection',
+                      ? context.l10n.termTapReturnNormal
+                      : context.l10n.termTapEnableSelection,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 trailing: Switch(
@@ -5545,15 +5569,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   color: _isZoomed ? DesignColors.warning : inactiveIconColor,
                 ),
                 title: Text(
-                  'Reset Zoom',
+                  context.l10n.termResetZoom,
                   style: TextStyle(
                     color: _isZoomed ? textColor : mutedTextColor,
                   ),
                 ),
                 subtitle: Text(
                   _isZoomed
-                      ? 'Current: ${(_effectiveZoom * 100).round()}%'
-                      : 'Pinch to zoom in/out',
+                      ? context.l10n.termCurrentZoom(
+                          (_effectiveZoom * 100).round(),
+                        )
+                      : context.l10n.termPinchToZoom,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 enabled: _isZoomed,
@@ -5575,9 +5601,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               // 設定画面へ
               ListTile(
                 leading: Icon(Icons.settings, color: inactiveIconColor),
-                title: Text('Settings', style: TextStyle(color: textColor)),
+                title: Text(context.l10n.termSettings, style: TextStyle(color: textColor)),
                 subtitle: Text(
-                  'Font, theme, and other options',
+                  context.l10n.termSettingsSubtitle,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 onTap: () {
@@ -5601,14 +5627,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   color: DesignColors.error,
                 ),
                 title: Text(
-                  'Disconnect',
+                  context.l10n.termDisconnect,
                   style: TextStyle(
                     color: DesignColors.error,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 subtitle: Text(
-                  'Close SSH connection',
+                  context.l10n.termCloseSshConnection,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 onTap: () {
@@ -5643,20 +5669,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Window?',
+            context.l10n.termCloseWindowTitle,
             style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           ),
           content: Text(
             isLastWindow
-                ? 'This is the last window in the session. Closing it will end the session and disconnect from the server.'
-                : 'Are you sure you want to close window "$windowName"?',
+                ? context.l10n.termCloseWindowLast
+                : context.l10n.termCloseWindowConfirm(windowName),
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -5678,7 +5704,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -5696,7 +5722,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5744,7 +5770,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to close window: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToCloseWindow(e.toString())),
+          ),
+        );
       }
     }
   }
@@ -5784,7 +5814,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5805,7 +5835,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to rename window: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToRenameWindow(e.toString())),
+          ),
+        );
       }
     }
   }
@@ -5821,18 +5855,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Disconnect?',
+            context.l10n.termDisconnectTitle,
             style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           ),
           content: Text(
-            'Are you sure you want to disconnect from the server?',
+            context.l10n.termDisconnectConfirm,
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -5847,7 +5881,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -5873,22 +5907,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       builder: (dialogContext) {
         final String message;
         if (isLastPane && isLastTab) {
-          message =
-              'This is the last pane in the last tab. Closing it will also '
-              'close the tab and the workspace.';
+          message = context.l10n.termClosePaneHerdrLastBoth;
         } else if (isLastPane) {
-          message =
-              'This is the last pane in this tab. Closing it will also '
-              'close the tab.';
+          message = context.l10n.termClosePaneHerdrLast;
         } else {
-          message = 'Are you sure you want to close pane "$paneTitle"?';
+          message = context.l10n.termClosePaneConfirm(paneTitle);
         }
         return AlertDialog(
           backgroundColor: isDark
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Pane?',
+            context.l10n.termClosePaneTitle,
             style: TextStyle(
               color: isDark
                   ? DesignColors.textPrimary
@@ -5907,7 +5937,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark
                       ? DesignColors.textSecondary
@@ -5925,7 +5955,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -6022,11 +6052,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     showDialog<String>(
       context: context,
       builder: (dialogContext) => _HerdrLabelInputDialog(
-        title: 'Rename Tab',
-        labelText: 'Tab Label',
-        hintText: 'Enter a label for this tab',
+        title: context.l10n.termRenameTabTitle,
+        labelText: context.l10n.termTabLabel,
+        hintText: context.l10n.termRenameTabHint,
         initialValue: tab.name,
-        confirmLabel: 'Rename',
+        confirmLabel: context.l10n.termRename,
       ),
     ).then((label) {
       if (label == null || !mounted) return;
@@ -6051,10 +6081,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     showDialog<String>(
       context: context,
       builder: (dialogContext) => _HerdrLabelInputDialog(
-        title: 'New Tab',
-        labelText: 'Tab Label',
-        hintText: 'Leave empty for default',
-        confirmLabel: 'Create',
+        title: context.l10n.termNewTab,
+        labelText: context.l10n.termTabLabel,
+        hintText: context.l10n.termNewTabHint,
+        confirmLabel: context.l10n.termCreate,
         allowEmpty: true,
       ),
     ).then((label) {
@@ -6132,9 +6162,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (tabId == null) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final message = isLastTab
-        ? 'This is the last tab in this workspace. Closing it will also '
-            'close the workspace.'
-        : 'Are you sure you want to close tab "${tab.name}"?';
+        ? context.l10n.termCloseTabLast
+        : context.l10n.termCloseTabConfirm(tab.name);
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -6142,7 +6171,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             ? DesignColors.surfaceDark
             : DesignColors.surfaceLight,
         title: Text(
-          'Close Tab?',
+          context.l10n.termCloseTabTitle,
           style: TextStyle(
             color: isDark
                 ? DesignColors.textPrimary
@@ -6161,7 +6190,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(
-              'Cancel',
+              context.l10n.termCancel,
               style: TextStyle(
                 color: isDark
                     ? DesignColors.textSecondary
@@ -6179,7 +6208,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               backgroundColor: DesignColors.error,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Close'),
+            child: Text(context.l10n.termClose),
           ),
         ],
       ),
@@ -6322,8 +6351,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // ステータステキスト
         Text(
           isWaitingForNetwork
-              ? 'Offline'
-              : 'Reconnecting${attempt > 1 ? ' ($attempt)' : ''}',
+              ? context.l10n.termOffline
+              : context.l10n.termReconnecting +
+                    (attempt > 1 ? ' ($attempt)' : ''),
           style: GoogleFonts.jetBrainsMono(
             fontSize: 10,
             color: DesignColors.warning.withValues(alpha: 0.8),
@@ -6352,7 +6382,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              '$queuedCount chars',
+              context.l10n.termChars(queuedCount),
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 9,
                 color: DesignColors.primary,
@@ -6376,7 +6406,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              'Retry',
+              context.l10n.termRetry,
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 9,
                 color: DesignColors.warning,
@@ -6541,7 +6571,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (next.phase == ImageTransferPhase.error && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.errorMessage ?? 'Image transfer failed'),
+            content: Text(
+              next.errorMessage ?? context.l10n.termImageTransferFailed,
+            ),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -6552,7 +6584,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Uploaded: ${next.lastUploadedPath}'),
+            content: Text(
+              context.l10n.termUploaded(next.lastUploadedPath!),
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -6590,7 +6624,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Gallery'),
+              title: Text(context.l10n.termGallery),
               onTap: () {
                 Navigator.pop(ctx);
                 ref
@@ -6600,7 +6634,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('Camera'),
+              title: Text(context.l10n.termCamera),
               onTap: () {
                 Navigator.pop(ctx);
                 ref
@@ -6697,10 +6731,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // once connected rather than silently queuing via the legacy path.
       if (text.contains('\n') && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Multi-line send requires a live connection; please retry.',
-            ),
+          SnackBar(
+            content: Text(context.l10n.termMultilineNeedsConnection),
           ),
         );
       } else {
@@ -7010,7 +7042,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           title: Text(
-            'Split Pane ${pane.index}',
+            context.l10n.termSplitPaneTitle(pane.index),
             style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
           ),
           content: Column(
@@ -7021,7 +7053,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                   size: const Size(24, 24),
                   painter: _SplitRightIconPainter(color: colorScheme.primary),
                 ),
-                title: const Text('Split Right'),
+                title: Text(context.l10n.termSplitRight),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -7035,7 +7067,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                   size: const Size(24, 24),
                   painter: _SplitDownIconPainter(color: colorScheme.primary),
                 ),
-                title: const Text('Split Down'),
+                title: Text(context.l10n.termSplitDown),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -7049,7 +7081,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(context.l10n.termCancel),
             ),
           ],
         );
@@ -7122,7 +7154,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
             height > 40) ...[
           const SizedBox(height: 2),
           Text(
-            'Tap to split',
+            context.l10n.termTapToSplit,
             style: GoogleFonts.jetBrainsMono(
               fontSize: 8,
               color: DesignColors.primary.withValues(alpha: 0.7),
@@ -7406,7 +7438,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
           Row(
             children: [
               Text(
-                'Enter Command',
+                context.l10n.termEnterCommand,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -7423,7 +7455,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Shift+Enter: 改行',
+                  context.l10n.termShiftEnterNewline,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     color: isDark
@@ -7449,7 +7481,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
               textInputAction: TextInputAction.newline, // ペースト時の複数行対応
               style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface),
               decoration: InputDecoration(
-                hintText: 'Type your command... (Enter to send)',
+                hintText: context.l10n.termCommandHint,
                 hintStyle: GoogleFonts.jetBrainsMono(
                   color: isDark
                       ? DesignColors.textMuted
@@ -7488,7 +7520,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                     ),
                   ),
                   child: Text(
-                    'Cancel',
+                    context.l10n.termCancel,
                     style: GoogleFonts.spaceGrotesk(
                       fontWeight: FontWeight.w700,
                     ),
@@ -7518,7 +7550,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                           ),
                         )
                       : Text(
-                          'Execute',
+                          context.l10n.termExecute,
                           style: GoogleFonts.spaceGrotesk(
                             fontWeight: FontWeight.w700,
                           ),
@@ -7592,10 +7624,10 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
   String? _validateLabel(String? value) {
     final text = value ?? '';
     if (!widget.allowEmpty && text.trim().isEmpty) {
-      return 'Label cannot be empty';
+      return context.l10n.termLabelCannotBeEmpty;
     }
     if (text.length > 100) {
-      return 'Label must be 100 characters or less';
+      return context.l10n.termLabelTooLong;
     }
     return null;
   }
@@ -7657,7 +7689,7 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.termCancel),
         ),
         FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
@@ -7715,9 +7747,9 @@ class _ResizeWindowChooserDialogState
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Window',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.termResizeWindow,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -7738,16 +7770,19 @@ class _ResizeWindowChooserDialogState
               // 選択中のウィンドウ情報
               if (selected != null) ...[
                 Text(
-                  'Selected: ${selected.name} (${_windowSizeString(selected)})',
+                  context.l10n.termSelectedWindow(
+                    selected.name,
+                    _windowSizeString(selected),
+                  ),
                   style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
                 ),
               ] else
-                const Text(
-                  'Tap a window to select',
-                  style: TextStyle(
+                Text(
+                  context.l10n.termTapWindowToSelect,
+                  style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
@@ -7759,12 +7794,12 @@ class _ResizeWindowChooserDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.termCancel),
         ),
         FilledButton(
           onPressed: selected != null ? () => widget.onResize(selected) : null,
           style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
-          child: const Text('Resize'),
+          child: Text(context.l10n.termResize),
         ),
       ],
     );
@@ -8241,7 +8276,10 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
         children: [
           Icon(Icons.error_outline, color: colorScheme.error),
           const SizedBox(height: 8),
-          Text('Failed to load', style: TextStyle(color: colorScheme.onSurface)),
+          Text(
+            context.l10n.termFailedToLoad,
+            style: TextStyle(color: colorScheme.onSurface),
+          ),
           const SizedBox(height: 8),
           if (widget.retry != null)
             FilledButton(
@@ -8249,7 +8287,7 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
                 widget.retry!();
                 _load();
               },
-              child: const Text('Retry'),
+              child: Text(context.l10n.termRetry),
             ),
         ],
       ),
@@ -8286,7 +8324,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            'READ ONLY — viewing only',
+            context.l10n.termReadOnlyBanner,
             style: GoogleFonts.jetBrainsMono(
               fontSize: 11,
               fontWeight: FontWeight.w600,

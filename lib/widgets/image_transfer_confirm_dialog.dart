@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../l10n/l10n_ext.dart';
 import '../providers/settings_provider.dart';
 
 /// リサイズプリセット
@@ -204,7 +205,7 @@ class _ImageTransferConfirmDialogState
 
     return AlertDialog(
       backgroundColor: theme.colorScheme.surfaceContainerHigh,
-      title: const Text('Upload Image'),
+      title: Text(context.l10n.imgTransferTitle),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -249,13 +250,16 @@ class _ImageTransferConfirmDialogState
               // --- 優先度高: 常時表示 ---
 
               // Output Format
-              _label('Format'),
+              _label(context.l10n.imgTransferFormatLabel),
               const SizedBox(height: 4),
               SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'original', label: Text('Original')),
-                  ButtonSegment(value: 'png', label: Text('PNG')),
-                  ButtonSegment(value: 'jpeg', label: Text('JPEG')),
+                segments: [
+                  ButtonSegment(
+                    value: 'original',
+                    label: Text(context.l10n.imgTransferFormatOriginal),
+                  ),
+                  const ButtonSegment(value: 'png', label: Text('PNG')),
+                  const ButtonSegment(value: 'jpeg', label: Text('JPEG')),
                 ],
                 selected: {_outputFormat},
                 onSelectionChanged: (v) => setState(() => _outputFormat = v.first),
@@ -268,14 +272,26 @@ class _ImageTransferConfirmDialogState
               const SizedBox(height: 12),
 
               // Resize
-              _label('Resize'),
+              _label(context.l10n.imgTransferResizeLabel),
               const SizedBox(height: 4),
               SegmentedButton<ImageResizePreset>(
-                segments: const [
-                  ButtonSegment(value: ImageResizePreset.original, label: Text('Original')),
-                  ButtonSegment(value: ImageResizePreset.small, label: Text('S')),
-                  ButtonSegment(value: ImageResizePreset.medium, label: Text('M')),
-                  ButtonSegment(value: ImageResizePreset.large, label: Text('L')),
+                segments: [
+                  ButtonSegment(
+                    value: ImageResizePreset.original,
+                    label: Text(context.l10n.imgTransferFormatOriginal),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.small,
+                    label: Text(context.l10n.imgTransferSizeSmall),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.medium,
+                    label: Text(context.l10n.imgTransferSizeMedium),
+                  ),
+                  ButtonSegment(
+                    value: ImageResizePreset.large,
+                    label: Text(context.l10n.imgTransferSizeLarge),
+                  ),
                 ],
                 selected: {_resizePreset == ImageResizePreset.custom ? ImageResizePreset.original : _resizePreset},
                 onSelectionChanged: (v) => setState(() => _resizePreset = v.first),
@@ -291,7 +307,10 @@ class _ImageTransferConfirmDialogState
               SwitchListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('Bracketed Paste', style: theme.textTheme.bodyMedium),
+                title: Text(
+                  context.l10n.imgTransferBracketedPaste,
+                  style: theme.textTheme.bodyMedium,
+                ),
                 value: _bracketedPaste,
                 onChanged: (v) => setState(() => _bracketedPaste = v),
               ),
@@ -300,19 +319,22 @@ class _ImageTransferConfirmDialogState
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
-                title: Text('Advanced', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey)),
+                title: Text(
+                  context.l10n.imgTransferAdvanced,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                ),
                 children: [
                   // Remote Path
-                  _label('Remote Path'),
+                  _label(context.l10n.imgTransferRemotePath),
                   const SizedBox(height: 4),
                   _textField(_pathController),
                   const SizedBox(height: 12),
 
                   // Path Format
-                  _label('Path Format'),
+                  _label(context.l10n.imgTransferPathFormat),
                   const SizedBox(height: 2),
                   Text(
-                    'Use {path} as placeholder. e.g. @{path}',
+                    context.l10n.imgTransferPathFormatHint('path'),
                     style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
                   ),
                   const SizedBox(height: 4),
@@ -323,7 +345,7 @@ class _ImageTransferConfirmDialogState
                   if (_outputFormat == 'jpeg') ...[
                     Row(
                       children: [
-                        _label('JPEG Quality'),
+                        _label(context.l10n.imgTransferJpegQuality),
                         const Spacer(),
                         Text('$_jpegQuality%', style: theme.textTheme.bodySmall),
                       ],
@@ -338,19 +360,25 @@ class _ImageTransferConfirmDialogState
                   ],
 
                   // Custom Size
-                  _label('Custom Size'),
+                  _label(context.l10n.imgTransferCustomSize),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       Expanded(
-                        child: _numberField(_maxWidthController, 'Width'),
+                        child: _numberField(
+                          _maxWidthController,
+                          context.l10n.imgTransferWidth,
+                        ),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 8),
                         child: Text('x'),
                       ),
                       Expanded(
-                        child: _numberField(_maxHeightController, 'Height'),
+                        child: _numberField(
+                          _maxHeightController,
+                          context.l10n.imgTransferHeight,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
@@ -360,7 +388,7 @@ class _ImageTransferConfirmDialogState
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
                         child: Text(
-                          'Apply',
+                          context.l10n.imgTransferApply,
                           style: TextStyle(
                             color: _resizePreset == ImageResizePreset.custom
                                 ? theme.colorScheme.primary
@@ -376,8 +404,14 @@ class _ImageTransferConfirmDialogState
                   SwitchListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    title: Text('Auto Enter', style: theme.textTheme.bodyMedium),
-                    subtitle: Text('Send Enter after path injection', style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey)),
+                    title: Text(
+                      context.l10n.imgTransferAutoEnter,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    subtitle: Text(
+                      context.l10n.imgTransferAutoEnterSubtitle,
+                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    ),
                     value: _autoEnter,
                     onChanged: (v) => setState(() => _autoEnter = v),
                   ),
@@ -390,7 +424,7 @@ class _ImageTransferConfirmDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, null),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.imgTransferCancel),
         ),
         FilledButton(
           onPressed: () {
@@ -399,7 +433,7 @@ class _ImageTransferConfirmDialogState
               Navigator.pop(context, _buildOptions());
             }
           },
-          child: const Text('Upload'),
+          child: Text(context.l10n.imgTransferUpload),
         ),
       ],
     );

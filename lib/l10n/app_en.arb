@@ -4,5 +4,342 @@
   "languageSystem": "System",
   "languageSystemDescription": "System (follow device)",
   "languageJapanese": "日本語",
-  "languageEnglish": "English"
+  "languageEnglish": "English",
+  "termInputQueueFull": "Input queue is full; some keystrokes may be lost.",
+  "termRetryNow": "Retry Now",
+  "termRetry": "Retry",
+  "termSshNotAvailable": "SSH connection is not available",
+  "termWindowCreatedCommandNotSent": "Window created, but the command could not be sent",
+  "termFailedToCreateWindow": "Failed to create window: {error}",
+  "@termFailedToCreateWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termWindowCreatedCommandFailed": "Window created, but the command failed: {error}",
+  "@termWindowCreatedCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToSplitPane": "Failed to split pane: {error}",
+  "@termFailedToSplitPane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToClosePane": "Failed to close pane: {error}",
+  "@termFailedToClosePane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToCloseWindow": "Failed to close window: {error}",
+  "@termFailedToCloseWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToRenameWindow": "Failed to rename window: {error}",
+  "@termFailedToRenameWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailed": "Resize failed: {error}",
+  "@termResizeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termPaneNoLongerExists": "This pane no longer exists",
+  "termFailedToLoadHerdrTree": "Failed to load herdr tree: {error}",
+  "@termFailedToLoadHerdrTree": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrServerNotResponding": "Herdr server is not responding: {error}",
+  "@termHerdrServerNotResponding": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrTargetPaneNotFound": "Herdr target pane not found",
+  "termHerdrTargetLost": "Target pane disappeared. Re-synced.",
+  "termHerdrInvalidKey": "This key could not be sent via herdr",
+  "termHerdrNoNeighbor": "No pane in that direction",
+  "termHerdrUnchanged": "No change at the split boundary",
+  "termHerdrNoopGeneric": "The operation was executed but the state did not change",
+  "termOperationFailed": "{operation} failed: {error}",
+  "@termOperationFailed": {
+    "placeholders": {
+      "operation": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailedHerdr": "Resize failed. The terminal size could not be applied. Check herdr display settings or try again.",
+  "termImageTransferFailed": "Image transfer failed",
+  "termUploaded": "Uploaded: {path}",
+  "@termUploaded": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "termMultilineNeedsConnection": "Multi-line send requires a live connection; please retry.",
+  "termWaitingForNetwork": "Waiting for network...",
+  "termConnectionError": "Connection error",
+  "termCharsQueued": "{count} chars queued",
+  "@termCharsQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termChars": "{count} chars",
+  "@termChars": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termOffline": "Offline",
+  "termReconnecting": "Reconnecting",
+  "termFileBrowser": "File Browser",
+  "termResizeTerminal": "Resize Terminal",
+  "termNewTab": "New Tab",
+  "termResizePane": "Resize Pane",
+  "termResizeWindow": "Resize Window",
+  "termResize": "Resize",
+  "termNewWindow": "New Window",
+  "termSelectSession": "Select Session",
+  "termSelectWindow": "Select Window",
+  "termSelectPane": "Select Pane",
+  "termClosePaneTitle": "Close Pane?",
+  "termClosePaneLastWindowLastPane": "This is the last pane in the last window. Closing it will end the session and disconnect from the server.",
+  "termClosePaneLastPane": "This is the last pane in this window. Closing it will also close the window.",
+  "termClosePaneConfirm": "Are you sure you want to close pane \"{paneTitle}\"?",
+  "@termClosePaneConfirm": {
+    "placeholders": {
+      "paneTitle": {
+        "type": "String"
+      }
+    }
+  },
+  "termCancel": "Cancel",
+  "termClose": "Close",
+  "termTerminalOptions": "Terminal Options",
+  "termScrollSelectMode": "Scroll & Select Mode",
+  "termNormalMode": "Normal Mode",
+  "termTapReturnNormal": "Tap to return to normal mode",
+  "termTapEnableSelection": "Tap to enable text selection",
+  "termResetZoom": "Reset Zoom",
+  "termCurrentZoom": "Current: {percent}%",
+  "@termCurrentZoom": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "termPinchToZoom": "Pinch to zoom in/out",
+  "termSettings": "Settings",
+  "termSettingsSubtitle": "Font, theme, and other options",
+  "termDisconnect": "Disconnect",
+  "termCloseSshConnection": "Close SSH connection",
+  "termCloseWindowTitle": "Close Window?",
+  "termCloseWindowLast": "This is the last window in the session. Closing it will end the session and disconnect from the server.",
+  "termCloseWindowConfirm": "Are you sure you want to close window \"{windowName}\"?",
+  "@termCloseWindowConfirm": {
+    "placeholders": {
+      "windowName": {
+        "type": "String"
+      }
+    }
+  },
+  "termDisconnectTitle": "Disconnect?",
+  "termDisconnectConfirm": "Are you sure you want to disconnect from the server?",
+  "termClosePaneHerdrLastBoth": "This is the last pane in the last tab. Closing it will also close the tab and the workspace.",
+  "termClosePaneHerdrLast": "This is the last pane in this tab. Closing it will also close the tab.",
+  "termCloseTabTitle": "Close Tab?",
+  "termCloseTabLast": "This is the last tab in this workspace. Closing it will also close the workspace.",
+  "termCloseTabConfirm": "Are you sure you want to close tab \"{tabName}\"?",
+  "@termCloseTabConfirm": {
+    "placeholders": {
+      "tabName": {
+        "type": "String"
+      }
+    }
+  },
+  "termRenameTabTitle": "Rename Tab",
+  "termTabLabel": "Tab Label",
+  "termRenameTabHint": "Enter a label for this tab",
+  "termRename": "Rename",
+  "termCreate": "Create",
+  "termNewTabHint": "Leave empty for default",
+  "termLabelCannotBeEmpty": "Label cannot be empty",
+  "termLabelTooLong": "Label must be 100 characters or less",
+  "termSplitPaneTitle": "Split Pane {index}",
+  "@termSplitPaneTitle": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "termSplitRight": "Split Right",
+  "termSplitDown": "Split Down",
+  "termTapToSplit": "Tap to split",
+  "termEnterCommand": "Enter Command",
+  "termShiftEnterNewline": "Shift+Enter: newline",
+  "termCommandHint": "Type your command... (Enter to send)",
+  "termExecute": "Execute",
+  "termFailedToLoad": "Failed to load",
+  "termReadOnlyBadge": "Read-only",
+  "termReadOnlyBanner": "READ ONLY — viewing only",
+  "termGallery": "Gallery",
+  "termCamera": "Camera",
+  "termSelectedWindow": "Selected: {name} ({size})",
+  "@termSelectedWindow": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "termTapWindowToSelect": "Tap a window to select",
+  "newWindowTitle": "New Window",
+  "newWindowNameLabel": "Window Name",
+  "newWindowNameHint": "Leave empty for default",
+  "newWindowCommandLabel": "Command",
+  "newWindowCommandHint": "npm run dev (optional)",
+  "newWindowCancel": "Cancel",
+  "newWindowCreate": "Create",
+  "newWindowNameTooLong": "Window name must be 50 characters or less",
+  "newWindowNameChars": "Only letters, numbers, - and _ allowed",
+  "newWindowNameExists": "Window \"{name}\" already exists",
+  "@newWindowNameExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTitle": "Resize Pane",
+  "paneChooserSelected": "Selected: {label} ({size})",
+  "@paneChooserSelected": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTapToSelect": "Tap a pane to select",
+  "paneChooserCancel": "Cancel",
+  "paneChooserResize": "Resize",
+  "paneChooserSizeUnknown": "Unknown size",
+  "renameWindowTitle": "Rename Window",
+  "renameWindowNameLabel": "Window Name",
+  "renameWindowCancel": "Cancel",
+  "renameWindowConfirm": "Rename",
+  "renameWindowCannotBeEmpty": "Window name cannot be empty",
+  "renameWindowTooLong": "Window name must be 50 characters or less",
+  "renameWindowChars": "Only letters, numbers, - and _ allowed",
+  "renameWindowExists": "Window \"{name}\" already exists",
+  "@renameWindowExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizePaneTitle": "Resize Pane",
+  "resizeWindowTitle": "Resize Window",
+  "resizeTerminalTitle": "Resize Terminal",
+  "resizeCancel": "Cancel",
+  "resizeConfirm": "Resize",
+  "resizeWarningOtherPanes": "Other pane sizes may also change.",
+  "resizeWarningTmuxRequired": "Window resize requires tmux 2.9+. Resize button disabled.",
+  "resizeTerminalDescription": "Changes the size of the whole terminal (PTY). Applies to all workspaces.",
+  "resizePresetStandard": "80x24 (Standard)",
+  "resizePresetWide": "120x40 (Wide)",
+  "resizePresetFullHd": "160x50 (Full HD)",
+  "resizePresetMatchScreen": "Match Screen ({cols} x {rows})",
+  "@resizePresetMatchScreen": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizeCols": "Cols",
+  "resizeRows": "Rows",
+  "resizeEstimated": "Estimated",
+  "resizeSizeUnknown": "Unknown size",
+  "imgTransferSendImage": "Send image",
+  "imgTransferGallery": "Gallery",
+  "imgTransferCamera": "Camera",
+  "imgTransferTitle": "Upload Image",
+  "imgTransferFormatLabel": "Format",
+  "imgTransferFormatOriginal": "Original",
+  "imgTransferResizeLabel": "Resize",
+  "imgTransferSizeSmall": "S",
+  "imgTransferSizeMedium": "M",
+  "imgTransferSizeLarge": "L",
+  "imgTransferBracketedPaste": "Bracketed Paste",
+  "imgTransferAdvanced": "Advanced",
+  "imgTransferRemotePath": "Remote Path",
+  "imgTransferPathFormat": "Path Format",
+  "imgTransferPathFormatHint": "Use {path} as placeholder. e.g. @{path}",
+  "@imgTransferPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferJpegQuality": "JPEG Quality",
+  "imgTransferCustomSize": "Custom Size",
+  "imgTransferWidth": "Width",
+  "imgTransferHeight": "Height",
+  "imgTransferApply": "Apply",
+  "imgTransferAutoEnter": "Auto Enter",
+  "imgTransferAutoEnterSubtitle": "Send Enter after path injection",
+  "imgTransferCancel": "Cancel",
+  "imgTransferUpload": "Upload"
 }

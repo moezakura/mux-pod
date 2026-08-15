@@ -4,5 +4,342 @@
   "languageSystem": "システム",
   "languageSystemDescription": "システム（端末に従う）",
   "languageJapanese": "日本語",
-  "languageEnglish": "English"
+  "languageEnglish": "English",
+  "termInputQueueFull": "入力キューがいっぱいです。一部のキー操作が失われる可能性があります。",
+  "termRetryNow": "今すぐ再試行",
+  "termRetry": "再試行",
+  "termSshNotAvailable": "SSH接続を利用できません",
+  "termWindowCreatedCommandNotSent": "ウィンドウを作成しましたが、コマンドを送信できませんでした",
+  "termFailedToCreateWindow": "ウィンドウの作成に失敗しました: {error}",
+  "@termFailedToCreateWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termWindowCreatedCommandFailed": "ウィンドウを作成しましたが、コマンドが失敗しました: {error}",
+  "@termWindowCreatedCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToSplitPane": "ペインの分割に失敗しました: {error}",
+  "@termFailedToSplitPane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToClosePane": "ペインを閉じるのに失敗しました: {error}",
+  "@termFailedToClosePane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToCloseWindow": "ウィンドウを閉じるのに失敗しました: {error}",
+  "@termFailedToCloseWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToRenameWindow": "ウィンドウ名の変更に失敗しました: {error}",
+  "@termFailedToRenameWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailed": "リサイズに失敗しました: {error}",
+  "@termResizeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termPaneNoLongerExists": "このペインはもう存在しません",
+  "termFailedToLoadHerdrTree": "herdrツリーの読み込みに失敗しました: {error}",
+  "@termFailedToLoadHerdrTree": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrServerNotResponding": "herdrサーバーが応答していません: {error}",
+  "@termHerdrServerNotResponding": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrTargetPaneNotFound": "herdrの対象ペインが見つかりません",
+  "termHerdrTargetLost": "対象が消えました。再同期しました",
+  "termHerdrInvalidKey": "このキーは herdr で送信できませんでした",
+  "termHerdrNoNeighbor": "その方向に pane はありません",
+  "termHerdrUnchanged": "分割境界のため変更なし",
+  "termHerdrNoopGeneric": "操作は実行されましたが状態は変わりませんでした",
+  "termOperationFailed": "{operation} に失敗しました: {error}",
+  "@termOperationFailed": {
+    "placeholders": {
+      "operation": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailedHerdr": "リサイズに失敗しました。ターミナルサイズを適用できませんでした。herdrの表示設定を確認するか、もう一度お試しください。",
+  "termImageTransferFailed": "画像転送に失敗しました",
+  "termUploaded": "アップロード済み: {path}",
+  "@termUploaded": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "termMultilineNeedsConnection": "複数行の送信にはライブ接続が必要です。接続後に再試行してください。",
+  "termWaitingForNetwork": "ネットワークを待機中...",
+  "termConnectionError": "接続エラー",
+  "termCharsQueued": "{count} 文字をキューに保存しました",
+  "@termCharsQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termChars": "{count} 文字",
+  "@termChars": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termOffline": "オフライン",
+  "termReconnecting": "再接続中",
+  "termFileBrowser": "ファイルブラウザ",
+  "termResizeTerminal": "ターミナルをリサイズ",
+  "termNewTab": "新規タブ",
+  "termResizePane": "ペインをリサイズ",
+  "termResizeWindow": "ウィンドウをリサイズ",
+  "termResize": "リサイズ",
+  "termNewWindow": "新規ウィンドウ",
+  "termSelectSession": "セッションを選択",
+  "termSelectWindow": "ウィンドウを選択",
+  "termSelectPane": "ペインを選択",
+  "termClosePaneTitle": "ペインを閉じますか？",
+  "termClosePaneLastWindowLastPane": "最後のウィンドウの最後のペインです。閉じるとセッションが終了し、サーバーから切断されます。",
+  "termClosePaneLastPane": "このウィンドウの最後のペインです。閉じるとウィンドウも閉じられます。",
+  "termClosePaneConfirm": "ペイン「{paneTitle}」を閉じてもよろしいですか？",
+  "@termClosePaneConfirm": {
+    "placeholders": {
+      "paneTitle": {
+        "type": "String"
+      }
+    }
+  },
+  "termCancel": "キャンセル",
+  "termClose": "閉じる",
+  "termTerminalOptions": "ターミナルオプション",
+  "termScrollSelectMode": "スクロール＆選択モード",
+  "termNormalMode": "通常モード",
+  "termTapReturnNormal": "タップで通常モードに戻る",
+  "termTapEnableSelection": "タップでテキスト選択を有効にする",
+  "termResetZoom": "ズームをリセット",
+  "termCurrentZoom": "現在: {percent}%",
+  "@termCurrentZoom": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "termPinchToZoom": "ピンチでズームイン/アウト",
+  "termSettings": "設定",
+  "termSettingsSubtitle": "フォント・テーマなどのオプション",
+  "termDisconnect": "切断",
+  "termCloseSshConnection": "SSH接続を閉じる",
+  "termCloseWindowTitle": "ウィンドウを閉じますか？",
+  "termCloseWindowLast": "セッションの最後のウィンドウです。閉じるとセッションが終了し、サーバーから切断されます。",
+  "termCloseWindowConfirm": "ウィンドウ「{windowName}」を閉じてもよろしいですか？",
+  "@termCloseWindowConfirm": {
+    "placeholders": {
+      "windowName": {
+        "type": "String"
+      }
+    }
+  },
+  "termDisconnectTitle": "切断しますか？",
+  "termDisconnectConfirm": "サーバーから切断してもよろしいですか？",
+  "termClosePaneHerdrLastBoth": "最後のタブの最後のペインです。閉じるとタブとワークスペースも閉じられます。",
+  "termClosePaneHerdrLast": "このタブの最後のペインです。閉じるとタブも閉じられます。",
+  "termCloseTabTitle": "タブを閉じますか？",
+  "termCloseTabLast": "このワークスペースの最後のタブです。閉じるとワークスペースも閉じられます。",
+  "termCloseTabConfirm": "タブ「{tabName}」を閉じてもよろしいですか？",
+  "@termCloseTabConfirm": {
+    "placeholders": {
+      "tabName": {
+        "type": "String"
+      }
+    }
+  },
+  "termRenameTabTitle": "タブ名を変更",
+  "termTabLabel": "タブ名",
+  "termRenameTabHint": "このタブのラベルを入力",
+  "termRename": "変更",
+  "termCreate": "作成",
+  "termNewTabHint": "空欄でデフォルト名",
+  "termLabelCannotBeEmpty": "ラベルを入力してください",
+  "termLabelTooLong": "ラベルは100文字以内で入力してください",
+  "termSplitPaneTitle": "ペイン {index} を分割",
+  "@termSplitPaneTitle": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "termSplitRight": "右に分割",
+  "termSplitDown": "下に分割",
+  "termTapToSplit": "タップで分割",
+  "termEnterCommand": "コマンドを入力",
+  "termShiftEnterNewline": "Shift+Enter: 改行",
+  "termCommandHint": "コマンドを入力...（Enterで送信）",
+  "termExecute": "実行",
+  "termFailedToLoad": "読み込みに失敗しました",
+  "termReadOnlyBadge": "読み取り専用",
+  "termReadOnlyBanner": "読み取り専用 — 表示のみ",
+  "termGallery": "ギャラリー",
+  "termCamera": "カメラ",
+  "termSelectedWindow": "選択中: {name}（{size}）",
+  "@termSelectedWindow": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "termTapWindowToSelect": "ウィンドウをタップして選択",
+  "newWindowTitle": "新規ウィンドウ",
+  "newWindowNameLabel": "ウィンドウ名",
+  "newWindowNameHint": "空欄でデフォルト名",
+  "newWindowCommandLabel": "コマンド",
+  "newWindowCommandHint": "npm run dev（任意）",
+  "newWindowCancel": "キャンセル",
+  "newWindowCreate": "作成",
+  "newWindowNameTooLong": "ウィンドウ名は50文字以内で入力してください",
+  "newWindowNameChars": "使用できるのは英数字と - _ のみです",
+  "newWindowNameExists": "ウィンドウ「{name}」は既に存在します",
+  "@newWindowNameExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTitle": "ペインをリサイズ",
+  "paneChooserSelected": "選択中: {label}（{size}）",
+  "@paneChooserSelected": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTapToSelect": "ペインをタップして選択",
+  "paneChooserCancel": "キャンセル",
+  "paneChooserResize": "リサイズ",
+  "paneChooserSizeUnknown": "サイズ不明",
+  "renameWindowTitle": "ウィンドウ名を変更",
+  "renameWindowNameLabel": "ウィンドウ名",
+  "renameWindowCancel": "キャンセル",
+  "renameWindowConfirm": "変更",
+  "renameWindowCannotBeEmpty": "ウィンドウ名を入力してください",
+  "renameWindowTooLong": "ウィンドウ名は50文字以内で入力してください",
+  "renameWindowChars": "使用できるのは英数字と - _ のみです",
+  "renameWindowExists": "ウィンドウ「{name}」は既に存在します",
+  "@renameWindowExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizePaneTitle": "ペインをリサイズ",
+  "resizeWindowTitle": "ウィンドウをリサイズ",
+  "resizeTerminalTitle": "ターミナルをリサイズ",
+  "resizeCancel": "キャンセル",
+  "resizeConfirm": "リサイズ",
+  "resizeWarningOtherPanes": "他のペインのサイズも変更される場合があります。",
+  "resizeWarningTmuxRequired": "ウィンドウのリサイズには tmux 2.9+ が必要です。リサイズボタンは無効です。",
+  "resizeTerminalDescription": "ターミナル全体（PTY）のサイズを変更します。すべてのワークスペースに適用されます。",
+  "resizePresetStandard": "80x24（標準）",
+  "resizePresetWide": "120x40（ワイド）",
+  "resizePresetFullHd": "160x50（フルHD）",
+  "resizePresetMatchScreen": "画面に合わせる（{cols} x {rows}）",
+  "@resizePresetMatchScreen": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizeCols": "列",
+  "resizeRows": "行",
+  "resizeEstimated": "概算",
+  "resizeSizeUnknown": "サイズ不明",
+  "imgTransferSendImage": "画像を送信",
+  "imgTransferGallery": "ギャラリー",
+  "imgTransferCamera": "カメラ",
+  "imgTransferTitle": "画像をアップロード",
+  "imgTransferFormatLabel": "形式",
+  "imgTransferFormatOriginal": "オリジナル",
+  "imgTransferResizeLabel": "リサイズ",
+  "imgTransferSizeSmall": "S",
+  "imgTransferSizeMedium": "M",
+  "imgTransferSizeLarge": "L",
+  "imgTransferBracketedPaste": "ブラケットペースト",
+  "imgTransferAdvanced": "詳細設定",
+  "imgTransferRemotePath": "リモートパス",
+  "imgTransferPathFormat": "パス形式",
+  "imgTransferPathFormatHint": "プレースホルダーとして {path} を使用。例: @{path}",
+  "@imgTransferPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferJpegQuality": "JPEG品質",
+  "imgTransferCustomSize": "カスタムサイズ",
+  "imgTransferWidth": "幅",
+  "imgTransferHeight": "高さ",
+  "imgTransferApply": "適用",
+  "imgTransferAutoEnter": "自動Enter",
+  "imgTransferAutoEnterSubtitle": "パス注入後にEnterを送信",
+  "imgTransferCancel": "キャンセル",
+  "imgTransferUpload": "アップロード"
 }

@@ -7,6 +7,8 @@ import '../../services/terminal/font_calculator.dart';
 import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 
 /// リサイズ結果
@@ -96,10 +98,14 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -108,9 +114,9 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizePaneTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -125,6 +131,7 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
                 const SizedBox.shrink()
               else
                 _buildPaneGridPreview(
+                  l10n: context.l10n,
                   allPanes: widget.panes,
                   highlightPaneId: widget.targetPaneId,
                   previewPaneId: widget.targetPaneId,
@@ -135,9 +142,10 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
               const SizedBox(height: 12),
               // 警告: pane 2 枚以上のときのみ（条件4・tmux と同レベル）。
               if (widget.panes.length >= 2)
-                _buildWarning('Other pane sizes may also change.'),
+                _buildWarning(context.l10n.resizeWarningOtherPanes),
               const SizedBox(height: 12),
               _buildSizeInputRow(
+                l10n: context.l10n,
                 cols: _cols,
                 rows: _rows,
                 onColsChanged: (v) => setState(() => _cols = v),
@@ -158,7 +166,7 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: () =>
@@ -166,7 +174,7 @@ class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: DesignColors.primary,
           ),
-          child: const Text('Resize'),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -235,10 +243,14 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -254,9 +266,9 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizePaneTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -266,6 +278,7 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildPaneGridPreview(
+                l10n: context.l10n,
                 // domain 変換（TmuxPane → MultiplexerPane）で同一結果を維持。
                 allPanes: widget.allPanesInWindow
                     .map((p) => p.toDomain())
@@ -277,9 +290,10 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
               ),
             const SizedBox(height: 12),
             if (widget.allPanesInWindow.length >= 2)
-              _buildWarning('Other pane sizes may also change.'),
+              _buildWarning(context.l10n.resizeWarningOtherPanes),
             const SizedBox(height: 12),
             _buildSizeInputRow(
+              l10n: context.l10n,
               cols: _cols,
               rows: _rows,
               onColsChanged: (v) => setState(() => _cols = v),
@@ -300,7 +314,7 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: () =>
@@ -308,7 +322,7 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: DesignColors.primary,
           ),
-          child: const Text('Resize'),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -371,10 +385,14 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -383,9 +401,9 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Window',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizeWindowTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -399,12 +417,14 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
                 panes: widget.panes,
                 currentCols: widget.currentCols,
                 currentRows: widget.currentRows,
+                l10n: context.l10n,
               ),
             const SizedBox(height: 12),
             if (!widget.supportsResizeWindow)
-              _buildWarning('Window resize requires tmux 2.9+. Resize button disabled.'),
+              _buildWarning(context.l10n.resizeWarningTmuxRequired),
             const SizedBox(height: 12),
             _buildSizeInputRow(
+              l10n: context.l10n,
               cols: _cols,
               rows: _rows,
               onColsChanged: (v) => setState(() => _cols = v),
@@ -425,7 +445,7 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: widget.supportsResizeWindow
@@ -435,7 +455,7 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: DesignColors.primary,
           ),
-          child: const Text('Resize'),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -515,10 +535,14 @@ class _HerdrResizeTerminalDialogState
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -680,9 +704,9 @@ class _HerdrResizeTerminalDialogState
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Terminal',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizeTerminalTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -694,6 +718,7 @@ class _HerdrResizeTerminalDialogState
               _buildLayoutPreview(),
               const SizedBox(height: 12),
               _buildSizeInputRow(
+                l10n: context.l10n,
                 cols: _cols,
                 rows: _rows,
                 onColsChanged: (v) => setState(() => _cols = v),
@@ -708,11 +733,13 @@ class _HerdrResizeTerminalDialogState
                 }),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Changes the size of the whole terminal (PTY). '
-                'Applies to all workspaces.',
+              Text(
+                context.l10n.resizeTerminalDescription,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: DesignColors.textMuted,
+                ),
               ),
             ],
           ),
@@ -721,7 +748,7 @@ class _HerdrResizeTerminalDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: () =>
@@ -729,7 +756,7 @@ class _HerdrResizeTerminalDialogState
           style: FilledButton.styleFrom(
             backgroundColor: DesignColors.primary,
           ),
-          child: const Text('Resize'),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -903,6 +930,7 @@ Widget _buildPaneGridPreview({
   int? previewCols,
   int? previewRows,
   bool showEstimatedLabel = false,
+  required AppLocalizations l10n,
 }) {
   if (allPanes.isEmpty) return const SizedBox.shrink();
 
@@ -961,12 +989,12 @@ Widget _buildPaneGridPreview({
               SizedBox(width: areaW, height: areaH),
               // 概算(estimated)ラベル（条件8・右上に小さく表示）。
               if (showEstimatedLabel)
-                const Positioned(
+                Positioned(
                   top: 0,
                   right: 0,
                   child: Text(
-                    '概算(estimated)',
-                    style: TextStyle(
+                    l10n.resizeEstimated,
+                    style: const TextStyle(
                       fontSize: 10,
                       color: DesignColors.textMuted,
                     ),
@@ -979,7 +1007,7 @@ Widget _buildPaneGridPreview({
                 final width = (pane.width * scaleX).clamp(20.0, areaW - left);
                 final height = (pane.height * scaleY).clamp(14.0, areaH - top);
                 final sizeLabel = (pane.width <= 0 || pane.height <= 0)
-                    ? 'サイズ不明'
+                    ? l10n.resizeSizeUnknown
                     : '${pane.width}x${pane.height}';
 
                 return Positioned(
@@ -1034,6 +1062,7 @@ Widget _buildWindowGridPreview({
   required List<TmuxPane> panes,
   required int currentCols,
   required int currentRows,
+  required AppLocalizations l10n,
 }) {
   return Container(
     height: 120,
@@ -1068,6 +1097,7 @@ Widget _buildWindowGridPreview({
         // ペインレイアウト
         Expanded(
           child: _buildPaneGridPreview(
+            l10n: l10n,
             // domain 変換（TmuxPane → MultiplexerPane）。
             allPanes: panes.map((p) => p.toDomain()).toList(),
             highlightPaneId: '', // ウィンドウリサイズではペインハイライトなし
@@ -1108,6 +1138,7 @@ Widget _buildWarning(String message) {
 
 /// Cols / Rows 数値入力行
 Widget _buildSizeInputRow({
+  required AppLocalizations l10n,
   required int cols,
   required int rows,
   required ValueChanged<int> onColsChanged,
@@ -1117,7 +1148,7 @@ Widget _buildSizeInputRow({
     children: [
       Expanded(
         child: _buildNumberInput(
-          label: 'Cols',
+          label: l10n.resizeCols,
           value: cols,
           onChanged: onColsChanged,
         ),
@@ -1125,7 +1156,7 @@ Widget _buildSizeInputRow({
       const SizedBox(width: 12),
       Expanded(
         child: _buildNumberInput(
-          label: 'Rows',
+          label: l10n.resizeRows,
           value: rows,
           onChanged: onRowsChanged,
         ),
