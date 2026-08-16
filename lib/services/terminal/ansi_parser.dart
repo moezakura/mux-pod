@@ -385,47 +385,60 @@ class AnsiParser {
     required String fontFamily,
   }) {
     return TextSpan(
-      children: segments.map((segment) {
-        final style = segment.style;
-        var fg = style.foreground ?? defaultForeground;
-        var bg = style.background ?? defaultBackground;
+      children: segments
+          .map(
+            (segment) => _segmentToTextSpan(
+              segment,
+              fontSize: fontSize,
+              fontFamily: fontFamily,
+            ),
+          )
+          .toList(),
+    );
+  }
 
-        // 反転
-        if (style.inverse) {
-          final temp = fg;
-          fg = bg;
-          bg = temp;
-        }
+  /// 1セグメントを描画スタイル適用済みのTextSpanに変換
+  TextSpan _segmentToTextSpan(
+    AnsiSegment segment, {
+    required double fontSize,
+    required String fontFamily,
+  }) {
+    final style = segment.style;
+    var fg = style.foreground ?? defaultForeground;
+    var bg = style.background ?? defaultBackground;
 
-        // 薄暗い
-        if (style.dim) {
-          fg = fg.withValues(alpha: 0.5);
-        }
+    // 反転
+    if (style.inverse) {
+      final temp = fg;
+      fg = bg;
+      bg = temp;
+    }
 
-        // 反転時のスペースは背景色が描画されないことがあるため、No-Break Spaceに置換
-        String text = segment.text;
-        if (style.inverse) {
-          text = text.replaceAll(' ', '\u00A0');
-        }
+    // 薄暗い
+    if (style.dim) {
+      fg = fg.withValues(alpha: 0.5);
+    }
 
-        return TextSpan(
-          text: text,
-          style: TerminalFontStyles.getTextStyle(
-            fontFamily,
-            fontSize: fontSize,
-            color: fg,
-            backgroundColor: (style.inverse || bg != defaultBackground)
-                ? bg
-                : null,
-            fontWeight: style.bold ? FontWeight.bold : FontWeight.normal,
-            fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
-            decoration: TextDecoration.combine([
-              if (style.underline) TextDecoration.underline,
-              if (style.strikethrough) TextDecoration.lineThrough,
-            ]),
-          ),
-        );
-      }).toList(),
+    // 反転時のスペースは背景色が描画されないことがあるため、No-Break Spaceに置換
+    String text = segment.text;
+    if (style.inverse) {
+      text = text.replaceAll(' ', '\u00A0');
+    }
+
+    return TextSpan(
+      text: text,
+      style: TerminalFontStyles.getTextStyle(
+        fontFamily,
+        fontSize: fontSize,
+        color: fg,
+        backgroundColor: (style.inverse || bg != defaultBackground) ? bg : null,
+        fontWeight: style.bold ? FontWeight.bold : FontWeight.normal,
+        fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
+        decoration: TextDecoration.combine([
+          if (style.underline) TextDecoration.underline,
+          if (style.strikethrough) TextDecoration.lineThrough,
+        ]),
+      ),
     );
   }
 
@@ -525,5 +538,78 @@ class AnsiParser {
     );
     _spanCache[line] = _LineSpan(span, fontSize, fontFamily);
     return span;
+  }
+
+  /// キャレット（任意のインライン要素）を指定文字位置に直接挿入した行スパンを構築する。
+  ///
+  /// テキストレイアウト中の正確な位置にキャレットを「合成（Stack+Positioned）」
+  /// せず直接埋め込むための API（Issue #70 根本対応）。
+  ///
+  /// - [caretCharOffset]: キャレットを挿入するコードユニットオフセット。
+  ///   セグメント境界・行末・空行のいずれでもよい（クランプされる）。
+  /// - [padColumns]: 行テキスト終端よりさらに右のカラムにキャレットを置く場合の
+  ///   埋めセル数（No-Break Space で埋める）。
+  /// - [caret]: 挿入するインライン要素。null の場合はキャッシュ済みの通常行スパンを返す。
+  TextSpan lineToTextSpanWithCaret(
+    ParsedLine line, {
+    required double fontSize,
+    required String fontFamily,
+    required int caretCharOffset,
+    required int padColumns,
+    InlineSpan? caret,
+  }) {
+    if (caret == null) {
+      return lineToTextSpan(line, fontSize: fontSize, fontFamily: fontFamily);
+    }
+
+    final spans = <InlineSpan>[];
+    var consumed = 0;
+    var inserted = false;
+
+    for (final segment in line.segments) {
+      final segLen = segment.text.length;
+      if (!inserted && caretCharOffset <= consumed + segLen) {
+        final local = (caretCharOffset - consumed).clamp(0, segLen);
+        if (local > 0) {
+          spans.add(
+            _segmentToTextSpan(
+              AnsiSegment(segment.text.substring(0, local), segment.style),
+              fontSize: fontSize,
+              fontFamily: fontFamily,
+            ),
+          );
+        }
+        spans.add(caret);
+        if (local < segLen) {
+          spans.add(
+            _segmentToTextSpan(
+              AnsiSegment(segment.text.substring(local), segment.style),
+              fontSize: fontSize,
+              fontFamily: fontFamily,
+            ),
+          );
+        }
+        inserted = true;
+      } else {
+        spans.add(
+          _segmentToTextSpan(
+            segment,
+            fontSize: fontSize,
+            fontFamily: fontFamily,
+          ),
+        );
+      }
+      consumed += segLen;
+    }
+
+    if (!inserted) {
+      // キャレットが行テキスト終端より先にある場合: 埋めセルで位置を再現してから挿入
+      if (padColumns > 0) {
+        spans.add(TextSpan(text: '\u00A0' * padColumns));
+      }
+      spans.add(caret);
+    }
+
+    return TextSpan(children: spans);
   }
 }
