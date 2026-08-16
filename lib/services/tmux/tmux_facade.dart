@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math';
 
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_lookup.dart';
@@ -21,6 +22,17 @@ export 'ssh_tmux_command_executor.dart';
 // inventory: TMUX-FACADE-001
 final TmuxContract tmuxFacade = TmuxFacade();
 
+/// pollPane セクション区切りマーカーのパターン。
+/// コマンド埋め込み時はランダムIDだが、パース側はパターン一致で抽出する
+/// （テストfixtureは任意のIDでマーカーを構築できる）。
+final RegExp _pollSeparatorPattern = RegExp(
+  r'\x01###POLL_[0-9a-f]+###\x01',
+);
+
+/// pollPane のテスト・本番共通ヘルパ: 区切りマーカー文字列（バイト列版）。
+/// [id] には16進文字列を渡す。
+String tmuxPollSeparator(String id) => '\x01###POLL_$id###\x01';
+
 // inventory: TMUX-FACADE-002
 class TmuxFacade implements TmuxContract {
   /// 任意のローカライズ文字列。null の場合は英語フォールバック（テスト互換）。
@@ -28,6 +40,13 @@ class TmuxFacade implements TmuxContract {
   final AppLocalizations? _l10n;
 
   TmuxFacade({AppLocalizations? l10n}) : _l10n = l10n;
+
+  /// pollPane 用マーカーID（呼び出しごとにランダム生成）。
+  static String _generatePollMarkerId() {
+    final rng = Random.secure();
+    final bytes = List<int>.generate(8, (_) => rng.nextInt(256));
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
 
   @override
   List<TmuxSession> parseSessions(String output) =>
@@ -369,10 +388,24 @@ class TmuxFacade implements TmuxContract {
     required String target,
     int historyLines = -120,
   }) async {
+    // セクション区切りマーカー（ランダムID入り）でコンテンツ/カーソル/モードを
+    // 正確に区分けする。改行の数で逆から切る方式は、capture-pane 出力の最終行が
+    // 空行のときにその改行が「カーソル行との区切り」として消費され、最終空行が
+    // ドロップしてキャレット位置が1行上にズレる（Issue #70 のデータ層の原因）。
+    // マーカーは \x01（SOH）で挟み、PersistentShell と同じくシェルのエコーバック
+    // （リテラル `\x01` 4文字）と実出力（バイト 0x01）を区別できるようにする。
+    final markerId = _generatePollMarkerId();
+    final printfSep = r'\x01###POLL_'
+        '$markerId'
+        r'###\x01';
     final combined =
+        "printf '$printfSep\\n'; "
         '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: historyLines)}; '
+        "printf '$printfSep'; "
         '${TmuxCommands.getCursorPosition(target)}; '
-        '${TmuxCommands.getPaneMode(target)}';
+        "printf '$printfSep'; "
+        '${TmuxCommands.getPaneMode(target)}; '
+        "printf '$printfSep'";
     final result = await executor.execute(
       CommandRequest(
         command: combined,
@@ -382,12 +415,41 @@ class TmuxFacade implements TmuxContract {
     );
     final output = result.primaryOutput;
 
-    final modeCut = output.lastIndexOf('\n');
-    final paneModeOutput = modeCut >= 0 ? output.substring(modeCut + 1) : '';
-    final beforeMode = modeCut >= 0 ? output.substring(0, modeCut) : '';
-    final curCut = beforeMode.lastIndexOf('\n');
-    final cursorOutput = curCut >= 0 ? beforeMode.substring(curCut + 1) : '';
-    final contentOutput = curCut >= 0 ? beforeMode.substring(0, curCut) : '';
+    String contentOutput;
+    String cursorOutput;
+    String paneModeOutput;
+
+    // 出力中の区切りマーカーをパターンマッチで抽出（IDは呼び出しごとにランダム）。
+    final sepMatches = _pollSeparatorPattern.allMatches(output).toList();
+    if (sepMatches.length >= 3) {
+      // マーカー区切り: [\n+capture] [cursor\n] [mode\n]
+      // - コンテンツ: 先頭の printf 由来の \n を1つだけ除去し、末尾の capture 最終行の
+      //   改行を1つだけ除去する（split の空要素アーティファクト対策。空行は保持される）
+      // - cursor/mode: 各セクション末尾の改行を除去
+      var capture = output.substring(
+        sepMatches[0].end,
+        sepMatches[1].start,
+      );
+      if (capture.startsWith('\n')) capture = capture.substring(1);
+      if (capture.endsWith('\n')) {
+        capture = capture.substring(0, capture.length - 1);
+      }
+      contentOutput = capture;
+      cursorOutput = output
+          .substring(sepMatches[1].end, sepMatches[2].start)
+          .trimRight();
+      var mode = output.substring(sepMatches[2].end, sepMatches[3].start);
+      if (mode.startsWith('\n')) mode = mode.substring(1);
+      paneModeOutput = mode;
+    } else {
+      // フォールバック（テストfixture等の非マーカー出力）: 従来の逆方向切割り。
+      final modeCut = output.lastIndexOf('\n');
+      paneModeOutput = modeCut >= 0 ? output.substring(modeCut + 1) : '';
+      final beforeMode = modeCut >= 0 ? output.substring(0, modeCut) : '';
+      final curCut = beforeMode.lastIndexOf('\n');
+      cursorOutput = curCut >= 0 ? beforeMode.substring(curCut + 1) : '';
+      contentOutput = curCut >= 0 ? beforeMode.substring(0, curCut) : '';
+    }
 
     var cursorX = 0, cursorY = 0, paneWidth = 0, paneHeight = 0;
     final cursorTrimmed = cursorOutput.trim();
@@ -400,11 +462,8 @@ class TmuxFacade implements TmuxContract {
         paneHeight = int.tryParse(parts[3]) ?? 0;
       }
     }
-    final processedContent = contentOutput.endsWith('\n')
-        ? contentOutput.substring(0, contentOutput.length - 1)
-        : contentOutput;
     final content = TmuxParser.parsePaneContent(
-      processedContent,
+      contentOutput,
       width: paneWidth,
       height: paneHeight,
       stripTrailingEmptyLines: false,
