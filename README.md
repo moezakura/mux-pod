@@ -111,9 +111,13 @@ Dedicated buttons for terminal essentials:
 - **S-RET** — Shift+Enter for Claude Code confirmation
 - **DirectInput mode** — Real-time keystroke streaming with live indicator
 
-### 📋 Copy/Paste Mode
+### 📋 Terminal Modes
 
-Toggle **Scroll & Select Mode** to enable text selection. Terminal updates are buffered while you select, so content won't jump. Selected text copies to system clipboard.
+Choose from three exclusive modes in the terminal options menu:
+
+- **Normal** — Key input and live view (default).
+- **Scroll Send** — Drag to send scroll (wheel / PgUp / PgDn) to the app running in the pane. Local scrolling and text selection are disabled.
+- **Select** — Browse history and select text. Terminal updates are buffered while you select, so content won't jump. Selected text copies to system clipboard.
 
 ### ⚡ Connection Resilience
 
