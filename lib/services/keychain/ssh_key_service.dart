@@ -288,7 +288,10 @@ class SshKeyService {
     // private key section
     final privateSection = BytesBuilder();
     // checkint (random, same twice)
-    final checkInt = DateTime.now().millisecondsSinceEpoch & 0xffffffff;
+    // OpenSSH仕様ではcheckintは乱数と規定されている。旧実装は壁時計由来
+    // (DateTime.now)だったため、Issue #68と同じ乱数欠陥パターンだった。
+    // OSのCSPRNGから32bit値を取る(nextInt(2^32)は0..2^32-1を返す)。
+    final checkInt = Random.secure().nextInt(0x100000000);
     privateSection.add(_encodeUint32(checkInt));
     privateSection.add(_encodeUint32(checkInt));
     // keytype
