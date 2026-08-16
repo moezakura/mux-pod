@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/design_colors.dart';
+import '../l10n/l10n_ext.dart';
 
 /// 特殊キーバー（HTMLデザイン仕様準拠）
 ///
@@ -244,8 +245,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final currentValue = _directInputController.value;
-      final hasActiveComposing = currentValue.composing.isValid &&
-          !currentValue.composing.isCollapsed;
+      final hasActiveComposing =
+          currentValue.composing.isValid && !currentValue.composing.isCollapsed;
       // composing進行中ならiOSの入力を尊重して再リセットしない
       if (!hasActiveComposing && _directInputController.text != _sentinel) {
         _directInputController.value = TextEditingValue(
@@ -272,9 +273,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// 外付けキーボードの修飾子を検出してtmux形式キー名に変換
   String _applyHardwareModifiers(String baseKey) {
     final isShift = HardwareKeyboard.instance.isShiftPressed;
-    final isCtrl = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
+    final isCtrl = HardwareKeyboard.instance.isControlPressed;
     final isAlt = HardwareKeyboard.instance.isAltPressed;
+    final isMeta = HardwareKeyboard.instance.isMetaPressed;
 
     // 特殊ケース: Shift+Tab → BTab
     if (isShift && baseKey == 'Tab') return 'BTab';
@@ -283,6 +284,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     if (isShift) mods.add('S');
     if (isCtrl) mods.add('C');
     if (isAlt) mods.add('M');
+    if (isMeta) mods.add('M');
     if (mods.isEmpty) return baseKey;
     return '${mods.join('-')}-$baseKey';
   }
@@ -349,9 +351,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
     final key = event.logicalKey;
 
-    // Ctrl/Meta + A-Z のショートカット処理
-    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
+    // Ctrl + A-Z のショートカット処理（Cmd/Meta は Ctrl として扱わない）
+    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed;
     if (isCtrlPressed) {
       final keyLabel = key.keyLabel;
       if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
@@ -360,6 +361,21 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           HapticFeedback.lightImpact();
         }
         widget.onSpecialKeyPressed('C-${keyLabel.toLowerCase()}');
+        _resetSoftwareModifiers();
+        return KeyEventResult.handled;
+      }
+    }
+
+    // Cmd/Meta + A-Z は M- として送信（ユーザー要望: Meta/Super として伝える）
+    final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
+    if (isMetaPressed) {
+      final keyLabel = key.keyLabel;
+      if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
+        _markKeyEventHandled();
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+        widget.onSpecialKeyPressed('M-${keyLabel.toLowerCase()}');
         _resetSoftwareModifiers();
         return KeyEventResult.handled;
       }
@@ -404,10 +420,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? DesignColors.footerBackground : DesignColors.footerBackgroundLight,
-        border: Border(
-          top: BorderSide(color: colorScheme.outline, width: 1),
-        ),
+        color: isDark
+            ? DesignColors.footerBackground
+            : DesignColors.footerBackgroundLight,
+        border: Border(top: BorderSide(color: colorScheme.outline, width: 1)),
       ),
       child: SafeArea(
         top: false,
@@ -469,7 +485,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             color: DesignColors.secondary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: DesignColors.secondary.withValues(alpha: 0.5), width: 2),
+              bottom: BorderSide(
+                color: DesignColors.secondary.withValues(alpha: 0.5),
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -511,7 +530,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
             color: DesignColors.primary.withValues(alpha: 0.3),
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: DesignColors.primary.withValues(alpha: 0.5), width: 2),
+              bottom: BorderSide(
+                color: DesignColors.primary.withValues(alpha: 0.5),
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -662,7 +684,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         decoration: BoxDecoration(
           color: DesignColors.success.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: DesignColors.success.withValues(alpha: 0.4)),
+          border: Border.all(
+            color: DesignColors.success.withValues(alpha: 0.4),
+          ),
         ),
         child: Row(
           children: [
@@ -717,13 +741,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                   color: isDark ? Colors.white : Colors.black87,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Type here...',
+                  hintText: context.l10n.keyBarTypeHere,
                   hintStyle: GoogleFonts.jetBrainsMono(
                     fontSize: 14,
                     color: DesignColors.success.withValues(alpha: 0.5),
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 10,
+                  ),
                   isDense: true,
                 ),
               ),
@@ -750,10 +777,15 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+            color: isDark
+                ? DesignColors.keyBackground
+                : DesignColors.keyBackgroundLight,
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: isDark ? Colors.black : Colors.grey.shade400, width: 2),
+              bottom: BorderSide(
+                color: isDark ? Colors.black : Colors.grey.shade400,
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -794,10 +826,15 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+            color: isDark
+                ? DesignColors.keyBackground
+                : DesignColors.keyBackgroundLight,
             borderRadius: BorderRadius.circular(4),
             border: Border(
-              bottom: BorderSide(color: isDark ? Colors.black : Colors.grey.shade400, width: 2),
+              bottom: BorderSide(
+                color: isDark ? Colors.black : Colors.grey.shade400,
+                width: 2,
+              ),
             ),
             boxShadow: [
               BoxShadow(
@@ -822,7 +859,11 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  Widget _buildModifierButton(String label, bool isPressed, VoidCallback onPressed) {
+  Widget _buildModifierButton(
+    String label,
+    bool isPressed,
+    VoidCallback onPressed,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
@@ -837,11 +878,17 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           height: 32,
           margin: const EdgeInsets.symmetric(horizontal: 2),
           decoration: BoxDecoration(
-            color: isPressed ? colorScheme.primary : (isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight),
+            color: isPressed
+                ? colorScheme.primary
+                : (isDark
+                      ? DesignColors.keyBackground
+                      : DesignColors.keyBackgroundLight),
             borderRadius: BorderRadius.circular(4),
             border: Border(
               bottom: BorderSide(
-                color: isPressed ? colorScheme.primary : (isDark ? Colors.black : Colors.grey.shade400),
+                color: isPressed
+                    ? colorScheme.primary
+                    : (isDark ? Colors.black : Colors.grey.shade400),
                 width: 2,
               ),
             ),
@@ -882,15 +929,13 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
-        child: Icon(
-          icon,
-          size: 16,
-          color: colorScheme.onSurface,
-        ),
+        child: Icon(icon, size: 16, color: colorScheme.onSurface),
       ),
     );
   }
@@ -909,7 +954,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -942,7 +989,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -970,7 +1019,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: isDark ? DesignColors.keyBackground : DesignColors.keyBackgroundLight,
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
         ),
@@ -996,7 +1047,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         decoration: BoxDecoration(
           color: DesignColors.primary.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: DesignColors.primary.withValues(alpha: 0.2)),
+          border: Border.all(
+            color: DesignColors.primary.withValues(alpha: 0.2),
+          ),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Center(

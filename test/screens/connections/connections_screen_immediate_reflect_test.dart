@@ -100,30 +100,32 @@ void main() {
       expect(state.connections.first.id, equals('c1'));
     });
 
-    test('watchers see the new connection after add() without invalidate',
-        () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'watchers see the new connection after add() without invalidate',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await _activateAndLoad(container);
+        await _activateAndLoad(container);
 
-      // Subscribe a listener that records build counts.
-      int buildCount = 0;
-      container.listen<ConnectionsState>(
-        connectionsProvider,
-        (previous, current) => buildCount++,
-      );
+        // Subscribe a listener that records build counts.
+        int buildCount = 0;
+        container.listen<ConnectionsState>(
+          connectionsProvider,
+          (previous, current) => buildCount++,
+        );
 
-      final notifier = container.read(connectionsProvider.notifier);
-      await notifier.add(_makeConnection());
+        final notifier = container.read(connectionsProvider.notifier);
+        await notifier.add(_makeConnection());
 
-      // At least one notification must have fired (the state change).
-      expect(buildCount, greaterThanOrEqualTo(1));
+        // At least one notification must have fired (the state change).
+        expect(buildCount, greaterThanOrEqualTo(1));
 
-      final state = container.read(connectionsProvider);
-      expect(state.connections, hasLength(1));
-      expect(state.connections.first.name, equals('Test Server'));
-    });
+        final state = container.read(connectionsProvider);
+        expect(state.connections, hasLength(1));
+        expect(state.connections.first.name, equals('Test Server'));
+      },
+    );
 
     test('adding two connections accumulates both in state', () async {
       final container = ProviderContainer();
@@ -163,29 +165,31 @@ void main() {
       expect(state.connections.first.name, equals('Updated'));
     });
 
-    test('watchers see the updated connection after update() without invalidate',
-        () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'watchers see the updated connection after update() without invalidate',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await _activateAndLoad(container);
+        await _activateAndLoad(container);
 
-      final notifier = container.read(connectionsProvider.notifier);
-      await notifier.add(_makeConnection(id: 'c1', name: 'Before'));
+        final notifier = container.read(connectionsProvider.notifier);
+        await notifier.add(_makeConnection(id: 'c1', name: 'Before'));
 
-      int updateNotifications = 0;
-      container.listen<ConnectionsState>(
-        connectionsProvider,
-        (previous, current) => updateNotifications++,
-      );
+        int updateNotifications = 0;
+        container.listen<ConnectionsState>(
+          connectionsProvider,
+          (previous, current) => updateNotifications++,
+        );
 
-      await notifier.update(_makeConnection(id: 'c1', name: 'After'));
+        await notifier.update(_makeConnection(id: 'c1', name: 'After'));
 
-      expect(updateNotifications, greaterThanOrEqualTo(1));
+        expect(updateNotifications, greaterThanOrEqualTo(1));
 
-      final state = container.read(connectionsProvider);
-      expect(state.connections.first.name, equals('After'));
-    });
+        final state = container.read(connectionsProvider);
+        expect(state.connections.first.name, equals('After'));
+      },
+    );
 
     test('update() does not affect other connections', () async {
       final container = ProviderContainer();
@@ -209,40 +213,42 @@ void main() {
     });
   });
 
-  group('filteredConnectionsProvider — derived state updates without rebuild',
-      () {
-    test('derived provider reflects add() immediately', () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+  group(
+    'filteredConnectionsProvider — derived state updates without rebuild',
+    () {
+      test('derived provider reflects add() immediately', () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await _activateAndLoad(container);
+        await _activateAndLoad(container);
 
-      final notifier = container.read(connectionsProvider.notifier);
+        final notifier = container.read(connectionsProvider.notifier);
 
-      // Initially empty.
-      expect(container.read(filteredConnectionsProvider), isEmpty);
+        // Initially empty.
+        expect(container.read(filteredConnectionsProvider), isEmpty);
 
-      await notifier.add(_makeConnection(id: 'c1', name: 'My Server'));
+        await notifier.add(_makeConnection(id: 'c1', name: 'My Server'));
 
-      // Derived provider must return the new entry without invalidate.
-      final filtered = container.read(filteredConnectionsProvider);
-      expect(filtered, hasLength(1));
-      expect(filtered.first.name, equals('My Server'));
-    });
+        // Derived provider must return the new entry without invalidate.
+        final filtered = container.read(filteredConnectionsProvider);
+        expect(filtered, hasLength(1));
+        expect(filtered.first.name, equals('My Server'));
+      });
 
-    test('derived provider reflects update() immediately', () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+      test('derived provider reflects update() immediately', () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await _activateAndLoad(container);
+        await _activateAndLoad(container);
 
-      final notifier = container.read(connectionsProvider.notifier);
-      await notifier.add(_makeConnection(id: 'c1', name: 'Before'));
+        final notifier = container.read(connectionsProvider.notifier);
+        await notifier.add(_makeConnection(id: 'c1', name: 'Before'));
 
-      await notifier.update(_makeConnection(id: 'c1', name: 'After'));
+        await notifier.update(_makeConnection(id: 'c1', name: 'After'));
 
-      final filtered = container.read(filteredConnectionsProvider);
-      expect(filtered.first.name, equals('After'));
-    });
-  });
+        final filtered = container.read(filteredConnectionsProvider);
+        expect(filtered.first.name, equals('After'));
+      });
+    },
+  );
 }

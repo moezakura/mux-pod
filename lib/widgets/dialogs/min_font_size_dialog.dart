@@ -2,6 +2,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n_ext.dart';
+
 /// 最小フォントサイズ選択ダイアログ
 ///
 /// ターミナル自動フィット時の最小フォントサイズを選択する。
@@ -9,10 +11,7 @@ import 'package:flutter/material.dart';
 class MinFontSizeDialog extends StatefulWidget {
   final double currentSize;
 
-  const MinFontSizeDialog({
-    super.key,
-    required this.currentSize,
-  });
+  const MinFontSizeDialog({super.key, required this.currentSize});
 
   @override
   State<MinFontSizeDialog> createState() => _MinFontSizeDialogState();
@@ -32,17 +31,18 @@ class _MinFontSizeDialogState extends State<MinFontSizeDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return AlertDialog(
-      title: const Text('Minimum Font Size'),
+      title: Text(l10n.minFontSizeTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8.0),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
               child: Text(
-                'Font size will not go below this value. Horizontal scroll is enabled for wider panes.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                l10n.minFontSizeDescription,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ),
             ..._minFontSizes.map((size) {
@@ -63,7 +63,7 @@ class _MinFontSizeDialogState extends State<MinFontSizeDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(l10n.commonCancel),
         ),
       ],
     );

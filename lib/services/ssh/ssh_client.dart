@@ -7,6 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../backend/multiplexer_config.dart';
+import '../command/command_executor.dart';
+import '../../l10n/app_localizations.dart';
+import '../command/command_request.dart';
+import '../command/command_result.dart';
 import '../connection_error.dart';
 import '../keychain/secure_storage.dart';
 import '../tmux/tmux_backend.dart';
@@ -160,9 +164,18 @@ class SshClient implements BackendAdapter {
   SSHSocket? _socket;
   SftpClient? _cachedSftp;
 
+  /// hidden herdr TUI ホスト用の managed PTY process（[startManagedPty] で起動）。
+  ///
+  /// [dispose] / 切断時に必ず close する（承認条件 9: bridge reset に加えて
+  /// この cleanup でも hidden session を終了させる）。
+  ManagedPtyProcess? _managedPty;
+
   SshConnectionState _state = SshConnectionState.disconnected;
   SshEvents _events = const SshEvents();
   String? _lastError;
+
+  /// ローカライズ文字列（[connect] の [l10n] 引数で設定。null 時は英語フォールバック）。
+  AppLocalizations? _l10n;
 
   StreamSubscription<Uint8List>? _stdoutSubscription;
   StreamSubscription<Uint8List>? _stderrSubscription;
@@ -182,6 +195,15 @@ class SshClient implements BackendAdapter {
   /// 接続時に使用したオプション
   // inventory: SSH-020
   SshConnectOptions? _connectOptions;
+
+  /// 旧形式（MD5 hex）保存値からの移行保留。
+  ///
+  /// dartssh2 2.18.0+ でホスト鍵 fingerprint が `SHA256:<base64>` の UTF-8 バイトに
+  /// 変更された（BREAKING）。旧形式で保存済みの値は再検証できないため、
+  /// 接続実績のあるサーバーとして受理し、**ユーザー認証成功後にのみ**
+  /// 正規形式へ更新する（[connect] で保存）。
+  ({String host, int port, String type, String fingerprint})?
+  _pendingFingerprintMigration;
 
   // inventory: LEGACY-0138
   /// 接続時に使用したオプション
@@ -278,7 +300,10 @@ class SshClient implements BackendAdapter {
   /// 呼び出し側で close() を呼んではならない。
   Future<SftpClient> openSftp() async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('SFTP requires an active SSH connection');
+      throw SshConnectionError(
+        _l10n?.sshSftpRequiresConnection ??
+            'SFTP requires an active SSH connection',
+      );
     }
     if (_cachedSftp != null) {
       debugPrint('[SshClient] openSftp: returning cached SftpClient');
@@ -303,13 +328,19 @@ class SshClient implements BackendAdapter {
     required String username,
     required SshConnectOptions options,
     bool lightweight = false,
+    AppLocalizations? l10n,
   }) async {
+    // ローカライズ文字列を保持（null 時は英語フォールバック・テスト互換）。
+    _l10n = l10n;
+
     // バリデーション
     // inventory: SSH-LIFE-016
     _validateConnectionParams(host, port, username, options);
 
     _state = SshConnectionState.connecting;
     _lastError = null;
+    // 前回接続の移行保留をリセット（成功・失敗どちらでも次回に持ち越さない）
+    _pendingFingerprintMigration = null;
 
     try {
       final connectionFactory = _connectionFactory;
@@ -381,6 +412,19 @@ class SshClient implements BackendAdapter {
       // 認証完了を待機
       await _client!.authenticated;
 
+      // 旧形式保存値からの移行: 認証が成功した場合のみ正規形式で保存する
+      // （認証失敗時は更新しない = 問題なければ SHA256 に Update）。
+      final pending = _pendingFingerprintMigration;
+      _pendingFingerprintMigration = null;
+      if (pending != null) {
+        await SecureStorageService().saveHostKeyFingerprint(
+          pending.host,
+          pending.port,
+          pending.type,
+          pending.fingerprint,
+        );
+      }
+
       _state = SshConnectionState.connected;
       _connectionStateController.add(_state);
 
@@ -399,18 +443,24 @@ class SshClient implements BackendAdapter {
       }
     } on SocketException catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Connection failed: ${e.message}';
+      _lastError =
+          _l10n?.connTestConnectionFailed(e.message) ??
+          'Connection failed: ${e.message}';
       // inventory: SSH-LIFE-020
       await _cleanup();
       throw SshConnectionError(_lastError!, e);
     } on SSHAuthFailError catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Authentication failed: ${e.message}';
+      _lastError =
+          _l10n?.connTestAuthFailed(e.message) ??
+          'Authentication failed: ${e.message}';
       await _cleanup();
       throw SshAuthenticationError(_lastError!, e);
     } catch (e) {
       _state = SshConnectionState.error;
-      _lastError = 'Connection failed: $e';
+      _lastError =
+          _l10n?.connTestConnectionFailed(e.toString()) ??
+          'Connection failed: $e';
       await _cleanup();
       throw SshConnectionError(_lastError!, e);
     }
@@ -424,17 +474,22 @@ class SshClient implements BackendAdapter {
     SshConnectOptions options,
   ) {
     if (host.trim().isEmpty) {
-      throw SshConnectionError('Host is required');
+      throw SshConnectionError(_l10n?.sshHostRequired ?? 'Host is required');
     }
     if (username.trim().isEmpty) {
-      throw SshConnectionError('Username is required');
+      throw SshConnectionError(
+        _l10n?.sshUsernameRequired ?? 'Username is required',
+      );
     }
     if (port < 1 || port > 65535) {
-      throw SshConnectionError('Invalid port number: $port');
+      throw SshConnectionError(
+        _l10n?.sshInvalidPortNumber(port) ?? 'Invalid port number: $port',
+      );
     }
     if (options.password == null && options.privateKey == null) {
       throw SshAuthenticationError(
-        'Either password or privateKey must be provided',
+        _l10n?.sshCredentialRequired ??
+            'Either password or privateKey must be provided',
       );
     }
   }
@@ -442,8 +497,16 @@ class SshClient implements BackendAdapter {
   // inventory: SSH-LIFE-017
   /// ホスト鍵フィンガープリントを検証する。
   ///
-  /// 初回接続時は [acceptNewHostKeys] が true なら受け入れて保存し、
-  /// false なら拒否する。2回目以降は保存済みフィンガープリントと比較する。
+  /// dartssh2 2.18.0 以降は OpenSSH 形式 `SHA256:<base64>` 文字列の UTF-8 バイトが
+  /// 渡される（2.18.0 で BREAKING: それ以前は MD5 生バイト）。
+  ///
+  /// - 初回接続時: [acceptNewHostKeys] が true なら受け入れて保存し、
+  ///   false なら拒否する。
+  /// - 保存値が正規形式（`SHA256:` プレフィックス）: 比較して一致なら受理、
+  ///   不一致なら拒否。
+  /// - 保存値が旧形式（MD5 hex・`SHA256:` プレフィックスなし）: 再検証不能なため
+  ///   接続実績のあるサーバーとして受理し、[connect] がユーザー認証成功後に
+  ///   正規形式へ更新する（[_pendingFingerprintMigration]）。
   Future<bool> _onVerifyHostKey(
     String host,
     int port,
@@ -451,9 +514,7 @@ class SshClient implements BackendAdapter {
     Uint8List fingerprint, {
     required bool acceptNewHostKeys,
   }) async {
-    final formatted = fingerprint
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join(':');
+    final formatted = utf8.decode(fingerprint, allowMalformed: true);
 
     final storage = SecureStorageService();
     final known = await storage.getHostKeyFingerprint(host, port, type);
@@ -461,6 +522,21 @@ class SshClient implements BackendAdapter {
     if (known == null) {
       if (acceptNewHostKeys) {
         await storage.saveHostKeyFingerprint(host, port, type, formatted);
+        return true;
+      }
+      _lastError = 'Unknown host key: $host:$port ($type)';
+      return false;
+    }
+
+    if (!known.startsWith('SHA256:')) {
+      // 旧形式（MD5 hex）の保存値。認証成功後に正規形式へ更新する。
+      if (acceptNewHostKeys) {
+        _pendingFingerprintMigration = (
+          host: host,
+          port: port,
+          type: type,
+          fingerprint: formatted,
+        );
         return true;
       }
       _lastError = 'Unknown host key: $host:$port ($type)';
@@ -482,19 +558,28 @@ class SshClient implements BackendAdapter {
       // SSHKeyPair.fromPem は List<SSHKeyPair> を返す
       final keyPairs = SSHKeyPair.fromPem(privateKey, passphrase);
       if (keyPairs.isEmpty) {
-        throw SshAuthenticationError('No valid key found in PEM data');
+        throw SshAuthenticationError(
+          _l10n?.sshNoValidKeyInPem ?? 'No valid key found in PEM data',
+        );
       }
       return keyPairs;
     } on FormatException catch (e) {
-      throw SshAuthenticationError('Invalid private key format: ${e.message}');
+      throw SshAuthenticationError(
+        _l10n?.sshInvalidPrivateKeyFormat(e.message) ??
+            'Invalid private key format: ${e.message}',
+      );
     } catch (e) {
       if (e is SshAuthenticationError) rethrow;
       if (passphrase == null && privateKey.contains('ENCRYPTED')) {
         throw SshAuthenticationError(
-          'Private key is encrypted, passphrase required',
+          _l10n?.sshPrivateKeyEncrypted ??
+              'Private key is encrypted, passphrase required',
         );
       }
-      throw SshAuthenticationError('Failed to parse private key: $e');
+      throw SshAuthenticationError(
+        _l10n?.sshParsePrivateKeyFailed(e.toString()) ??
+            'Failed to parse private key: $e',
+      );
     }
   }
 
@@ -545,6 +630,13 @@ class SshClient implements BackendAdapter {
     _session?.close();
     _session = null;
 
+    // managed PTY（hidden herdr TUI）も確実に終了させる（承認条件 9）。
+    final managedPty = _managedPty;
+    _managedPty = null;
+    if (managedPty != null) {
+      await managedPty.close();
+    }
+
     _client?.close();
     _client = null;
 
@@ -574,7 +666,7 @@ class SshClient implements BackendAdapter {
     try {
       final factory = _persistentShellFactory;
       if (factory != null) return await factory(client);
-      final shell = PersistentShell(client);
+      final shell = PersistentShell(client, l10n: _l10n);
       await shell.start();
       return shell;
     } catch (_) {
@@ -692,15 +784,20 @@ class SshClient implements BackendAdapter {
       // 持続的シェル経由でkeep-alive（高速）
       // inventory: SSH-033
       // inventory: LEGACY-0159
-      await execPersistent(
-        'echo ping',
-        timeout: Duration(seconds: _keepAliveTimeoutSeconds),
+      await execute(
+        CommandRequest(
+          command: 'echo ping',
+          transport: CommandTransportPreference.persistentPreferred,
+          output: CommandOutputRequirement.outputOnly,
+          timeout: Duration(seconds: _keepAliveTimeoutSeconds),
+        ),
       );
       _adjustKeepAliveInterval(success: true);
     } catch (e) {
       _adjustKeepAliveInterval(success: false);
       // Keep-alive失敗 = 接続切断
-      _lastError = 'Connection lost: $e';
+      _lastError =
+          _l10n?.sshConnectionLostDetail(e.toString()) ?? 'Connection lost: $e';
       _updateState(SshConnectionState.error);
       _events.onError?.call(SshConnectionError(_lastError!));
       _events.onClose?.call();
@@ -714,7 +811,7 @@ class SshClient implements BackendAdapter {
   /// [options] シェルオプション
   Future<void> startShell([ShellOptions options = const ShellOptions()]) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
 
     try {
@@ -741,7 +838,10 @@ class SshClient implements BackendAdapter {
         onError: _handleError,
       );
     } catch (e) {
-      throw SshConnectionError('Failed to start shell: $e', e);
+      throw SshConnectionError(
+        _l10n?.sshStartShellFailed(e.toString()) ?? 'Failed to start shell: $e',
+        e,
+      );
     }
   }
 
@@ -762,6 +862,42 @@ class SshClient implements BackendAdapter {
     _events.onClose?.call();
   }
 
+  // inventory: SSH-042
+  /// PTY 付きで [command] を起動し、ライフサイクルを管理する managed process を
+  /// 開始する（hidden herdr TUI ホスト用）。
+  ///
+  /// - 対話シェルを経由せず、dartssh2 の PTY 付き exec（`execute(pty:)`）で
+  ///   プロセスを直接所有する（ログインシェルの prompt / rc / job control を回避）。
+  /// - stdout は明示的に discard・stderr は末尾 8KB を保持（[ManagedPtyProcess.stderrTail]）。
+  /// - 成功 = session 生成 + stdout / stderr 両 stream の監視設置完了
+  ///   （プロセス終了は待たない・承認条件 11）。終了検知は
+  ///   [ManagedPtyProcess.done]（exit / channel close のいずれか）で行う。
+  /// - 二重 start: 既存 managed session を close してから起動（リーク防止）。
+  /// - プロセス終了時は [ManagedPtyProcess.done] が発火する。SSH 接続自体は
+  ///   維持され、TUI 単体の終了は bridge 側が限定再起動する。
+  Future<ManagedPtyProcess> startManagedPty(
+    String command, {
+    required int cols,
+    required int rows,
+  }) async {
+    if (!isConnected || _client == null) {
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
+    }
+    // 二重 start: 既存 managed session を close（channel リーク防止）。
+    final previous = _managedPty;
+    _managedPty = null;
+    if (previous != null) {
+      await previous.close();
+    }
+    final session = await _client!.execute(
+      command,
+      pty: SSHPtyConfig(type: 'xterm-256color', width: cols, height: rows),
+    );
+    final process = ManagedPtyProcess._(session);
+    _managedPty = process;
+    return process;
+  }
+
   /// シェルにデータを書き込む
   ///
   /// [data] 送信データ（文字列）
@@ -770,7 +906,10 @@ class SshClient implements BackendAdapter {
   // inventory: LEGACY-0155
   void write(String data) {
     if (!isConnected || _session == null) {
-      throw SshConnectionError('Not connected or shell not started');
+      throw SshConnectionError(
+        _l10n?.sshNotConnectedOrShellNotStarted ??
+            'Not connected or shell not started',
+      );
     }
     _session!.write(utf8.encode(data));
   }
@@ -782,7 +921,10 @@ class SshClient implements BackendAdapter {
   /// [data] 送信データ（バイト）
   void writeBytes(Uint8List data) {
     if (!isConnected || _session == null) {
-      throw SshConnectionError('Not connected or shell not started');
+      throw SshConnectionError(
+        _l10n?.sshNotConnectedOrShellNotStarted ??
+            'Not connected or shell not started',
+      );
     }
     _session!.write(data);
   }
@@ -806,132 +948,131 @@ class SshClient implements BackendAdapter {
     }
   }
 
-  /// コマンドを実行して結果を取得する
+  /// 汎用コマンド実行（[CommandExecutor] 実装）。
   ///
-  /// [command] 実行コマンド
-  /// [timeout] タイムアウト時間
-  /// 戻り値: コマンド出力
-  // inventory: SSH-032
+  /// [CommandRequest.transport] / [CommandRequest.output] に基づいて
+  /// ephemeral（毎回チャネル開閉）または persistent（持続的シェル）を
+  /// ルーティングする（Codex 根本設計レビュー・バグ2 根本対応）。
+  ///
+  /// - `persistentPreferred + separatedOutput` は最初から ephemeral に
+  ///   ルーティングする（PTY では分離できないため）。
+  /// - `persistentOnly` は shell が利用不能なら例外を投げる。
+  /// - timeout は `execute()` 全体の deadline。timeout 後の自動再実行はしない。
   @override
-  // inventory: LEGACY-0158
-  Future<String> exec(String command, {Duration? timeout}) async {
+  Future<CommandResult> execute(CommandRequest request) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
+    }
+    if (!request.isValid) {
+      throw ArgumentError(
+        'Invalid CommandRequest: persistentOnly + separatedOutput is impossible '
+        '(PTY cannot separate stdout/stderr): $request',
+      );
     }
 
-    try {
-      final resolvedCommand = command;
-      return await _withExecLock(() async {
-        // ignore: avoid_init_to_null
-        SSHSession? session = null;
-        try {
-          session = await _client!.execute(resolvedCommand);
+    final useEphemeral =
+        request.output == CommandOutputRequirement.separatedOutput ||
+        request.transport == CommandTransportPreference.ephemeralOnly;
 
-          // 出力を収集（バイト列として収集し、最後にデコード）
-          final stdoutBytes = <int>[];
-          final stderrBytes = <int>[];
-
-          final stdoutCompleter = Completer<void>();
-          final stderrCompleter = Completer<void>();
-
-          session.stdout.listen(
-            (data) => stdoutBytes.addAll(data),
-            onDone: () => stdoutCompleter.complete(),
-            onError: (e) => stdoutCompleter.completeError(e),
-          );
-
-          session.stderr.listen(
-            (data) => stderrBytes.addAll(data),
-            onDone: () => stderrCompleter.complete(),
-            onError: (e) => stderrCompleter.completeError(e),
-          );
-
-          // タイムアウト付きで完了を待機
-          if (timeout != null) {
-            await Future.wait([
-              stdoutCompleter.future,
-              stderrCompleter.future,
-            ]).timeout(timeout);
-          } else {
-            await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
-          }
-
-          // バイト列をUTF-8デコード（不正なバイトは置換文字に）
-          final stdout = utf8.decode(stdoutBytes, allowMalformed: true);
-          final stderr = utf8.decode(stderrBytes, allowMalformed: true);
-
-          // stderrがあればエラーとして扱う（オプション）
-          if (stderr.isNotEmpty) {
-            return stdout + stderr;
-          }
-
-          return stdout;
-        } finally {
-          session?.close();
-        }
-      });
-    } on TimeoutException {
-      debugPrint('exec: timed out');
-      throw SshConnectionError('Command execution timed out');
-    } catch (e) {
-      debugPrint('exec: error=$e');
-      throw SshConnectionError('Failed to execute command: $e', e);
-    }
-  }
-
-  /// 持続的シェル経由でコマンドを実行（高速）
-  ///
-  /// チャネル開閉のオーバーヘッドを排除し、1 RTT程度で実行可能。
-  /// ポーリングなど高頻度のコマンド実行に適している。
-  ///
-  /// [command] 実行コマンド
-  /// [timeout] タイムアウト時間
-  /// 戻り値: コマンド出力
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async {
-    if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+    if (useEphemeral) {
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
     }
 
-    // 持続的シェルが利用できない場合は従来のexec()にフォールバック
+    // persistent 経路（outputOnly / exitCode・PTY では merged になる）。
     if (_persistentShell == null || !_persistentShell!.isStarted) {
-      return exec(command, timeout: timeout);
+      if (request.transport == CommandTransportPreference.persistentOnly) {
+        throw SshConnectionError(
+          _l10n?.sshPersistentShellUnavailable ??
+              'Persistent shell is not available',
+        );
+      }
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
     }
 
+    final captureExitCode = request.output == CommandOutputRequirement.exitCode;
     try {
-      return await _persistentShell!.exec(command, timeout: timeout);
+      final result = captureExitCode
+          ? await _persistentShell!.execWithExitCode(
+              request.command,
+              timeout: request.timeout,
+            )
+          : (
+              output: await _persistentShell!.exec(
+                request.command,
+                timeout: request.timeout,
+              ),
+              exitCode: null,
+            );
+      return CommandResult(
+        mergedOutput: result.output,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.merged,
+        actualTransport: CommandTransport.persistent,
+      );
     } on PersistentShellError catch (e) {
-      // シェルセッションが切断された場合は再起動を試みる
+      // シェルセッションが切断された場合のみ再起動して再試行する。
+      // timeout（stale frame 混入防止で shell が破棄された）は自動再実行
+      // しない（実行結果が不明のため・mutation の二重適用防止）。
       if (e.message.contains('closed') || e.message.contains('disposed')) {
-        try {
-          await restartPersistentShell();
-          return await _persistentShell!.exec(command, timeout: timeout);
-        } catch (_) {
-          // 再起動も失敗した場合は従来のexec()にフォールバック
-          return exec(command, timeout: timeout);
-        }
+        await restartPersistentShell();
+        final result = captureExitCode
+            ? await _persistentShell!.execWithExitCode(
+                request.command,
+                timeout: request.timeout,
+              )
+            : (
+                output: await _persistentShell!.exec(
+                  request.command,
+                  timeout: request.timeout,
+                ),
+                exitCode: null,
+              );
+        return CommandResult(
+          mergedOutput: result.output,
+          exitCode: result.exitCode,
+          outputSeparation: CommandOutputSeparation.merged,
+          actualTransport: CommandTransport.persistent,
+        );
       }
-      // その他のエラーは従来のexec()にフォールバック
-      return exec(command, timeout: timeout);
+      // その他の persistent エラー（persistentOnly はフォールバック不可）。
+      if (request.transport == CommandTransportPreference.persistentOnly) {
+        rethrow;
+      }
+      final result = await _executeEphemeral(request);
+      return CommandResult(
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
     }
   }
 
-  /// コマンドを実行して終了コードを取得する
-  ///
-  /// [command] 実行コマンド
-  /// 戻り値: (stdout, stderr, exitCode)
-  // inventory: SSH-034
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
+  /// ephemeral（毎回チャネル開閉 + exec ロック直列化）でコマンドを実行する。
+  Future<({String stdout, String stderr, int? exitCode})> _executeEphemeral(
+    CommandRequest request,
+  ) async {
     if (!isConnected || _client == null) {
-      throw SshConnectionError('Not connected');
+      throw SshConnectionError(_l10n?.sshNotConnected ?? 'Not connected');
     }
 
     try {
-      final resolvedCommand = command;
+      final resolvedCommand = request.command;
       return await _withExecLock(() async {
         // ignore: avoid_init_to_null
         SSHSession? session = null;
@@ -957,11 +1098,11 @@ class SshClient implements BackendAdapter {
             onError: (e) => stderrCompleter.completeError(e),
           );
 
-          if (timeout != null) {
+          if (request.timeout != null) {
             await Future.wait([
               stdoutCompleter.future,
               stderrCompleter.future,
-            ]).timeout(timeout);
+            ]).timeout(request.timeout!);
           } else {
             await Future.wait([stdoutCompleter.future, stderrCompleter.future]);
           }
@@ -978,9 +1119,15 @@ class SshClient implements BackendAdapter {
         );
       });
     } on TimeoutException {
-      throw SshConnectionError('Command execution timed out');
+      throw SshConnectionError(
+        _l10n?.sshCommandTimedOut ?? 'Command execution timed out',
+      );
     } catch (e) {
-      throw SshConnectionError('Failed to execute command: $e', e);
+      throw SshConnectionError(
+        _l10n?.sshExecuteCommandFailed(e.toString()) ??
+            'Failed to execute command: $e',
+        e,
+      );
     }
   }
 
@@ -1015,7 +1162,118 @@ class SshClient implements BackendAdapter {
   }
 }
 
-// inventory: SSH-042
+// inventory: SSH-043
+/// managed PTY process（hidden herdr TUI ホスト用・[ SshClient.startManagedPty] の成果物）。
+///
+/// - stdout: 明示的に discard（購読して破棄。SSH channel window の詰まり防止）
+/// - stderr: 末尾 [maxStderrTail] バイトをリングバッファで保持（診断用）
+/// - 終了検知: [done] が「exit / channel close のいずれか」で発火する
+///   （`session.done` + `stdout.done` + `stderr.done` のすべてを監視・承認条件 10）
+/// - exitCode: [SSHSession.exitCode] getter から取得（stream でなく）
+/// - [resize]: 失敗時は throw（収束判定のため握り潰さない）
+/// - [close]: SIGTERM 送信 → done 待ち → channel close（冪等）
+class ManagedPtyProcess {
+  ManagedPtyProcess._(this._session, {int maxStderrTail = 8192}) {
+    // stdout/stderr の監視と完了検知を開始（完了は [done] が通知する）。
+    unawaited(_trackCompletion(maxStderrTail));
+  }
+
+  static const int _closeTimeoutMs = 500;
+
+  final SSHSession _session;
+  final List<int> _stderrTail = <int>[];
+  final StreamController<void> _doneController =
+      StreamController<void>.broadcast();
+  bool _closed = false;
+
+  /// プロセス終了（exit / channel close / [close] のいずれか）を通知する。
+  Stream<void> get done => _doneController.stream;
+
+  /// プロセス終了後の exit code（未終了または exit 非報告なら null）。
+  int? get exitCode => _session.exitCode;
+
+  /// 終了コードの代わりにシグナルで終了した場合のシグナル名（無ければ null）。
+  String? get exitSignalName => _session.exitSignal?.signalName;
+
+  /// stderr の末尾（最大 8KB・診断用）。
+  String get stderrTail => utf8.decode(_stderrTail, allowMalformed: true);
+
+  /// PTY のウィンドウサイズを変更する（SSH window-change → SIGWINCH）。
+  ///
+  /// 失敗は throw（成功判定のため握り潰さない）。終了後の呼び出しも拒否する。
+  void resize(int cols, int rows) {
+    if (_closed) {
+      throw StateError('Managed PTY is already closed');
+    }
+    _session.resizeTerminal(cols, rows);
+  }
+
+  /// プロセスを終了する（SIGTERM → done 待ち → channel close・冪等）。
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    try {
+      _session.kill(SSHSignal.TERM);
+    } catch (_) {
+      // シグナル非対応のサーバでは channel close で代替する。
+    }
+    try {
+      await _session.done.timeout(
+        const Duration(milliseconds: _closeTimeoutMs),
+      );
+    } catch (_) {
+      // タイムアウトしても channel close で強制終了する。
+    }
+    try {
+      _session.close();
+    } catch (_) {}
+  }
+
+  /// stdout / stderr の監視設置と完了検知（承認条件 10・11）。
+  ///
+  /// - stdout: データを破棄（discard）しながら done を監視
+  /// - stderr: 末尾 [maxStderrTail] バイトを保持しながら done を監視
+  /// - 3 つの完了（session.done / stdout.done / stderr.done）を待って [done] を発火
+  Future<void> _trackCompletion(int maxStderrTail) async {
+    final stdoutDone = Completer<void>();
+    final stderrDone = Completer<void>();
+    // stdout: 明示 discard（channel window 詰まり防止）。
+    _session.stdout.listen(
+      (_) {},
+      onDone: () {
+        if (!stdoutDone.isCompleted) stdoutDone.complete();
+      },
+      onError: (Object _) {
+        if (!stdoutDone.isCompleted) stdoutDone.complete();
+      },
+    );
+    // stderr: 末尾保持 + done 監視。
+    _session.stderr.listen(
+      (data) {
+        _stderrTail.addAll(data);
+        if (_stderrTail.length > maxStderrTail) {
+          _stderrTail.removeRange(0, _stderrTail.length - maxStderrTail);
+        }
+      },
+      onDone: () {
+        if (!stderrDone.isCompleted) stderrDone.complete();
+      },
+      onError: (Object _) {
+        if (!stderrDone.isCompleted) stderrDone.complete();
+      },
+    );
+    await Future.wait([
+      _session.done.catchError((Object _) {}),
+      stdoutDone.future,
+      stderrDone.future,
+    ]);
+    if (!_doneController.isClosed) {
+      _doneController.add(null);
+    }
+  }
+}
+
+// inventory: SSH-044
 /// SSHクライアントを作成する
 SshClient createSshClient() {
   return SshClient();

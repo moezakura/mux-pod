@@ -37,27 +37,28 @@ class TmuxPaneWriter implements PaneWriter {
   /// のため true（`tool/tmux-sgr-baseline/baseline-report.md`・D11）。
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
-        sendText: true,
-        sendKeys: true,
-        focus: true,
-        split: true,
-        close: true,
-        rename: true,
-        zoom: true,
-        resize: true,
-        paste: true,
-        copyMode: true,
-        imageTransfer: true,
-        workspaceCrud: true,
-        tabCrud: true,
-        absoluteResize: true,
-        wheelSend: true,
-      );
+    sendText: true,
+    sendKeys: true,
+    focus: true,
+    split: true,
+    close: true,
+    rename: true,
+    zoom: true,
+    resize: true,
+    paste: true,
+    copyMode: true,
+    imageTransfer: true,
+    workspaceCrud: true,
+    tabCrud: true,
+    absoluteResize: true,
+    wheelSend: true,
+  );
 
   /// tmux は全キーを send-keys で送信できるため、同一キー名の send-keys 経路
   /// を返す（Q-07 の変換表は herdr 用・[PaneKeyMap]）。
   @override
-  HerdrKeyRoute mapSpecialKey(String tmuxKey) => HerdrKeyRoute.sendKeys(tmuxKey);
+  HerdrKeyRoute mapSpecialKey(String tmuxKey) =>
+      HerdrKeyRoute.sendKeys(tmuxKey);
 
   // ===== 委譲（Phase 1 で UI が経由する操作）=====
 
@@ -79,7 +80,8 @@ class TmuxPaneWriter implements PaneWriter {
   /// が、[PaneWriter] interface には previousPaneId が無いため省略する
   /// （後方互換の範囲で許容される最小の変更。select-pane / focus-in は維持）。
   @override
-  Future<void> selectPane(String paneId) => _facade.selectPane(_executor, paneId);
+  Future<void> selectPane(String paneId) =>
+      _facade.selectPane(_executor, paneId);
 
   /// 分割（`split-window`）。[direction]: `'right'` → 水平（-h）・
   /// `'down'` → 垂直（-v）。[ratio] はパーセント（-p）へ換算。
@@ -149,14 +151,13 @@ class TmuxPaneWriter implements PaneWriter {
     required String path,
     bool autoEnter = false,
     bool bracketedPaste = true,
-  }) =>
-      _facade.sendBracketedPaste(
-        _executor,
-        paneId: paneId,
-        path: path,
-        autoEnter: autoEnter,
-        bracketedPaste: bracketedPaste,
-      );
+  }) => _facade.sendBracketedPaste(
+    _executor,
+    paneId: paneId,
+    path: path,
+    autoEnter: autoEnter,
+    bracketedPaste: bracketedPaste,
+  );
 
   // ===== 未配線（Phase 2 で導入・現在の tmux UI は PaneNavigator / 既存
   // facade 直接経由のため、interface メソッドとして呼ばれない）=====
@@ -178,7 +179,8 @@ class TmuxPaneWriter implements PaneWriter {
       _unsupported('resizePane');
 
   @override
-  Future<void> createTab(String workspaceId) => _unsupported('createTab');
+  Future<void> createTab(String workspaceId, {String? label, bool? focus}) =>
+      _unsupported('createTab');
 
   @override
   Future<void> closeTab(String tabId) => _unsupported('closeTab');
@@ -208,7 +210,8 @@ class TmuxPaneWriter implements PaneWriter {
   @override
   Future<void> imageTransfer(String path) => _unsupported('imageTransfer');
 
-  Never _unsupported(String operation) => throw UnsupportedPaneOperationException(
+  Never _unsupported(String operation) =>
+      throw UnsupportedPaneOperationException(
         operation: operation,
         backend: 'tmux',
         message: 'この操作は tmux ではまだ配線されていません（Phase 2 で導入予定）',

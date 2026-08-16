@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Widget _buildApp() {
   return const ProviderScope(
-    child: MaterialApp(home: SettingsScreen()),
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: SettingsScreen(),
+    ),
   );
 }
 
@@ -144,35 +149,38 @@ void main() {
     });
 
     // inventory: TEST-SETTINGS-UI-003
-    testWidgets('hides fallback note by default (wheel verified)', (tester) async {
+    testWidgets('hides fallback note by default (wheel verified)', (
+      tester,
+    ) async {
       // wheelSendVerifiedProvider はデフォルト true（Phase 0 実測 B1/B2 PASS 済み）
       await tester.pumpWidget(_buildApp());
       await tester.pumpAndSettle();
 
       await scrollUntilFound(tester, find.text('Scroll Send Input'));
-      expect(
-        find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'),
-        findsNothing,
-      );
+      expect(find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'), findsNothing);
     });
 
     // inventory: TEST-SETTINGS-UI-004
-    testWidgets('displays fallback note when wheel is unverified', (tester) async {
+    testWidgets('displays fallback note when wheel is unverified', (
+      tester,
+    ) async {
       // riverpod 3.x では Override 型は公開 export されないため、
-      // テスト側で ProviderScope を直接構築して override する
+      // テスト側で ProviderScope を直接構築して override する。
+      // l10n 化に伴い delegates/supportedLocales も必要（_buildApp と同構成）。
       await tester.pumpWidget(
         ProviderScope(
           overrides: [wheelSendVerifiedProvider.overrideWith((ref) => false)],
-          child: const MaterialApp(home: SettingsScreen()),
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SettingsScreen(),
+          ),
         ),
       );
       await tester.pumpAndSettle();
 
       await scrollUntilFound(tester, find.text('Scroll Send Input'));
-      expect(
-        find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'),
-        findsOneWidget,
-      );
+      expect(find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'), findsOneWidget);
     });
 
     // inventory: TEST-SETTINGS-UI-005
@@ -208,6 +216,30 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    });
+
+    testWidgets('displays Language setting and opens the picker', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      // Language is in the Appearance section - may need scroll
+      await scrollUntilFound(tester, find.text('Language'));
+      expect(find.text('Language'), findsOneWidget);
+      // 初期値は 'system' なので説明付き表記が表示される
+      expect(find.text('System (follow device)'), findsOneWidget);
+
+      // タップ位置が画面端にならないよう完全に画面内へスクロール
+      await tester.ensureVisible(find.text('Language'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Language'));
+      await tester.pumpAndSettle();
+
+      // 3択ダイアログ
+      expect(find.text('System'), findsOneWidget);
+      expect(find.text('日本語'), findsOneWidget);
+      expect(find.text('English'), findsOneWidget);
     });
   });
 }

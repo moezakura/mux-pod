@@ -67,6 +67,20 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
+  Future<int> download(
+    String path,
+    StreamSink<List<int>> destination, {
+    int? length,
+    int offset = 0,
+    void Function(int bytesRead)? onProgress,
+    int chunkSize = 64 * 1024,
+    int maxPendingRequests = 128,
+    bool closeDestination = false,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Stream<List<SftpName>> readdir(String path) {
     return Stream.fromIterable([_listFor(path)]);
   }
@@ -113,5 +127,5 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
-  void close() {}
+  Future<void> close() async {}
 }

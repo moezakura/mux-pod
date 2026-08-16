@@ -157,6 +157,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   bool _ctrlPressed = false;
   bool _altPressed = false;
   bool _shiftPressed = false;
+  bool _metaPressed = false;
 
   /// ホールド+スワイプ用の状態
   bool _isLongPressing = false;
@@ -260,7 +261,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     _cachedFontFamily = fontFamily;
 
     // 行の高さを計算（fontSize * lineHeight係数）
-    _lineHeight = fontSize * 1.4;
+    _lineHeight = fontSize * FontCalculator.lineHeightRatio;
 
     return _cachedParsedLines!;
   }
@@ -284,7 +285,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     });
     widget.onZoomChanged?.call(1.0);
   }
-
 
   // === ピンチズーム + 2本指スワイプ処理 ===
 
@@ -588,22 +588,19 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               gradient: LinearGradient(
                 begin: isHorizontal
                     ? (direction == SwipeDirection.left
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft)
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft)
                     : (direction == SwipeDirection.up
-                        ? Alignment.bottomCenter
-                        : Alignment.topCenter),
+                          ? Alignment.bottomCenter
+                          : Alignment.topCenter),
                 end: isHorizontal
                     ? (direction == SwipeDirection.left
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight)
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight)
                     : (direction == SwipeDirection.up
-                        ? Alignment.topCenter
-                        : Alignment.bottomCenter),
-                colors: [
-                  Colors.transparent,
-                  Colors.red.withValues(alpha: 0.4),
-                ],
+                          ? Alignment.topCenter
+                          : Alignment.bottomCenter),
+                colors: [Colors.transparent, Colors.red.withValues(alpha: 0.4)],
               ),
             ),
           ),
@@ -655,22 +652,19 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               gradient: LinearGradient(
                 begin: isHorizontal
                     ? (direction == SwipeDirection.left
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft)
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft)
                     : (direction == SwipeDirection.up
-                        ? Alignment.bottomCenter
-                        : Alignment.topCenter),
+                          ? Alignment.bottomCenter
+                          : Alignment.topCenter),
                 end: isHorizontal
                     ? (direction == SwipeDirection.left
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight)
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight)
                     : (direction == SwipeDirection.up
-                        ? Alignment.topCenter
-                        : Alignment.bottomCenter),
-                colors: [
-                  Colors.transparent,
-                  color,
-                ],
+                          ? Alignment.topCenter
+                          : Alignment.bottomCenter),
+                colors: [Colors.transparent, color],
               ),
             ),
           ),
@@ -699,7 +693,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             currentDisplay.screenHeight != constraints.maxHeight) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              ref.read(terminalDisplayProvider.notifier).updateScreenSize(
+              ref
+                  .read(terminalDisplayProvider.notifier)
+                  .updateScreenSize(
                     constraints.maxWidth,
                     constraints.maxHeight,
                   );
@@ -746,21 +742,32 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           fontFamily: settings.fontFamily,
         );
 
-
         // 行に依存しない基本スタイルは1回だけ計算
         // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
         final baseTextStyle = TerminalFontStyles.getTextStyle(
           settings.fontFamily,
           fontSize: fontSize,
-          height: 1.4,
+          height: FontCalculator.lineHeightRatio,
           color: widget.foregroundColor,
         );
+
+        // コンテンツがビューポートに満たない場合、先頭パディングで下端に揃える
+        // （履歴が少ないライブ表示でもターミナルとして自然な見た目になる）。
+        // コンテンツ高 ≥ ビューポート高ならパディングなし（従来動作を維持）。
+        final contentHeight = parsedLines.length * _lineHeight;
+        final viewportHeight = constraints.maxHeight.isFinite
+            ? constraints.maxHeight
+            : contentHeight;
+        final bottomAlignPadding = contentHeight < viewportHeight
+            ? viewportHeight - contentHeight
+            : 0.0;
 
         // 仮想スクロール対応のListView.builder
         Widget listWidget = ListView.builder(
           controller: _verticalScrollController,
-          padding: EdgeInsets.zero, // パディングを明示的にゼロにする
-          // scrollSend はローカルスクロールを完全無効化（D5: アプリ送信専用モード）
+          // コンテンツ不足時のみ下端アライン用の先頭パディングを付与。
+          // scrollSend はローカルスクロールを完全無効化（D5: アプリ送信専用モード）。
+          padding: EdgeInsets.only(top: bottomAlignPadding),
           physics: widget.mode == TerminalMode.scrollSend
               ? const NeverScrollableScrollPhysics()
               : const ClampingScrollPhysics(),
@@ -793,7 +800,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             // 末尾のpaneHeight分が可視領域となる。
             final int cursorLineIndex;
             if (parsedLines.length >= widget.paneHeight) {
-              cursorLineIndex = parsedLines.length - widget.paneHeight + widget.cursorY;
+              cursorLineIndex =
+                  parsedLines.length - widget.paneHeight + widget.cursorY;
             } else {
               // 行数がpaneHeight未満の場合は、単純にcursorYを使用（初期状態など）
               cursorLineIndex = widget.cursorY;
@@ -827,34 +835,45 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               // 全角文字を考慮してカラム位置を文字オフセットに変換
               // tmuxのcursor_xはカラム位置（全角=2）だが、
               // TextPositionは文字オフセット（全角=1）を期待する
-              final lineDisplayWidth = FontCalculator.getTextDisplayWidth(lineText);
-              final charOffset = FontCalculator.columnToCharOffset(lineText, widget.cursorX);
+              final lineDisplayWidth = FontCalculator.getTextDisplayWidth(
+                lineText,
+              );
+              final charOffset = FontCalculator.columnToCharOffset(
+                lineText,
+                widget.cursorX,
+              );
 
               if (widget.cursorX <= lineDisplayWidth) {
-                 // カーソルが行内にある場合、getOffsetForCaretで位置を取得
-                 final offset = painter.getOffsetForCaret(
-                   TextPosition(offset: charOffset),
-                   Rect.zero,
-                 );
-                 cursorLeft = offset.dx;
+                // カーソルが行内にある場合、getOffsetForCaretで位置を取得
+                final offset = painter.getOffsetForCaret(
+                  TextPosition(offset: charOffset),
+                  Rect.zero,
+                );
+                cursorLeft = offset.dx;
 
-                 // カーソル幅も現在の文字の位置から取得（次の文字までの幅）
-                 // 行末の場合は標準幅を使用
-                 if (charOffset < lineTextLength) {
-                    final nextOffset = painter.getOffsetForCaret(
-                      TextPosition(offset: charOffset + 1),
-                      Rect.zero,
-                    );
-                    charWidth = nextOffset.dx - offset.dx;
-                 } else {
-                    charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
-                 }
+                // カーソル幅も現在の文字の位置から取得（次の文字までの幅）
+                // 行末の場合は標準幅を使用
+                if (charOffset < lineTextLength) {
+                  final nextOffset = painter.getOffsetForCaret(
+                    TextPosition(offset: charOffset + 1),
+                    Rect.zero,
+                  );
+                  charWidth = nextOffset.dx - offset.dx;
+                } else {
+                  charWidth = FontCalculator.measureCharWidth(
+                    settings.fontFamily,
+                    fontSize,
+                  );
+                }
               } else {
-                 // カーソルが行末より先にある場合（空行や行末以降のスペース）
-                 // 行末の位置を取得し、超過分を加算
-                 cursorLeft = painter.width;
-                 charWidth = FontCalculator.measureCharWidth(settings.fontFamily, fontSize);
-                 cursorLeft += (widget.cursorX - lineDisplayWidth) * charWidth;
+                // カーソルが行末より先にある場合（空行や行末以降のスペース）
+                // 行末の位置を取得し、超過分を加算
+                cursorLeft = painter.width;
+                charWidth = FontCalculator.measureCharWidth(
+                  settings.fontFamily,
+                  fontSize,
+                );
+                cursorLeft += (widget.cursorX - lineDisplayWidth) * charWidth;
               }
 
               lineWidget = Stack(
@@ -876,9 +895,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                         top: caretTop,
                         width: 2,
                         height: caretHeight,
-                        child: Container(
-                          color: DesignColors.primary,
-                        ),
+                        child: Container(color: DesignColors.primary),
                       );
                     },
                   ),
@@ -888,10 +905,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
             // 固定幅コンテナ（水平スクロール用）
             if (needsHorizontalScroll) {
-              lineWidget = SizedBox(
-                width: terminalWidth,
-                child: lineWidget,
-              );
+              lineWidget = SizedBox(width: terminalWidth, child: lineWidget);
             }
 
             return lineWidget;
@@ -947,15 +961,14 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               _EagerScaleGestureRecognizer:
                   GestureRecognizerFactoryWithHandlers<
                     _EagerScaleGestureRecognizer
-                  >(
-                    () => _EagerScaleGestureRecognizer(),
-                    (_EagerScaleGestureRecognizer instance) {
-                      instance
-                        ..onStart = _onScaleStart
-                        ..onUpdate = _onScaleUpdate
-                        ..onEnd = _onScaleEnd;
-                    },
-                  ),
+                  >(() => _EagerScaleGestureRecognizer(), (
+                    _EagerScaleGestureRecognizer instance,
+                  ) {
+                    instance
+                      ..onStart = _onScaleStart
+                      ..onUpdate = _onScaleUpdate
+                      ..onEnd = _onScaleEnd;
+                  }),
             },
             child: Transform.scale(
               scale: _currentScale,
@@ -969,9 +982,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         if (isSelectMode) {
           return Container(
             color: widget.backgroundColor,
-            child: SelectionArea(
-              child: listWidget,
-            ),
+            child: SelectionArea(child: listWidget),
           );
         }
 
@@ -1011,10 +1022,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             onLongPressEnd: _onLongPressEnd,
             child: Stack(
               children: [
-                Container(
-                  color: widget.backgroundColor,
-                  child: listWidget,
-                ),
+                Container(color: widget.backgroundColor, child: listWidget),
                 // ホールド+スワイプオーバーレイ
                 if (_isLongPressing) _buildSwipeOverlay(),
                 // 2本指スワイプオーバーレイ
@@ -1049,6 +1057,11 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       if (key == LogicalKeyboardKey.shiftLeft ||
           key == LogicalKeyboardKey.shiftRight) {
         _shiftPressed = true;
+        return KeyEventResult.handled;
+      }
+      if (key == LogicalKeyboardKey.metaLeft ||
+          key == LogicalKeyboardKey.metaRight) {
+        _metaPressed = true;
         return KeyEventResult.handled;
       }
 
@@ -1188,14 +1201,21 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         if (_altPressed) {
           data = '\x1b$data';
         }
+
+        // Meta(Cmd)+文字の処理（xterm の ESC 前置・ユーザー要望）
+        if (_metaPressed) {
+          data = '\x1b$data';
+        }
       }
 
       if (data != null) {
-        widget.onKeyInput!(KeyInputEvent(
-          data: data,
-          isSpecialKey: isSpecialKey,
-          tmuxKeyName: tmuxKeyName,
-        ));
+        widget.onKeyInput!(
+          KeyInputEvent(
+            data: data,
+            isSpecialKey: isSpecialKey,
+            tmuxKeyName: tmuxKeyName,
+          ),
+        );
         return KeyEventResult.handled;
       }
     } else if (event is KeyUpEvent) {
@@ -1211,6 +1231,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       } else if (key == LogicalKeyboardKey.shiftLeft ||
           key == LogicalKeyboardKey.shiftRight) {
         _shiftPressed = false;
+      } else if (key == LogicalKeyboardKey.metaLeft ||
+          key == LogicalKeyboardKey.metaRight) {
+        _metaPressed = false;
       }
     }
 
@@ -1260,7 +1283,13 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 修飾子付きCSIシーケンス: 最終文字型（Home: \x1b[H, End: \x1b[F）
   /// 修飾子あり: \x1b[1;{mod}{finalChar}
   String _getFinalCharSequence(String finalChar) {
-    final mod = _shiftPressed ? 2 : _ctrlPressed ? 5 : _altPressed ? 3 : 0;
+    final mod = _shiftPressed
+        ? 2
+        : _ctrlPressed
+        ? 5
+        : _altPressed
+        ? 3
+        : 0;
     if (mod == 0) return '\x1b[$finalChar';
     return '\x1b[1;$mod$finalChar';
   }
@@ -1268,7 +1297,13 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 修飾子付きCSIシーケンス: パラメータ型（PageUp: \x1b[5~, Delete: \x1b[3~）
   /// 修飾子あり: \x1b[{param};{mod}~
   String _getParamSequence(int param, String suffix) {
-    final mod = _shiftPressed ? 2 : _ctrlPressed ? 5 : _altPressed ? 3 : 0;
+    final mod = _shiftPressed
+        ? 2
+        : _ctrlPressed
+        ? 5
+        : _altPressed
+        ? 3
+        : 0;
     if (mod == 0) return '\x1b[$param$suffix';
     return '\x1b[$param;$mod$suffix';
   }
@@ -1277,7 +1312,13 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// F1=P, F2=Q, F3=R, F4=S
   /// 修飾子なし: \x1bO{code}, 修飾子あり: \x1b[1;{mod}{code}
   String _getFKeySequence(String code) {
-    final mod = _shiftPressed ? 2 : _ctrlPressed ? 5 : _altPressed ? 3 : 0;
+    final mod = _shiftPressed
+        ? 2
+        : _ctrlPressed
+        ? 5
+        : _altPressed
+        ? 3
+        : 0;
     if (mod == 0) return '\x1bO$code';
     return '\x1b[1;$mod$code';
   }
@@ -1350,8 +1391,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   int _emitScrollTicks(double deltaTicks) {
     if (deltaTicks == 0) return 0;
     final sameDirection =
-        _scrollTickFraction == 0 ||
-        _scrollTickFraction.sign == deltaTicks.sign;
+        _scrollTickFraction == 0 || _scrollTickFraction.sign == deltaTicks.sign;
     if (!sameDirection) {
       if (deltaTicks.abs() < 0.25) return 0;
       _scrollTickFraction = 0;
@@ -1449,7 +1489,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     });
   }
 }
-
 
 /// 2本指以上を検出した場合、gesture arenaを強制的に勝ち取るScaleGestureRecognizer。
 ///

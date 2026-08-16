@@ -94,11 +94,8 @@ class PaneNavigator {
   }) {
     return {
       for (final dir in SwipeDirection.values)
-        dir: findAdjacentPane(
-              panes: panes,
-              current: current,
-              direction: dir,
-            ) !=
+        dir:
+            findAdjacentPane(panes: panes, current: current, direction: dir) !=
             null,
     };
   }

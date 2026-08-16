@@ -2,9 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../services/backend/domain/multiplexer_pane.dart';
 import '../../services/terminal/font_calculator.dart';
 import '../../services/tmux/tmux_models.dart';
+import '../../services/tmux/tmux_to_domain.dart';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 
 /// リサイズ結果
@@ -15,48 +19,55 @@ class ResizeResult {
 }
 
 // ====================================================================
-// HerdrResizePaneDialog（Q-04: 方向 + ステップ）
+// HerdrResizePaneDialog（tmux の ResizePaneDialog と同構造・絶対値）
 // ====================================================================
 
-/// herdr 用リサイズ結果（方向 + 相対ステップ量）。
+/// herdr ペインの絶対値リサイズダイアログ（tmux の [ResizePaneDialog] と同構造）。
 ///
-/// herdr の `pane resize` は絶対 cols/rows 不可・相対分数のみ（Q-04・m11/m16
-/// 実測）のため、方向（left/right/up/down）とステップ量（0.05/0.1/0.2 等）で
-/// 表現する。
-class HerdrResizeResult {
-  /// リサイズ方向（`'left'` / `'right'` / `'up'` / `'down'`）。
-  final String direction;
-
-  /// 相対ステップ量（現在 ratio への加算・`[0.1, 0.9]` クランプ）。
-  final double amount;
-
-  const HerdrResizeResult({required this.direction, required this.amount});
-}
-
-/// herdr ペインの「方向 + ステップ」リサイズダイアログ（T14・Q-04）。
+/// ユーザーレビューにより tmux と同じ「プレビュー → 警告 → Cols/Rows 数値入力 →
+/// 絶対値プリセット → Cancel/Resize」の構成に改修された。方向パッド・相対量
+/// プリセット・ステッパー・現在サイズ表示は削除（ユーザー決定）。
 ///
-/// tmux の絶対値 [ResizePaneDialog] とは別系統。方向ボタン（←→↑↓）を押すと
-/// 選択中のステップ量で確定し、[HerdrResizeResult] を返して閉じる。現在サイズ
-/// は layout の rect（[paneWidth] x [paneHeight]）から表示する。
+/// - プレビューは [_simulatePaneResizeAbsolute]（絶対 cols/rows）で概算表示し、
+///   「概算(estimated)」ラベルを付ける（条件8）。サイズ不明（width/height
+///   <= 0）の pane は「サイズ不明」表記（E1）。
+/// - 警告は pane 2 枚以上のときのみ表示（条件4・tmux と同レベル）。
+/// - 戻り値は tmux 共通の [ResizeResult]（絶対 cols/rows）。
 class HerdrResizePaneDialog extends StatefulWidget {
-  /// リサイズ対象の pane ID（例: "w1:p1"）。表示のみに使う。
-  final String paneId;
+  /// プレビュー・警告判定用の pane 一覧（空可: プレビュー非表示・警告非表示）。
+  final List<MultiplexerPane> panes;
 
-  /// 現在の文字幅（layout rect 由来・不明なら 0）。
-  final int currentWidth;
+  /// リサイズ対象の pane ID（例: "w1:p1"）。
+  final String targetPaneId;
 
-  /// 現在の文字高さ（layout rect 由来・不明なら 0）。
-  final int currentHeight;
+  /// 現在の文字幅（セル数・pane rect の width）。
+  final int currentCols;
 
-  /// 選択可能なステップ量一覧。
-  final List<double> steps;
+  /// 現在の文字高さ（セル数・pane rect の height）。
+  final int currentRows;
+
+  /// 画面の論理幅（Match Screen プリセットの算出用）。
+  final double screenWidth;
+
+  /// 画面の論理高さ（Match Screen プリセットの算出用）。
+  final double screenHeight;
+
+  /// 現在のフォントサイズ（Match Screen プリセットの算出用）。
+  final double fontSize;
+
+  /// 現在のフォントファミリー（Match Screen プリセットの算出用）。
+  final String fontFamily;
 
   const HerdrResizePaneDialog({
     super.key,
-    required this.paneId,
-    this.currentWidth = 0,
-    this.currentHeight = 0,
-    this.steps = const [0.05, 0.1, 0.2, 0.3, 0.5],
+    required this.targetPaneId,
+    this.panes = const [],
+    this.currentCols = 0,
+    this.currentRows = 0,
+    this.screenWidth = 0,
+    this.screenHeight = 0,
+    this.fontSize = 14,
+    this.fontFamily = 'monospace',
   });
 
   @override
@@ -64,193 +75,106 @@ class HerdrResizePaneDialog extends StatefulWidget {
 }
 
 class _HerdrResizePaneDialogState extends State<HerdrResizePaneDialog> {
-  late double _selectedStep;
+  late int _cols;
+  late int _rows;
 
   @override
   void initState() {
     super.initState();
-    // 既定ステップは 0.1（T0 キャリブレーションの実用値）。
-    _selectedStep = widget.steps.contains(0.1) ? 0.1 : widget.steps.first;
+    _cols = widget.currentCols;
+    _rows = widget.currentRows;
   }
 
-  void _submit(String direction) {
-    Navigator.pop(
-      context,
-      HerdrResizeResult(direction: direction, amount: _selectedStep),
+  /// 絶対値プリセット（tmux の [_SizePreset] と共通・80x24 等）。
+  List<_SizePreset> get _presets {
+    final matchCols = FontCalculator.calculateMaxCols(
+      screenWidth: widget.screenWidth,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
     );
+    final matchRows = FontCalculator.calculateMaxRows(
+      screenHeight: widget.screenHeight,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    return [
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final hasSize = widget.currentWidth > 0 && widget.currentHeight > 0;
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizePaneTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 現在サイズ（layout rect 由来・不明なら非表示）
-            if (hasSize)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Current: ${widget.currentWidth} x ${widget.currentHeight}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textSecondary,
-                  ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // プレビュー（絶対 cols/rows で概算シミュレーション・条件8）。
+              // 空リストは非表示・サイズ不明 pane はタイル内「サイズ不明」表記。
+              if (widget.panes.isEmpty)
+                const SizedBox.shrink()
+              else
+                _buildPaneGridPreview(
+                  l10n: context.l10n,
+                  allPanes: widget.panes,
+                  highlightPaneId: widget.targetPaneId,
+                  previewPaneId: widget.targetPaneId,
+                  previewCols: _cols,
+                  previewRows: _rows,
+                  showEstimatedLabel: true,
                 ),
+              const SizedBox(height: 12),
+              // 警告: pane 2 枚以上のときのみ（条件4・tmux と同レベル）。
+              if (widget.panes.length >= 2)
+                _buildWarning(context.l10n.resizeWarningOtherPanes),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                l10n: context.l10n,
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
               ),
-            const Text(
-              'Direction',
-              style: TextStyle(
-                fontSize: 12,
-                color: DesignColors.textSecondary,
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
               ),
-            ),
-            const SizedBox(height: 4),
-            _buildDirectionPad(),
-            const SizedBox(height: 16),
-            const Text(
-              'Step',
-              style: TextStyle(
-                fontSize: 12,
-                color: DesignColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            _buildStepChips(),
-            if (hasSize)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text(
-                  'Resize is relative (fraction of the split ratio).',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: DesignColors.textMuted),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
-    );
-  }
-
-  /// 方向パッド（← ↑ ↓ → の十字配置）。
-  Widget _buildDirectionPad() {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _directionButton(
-              icon: Icons.arrow_upward,
-              tooltip: 'Up',
-              onPressed: () => _submit('up'),
-            ),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _directionButton(
-              icon: Icons.arrow_back,
-              tooltip: 'Left',
-              onPressed: () => _submit('left'),
-            ),
-            const SizedBox(width: 48),
-            _directionButton(
-              icon: Icons.arrow_forward,
-              tooltip: 'Right',
-              onPressed: () => _submit('right'),
-            ),
-          ],
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _directionButton(
-              icon: Icons.arrow_downward,
-              tooltip: 'Down',
-              onPressed: () => _submit('down'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _directionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onPressed,
-  }) {
-    return Tooltip(
-      message: tooltip,
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: IconButton(
-          icon: Icon(icon, color: DesignColors.textPrimary),
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            backgroundColor: DesignColors.keyBackground,
-            side: const BorderSide(color: DesignColors.borderDark),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-        ),
-      ),
-    );
-  }
-
-  /// ステップ量のチップ選択。
-  Widget _buildStepChips() {
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: widget.steps.map((step) {
-        final selected = step == _selectedStep;
-        final label = step == step.roundToDouble()
-            ? step.toInt().toString()
-            : step.toString();
-        return ActionChip(
-          label: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: selected
-                  ? DesignColors.primary
-                  : DesignColors.textPrimary,
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          backgroundColor: selected
-              ? DesignColors.primary.withValues(alpha: 0.15)
-              : DesignColors.keyBackground,
-          side: BorderSide(
-            color: selected
-                ? DesignColors.primary
-                : DesignColors.borderDark,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          onPressed: () => setState(() => _selectedStep = step),
-        );
-      }).toList(),
     );
   }
 }
@@ -317,28 +241,34 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     final mediaSize = MediaQuery.of(context).size;
-    debugPrint('[ResizePaneDialog] build() mediaSize=$mediaSize '
-        'allPanes=${widget.allPanesInWindow.length} '
-        'target=${widget.targetPane.id} '
-        'screenW=${widget.screenWidth} screenH=${widget.screenHeight} '
-        'fontSize=${widget.fontSize} fontFamily=${widget.fontFamily}');
+    debugPrint(
+      '[ResizePaneDialog] build() mediaSize=$mediaSize '
+      'allPanes=${widget.allPanesInWindow.length} '
+      'target=${widget.targetPane.id} '
+      'screenW=${widget.screenWidth} screenH=${widget.screenHeight} '
+      'fontSize=${widget.fontSize} fontFamily=${widget.fontFamily}',
+    );
 
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizePaneTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -348,30 +278,35 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildPaneGridPreview(
-                allPanes: widget.allPanesInWindow,
+                l10n: context.l10n,
+                // domain 変換（TmuxPane → MultiplexerPane）で同一結果を維持。
+                allPanes: widget.allPanesInWindow
+                    .map((p) => p.toDomain())
+                    .toList(),
                 highlightPaneId: widget.targetPane.id,
                 previewPaneId: widget.targetPane.id,
                 previewCols: _cols,
                 previewRows: _rows,
               ),
-            const SizedBox(height: 12),
-            if (widget.allPanesInWindow.length >= 2)
-              _buildWarning('Other pane sizes may also change.'),
-            const SizedBox(height: 12),
-            _buildSizeInputRow(
-              cols: _cols,
-              rows: _rows,
-              onColsChanged: (v) => setState(() => _cols = v),
-              onRowsChanged: (v) => setState(() => _rows = v),
-            ),
-            const SizedBox(height: 12),
-            _buildPresetChips(
-              presets: _presets,
-              onSelect: (p) => setState(() {
-                _cols = p.cols;
-                _rows = p.rows;
-              }),
-            ),
+              const SizedBox(height: 12),
+              if (widget.allPanesInWindow.length >= 2)
+                _buildWarning(context.l10n.resizeWarningOtherPanes),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                l10n: context.l10n,
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
             ],
           ),
         ),
@@ -379,15 +314,13 @@ class _ResizePaneDialogState extends State<ResizePaneDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: () =>
               Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
-          ),
-          child: const Text('Resize'),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -450,10 +383,14 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
       fontFamily: widget.fontFamily,
     );
     return [
-      const _SizePreset('80x24 (Standard)', 80, 24),
-      const _SizePreset('120x40 (Wide)', 120, 40),
-      const _SizePreset('160x50 (Full HD)', 160, 50),
-      _SizePreset('Match Screen ($matchCols x $matchRows)', matchCols, matchRows),
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
     ];
   }
 
@@ -462,9 +399,9 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Window',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.resizeWindowTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -478,25 +415,27 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
                 panes: widget.panes,
                 currentCols: widget.currentCols,
                 currentRows: widget.currentRows,
+                l10n: context.l10n,
               ),
-            const SizedBox(height: 12),
-            if (!widget.supportsResizeWindow)
-              _buildWarning('Window resize requires tmux 2.9+. Resize button disabled.'),
-            const SizedBox(height: 12),
-            _buildSizeInputRow(
-              cols: _cols,
-              rows: _rows,
-              onColsChanged: (v) => setState(() => _cols = v),
-              onRowsChanged: (v) => setState(() => _rows = v),
-            ),
-            const SizedBox(height: 12),
-            _buildPresetChips(
-              presets: _presets,
-              onSelect: (p) => setState(() {
-                _cols = p.cols;
-                _rows = p.rows;
-              }),
-            ),
+              const SizedBox(height: 12),
+              if (!widget.supportsResizeWindow)
+                _buildWarning(context.l10n.resizeWarningTmuxRequired),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                l10n: context.l10n,
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
             ],
           ),
         ),
@@ -504,17 +443,313 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.resizeCancel),
         ),
         FilledButton(
           onPressed: widget.supportsResizeWindow
               ? () => Navigator.pop(
-                  context, ResizeResult(cols: _cols, rows: _rows))
+                  context,
+                  ResizeResult(cols: _cols, rows: _rows),
+                )
               : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: DesignColors.primary,
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
+          child: Text(context.l10n.resizeConfirm),
+        ),
+      ],
+    );
+  }
+}
+
+// ====================================================================
+// HerdrResizeTerminalDialog
+// ====================================================================
+
+/// herdr のターミナル全体 resize ダイアログ（Select Session の Resize 導線用）。
+///
+/// tmux の [ResizeWindowDialog] と同一の操作フロー（サイズ入力行 + プリセット
+/// チップ + Cancel/Resize ボタン）を提供する。herdr はターミナル全体 = SSH PTY
+/// サイズを変更するため、ウィンドウグリッドプレビュー（window / panes）は
+/// 不要（ユーザー決定: グリッドプレビュー省略）。タイトルは 'Resize Terminal'
+/// （ユーザー決定: 文言変更しない）。
+///
+/// プリセットタップ / サイズ入力で [_cols] / [_rows] を更新し、Resize ボタンで
+/// [ResizeResult] を返して閉じる。共通ビルダー（[_buildSizeInputRow] /
+/// [_buildPresetChips] / [_SizePreset]）を [ResizeWindowDialog] と共用する。
+class HerdrResizeTerminalDialog extends StatefulWidget {
+  /// 現在のターミナルサイズ（cols・文字セル単位）。初期値に使う。
+  final int currentCols;
+
+  /// 現在のターミナルサイズ（rows・文字セル単位）。初期値に使う。
+  final int currentRows;
+
+  /// 画面の論理幅（Match Screen プリセットの算出用）。
+  final double screenWidth;
+
+  /// 画面の論理高さ（Match Screen プリセットの算出用）。
+  final double screenHeight;
+
+  /// 現在のフォントサイズ（Match Screen プリセットの算出用）。
+  final double fontSize;
+
+  /// 現在のフォントファミリー（Match Screen プリセットの算出用）。
+  final String fontFamily;
+
+  const HerdrResizeTerminalDialog({
+    super.key,
+    required this.currentCols,
+    required this.currentRows,
+    required this.screenWidth,
+    required this.screenHeight,
+    required this.fontSize,
+    required this.fontFamily,
+  });
+
+  @override
+  State<HerdrResizeTerminalDialog> createState() =>
+      _HerdrResizeTerminalDialogState();
+}
+
+class _HerdrResizeTerminalDialogState extends State<HerdrResizeTerminalDialog> {
+  late int _cols;
+  late int _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _cols = widget.currentCols;
+    _rows = widget.currentRows;
+  }
+
+  List<_SizePreset> get _presets {
+    final matchCols = FontCalculator.calculateMaxCols(
+      screenWidth: widget.screenWidth,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    final matchRows = FontCalculator.calculateMaxRows(
+      screenHeight: widget.screenHeight,
+      fontSize: widget.fontSize,
+      fontFamily: widget.fontFamily,
+    );
+    return [
+      _SizePreset(context.l10n.resizePresetStandard, 80, 24),
+      _SizePreset(context.l10n.resizePresetWide, 120, 40),
+      _SizePreset(context.l10n.resizePresetFullHd, 160, 50),
+      _SizePreset(
+        context.l10n.resizePresetMatchScreen(matchCols, matchRows),
+        matchCols,
+        matchRows,
+      ),
+    ];
+  }
+
+  /// サイドバー付きレイアウトプレビュー（tmux の [_buildWindowGridPreview] 準拠）。
+  ///
+  /// - 全体を**水色の枠**（[DesignColors.primary] width 2）で囲む
+  /// - ヘッダーに「**Herdr (PTY)  cols x rows**」を表示（tmux の
+  ///   `'${window.name}  ${currentCols}x$currentRows'` の構造を踏襲）
+  /// - 本体: 外枠 = 新しい PTY サイズ（cols x rows）の矩形・**サイドバー**（左端の
+  ///   グレー縦帯・エリア幅の約 15%）と**タブ行**（上端のグレー横帯・エリア高の
+  ///   約 10%）をグレー表示し、境界に**細い水色線**を引く
+  /// - ペイン表示領域（残り）の中央に「**Panel**」テキストを表示（サイズ表示は
+  ///   ヘッダーに移したため、ペイン領域は Panel のみ）
+  ///
+  /// 厳密な幅・高さの再現は herdr の表示設定に依存するため行わない
+  /// （ユーザー決定: 「それっぽい」見た目でよい）。cols/rows が小さい場合も
+  /// 描画が破綻しないよう、サイドバー幅・タブ行高は比率とピクセル最小値の
+  /// 大きい方を採用する（最小サイズガード）。
+  Widget _buildLayoutPreview() {
+    return Container(
+      height: 120,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: DesignColors.canvasDark,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: DesignColors.primary, width: 2),
+      ),
+      child: Column(
+        children: [
+          // ヘッダー（tmux のウィンドウヘッダーと同型）。
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: const BoxDecoration(
+              color: DesignColors.surfaceDark,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(6),
+                topRight: Radius.circular(6),
+              ),
+            ),
+            child: Text(
+              context.l10n.resizeHerdrPtyHeader(_cols, _rows),
+              style: const TextStyle(
+                fontSize: 11,
+                color: DesignColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-          child: const Text('Resize'),
+          // 本体プレビュー（サイドバー + タブ行 + Panel）。
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const pad = 4.0;
+                final areaW = constraints.maxWidth - pad * 2;
+                final areaH = constraints.maxHeight - pad * 2;
+                // サイドバー（エリア幅の 15%・最小 24px）とタブ行（エリア高の 10%・最小 12px）。
+                final sidebarW = (areaW * 0.15).clamp(24.0, areaW * 0.5);
+                final tabRowH = (areaH * 0.1).clamp(12.0, areaH * 0.5);
+                // 外枠: 新しい cols x rows の矩形（縦横比を維持して中央配置）。
+                final cols = _cols < 1 ? 1 : _cols;
+                final rows = _rows < 1 ? 1 : _rows;
+                final scale = math.min(areaW / cols, areaH / rows);
+                final previewW = cols * scale;
+                final previewH = rows * scale;
+                final offsetX = (constraints.maxWidth - previewW) / 2;
+                final offsetY = (constraints.maxHeight - previewH) / 2;
+                return Stack(
+                  children: [
+                    // 外枠（ペイン表示領域 = PTY 全体・明るい色）。
+                    Positioned(
+                      left: offsetX,
+                      top: offsetY,
+                      width: previewW,
+                      height: previewH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.primary.withValues(alpha: 0.15),
+                          border: Border.all(
+                            color: DesignColors.primary.withValues(alpha: 0.5),
+                          ),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    // サイドバー: 左端のグレー縦帯 + 右境界に細い水色線。
+                    Positioned(
+                      left: offsetX,
+                      top: offsetY,
+                      width: sidebarW,
+                      height: previewH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.borderDark.withValues(alpha: 0.7),
+                          border: Border(
+                            right: BorderSide(
+                              color: DesignColors.primary,
+                              width: 1,
+                            ),
+                          ),
+                          borderRadius: const BorderRadius.horizontal(
+                            left: Radius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // タブ行: 上端のグレー横帯 + 下境界に細い水色線。
+                    Positioned(
+                      left: offsetX + sidebarW,
+                      top: offsetY,
+                      width: previewW - sidebarW,
+                      height: tabRowH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: DesignColors.borderDark.withValues(alpha: 0.7),
+                          border: Border(
+                            bottom: BorderSide(
+                              color: DesignColors.primary,
+                              width: 1,
+                            ),
+                          ),
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // ペイン表示領域（サイドバー・タブ行を除く残り）中央に「Panel」。
+                    Positioned(
+                      left: offsetX + sidebarW,
+                      top: offsetY + tabRowH,
+                      width: previewW - sidebarW,
+                      height: previewH - tabRowH,
+                      child: Center(
+                        child: Text(
+                          context.l10n.resizePanelLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: DesignColors.primary.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: DesignColors.surfaceDark,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Text(
+        context.l10n.resizeTerminalTitle,
+        style: const TextStyle(color: DesignColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: MediaQuery.of(context).size.width * 0.8,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildLayoutPreview(),
+              const SizedBox(height: 12),
+              _buildSizeInputRow(
+                l10n: context.l10n,
+                cols: _cols,
+                rows: _rows,
+                onColsChanged: (v) => setState(() => _cols = v),
+                onRowsChanged: (v) => setState(() => _rows = v),
+              ),
+              const SizedBox(height: 12),
+              _buildPresetChips(
+                presets: _presets,
+                onSelect: (p) => setState(() {
+                  _cols = p.cols;
+                  _rows = p.rows;
+                }),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                context.l10n.resizeTerminalDescription,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: DesignColors.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(context.l10n.resizeCancel),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, ResizeResult(cols: _cols, rows: _rows)),
+          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
+          child: Text(context.l10n.resizeConfirm),
         ),
       ],
     );
@@ -525,20 +760,27 @@ class _ResizeWindowDialogState extends State<ResizeWindowDialog> {
 // 共通ビルダー（トップレベル関数）
 // ====================================================================
 
-/// tmuxのresize-paneを簡易シミュレーションする。
+/// tmux の resize-pane を簡易シミュレーションする（絶対 cols/rows・旧ロジック移植）。
 ///
 /// サイズを先に決め、位置を全て再計算する。
 /// 1. ウィンドウサイズとセパレータを算出
 /// 2. 新しいサイズを決める（カラム幅、カラム内高さ配分）
 /// 3. 位置を上から・左から再計算
-List<TmuxPane> _simulatePaneResize({
-  required List<TmuxPane> panes,
+///
+/// [MultiplexerPane] ベースに一般化した（[TmuxPane] は呼び出し側で
+/// `toDomain()` 変換済み）。アルゴリズムは従来と同一のため、tmux 側
+/// [ResizePaneDialog] のプレビュー結果は従来と同一である（互換維持・H-6）。
+List<MultiplexerPane> _simulatePaneResizeAbsolute({
+  required List<MultiplexerPane> panes,
   required String targetId,
   required int newCols,
   required int newRows,
 }) {
   if (panes.isEmpty) return panes;
-  final target = panes.firstWhere((p) => p.id == targetId, orElse: () => panes.first);
+  final target = panes.firstWhere(
+    (p) => p.id == targetId,
+    orElse: () => panes.first,
+  );
   if (!panes.any((p) => p.id == targetId)) return panes;
 
   // === Step 1: ウィンドウサイズ・セパレータ算出 ===
@@ -554,10 +796,16 @@ List<TmuxPane> _simulatePaneResize({
     ..sort((a, b) => a.top.compareTo(b.top));
 
   // 左隣ペイン（カラムの左に隣接し、垂直方向に重なるペイン）
-  final leftNeighbors = panes.where((p) =>
-      p.left != target.left &&
-      p.left + p.width < target.left &&
-      colPanes.any((cm) => p.top < cm.top + cm.height && p.top + p.height > cm.top)).toList();
+  final leftNeighbors = panes
+      .where(
+        (p) =>
+            p.left != target.left &&
+            p.left + p.width < target.left &&
+            colPanes.any(
+              (cm) => p.top < cm.top + cm.height && p.top + p.height > cm.top,
+            ),
+      )
+      .toList();
 
   // 水平セパレータ（カラムと左隣の隙間）
   int hSep = 1; // デフォルト
@@ -615,7 +863,10 @@ List<TmuxPane> _simulatePaneResize({
         // 最後のペインに残りを全て割り当て（端数調整）
         newHeights[p.id] = math.max<int>(1, remainingH - distributed);
       } else {
-        final h = math.max(1, (remainingH * p.height / otherOriginalSum).round());
+        final h = math.max(
+          1,
+          (remainingH * p.height / otherOriginalSum).round(),
+        );
         newHeights[p.id] = h;
         distributed += h;
       }
@@ -663,25 +914,54 @@ List<TmuxPane> _simulatePaneResize({
 /// ペインレイアウトのグリッドプレビュー
 ///
 /// [previewPaneId] が指定された場合、そのペインを [previewCols]x[previewRows] で
-/// リサイズしたシミュレーション結果を描画する。
+/// リサイズしたシミュレーション結果を描画する（絶対 cols/rows・
+/// [_simulatePaneResizeAbsolute]）。tmux / herdr の両方で共用する。
+///
+/// 描画は 0 起点正規化（全 pane の min を引く・herdr の非 0 起点 rect 対応）。
+/// [showEstimatedLabel] が true のときは右上に「概算(estimated)」を表示する
+/// （条件8）。サイズ不明（width/height <= 0）の pane は「サイズ不明」表記
+/// （E1・PaneChooserDialog と同表記）。
 Widget _buildPaneGridPreview({
-  required List<TmuxPane> allPanes,
+  required List<MultiplexerPane> allPanes,
   required String highlightPaneId,
   String? previewPaneId,
   int? previewCols,
   int? previewRows,
+  bool showEstimatedLabel = false,
+  required AppLocalizations l10n,
 }) {
   if (allPanes.isEmpty) return const SizedBox.shrink();
 
-  // リサイズシミュレーション
-  final panes = (previewPaneId != null && previewCols != null && previewRows != null)
-      ? _simulatePaneResize(
-          panes: allPanes,
-          targetId: previewPaneId,
-          newCols: previewCols,
-          newRows: previewRows,
-        )
-      : allPanes;
+  // リサイズシミュレーション（絶対 cols/rows・tmux と同一経路）。
+  final List<MultiplexerPane> panes;
+  if (previewPaneId != null && previewCols != null && previewRows != null) {
+    panes = _simulatePaneResizeAbsolute(
+      panes: allPanes,
+      targetId: previewPaneId,
+      newCols: previewCols,
+      newRows: previewRows,
+    );
+  } else {
+    panes = allPanes;
+  }
+
+  // 0 起点へ正規化（全 pane の min を引く・herdr の非 0 起点 rect 対応）。
+  var minLeft = panes.first.left;
+  var minTop = panes.first.top;
+  int maxRight = 0;
+  int maxBottom = 0;
+  for (final p in panes) {
+    final right = p.left + p.width;
+    final bottom = p.top + p.height;
+    if (p.left < minLeft) minLeft = p.left;
+    if (p.top < minTop) minTop = p.top;
+    if (right > maxRight) maxRight = right;
+    if (bottom > maxBottom) maxBottom = bottom;
+  }
+  maxRight -= minLeft;
+  maxBottom -= minTop;
+  if (maxRight <= 0) maxRight = 1;
+  if (maxBottom <= 0) maxBottom = 1;
 
   return Container(
     height: 120,
@@ -697,18 +977,6 @@ Widget _buildPaneGridPreview({
         final areaW = constraints.maxWidth - pad * 2;
         final areaH = constraints.maxHeight - pad * 2;
 
-        // ウィンドウ全体の範囲を算出
-        int maxRight = 0;
-        int maxBottom = 0;
-        for (final p in panes) {
-          final right = p.left + p.width;
-          final bottom = p.top + p.height;
-          if (right > maxRight) maxRight = right;
-          if (bottom > maxBottom) maxBottom = bottom;
-        }
-        if (maxRight == 0) maxRight = 1;
-        if (maxBottom == 0) maxBottom = 1;
-
         final scaleX = areaW / maxRight;
         final scaleY = areaH / maxBottom;
 
@@ -717,12 +985,28 @@ Widget _buildPaneGridPreview({
           child: Stack(
             children: [
               SizedBox(width: areaW, height: areaH),
+              // 概算(estimated)ラベル（条件8・右上に小さく表示）。
+              if (showEstimatedLabel)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Text(
+                    l10n.resizeEstimated,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: DesignColors.textMuted,
+                    ),
+                  ),
+                ),
               ...panes.map((pane) {
                 final isTarget = pane.id == highlightPaneId;
-                final left = pane.left * scaleX;
-                final top = pane.top * scaleY;
+                final left = (pane.left - minLeft) * scaleX;
+                final top = (pane.top - minTop) * scaleY;
                 final width = (pane.width * scaleX).clamp(20.0, areaW - left);
                 final height = (pane.height * scaleY).clamp(14.0, areaH - top);
+                final sizeLabel = (pane.width <= 0 || pane.height <= 0)
+                    ? l10n.resizeSizeUnknown
+                    : '${pane.width}x${pane.height}';
 
                 return Positioned(
                   left: left,
@@ -748,7 +1032,7 @@ Widget _buildPaneGridPreview({
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 2),
                         child: Text(
-                          '${pane.index}\n${pane.width}x${pane.height}',
+                          '${pane.index}\n$sizeLabel',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 10,
@@ -776,6 +1060,7 @@ Widget _buildWindowGridPreview({
   required List<TmuxPane> panes,
   required int currentCols,
   required int currentRows,
+  required AppLocalizations l10n,
 }) {
   return Container(
     height: 120,
@@ -810,7 +1095,9 @@ Widget _buildWindowGridPreview({
         // ペインレイアウト
         Expanded(
           child: _buildPaneGridPreview(
-            allPanes: panes,
+            l10n: l10n,
+            // domain 変換（TmuxPane → MultiplexerPane）。
+            allPanes: panes.map((p) => p.toDomain()).toList(),
             highlightPaneId: '', // ウィンドウリサイズではペインハイライトなし
           ),
         ),
@@ -830,16 +1117,16 @@ Widget _buildWarning(String message) {
     ),
     child: Row(
       children: [
-        const Icon(Icons.warning_amber_rounded,
-            size: 16, color: DesignColors.warning),
+        const Icon(
+          Icons.warning_amber_rounded,
+          size: 16,
+          color: DesignColors.warning,
+        ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             message,
-            style: const TextStyle(
-              fontSize: 12,
-              color: DesignColors.warning,
-            ),
+            style: const TextStyle(fontSize: 12, color: DesignColors.warning),
           ),
         ),
       ],
@@ -849,6 +1136,7 @@ Widget _buildWarning(String message) {
 
 /// Cols / Rows 数値入力行
 Widget _buildSizeInputRow({
+  required AppLocalizations l10n,
   required int cols,
   required int rows,
   required ValueChanged<int> onColsChanged,
@@ -858,7 +1146,7 @@ Widget _buildSizeInputRow({
     children: [
       Expanded(
         child: _buildNumberInput(
-          label: 'Cols',
+          label: l10n.resizeCols,
           value: cols,
           onChanged: onColsChanged,
         ),
@@ -866,7 +1154,7 @@ Widget _buildSizeInputRow({
       const SizedBox(width: 12),
       Expanded(
         child: _buildNumberInput(
-          label: 'Rows',
+          label: l10n.resizeRows,
           value: rows,
           onChanged: onRowsChanged,
         ),
@@ -888,10 +1176,7 @@ Widget _buildNumberInput({
     children: [
       Text(
         label,
-        style: const TextStyle(
-          fontSize: 12,
-          color: DesignColors.textSecondary,
-        ),
+        style: const TextStyle(fontSize: 12, color: DesignColors.textSecondary),
       ),
       const SizedBox(height: 4),
       Container(
@@ -933,10 +1218,7 @@ Widget _buildNumberInput({
 }
 
 /// ステップボタン（◀ / ▶）
-Widget _stepButton({
-  required IconData icon,
-  required VoidCallback? onPressed,
-}) {
+Widget _stepButton({required IconData icon, required VoidCallback? onPressed}) {
   return IconButton(
     icon: Icon(icon, size: 20),
     onPressed: onPressed,

@@ -46,13 +46,18 @@ class HerdrSnapshotParser {
     final result = decoded['result'];
     final snapshot = _asMap(result, 'snapshot');
 
-    final workspaces = _asList(snapshot, 'workspaces')
-        .map(_parseWorkspace)
-        .toList();
-    final tabs =
-        _asList(snapshot, 'tabs').map((raw) => _parseTab(raw)).toList();
-    final panes =
-        _asList(snapshot, 'panes').map((raw) => _parsePane(raw)).toList();
+    final workspaces = _asList(
+      snapshot,
+      'workspaces',
+    ).map(_parseWorkspace).toList();
+    final tabs = _asList(
+      snapshot,
+      'tabs',
+    ).map((raw) => _parseTab(raw)).toList();
+    final panes = _asList(
+      snapshot,
+      'panes',
+    ).map((raw) => _parsePane(raw)).toList();
 
     return HerdrSnapshot(
       protocol: _asInt(snapshot, 'protocol'),

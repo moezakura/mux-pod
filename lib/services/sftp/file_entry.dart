@@ -1,12 +1,7 @@
 import 'package:dartssh2/dartssh2.dart';
 
 /// ソートオプション
-enum SortOption {
-  name,
-  size,
-  date,
-  type,
-}
+enum SortOption { name, size, date, type }
 
 /// リモートファイルシステムのエントリ（ファイルまたはディレクトリ）
 class FileEntry {
@@ -33,7 +28,8 @@ class FileEntry {
     final attr = sftpName.attr;
     final isLink = attr.isSymbolicLink;
     // シンボリックリンクの場合、longname の先頭 'd' でディレクトリリンクを判定
-    final isDir = attr.isDirectory ||
+    final isDir =
+        attr.isDirectory ||
         (isLink && sftpName.longname.isNotEmpty && sftpName.longname[0] == 'd');
     final name = sftpName.filename;
     final fullPath = parentPath.endsWith('/')

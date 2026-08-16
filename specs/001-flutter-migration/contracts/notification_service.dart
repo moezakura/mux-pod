@@ -50,10 +50,7 @@ abstract class NotificationService {
   Future<void> deleteRule(String ruleId);
 
   /// ルール有効/無効切り替え
-  Future<void> toggleRule({
-    required String ruleId,
-    required bool enabled,
-  });
+  Future<void> toggleRule({required String ruleId, required bool enabled});
 
   /// 出力チェック（内部呼び出し用）
   void checkOutput({

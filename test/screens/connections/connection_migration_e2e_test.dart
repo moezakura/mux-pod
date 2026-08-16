@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/connections/connection_form_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
@@ -27,6 +28,7 @@ class _TestSshClient extends FakeSshClient {
     required int port,
     required String username,
     required SshConnectOptions options,
+    AppLocalizations? l10n,
     bool lightweight = false,
   }) async {
     lastOptions = options;
@@ -45,7 +47,9 @@ void main() {
     SecureStorageService.setTestValues({});
   });
 
-  testWidgets('migration E2E: old tmuxPath -> load -> edit -> save -> reload', (tester) async {
+  testWidgets('migration E2E: old tmuxPath -> load -> edit -> save -> reload', (
+    tester,
+  ) async {
     // 1. 旧 tmuxPath 形式の接続を保存
     final oldJson = jsonEncode([
       {
@@ -64,7 +68,10 @@ void main() {
     // 2. ProviderContainer で起動読み込み（マイグレーション実行）
     final container = ProviderContainer(
       overrides: [
-        connectionFormSshClientFactoryProvider.overrideWith((ref) => () => _TestSshClient()),
+        connectionFormSshClientFactoryProvider.overrideWith(
+          (ref) =>
+              () => _TestSshClient(),
+        ),
       ],
     );
     addTearDown(container.dispose);
@@ -73,7 +80,10 @@ void main() {
     final firstState = container.read(connectionsProvider);
     expect(firstState.connections, hasLength(1));
     expect(firstState.connections.first.multiplexer.backend, BackendType.tmux);
-    expect(firstState.connections.first.multiplexer.executablePath, '/legacy/tmux');
+    expect(
+      firstState.connections.first.multiplexer.executablePath,
+      '/legacy/tmux',
+    );
 
     // 3. 接続編集画面を開く
     tester.view.physicalSize = const Size(1080, 1920);
@@ -83,7 +93,9 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: ConnectionFormScreen(connectionId: 'c1'),
         ),
       ),
@@ -92,7 +104,10 @@ void main() {
 
     // 既存の multiplexer パスが読み込まれている
     final multiplexerField = find.byType(TextFormField).at(4);
-    expect(tester.widget<TextFormField>(multiplexerField).controller?.text, '/legacy/tmux');
+    expect(
+      tester.widget<TextFormField>(multiplexerField).controller?.text,
+      '/legacy/tmux',
+    );
 
     // 4. パスを変更して保存
     await tester.enterText(multiplexerField, '/new/tmux');

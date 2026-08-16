@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../l10n/l10n_ext.dart';
 import '../providers/active_session_provider.dart';
 import '../providers/connection_provider.dart';
 import '../services/backend/backend_type.dart';
@@ -48,11 +49,11 @@ class HomeScreen extends ConsumerWidget {
       body: IndexedStack(
         index: currentTab,
         children: const [
-          ConnectionsScreen(),        // 0: Servers
-          KeysScreen(),               // 1: Keys
-          DashboardScreen(),          // 2: Dashboard（中央）
-          NotificationPanesScreen(),  // 3: Alerts
-          SettingsScreen(),           // 4: Settings
+          ConnectionsScreen(), // 0: Servers
+          KeysScreen(), // 1: Keys
+          DashboardScreen(), // 2: Dashboard（中央）
+          NotificationPanesScreen(), // 3: Alerts
+          SettingsScreen(), // 4: Settings
         ],
       ),
       bottomNavigationBar: _buildBottomNavigationBar(context, ref, currentTab),
@@ -93,7 +94,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 0,
                     icon: Icons.dns,
-                    label: 'Servers',
+                    label: context.l10n.homeServers,
                     isSelected: currentTab == 0,
                   ),
                   // Keys（左寄り）
@@ -102,7 +103,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 1,
                     icon: Icons.key,
-                    label: 'Keys',
+                    label: context.l10n.homeKeys,
                     isSelected: currentTab == 1,
                   ),
                   // 中央スペーサー（Dashboardボタンの場所）
@@ -113,7 +114,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 3,
                     icon: Icons.notifications_outlined,
-                    label: 'Notify',
+                    label: context.l10n.homeNotify,
                     isSelected: currentTab == 3,
                   ),
                   // Settings（右端）
@@ -122,7 +123,7 @@ class HomeScreen extends ConsumerWidget {
                     ref,
                     index: 4,
                     icon: Icons.settings,
-                    label: 'Settings',
+                    label: context.l10n.homeSettings,
                     isSelected: currentTab == 4,
                   ),
                 ],
@@ -133,7 +134,11 @@ class HomeScreen extends ConsumerWidget {
                 right: 0,
                 bottom: 8,
                 child: Center(
-                  child: _buildCenterButton(context, ref, isSelected: currentTab == 2),
+                  child: _buildCenterButton(
+                    context,
+                    ref,
+                    isSelected: currentTab == 2,
+                  ),
                 ),
               ),
             ],
@@ -192,7 +197,9 @@ class HomeScreen extends ConsumerWidget {
           size: 36,
           color: isSelected
               ? Colors.white
-              : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+              : (isDark
+                    ? DesignColors.textSecondary
+                    : DesignColors.textSecondaryLight),
         ),
       ),
     );
@@ -207,7 +214,9 @@ class HomeScreen extends ConsumerWidget {
     required bool isSelected,
   }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inactiveColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final inactiveColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return GestureDetector(
       onTap: () => ref.read(currentTabProvider.notifier).setTab(index),
       behavior: HitTestBehavior.opaque,
@@ -285,27 +294,22 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
         slivers: [
           _buildAppBar(context),
           if (sessions.isEmpty)
-            const SliverFillRemaining(
-              child: _EmptySessionsView(),
-            )
+            const SliverFillRemaining(child: _EmptySessionsView())
           else
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
               sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final session = sessions[index];
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _SessionCard(
-                        session: session,
-                        onTap: () => _openSession(session),
-                        onClose: () => _closeSession(session),
-                      ),
-                    );
-                  },
-                  childCount: sessions.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final session = sessions[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _SessionCard(
+                      session: session,
+                      onTap: () => _openSession(session),
+                      onClose: () => _closeSession(session),
+                    ),
+                  );
+                }, childCount: sessions.length),
               ),
             ),
         ],
@@ -325,7 +329,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
         title: Text(
-          'Active Sessions',
+          context.l10n.homeActiveSessions,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -342,23 +346,29 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                    color: isDark
+                        ? DesignColors.textSecondary
+                        : DesignColors.textSecondaryLight,
                   ),
                 )
               : Icon(
                   Icons.refresh,
-                  color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                  color: isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight,
                 ),
           onPressed: _isReloading ? null : _reloadSessions,
-          tooltip: 'Reload sessions',
+          tooltip: context.l10n.homeReloadSessions,
         ),
         IconButton(
           icon: Icon(
             Icons.settings,
-            color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+            color: isDark
+                ? DesignColors.textSecondary
+                : DesignColors.textSecondaryLight,
           ),
           onPressed: () => ref.read(currentTabProvider.notifier).setTab(3),
-          tooltip: 'Settings',
+          tooltip: context.l10n.homeSettings,
         ),
         const SizedBox(width: 8),
       ],
@@ -366,6 +376,7 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
   }
 
   Future<void> _reloadSessions() async {
+    final l10n = context.l10n;
     setState(() => _isReloading = true);
 
     try {
@@ -379,11 +390,23 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
           SshConnectOptions options;
           if (connection.authMethod == 'key' && connection.keyId != null) {
             final privateKey = await storage.getPrivateKey(connection.keyId!);
+            if (privateKey == null) {
+              throw SshAuthenticationError(
+                'Private key is not readable. Please re-import the key.',
+              );
+            }
             final passphrase = await storage.getPassphrase(connection.keyId!);
-            options = SshConnectOptions(privateKey: privateKey, passphrase: passphrase, multiplexer: connection.multiplexer);
+            options = SshConnectOptions(
+              privateKey: privateKey,
+              passphrase: passphrase,
+              multiplexer: connection.multiplexer,
+            );
           } else {
             final password = await storage.getPassword(connection.id);
-            options = SshConnectOptions(password: password, multiplexer: connection.multiplexer);
+            options = SshConnectOptions(
+              password: password,
+              multiplexer: connection.multiplexer,
+            );
           }
 
           // SSH接続してセッション一覧を取得
@@ -393,14 +416,17 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
             port: connection.port,
             username: connection.username,
             options: options,
+            l10n: l10n,
           );
 
           final isHerdr = connection.multiplexer.backend == BackendType.herdr;
           if (isHerdr) {
-            // herdr: read-only スナップショットを共通 domain に変換して登録
+            // herdr: スナップショットを共通 domain に変換して登録
             final adapter = HerdrAdapter(sshClient);
             final snapshot = await adapter.snapshot();
-            ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            ref
+                .read(activeSessionsProvider.notifier)
+                .updateSessionsFromDomain(
                   connectionId: connection.id,
                   connectionName: connection.name,
                   host: connection.host,
@@ -410,13 +436,17 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
           } else {
             List<TmuxSession> tmuxSessions;
             try {
-              tmuxSessions = await tmuxFacade.listSessions(sshClient.tmuxExecutor);
+              tmuxSessions = await tmuxFacade.listSessions(
+                sshClient.tmuxExecutor,
+              );
             } on TmuxCommandException {
               tmuxSessions = <TmuxSession>[];
             }
 
             // ActiveSessionsProviderを更新
-            ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+            ref
+                .read(activeSessionsProvider.notifier)
+                .updateSessionsFromDomain(
                   connectionId: connection.id,
                   connectionName: connection.name,
                   host: connection.host,
@@ -440,7 +470,9 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
   }
 
   void _openSession(ActiveSession session) {
-    ref.read(activeSessionsProvider.notifier).setCurrentSession(
+    ref
+        .read(activeSessionsProvider.notifier)
+        .setCurrentSession(
           session.connectionId,
           session.sessionName,
           sessionId: session.sessionId,
@@ -459,7 +491,9 @@ class _TerminalTabState extends ConsumerState<_TerminalTab> {
   }
 
   void _closeSession(ActiveSession session) {
-    ref.read(activeSessionsProvider.notifier).closeSession(
+    ref
+        .read(activeSessionsProvider.notifier)
+        .closeSession(
           session.connectionId,
           session.sessionName,
           sessionId: session.sessionId,
@@ -481,33 +515,43 @@ class _EmptySessionsView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+              color: isDark
+                  ? DesignColors.surfaceDark
+                  : DesignColors.surfaceLight,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+                color: isDark
+                    ? DesignColors.borderDark
+                    : DesignColors.borderLight,
               ),
             ),
             child: Icon(
               Icons.terminal,
               size: 64,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            'No Active Sessions',
+            context.l10n.homeNoActiveSessions,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Connect to a server to start a terminal session',
+            context.l10n.homeConnectToServerToStartTerminal,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
             textAlign: TextAlign.center,
           ),
@@ -545,43 +589,47 @@ class _SessionCard extends StatelessWidget {
           color: DesignColors.error.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(
-          Icons.close,
-          color: DesignColors.error,
-        ),
+        child: const Icon(Icons.close, color: DesignColors.error),
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
-          context: context,
-          builder: (dialogContext) {
-            final dialogColorScheme = Theme.of(dialogContext).colorScheme;
-            return AlertDialog(
-              backgroundColor: dialogColorScheme.surface,
-              title: Text(
-                'Close Session?',
-                style: GoogleFonts.spaceGrotesk(
-                  fontWeight: FontWeight.w700,
-                  color: dialogColorScheme.onSurface,
-                ),
-              ),
-              content: Text(
-                'Remove "${session.sessionName}" from active sessions?',
-                style: GoogleFonts.spaceGrotesk(color: dialogColorScheme.onSurfaceVariant),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-                  child: const Text('Close'),
-                ),
-              ],
-            );
-          },
-        ) ?? false;
+              context: context,
+              builder: (dialogContext) {
+                final dialogColorScheme = Theme.of(dialogContext).colorScheme;
+                return AlertDialog(
+                  backgroundColor: dialogColorScheme.surface,
+                  title: Text(
+                    dialogContext.l10n.homeCloseSessionTitle,
+                    style: GoogleFonts.spaceGrotesk(
+                      fontWeight: FontWeight.w700,
+                      color: dialogColorScheme.onSurface,
+                    ),
+                  ),
+                  content: Text(
+                    dialogContext.l10n.homeCloseSessionMessage(
+                      session.sessionName,
+                    ),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: dialogColorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: Text(dialogContext.l10n.appCancel),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: DesignColors.error,
+                      ),
+                      child: Text(dialogContext.l10n.homeClose),
+                    ),
+                  ],
+                );
+              },
+            ) ??
+            false;
       },
       onDismissed: (_) => onClose(),
       child: InkWell(
@@ -590,10 +638,14 @@ class _SessionCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+            color: isDark
+                ? DesignColors.surfaceDark
+                : DesignColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+              color: isDark
+                  ? DesignColors.borderDark
+                  : DesignColors.borderLight,
             ),
             boxShadow: [
               BoxShadow(
@@ -611,12 +663,18 @@ class _SessionCard extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isAttached
-                      ? (isDark ? DesignColors.connectingCardDark : DesignColors.connectingCardLight)
-                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                      ? (isDark
+                            ? DesignColors.connectingCardDark
+                            : DesignColors.connectingCardLight)
+                      : (isDark
+                            ? DesignColors.borderDark
+                            : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isAttached
-                        ? (isDark ? DesignColors.connectingCardBorderDark : DesignColors.connectingCardBorderLight)
+                        ? (isDark
+                              ? DesignColors.connectingCardBorderDark
+                              : DesignColors.connectingCardBorderLight)
                         : Colors.transparent,
                   ),
                 ),
@@ -625,7 +683,9 @@ class _SessionCard extends StatelessWidget {
                   size: 20,
                   color: isAttached
                       ? DesignColors.primary
-                      : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+                      : (isDark
+                            ? DesignColors.textSecondary
+                            : DesignColors.textSecondaryLight),
                 ),
               ),
               const SizedBox(width: 16),
@@ -648,17 +708,21 @@ class _SessionCard extends StatelessWidget {
                       '${session.connectionName} • ${session.host}',
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 12,
-                        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        color: isDark
+                            ? DesignColors.textMuted
+                            : DesignColors.textMutedLight,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
                         Text(
-                          '${session.windowCount} windows',
+                          context.l10n.appWindowCount(session.windowCount),
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
                         // 最後に開いていたペイン情報を表示
@@ -667,7 +731,9 @@ class _SessionCard extends StatelessWidget {
                             ' • ',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 11,
-                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
                             ),
                           ),
                           Icon(
@@ -677,10 +743,14 @@ class _SessionCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 2),
                           Text(
-                            'Last: W${session.lastWindowIndex ?? 0}',
+                            context.l10n.homeLastWindow(
+                              session.lastWindowIndex ?? 0,
+                            ),
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 10,
-                              color: DesignColors.primary.withValues(alpha: 0.7),
+                              color: DesignColors.primary.withValues(
+                                alpha: 0.7,
+                              ),
                             ),
                           ),
                         ],
@@ -691,30 +761,47 @@ class _SessionCard extends StatelessWidget {
               ),
               // Status Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: isAttached
                       ? (isDark
-                          ? DesignColors.connectedCardDark.withValues(alpha: 0.5)
-                          : DesignColors.connectedCardLight)
-                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                            ? DesignColors.connectedCardDark.withValues(
+                                alpha: 0.5,
+                              )
+                            : DesignColors.connectedCardLight)
+                      : (isDark
+                            ? DesignColors.borderDark
+                            : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
                     color: isAttached
                         ? (isDark
-                            ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7)
-                            : DesignColors.connectedCardBorderLight)
-                        : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                              ? DesignColors.connectedCardBorderDark.withValues(
+                                  alpha: 0.7,
+                                )
+                              : DesignColors.connectedCardBorderLight)
+                        : (isDark
+                              ? DesignColors.borderDark
+                              : DesignColors.borderLight),
                   ),
                 ),
                 child: Text(
-                  isAttached ? 'Attached' : 'Detached',
+                  isAttached
+                      ? context.l10n.homeAttached
+                      : context.l10n.homeDetached,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                     color: isAttached
-                        ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
-                        : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
+                        ? (isDark
+                              ? DesignColors.connectedCardTextDark
+                              : DesignColors.connectedCardTextLight)
+                        : (isDark
+                              ? DesignColors.textMuted
+                              : DesignColors.textMutedLight),
                   ),
                 ),
               ),

@@ -1,22 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../../../services/sftp/file_entry.dart';
 import '../../../theme/design_colors.dart';
 
 /// ファイル/ディレクトリのアクションメニュー
-enum FileAction {
-  open,
-  rename,
-  delete,
-}
+enum FileAction { open, rename, delete }
 
 /// アクションメニューを表示するBottomSheet
 class FileActionMenu {
   /// アクションメニューを表示し、選択されたアクションを返す
-  static Future<FileAction?> show(
-    BuildContext context,
-    FileEntry entry,
-  ) {
+  static Future<FileAction?> show(BuildContext context, FileEntry entry) {
     return showModalBottomSheet<FileAction>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -35,8 +29,12 @@ class _FileActionMenuContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight;
-    final subtitleColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final textColor = isDark
+        ? DesignColors.textPrimary
+        : DesignColors.textPrimaryLight;
+    final subtitleColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
 
     return SafeArea(
       child: Padding(
@@ -62,7 +60,9 @@ class _FileActionMenuContent extends StatelessWidget {
                 children: [
                   Icon(
                     entry.isDirectory ? Icons.folder : Icons.insert_drive_file,
-                    color: entry.isDirectory ? DesignColors.secondary : subtitleColor,
+                    color: entry.isDirectory
+                        ? DesignColors.secondary
+                        : subtitleColor,
                     size: 28,
                   ),
                   const SizedBox(width: 12),
@@ -100,21 +100,21 @@ class _FileActionMenuContent extends StatelessWidget {
               _buildActionTile(
                 context,
                 icon: Icons.folder_open,
-                label: '開く',
+                label: context.l10n.fileOpen,
                 action: FileAction.open,
                 textColor: textColor,
               ),
             _buildActionTile(
               context,
               icon: Icons.edit,
-              label: '名前を変更',
+              label: context.l10n.fileRename,
               action: FileAction.rename,
               textColor: textColor,
             ),
             _buildActionTile(
               context,
               icon: Icons.delete_outline,
-              label: '削除',
+              label: context.l10n.fileDelete,
               action: FileAction.delete,
               textColor: DesignColors.error,
               iconColor: DesignColors.error,
@@ -143,10 +143,7 @@ class _FileActionMenuContent extends StatelessWidget {
   }) {
     return ListTile(
       leading: Icon(icon, color: iconColor ?? textColor, size: 22),
-      title: Text(
-        label,
-        style: TextStyle(color: textColor, fontSize: 15),
-      ),
+      title: Text(label, style: TextStyle(color: textColor, fontSize: 15)),
       onTap: () => Navigator.pop(context, action),
       contentPadding: const EdgeInsets.symmetric(horizontal: 20),
     );

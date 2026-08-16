@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/notification_panes_provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/tmux/tmux_models.dart';
 
 import '../../theme/design_colors.dart';
@@ -14,10 +16,12 @@ class NotificationPanesScreen extends ConsumerStatefulWidget {
   const NotificationPanesScreen({super.key});
 
   @override
-  ConsumerState<NotificationPanesScreen> createState() => _NotificationPanesScreenState();
+  ConsumerState<NotificationPanesScreen> createState() =>
+      _NotificationPanesScreenState();
 }
 
-class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScreen> {
+class _NotificationPanesScreenState
+    extends ConsumerState<NotificationPanesScreen> {
   bool _isRefreshing = false;
 
   @override
@@ -55,17 +59,19 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
     // tmux側のウィンドウフラグをクリア（バックグラウンド）
     notifier.clearWindowFlag(alert);
 
-    ref.read(activeSessionsProvider.notifier).addOrUpdateSession(
-      connectionId: alert.connectionId,
-      connectionName: alert.connectionName,
-      host: alert.host,
-      sessionName: alert.sessionName,
-      sessionId: alert.sessionId,
-      windowCount: 0,
-      isAttached: true,
-      lastWindowIndex: alert.windowIndex,
-      lastPaneId: alert.paneId,
-    );
+    ref
+        .read(activeSessionsProvider.notifier)
+        .addOrUpdateSession(
+          connectionId: alert.connectionId,
+          connectionName: alert.connectionName,
+          host: alert.host,
+          sessionName: alert.sessionName,
+          sessionId: alert.sessionId,
+          windowCount: 0,
+          isAttached: true,
+          lastWindowIndex: alert.windowIndex,
+          lastPaneId: alert.paneId,
+        );
 
     if (!mounted) return;
     Navigator.of(context).push(
@@ -109,38 +115,37 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
             else if (alertState.alertPanes.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: _buildEmptyState(isDark),
+                child: _buildEmptyState(context, isDark),
               )
             else
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final alert = alertState.alertPanes[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _AlertPaneCard(
-                          alert: alert,
-                          onTap: () => _openAlertPane(alert),
-                          onDismiss: () => _dismissAlert(alert),
-                        ),
-                      );
-                    },
-                    childCount: alertState.alertPanes.length,
-                  ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final alert = alertState.alertPanes[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _AlertPaneCard(
+                        alert: alert,
+                        onTap: () => _openAlertPane(alert),
+                        onDismiss: () => _dismissAlert(alert),
+                      ),
+                    );
+                  }, childCount: alertState.alertPanes.length),
                 ),
               ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 80),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAppBar(BuildContext context, bool isDark, ColorScheme colorScheme) {
+  Widget _buildAppBar(
+    BuildContext context,
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
     return SliverAppBar(
       floating: true,
       pinned: true,
@@ -152,7 +157,7 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
         title: Text(
-          'Alerts',
+          context.l10n.notifAlerts,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 24,
             fontWeight: FontWeight.w700,
@@ -169,22 +174,26 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                    color: isDark
+                        ? DesignColors.textSecondary
+                        : DesignColors.textSecondaryLight,
                   ),
                 )
               : Icon(
                   Icons.refresh,
-                  color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                  color: isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight,
                 ),
           onPressed: _isRefreshing ? null : _refresh,
-          tooltip: 'Refresh alerts',
+          tooltip: context.l10n.notifRefreshAlerts,
         ),
         const SizedBox(width: 8),
       ],
     );
   }
 
-  Widget _buildEmptyState(bool isDark) {
+  Widget _buildEmptyState(BuildContext context, bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -192,23 +201,29 @@ class _NotificationPanesScreenState extends ConsumerState<NotificationPanesScree
           Icon(
             Icons.notifications_none,
             size: 64,
-            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
           ),
           const SizedBox(height: 16),
           Text(
-            'No alerts',
+            context.l10n.notifNoAlerts,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'All panes are quiet',
+            context.l10n.notifAllPanesQuiet,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
         ],
@@ -248,13 +263,10 @@ class _AlertPaneCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.notifications_off,
-              color: DesignColors.error,
-            ),
+            const Icon(Icons.notifications_off, color: DesignColors.error),
             const SizedBox(height: 4),
             Text(
-              'Dismiss',
+              context.l10n.notifDismiss,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 11,
                 color: DesignColors.error,
@@ -269,10 +281,14 @@ class _AlertPaneCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+            color: isDark
+                ? DesignColors.surfaceDark
+                : DesignColors.surfaceLight,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+              color: isDark
+                  ? DesignColors.borderDark
+                  : DesignColors.borderLight,
             ),
             boxShadow: [
               BoxShadow(
@@ -323,7 +339,9 @@ class _AlertPaneCard extends StatelessWidget {
                       alert.host,
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 12,
-                        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        color: isDark
+                            ? DesignColors.textMuted
+                            : DesignColors.textMutedLight,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -331,18 +349,33 @@ class _AlertPaneCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(
-                          'W${alert.windowIndex}: ${alert.windowName}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifWindowPosition(
+                              alert.windowIndex,
+                              alert.windowName,
+                            ),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Text(
-                          ' • Pane ${alert.paneIndex}',
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 11,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        Flexible(
+                          child: Text(
+                            context.l10n.notifPanePosition(alert.paneIndex),
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 11,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (alert.currentCommand != null) ...[
@@ -350,7 +383,9 @@ class _AlertPaneCard extends StatelessWidget {
                             ' • ',
                             style: GoogleFonts.jetBrainsMono(
                               fontSize: 11,
-                              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                              color: isDark
+                                  ? DesignColors.textMuted
+                                  : DesignColors.textMutedLight,
                             ),
                           ),
                           Flexible(
@@ -358,7 +393,9 @@ class _AlertPaneCard extends StatelessWidget {
                               alert.currentCommand!,
                               style: GoogleFonts.jetBrainsMono(
                                 fontSize: 11,
-                                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                                color: isDark
+                                    ? DesignColors.textMuted
+                                    : DesignColors.textMutedLight,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -372,7 +409,10 @@ class _AlertPaneCard extends StatelessWidget {
               ),
               // Flag Badge
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _flagBadgeBackground(alert.primaryFlag, isDark),
                   borderRadius: BorderRadius.circular(6),
@@ -381,7 +421,7 @@ class _AlertPaneCard extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  _flagLabel(alert.primaryFlag),
+                  _flagLabel(context.l10n, alert.primaryFlag),
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
@@ -416,9 +456,15 @@ class _AlertPaneCard extends StatelessWidget {
 
   Color _flagBackgroundColor(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.15 : 0.1),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.15 : 0.1),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.15 : 0.1),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.15 : 0.1,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }
@@ -434,28 +480,40 @@ class _AlertPaneCard extends StatelessWidget {
 
   Color _flagBadgeBackground(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.2 : 0.1),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.2 : 0.1),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.2 : 0.1),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.2 : 0.1,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }
 
   Color _flagBadgeBorder(TmuxWindowFlag? flag, bool isDark) {
     return switch (flag) {
-      TmuxWindowFlag.bell => DesignColors.error.withValues(alpha: isDark ? 0.4 : 0.3),
-      TmuxWindowFlag.activity => Colors.orange.withValues(alpha: isDark ? 0.4 : 0.3),
-      TmuxWindowFlag.silence => Colors.grey.withValues(alpha: isDark ? 0.4 : 0.3),
+      TmuxWindowFlag.bell => DesignColors.error.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
+      TmuxWindowFlag.activity => Colors.orange.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
+      TmuxWindowFlag.silence => Colors.grey.withValues(
+        alpha: isDark ? 0.4 : 0.3,
+      ),
       _ => isDark ? DesignColors.borderDark : DesignColors.borderLight,
     };
   }
 
-  String _flagLabel(TmuxWindowFlag? flag) {
+  String _flagLabel(AppLocalizations l10n, TmuxWindowFlag? flag) {
     return switch (flag) {
-      TmuxWindowFlag.bell => 'Bell',
-      TmuxWindowFlag.activity => 'Activity',
-      TmuxWindowFlag.silence => 'Silence',
-      _ => 'Alert',
+      TmuxWindowFlag.bell => l10n.notifFlagBell,
+      TmuxWindowFlag.activity => l10n.notifFlagActivity,
+      TmuxWindowFlag.silence => l10n.notifFlagSilence,
+      _ => l10n.notifFlagAlert,
     };
   }
 }

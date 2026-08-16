@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +7,7 @@ import '../services/sftp/file_entry.dart';
 import '../services/sftp/sftp_browser_service.dart';
 import '../services/ssh/ssh_client.dart';
 import '../services/tmux/tmux_models.dart';
+import '../l10n/l10n_lookup.dart';
 
 import 'ssh_provider.dart';
 import 'tmux_provider.dart';
@@ -177,10 +177,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
     } catch (e) {
       _log('loadDirectory ERROR: $e');
       if (version != _listVersion) return;
-      state = state.copyWith(
-        isLoading: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, error: e.toString());
     }
   }
 
@@ -240,7 +237,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       _log('delete operation OK');
     } catch (e) {
       _log('delete ERROR: $e');
-      state = state.copyWith(error: 'Delete failed: $e');
+      state = state.copyWith(error: lookupL10n().fileDeleteFailureDetail('$e'));
       return false;
     }
     await loadDirectory(state.currentPath);
@@ -266,7 +263,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       _log('rename operation OK');
     } catch (e) {
       _log('rename ERROR: $e');
-      state = state.copyWith(error: 'Rename failed: $e');
+      state = state.copyWith(error: lookupL10n().fileRenameFailureDetail('$e'));
       return false;
     }
     await loadDirectory(state.currentPath);
@@ -291,7 +288,9 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       _log('createDirectory operation OK');
     } catch (e) {
       _log('createDirectory ERROR: $e');
-      state = state.copyWith(error: 'Create directory failed: $e');
+      state = state.copyWith(
+        error: lookupL10n().fileCreateFolderFailureDetail('$e'),
+      );
       return false;
     }
     await loadDirectory(state.currentPath);
@@ -310,7 +309,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   SshClient _getSshClient() {
     final client = ref.read(sshProvider.notifier).client;
     if (client == null || !client.isConnected) {
-      throw StateError('SSH connection is not available');
+      throw StateError(lookupL10n().termSshNotAvailable);
     }
     return client;
   }
@@ -335,7 +334,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: 'Failed to get home directory: $e',
+        error: lookupL10n().fileLoadHomeFailed('$e'),
       );
     }
   }
@@ -349,7 +348,7 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
       if (connState == SshConnectionState.disconnected ||
           connState == SshConnectionState.error) {
         state = state.copyWith(
-          error: 'SSH connection lost',
+          error: lookupL10n().fileSshConnectionLost,
           isLoading: false,
         );
       }
@@ -371,7 +370,9 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   // inventory: FILE-028
   String _getParentPath(String path) {
     if (path == '/') return '/';
-    final normalized = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
+    final normalized = path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
     final lastSlash = normalized.lastIndexOf('/');
     if (lastSlash <= 0) return '/';
     return normalized.substring(0, lastSlash);
@@ -383,7 +384,9 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
   void _log(String message) {
     if (message.contains('openSftp OK')) _sftpOpenCount++;
     if (message.contains('sftp.close()')) _sftpCloseCount++;
-    debugPrint('[FileBrowser] $message (open=$_sftpOpenCount, close=$_sftpCloseCount, leaked=${_sftpOpenCount - _sftpCloseCount})');
+    debugPrint(
+      '[FileBrowser] $message (open=$_sftpOpenCount, close=$_sftpCloseCount, leaked=${_sftpOpenCount - _sftpCloseCount})',
+    );
   }
 }
 
@@ -391,5 +394,5 @@ class FileBrowserNotifier extends Notifier<FileBrowserState> {
 /// ファイルブラウザ Provider
 final fileBrowserProvider =
     NotifierProvider<FileBrowserNotifier, FileBrowserState>(
-  FileBrowserNotifier.new,
-);
+      FileBrowserNotifier.new,
+    );

@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart' as crypto;
 import 'package:dartssh2/dartssh2.dart';
 import 'package:pointycastle/export.dart' as pc;
+
+import '../../l10n/app_localizations.dart';
 
 /// SSH鍵ペアのデータクラス
 class SshKeyPair {
@@ -32,16 +35,23 @@ class SshKeyService {
     final algorithm = crypto.Ed25519();
     final keyPair = await algorithm.newKeyPair();
 
-    final privateKeyBytes =
-        Uint8List.fromList(await keyPair.extractPrivateKeyBytes());
+    final privateKeyBytes = Uint8List.fromList(
+      await keyPair.extractPrivateKeyBytes(),
+    );
     final publicKey = await keyPair.extractPublicKey();
     final publicKeyBytes = Uint8List.fromList(publicKey.bytes);
 
     final fingerprint = calculateFingerprint('ssh-ed25519', publicKeyBytes);
-    final privatePem =
-        _buildEd25519Pem(privateKeyBytes, publicKeyBytes, comment ?? '');
-    final publicKeyString =
-        toAuthorizedKeys('ssh-ed25519', publicKeyBytes, comment ?? '');
+    final privatePem = _buildEd25519Pem(
+      privateKeyBytes,
+      publicKeyBytes,
+      comment ?? '',
+    );
+    final publicKeyString = toAuthorizedKeys(
+      'ssh-ed25519',
+      publicKeyBytes,
+      comment ?? '',
+    );
 
     return SshKeyPair(
       type: 'ed25519',
@@ -54,31 +64,40 @@ class SshKeyService {
   }
 
   /// RSA鍵ペアを生成
-  Future<SshKeyPair> generateRsa({
-    required int bits,
-    String? comment,
-  }) async {
+  Future<SshKeyPair> generateRsa({required int bits, String? comment}) async {
     assert(bits == 2048 || bits == 3072 || bits == 4096);
 
+    // シードはOSのCSPRNG(Random.secure = getrandom(2))から採る。
+    // 旧実装は DateTime.now().millisecondsSinceEpoch % 256 の同一値32バイト
+    // をシードにしており、同一ミリ秒に2回生成すると同一の鍵が生成分割れる
+    // 欠陥があった(コンテナ等の時計粒度が粗い環境で実際に発生)。
     final secureRandom = pc.FortunaRandom();
-    final seedSource = List<int>.generate(32, (i) => DateTime.now().millisecondsSinceEpoch % 256);
+    final seedSource = List<int>.generate(
+      32,
+      (_) => Random.secure().nextInt(256),
+    );
     secureRandom.seed(pc.KeyParameter(Uint8List.fromList(seedSource)));
 
     final keyGen = pc.RSAKeyGenerator()
-      ..init(pc.ParametersWithRandom(
-        pc.RSAKeyGeneratorParameters(BigInt.parse('65537'), bits, 64),
-        secureRandom,
-      ));
+      ..init(
+        pc.ParametersWithRandom(
+          pc.RSAKeyGeneratorParameters(BigInt.parse('65537'), bits, 64),
+          secureRandom,
+        ),
+      );
 
     final pair = keyGen.generateKeyPair();
-    final publicKey = pair.publicKey as pc.RSAPublicKey;
-    final privateKey = pair.privateKey as pc.RSAPrivateKey;
+    final publicKey = pair.publicKey;
+    final privateKey = pair.privateKey;
 
     final publicKeyBlob = _buildRsaPublicKeyBlob(publicKey);
     final fingerprint = calculateFingerprint('ssh-rsa', publicKeyBlob);
     final privatePem = _buildRsaPem(privateKey, publicKey, comment ?? '');
-    final publicKeyString =
-        toAuthorizedKeys('ssh-rsa', publicKeyBlob, comment ?? '');
+    final publicKeyString = toAuthorizedKeys(
+      'ssh-rsa',
+      publicKeyBlob,
+      comment ?? '',
+    );
 
     return SshKeyPair(
       type: 'rsa-$bits',
@@ -91,13 +110,19 @@ class SshKeyService {
   }
 
   /// PEM文字列から鍵をパース
+  ///
+  /// [l10n] は任意。null の場合は英語フォールバック（テスト互換）。
   Future<SshKeyPair> parseFromPem(
     String pemContent, {
     String? passphrase,
+    AppLocalizations? l10n,
   }) async {
     final keyPairs = SSHKeyPair.fromPem(pemContent, passphrase);
     if (keyPairs.isEmpty) {
-      throw const FormatException('Invalid PEM format or wrong passphrase');
+      throw FormatException(
+        l10n?.keyMgmtInvalidPemOrWrongPassphrase ??
+            'Invalid PEM format or wrong passphrase',
+      );
     }
 
     final keyPair = keyPairs.first;
@@ -149,7 +174,11 @@ class SshKeyService {
   }
 
   /// 公開鍵をauthorized_keys形式に変換
-  String toAuthorizedKeys(String keyType, Uint8List publicKeyBytes, String comment) {
+  String toAuthorizedKeys(
+    String keyType,
+    Uint8List publicKeyBytes,
+    String comment,
+  ) {
     final blob = _buildPublicKeyBlob(keyType, publicKeyBytes);
     final encoded = base64Encode(blob);
     return comment.isEmpty ? '$keyType $encoded' : '$keyType $encoded $comment';
@@ -230,7 +259,10 @@ class SshKeyService {
   }
 
   String _buildEd25519Pem(
-      Uint8List privateKey, Uint8List publicKey, String comment) {
+    Uint8List privateKey,
+    Uint8List publicKey,
+    String comment,
+  ) {
     // OpenSSH形式のEd25519秘密鍵PEMを構築
     // 簡略化のため、dartssh2で読み込み可能な形式で返す
     final buffer = BytesBuilder();
@@ -283,28 +315,37 @@ class SshKeyService {
     final encoded = base64Encode(buffer.toBytes());
     final lines = <String>[];
     for (var i = 0; i < encoded.length; i += 70) {
-      lines.add(encoded.substring(i, i + 70 > encoded.length ? encoded.length : i + 70));
+      lines.add(
+        encoded.substring(i, i + 70 > encoded.length ? encoded.length : i + 70),
+      );
     }
 
     return '-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join('\n')}\n-----END OPENSSH PRIVATE KEY-----\n';
   }
 
   String _buildRsaPem(
-      pc.RSAPrivateKey privateKey, pc.RSAPublicKey publicKey, String comment) {
+    pc.RSAPrivateKey privateKey,
+    pc.RSAPublicKey publicKey,
+    String comment,
+  ) {
     // RSA秘密鍵をPKCS#1形式で出力 (ASN.1 DER手動エンコード)
     final derBytes = _encodeRsaPrivateKeyDer(privateKey, publicKey);
 
     final encoded = base64Encode(derBytes);
     final lines = <String>[];
     for (var i = 0; i < encoded.length; i += 64) {
-      lines.add(encoded.substring(i, i + 64 > encoded.length ? encoded.length : i + 64));
+      lines.add(
+        encoded.substring(i, i + 64 > encoded.length ? encoded.length : i + 64),
+      );
     }
 
     return '-----BEGIN RSA PRIVATE KEY-----\n${lines.join('\n')}\n-----END RSA PRIVATE KEY-----\n';
   }
 
   Uint8List _encodeRsaPrivateKeyDer(
-      pc.RSAPrivateKey privateKey, pc.RSAPublicKey publicKey) {
+    pc.RSAPrivateKey privateKey,
+    pc.RSAPublicKey publicKey,
+  ) {
     // PKCS#1 RSAPrivateKey structure:
     // RSAPrivateKey ::= SEQUENCE {
     //   version           Version,
@@ -330,7 +371,10 @@ class SshKeyService {
     ];
 
     final encodedIntegers = integers.map(_encodeAsn1Integer).toList();
-    final contentLength = encodedIntegers.fold<int>(0, (sum, e) => sum + e.length);
+    final contentLength = encodedIntegers.fold<int>(
+      0,
+      (sum, e) => sum + e.length,
+    );
 
     final buffer = BytesBuilder();
     // SEQUENCE tag

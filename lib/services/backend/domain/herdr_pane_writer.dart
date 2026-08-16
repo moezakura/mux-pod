@@ -45,22 +45,22 @@ class HerdrPaneWriter implements PaneWriter {
   /// D11）。(b) 文字キー送信の sendText 素通しも同一実測で確認済み（L0-a #6）。
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
-        sendText: true,
-        sendKeys: true,
-        focus: true,
-        split: true,
-        close: true,
-        rename: true,
-        zoom: true,
-        resize: true,
-        paste: true,
-        copyMode: false,
-        imageTransfer: true,
-        workspaceCrud: true,
-        tabCrud: true,
-        absoluteResize: false,
-        wheelSend: true,
-      );
+    sendText: true,
+    sendKeys: true,
+    focus: true,
+    split: true,
+    close: true,
+    rename: true,
+    zoom: true,
+    resize: true,
+    paste: true,
+    copyMode: false,
+    imageTransfer: true,
+    workspaceCrud: true,
+    tabCrud: true,
+    absoluteResize: false,
+    wheelSend: true,
+  );
 
   /// tmux キー名を herdr 送信経路へ変換する（Q-07）。
   ///
@@ -144,7 +144,11 @@ class HerdrPaneWriter implements PaneWriter {
   /// 分割境界外（`changed:false` + `reason:"unchanged"`）は soft 失敗として
   /// [PaneOperationNoopException] を投げる（UI は情報通知・S4）。
   @override
-  Future<void> resizePane(String paneId, String direction, double amount) async {
+  Future<void> resizePane(
+    String paneId,
+    String direction,
+    double amount,
+  ) async {
     final result = await _adapter.resizePane(paneId, direction, amount);
     if (!result.changed) {
       throw PaneOperationNoopException(
@@ -193,9 +197,17 @@ class HerdrPaneWriter implements PaneWriter {
   Future<void> selectPane(String paneId) => _unsupported('selectPane');
 
   /// tab を作成する（`herdr tab create`・Q-05）。
+  ///
+  /// [label] と [focus] は [HerdrAdapter.tabCreate] へそのまま透過する
+  /// （label は snapshot の `tabs[].label` に反映される表示名・focus は作成後の
+  /// フォーカス移動を制御）。
   @override
-  Future<void> createTab(String workspaceId) async {
-    await _adapter.tabCreate(workspaceId);
+  Future<void> createTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
+    await _adapter.tabCreate(workspaceId, label: label, focus: focus);
   }
 
   /// tab を閉じる（`herdr tab close`・Q-05。対象不在は
@@ -250,13 +262,15 @@ class HerdrPaneWriter implements PaneWriter {
   /// [PaneWriter.imageTransfer] は paneId を持たないため直接は呼ばれず、型付き
   /// 例外で明示する（`_injectImagePath` 経路が正・R4/R9）。
   @override
-  Future<void> imageTransfer(String path) => throw UnsupportedPaneOperationException(
+  Future<void> imageTransfer(String path) =>
+      throw UnsupportedPaneOperationException(
         operation: 'imageTransfer',
         backend: 'herdr',
         message: '画像転送は _injectImagePath（SFTP アップロード + send-text）経路で行います',
       );
 
-  Never _unsupported(String operation) => throw UnsupportedPaneOperationException(
+  Never _unsupported(String operation) =>
+      throw UnsupportedPaneOperationException(
         operation: operation,
         backend: 'herdr',
         message: 'この操作は herdr で未対応です',

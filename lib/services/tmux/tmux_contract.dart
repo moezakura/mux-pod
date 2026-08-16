@@ -147,7 +147,10 @@ abstract interface class TmuxContract {
   // inventory: TMUX-CONTRACT-IN-005
   Future<void> enterCopyModeNoWait(TmuxCommandExecutor executor, String target);
   // inventory: TMUX-CONTRACT-IN-006
-  Future<void> cancelCopyModeNoWait(TmuxCommandExecutor executor, String target);
+  Future<void> cancelCopyModeNoWait(
+    TmuxCommandExecutor executor,
+    String target,
+  );
 
   // inventory: TMUX-CONTRACT-PASTE-001
   Future<void> pasteText(

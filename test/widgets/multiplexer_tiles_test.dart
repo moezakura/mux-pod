@@ -5,6 +5,7 @@ import 'package:flutter_muxpod/services/backend/domain/multiplexer_pane.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_session.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_window.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/widgets/multiplexer_tiles.dart';
 
 void main() {
@@ -14,6 +15,8 @@ void main() {
     testWidgets('shows name, window count and folder icon', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerSessionTile(session: session, isActive: false),
           ),
@@ -30,6 +33,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerSessionTile(
               session: session,
@@ -54,6 +59,8 @@ void main() {
     testWidgets('shows index, name, pane count and tab icon', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerWindowTile(window: window, isActive: false),
           ),
@@ -72,6 +79,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerWindowTile(
               window: window,
@@ -102,6 +111,8 @@ void main() {
     testWidgets('no rename item when onRename is null', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerWindowTile(
               window: window,
@@ -124,6 +135,8 @@ void main() {
     testWidgets('no popup when all callbacks are null', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerWindowTile(window: window, isActive: false),
           ),
@@ -131,6 +144,31 @@ void main() {
       );
 
       expect(find.byIcon(Icons.more_vert), findsNothing);
+    });
+
+    testWidgets('uses custom resize label when resizeLabel is provided', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MultiplexerWindowTile(
+              window: window,
+              isActive: false,
+              onResize: () {},
+              resizeLabel: 'Resize Tab',
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Resize Tab'), findsOneWidget);
+      expect(find.text('Resize Window'), findsNothing);
     });
   });
 
@@ -140,6 +178,8 @@ void main() {
     testWidgets('shows title, index badge and subtitle', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,
@@ -160,6 +200,8 @@ void main() {
     testWidgets('omits subtitle when null', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,
@@ -182,6 +224,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,
@@ -211,6 +255,8 @@ void main() {
     testWidgets('no resize item when onResize is null', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,
@@ -232,6 +278,8 @@ void main() {
     testWidgets('no popup when all callbacks are null', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,
@@ -251,6 +299,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: MultiplexerPaneTile(
               pane: pane,

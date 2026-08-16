@@ -13,6 +13,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../command/command_request.dart';
+import '../command/command_result.dart';
 import 'tmux_backend.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_executable_resolver.dart';
@@ -30,11 +32,9 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
   Future<void>? _detectFuture;
 
   // inventory: TMUX-SSH-EXEC-002
-  SshTmuxCommandExecutor(
-    this._backend, {
-    String? userExecutablePath,
-  })  : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
-        _resolver = TmuxExecutableResolver() {
+  SshTmuxCommandExecutor(this._backend, {String? userExecutablePath})
+    : _userExecutablePath = userExecutablePath ?? _backend.userExecutablePath,
+      _resolver = TmuxExecutableResolver() {
     _lifecycle = TmuxShellLifecycle(resolver: _resolver);
     _backend.onInputTransportRebooted = _reapplyLastRestoreTrap;
   }
@@ -68,33 +68,22 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
   TmuxShellLifecycle get lifecycle => _lifecycle;
 
   @override
-  // inventory: TMUX-SSH-EXEC-006
-  Future<String> exec(String command, {Duration? timeout}) async {
+  // inventory: TMUX-SSH-EXEC-016
+  /// [CommandExecutor] 実装。
+  ///
+  /// tmux executable の検出後、command を resolver で置換し、transport /
+  /// timeout / output 要件は変えずに [_backend] へ委譲する。
+  Future<CommandResult> execute(CommandRequest request) async {
     await _ensureDetected();
-    final resolved = _resolver.resolve(command);
-    return _backend.exec(resolved, timeout: timeout);
-  }
-
-  @override
-  // inventory: TMUX-SSH-EXEC-007
-  Future<String> execPersistent(
-    String command, {
-    Duration? timeout,
-  }) async {
-    await _ensureDetected();
-    final resolved = _resolver.resolve(command);
-    return _backend.execPersistent(resolved, timeout: timeout);
-  }
-
-  @override
-  // inventory: TMUX-SSH-EXEC-008
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    await _ensureDetected();
-    final resolved = _resolver.resolve(command);
-    return _backend.execWithExitCode(resolved, timeout: timeout);
+    final resolved = _resolver.resolve(request.command);
+    return _backend.execute(
+      CommandRequest(
+        command: resolved,
+        transport: request.transport,
+        output: request.output,
+        timeout: request.timeout,
+      ),
+    );
   }
 
   @override
@@ -117,7 +106,13 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
         unawaited(_backend.restartInputTransport());
       }
     }
-    await exec(resolved);
+    await _backend.execute(
+      CommandRequest(
+        command: resolved,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.outputOnly,
+      ),
+    );
   }
 
   @override
@@ -160,7 +155,13 @@ class SshTmuxCommandExecutor implements TmuxCommandExecutor {
         }
       }
       try {
-        await exec(cmd);
+        await _backend.execute(
+          CommandRequest(
+            command: cmd,
+            transport: CommandTransportPreference.ephemeralOnly,
+            output: CommandOutputRequirement.outputOnly,
+          ),
+        );
       } on TmuxTransportException {
         unawaited(_backend.restartInputTransport());
       }
@@ -196,15 +197,37 @@ class _BackendAdapterPathDetector implements TmuxPathDetector {
   bool get isConnected => _backend.isConnected;
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) =>
-      _backend.exec(command, timeout: timeout);
+  Future<String> exec(String command, {Duration? timeout}) async {
+    final result = await _backend.execute(
+      CommandRequest(
+        command: command,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.outputOnly,
+        timeout: timeout,
+      ),
+    );
+    return result.primaryOutput;
+  }
 
   @override
   Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
     String command, {
     Duration? timeout,
-  }) =>
-      _backend.execWithExitCode(command, timeout: timeout);
+  }) async {
+    final result = await _backend.execute(
+      CommandRequest(
+        command: command,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.separatedOutput,
+        timeout: timeout,
+      ),
+    );
+    return (
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+    );
+  }
 }
 
 // inventory: TMUX-SSH-EXEC-014
@@ -227,5 +250,3 @@ extension BackendAdapterExecutor on BackendAdapter {
     );
   }
 }
-
-

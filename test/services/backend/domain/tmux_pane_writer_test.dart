@@ -1,6 +1,8 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/tmux_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart'
     show SplitDirection;
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
@@ -54,8 +56,7 @@ void main() {
       expect(call.$3, isTrue, reason: 'テキストはリテラル送信（-l）');
     });
 
-    test('sendKey: send-keys を非リテラルで委譲する（従来の _sendSpecialKey 相当）',
-        () async {
+    test('sendKey: send-keys を非リテラルで委譲する（従来の _sendSpecialKey 相当）', () async {
       final facade = _FakeTmuxContract();
       final writer = TmuxPaneWriter(facade, _FakeExecutor());
       await writer.sendKey('%0', 'Escape');
@@ -108,7 +109,12 @@ void main() {
     test('sendScroll: kind=wheel は SGR を literal:true で委譲する', () async {
       final facade = _FakeTmuxContract();
       final writer = TmuxPaneWriter(facade, _FakeExecutor());
-      await writer.sendScroll('%0', kind: ScrollSendKind.wheel, up: true, ticks: 1);
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.wheel,
+        up: true,
+        ticks: 1,
+      );
 
       expect(facade.sendKeysNoWaitCalls, hasLength(1));
       final call = facade.sendKeysNoWaitCalls.single;
@@ -120,7 +126,12 @@ void main() {
     test('sendScroll: kind=wheel 下スクロールは ESC[<65;1;1M を ticks 個連結', () async {
       final facade = _FakeTmuxContract();
       final writer = TmuxPaneWriter(facade, _FakeExecutor());
-      await writer.sendScroll('%0', kind: ScrollSendKind.wheel, up: false, ticks: 8);
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.wheel,
+        up: false,
+        ticks: 8,
+      );
 
       final call = facade.sendKeysNoWaitCalls.single;
       expect(
@@ -134,8 +145,18 @@ void main() {
     test('sendScroll: kind=key は PgUp/PgDn を literal:true で委譲する', () async {
       final facade = _FakeTmuxContract();
       final writer = TmuxPaneWriter(facade, _FakeExecutor());
-      await writer.sendScroll('%0', kind: ScrollSendKind.key, up: true, ticks: 1);
-      await writer.sendScroll('%0', kind: ScrollSendKind.key, up: false, ticks: 1);
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.key,
+        up: true,
+        ticks: 1,
+      );
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.key,
+        up: false,
+        ticks: 1,
+      );
 
       expect(facade.sendKeysNoWaitCalls, hasLength(2));
       expect(facade.sendKeysNoWaitCalls[0].$2, '\x1b[5~');
@@ -289,17 +310,11 @@ class _FakeExecutor implements TmuxCommandExecutor {
   String? get tmuxPath => 'tmux';
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async => '';
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async =>
-      '';
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async => (stdout: '', stderr: '', exitCode: 0);
+  Future<CommandResult> execute(CommandRequest request) async =>
+      const CommandResult(
+        outputSeparation: CommandOutputSeparation.separated,
+        actualTransport: CommandTransport.ephemeral,
+      );
 
   @override
   Future<void> sendKeysCommand(String command) async {}

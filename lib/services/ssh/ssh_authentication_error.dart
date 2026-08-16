@@ -10,5 +10,6 @@ class SshAuthenticationError implements Exception {
 
   @override
   // inventory: LEGACY-0130
-  String toString() => 'SshAuthenticationError: $message${cause != null ? ' ($cause)' : ''}';
+  String toString() =>
+      'SshAuthenticationError: $message${cause != null ? ' ($cause)' : ''}';
 }

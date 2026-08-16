@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../../../providers/key_provider.dart';
 
 /// SSH鍵を表示するタイルウィジェット
@@ -20,9 +21,7 @@ class KeyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: CircleAvatar(
-        child: Icon(_getKeyTypeIcon()),
-      ),
+      leading: CircleAvatar(child: Icon(_getKeyTypeIcon())),
       title: Text(keyMeta.name),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -35,6 +34,10 @@ class KeyTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _buildSourceBadge(context),
+              if (!keyMeta.isAvailable) ...[
+                const SizedBox(width: 4),
+                _buildUnavailableBadge(context),
+              ],
               if (keyMeta.hasPassphrase) ...[
                 const SizedBox(width: 4),
                 Icon(
@@ -50,10 +53,10 @@ class KeyTile extends StatelessWidget {
             Text(
               keyMeta.fingerprint!,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                    fontSize: 10,
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: Theme.of(context).colorScheme.outline,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -70,13 +73,13 @@ class KeyTile extends StatelessWidget {
           }
         },
         itemBuilder: (context) => [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'copy',
             child: Row(
               children: [
-                Icon(Icons.copy),
-                SizedBox(width: 8),
-                Text('Copy Public Key'),
+                const Icon(Icons.copy),
+                const SizedBox(width: 8),
+                Text(context.l10n.keyMgmtCopyPublicKey),
               ],
             ),
           ),
@@ -86,7 +89,10 @@ class KeyTile extends StatelessWidget {
               children: [
                 Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
                 const SizedBox(width: 8),
-                Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                Text(
+                  context.l10n.keyMgmtDelete,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ],
             ),
           ),
@@ -127,13 +133,34 @@ class KeyTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        isGenerated ? 'Generated' : 'Imported',
+        isGenerated
+            ? context.l10n.keyMgmtGenerated
+            : context.l10n.keyMgmtImported,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 9,
-              color: isGenerated
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onSecondaryContainer,
-            ),
+          fontSize: 9,
+          color: isGenerated
+              ? Theme.of(context).colorScheme.onPrimaryContainer
+              : Theme.of(context).colorScheme.onSecondaryContainer,
+        ),
+      ),
+    );
+  }
+
+  /// 破損鍵（秘密鍵を読み出せない鍵）のバッジ
+  Widget _buildUnavailableBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        context.l10n.keyMgmtUnavailable,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 9,
+          color: colorScheme.onErrorContainer,
+        ),
       ),
     );
   }

@@ -68,7 +68,9 @@ class TmuxCommands {
     if (detached) parts.add('-d');
     parts.addAll(['-s', _escapeArg(name)]);
     if (windowName != null) parts.addAll(['-n', _escapeArg(windowName)]);
-    if (startDirectory != null) parts.addAll(['-c', _escapeArg(startDirectory)]);
+    if (startDirectory != null) {
+      parts.addAll(['-c', _escapeArg(startDirectory)]);
+    }
     return parts.join(' ');
   }
 
@@ -118,10 +120,16 @@ class TmuxCommands {
     String? startDirectory,
     bool background = false,
   }) {
-    final parts = ['tmux', 'new-window', '-t', _escapeArg(sessionName)];
+    // セッション名にコロンを付与し、数値セッション名（例: "1"）が
+    // tmux によりウィンドウインデックスと誤解釈されるのを防ぐ。
+    // （`tmux new-window -t 1` は「現在セッションのウィンドウ番号1」を指す。
+    //   `-t 1:` とすればセッション「1」として正しく解決される）
+    final parts = ['tmux', 'new-window', '-t', _escapeArg('$sessionName:')];
     if (background) parts.add('-d');
     if (windowName != null) parts.addAll(['-n', _escapeArg(windowName)]);
-    if (startDirectory != null) parts.addAll(['-c', _escapeArg(startDirectory)]);
+    if (startDirectory != null) {
+      parts.addAll(['-c', _escapeArg(startDirectory)]);
+    }
     return parts.join(' ');
   }
 
@@ -139,7 +147,11 @@ class TmuxCommands {
 
   // inventory: TMUX-CMD-013
   /// ウィンドウ名を変更
-  static String renameWindow(String sessionName, int windowIndex, String newName) {
+  static String renameWindow(
+    String sessionName,
+    int windowIndex,
+    String newName,
+  ) {
     return 'tmux rename-window -t ${_escapeArg(sessionName)}:$windowIndex ${_escapeArg(newName)}';
   }
 
@@ -215,7 +227,9 @@ class TmuxCommands {
   }) {
     final parts = ['tmux', 'split-window', '-h', '-t', _escapeArg(target)];
     if (percentage != null) parts.addAll(['-p', percentage.toString()]);
-    if (startDirectory != null) parts.addAll(['-c', _escapeArg(startDirectory)]);
+    if (startDirectory != null) {
+      parts.addAll(['-c', _escapeArg(startDirectory)]);
+    }
     return parts.join(' ');
   }
 
@@ -228,7 +242,9 @@ class TmuxCommands {
   }) {
     final parts = ['tmux', 'split-window', '-v', '-t', _escapeArg(target)];
     if (percentage != null) parts.addAll(['-p', percentage.toString()]);
-    if (startDirectory != null) parts.addAll(['-c', _escapeArg(startDirectory)]);
+    if (startDirectory != null) {
+      parts.addAll(['-c', _escapeArg(startDirectory)]);
+    }
     return parts.join(' ');
   }
 
@@ -280,15 +296,20 @@ class TmuxCommands {
   ///
   /// [tmuxBin] は検出済みのtmux絶対パス（シェル終了時はPATHが最小化される場合が
   /// あるため絶対パスを使う）。[targets] が空なら [clearWindowRestoreTrap] を返す。
-  static String windowRestoreTrap(List<String> targets, {required String tmuxBin}) {
+  static String windowRestoreTrap(
+    List<String> targets, {
+    required String tmuxBin,
+  }) {
     if (targets.isEmpty) return clearWindowRestoreTrap();
     // 全ターゲットを1回のtmux起動にまとめ、\;でコマンド連結する。teardown中に
     // 2つ目のtmuxプロセス起動がSIGKILLで打ち切られ、サイズ復元だけ実行されて
     // window-size manualの解除が漏れるのを防ぐ（単一プロセスなら両方まとめて完了）。
-    final seq = targets.map((t) {
-      final tt = _escapeArg(t);
-      return 'resize-window -t $tt -A \\; set -uw -t $tt window-size';
-    }).join(' \\; ');
+    final seq = targets
+        .map((t) {
+          final tt = _escapeArg(t);
+          return 'resize-window -t $tt -A \\; set -uw -t $tt window-size';
+        })
+        .join(' \\; ');
     final quotedBin = TmuxExecutableResolver.shQuote(tmuxBin);
     final body = '$quotedBin $seq 2>/dev/null';
     // HUP必須: PTYチャネルclose時のSIGHUPはHUPを明示トラップしないとEXIT trapを
@@ -315,7 +336,6 @@ class TmuxCommands {
     }
     return 'tmux send-keys -t ${_escapeArg(paneId)} -- $escapedKeys';
   }
-
 
   // inventory: TMUX-CMD-028
   /// Enterキーを送信
@@ -388,7 +408,6 @@ class TmuxCommands {
     return 'tmux display-message -p -t ${_escapeArg(target)} "#{cursor_x},#{cursor_y},#{pane_width},#{pane_height}"';
   }
 
-
   // inventory: TMUX-CMD-034
   /// ペインのモードを取得（copy-mode検出用）
   static String getPaneMode(String target) {
@@ -409,7 +428,6 @@ class TmuxCommands {
 
   // ===== ペインコンテンツ =====
 
-
   // inventory: TMUX-CMD-037
   /// ペインの内容をキャプチャ（ANSIエスケープ付き）
   static String capturePane(
@@ -424,7 +442,6 @@ class TmuxCommands {
     if (endLine != null) parts.addAll(['-E', endLine.toString()]);
     return parts.join(' ');
   }
-
 
   // inventory: TMUX-CMD-038
   /// ペインの可視領域をキャプチャ
@@ -454,7 +471,6 @@ class TmuxCommands {
   static String attachSession(String sessionName) {
     return 'tmux attach-session -t ${_escapeArg(sessionName)}';
   }
-
 
   // inventory: TMUX-CMD-042
   /// セッションをデタッチ
@@ -504,10 +520,40 @@ class TmuxCommands {
   // inventory: TMUX-ESC-001
   /// 引数をエスケープ
   static String _escapeArg(String arg) {
+    // 制御文字（0x00-0x1F / 0x7F）を含む場合は bash の ANSI-C quoting
+    // （$'...'）で送る。ダブルクォート等の通常の引用符では、コマンドライン
+    // 内の制御文字（Ctrl+A = 行頭移動、Ctrl+O = 履歴操作等）を対話シェルの
+    // readline が解釈して失うため（herdr の _shellQuote と同様）。
+    if (arg.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
+      final buffer = StringBuffer("\$");
+      buffer.write("'");
+      for (final rune in arg.runes) {
+        if (rune < 0x20 || rune == 0x7f) {
+          buffer.write('\\x${rune.toRadixString(16).padLeft(2, '0')}');
+        } else if (rune == 0x5c) {
+          // backslash
+          buffer.write(r'\\');
+        } else if (rune == 0x27) {
+          // single quote
+          buffer.write(r"\'");
+        } else {
+          buffer.writeCharCode(rune);
+        }
+      }
+      buffer.write("'");
+      return buffer.toString();
+    }
+
     // シェルの特殊文字をエスケープ
     // 特殊文字: スペース、クォート、バックスラッシュ、変数展開、バッククォート、
     // グロブ（*?）、チルダ（~）、コメント（#）、その他
-    if (arg.contains(RegExp(r'[\s"' "'" r'\\$`!{}\[\]<>|&;()*?~#]'))) {
+    if (arg.contains(
+      RegExp(
+        r'[\s"'
+        "'"
+        r'\\$`!{}\[\]<>|&;()*?~#]',
+      ),
+    )) {
       // ダブルクォートでラップし、内部の特殊文字をエスケープ
       final escaped = arg
           .replaceAll(r'\', r'\\')

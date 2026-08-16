@@ -11,12 +11,14 @@ class LicenseService {
     _initialized = true;
 
     LicenseRegistry.addLicense(() async* {
-      final hackgenLicense =
-          await rootBundle.loadString('assets/fonts/HackGenConsole-LICENSE.txt');
+      final hackgenLicense = await rootBundle.loadString(
+        'assets/fonts/HackGenConsole-LICENSE.txt',
+      );
       yield LicenseEntryWithLineBreaks(['HackGen Console'], hackgenLicense);
 
-      final udevLicense =
-          await rootBundle.loadString('assets/fonts/UDEVGothicNF-LICENSE.txt');
+      final udevLicense = await rootBundle.loadString(
+        'assets/fonts/UDEVGothicNF-LICENSE.txt',
+      );
       yield LicenseEntryWithLineBreaks(['UDEV Gothic NF'], udevLicense);
 
       // バンドルしたGoogle Fonts（実行時のネットワーク取得を回避）のライセンス
@@ -30,8 +32,9 @@ class LicenseService {
         'Inconsolata': 'Inconsolata',
       };
       for (final entry in googleFonts.entries) {
-        final text = await rootBundle
-            .loadString('assets/google_fonts/${entry.value}-LICENSE.txt');
+        final text = await rootBundle.loadString(
+          'assets/google_fonts/${entry.value}-LICENSE.txt',
+        );
         yield LicenseEntryWithLineBreaks([entry.key], text);
       }
     });

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.muxpod" "\0"
-            VALUE "FileDescription", "flutter_muxpod" "\0"
+            VALUE "FileDescription", "MuxPod" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "flutter_muxpod" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 dev.muxpod. All rights reserved." "\0"
             VALUE "OriginalFilename", "flutter_muxpod.exe" "\0"
-            VALUE "ProductName", "flutter_muxpod" "\0"
+            VALUE "ProductName", "MuxPod" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

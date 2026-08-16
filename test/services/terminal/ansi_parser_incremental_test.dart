@@ -8,9 +8,9 @@ import 'package:flutter_muxpod/services/terminal/ansi_parser.dart';
 /// the render-jank optimization.
 void main() {
   AnsiParser newParser() => AnsiParser(
-        defaultForeground: const Color(0xFFD4D4D4),
-        defaultBackground: const Color(0xFF1E1E1E),
-      );
+    defaultForeground: const Color(0xFFD4D4D4),
+    defaultBackground: const Color(0xFF1E1E1E),
+  );
 
   void expectParsedEqual(List<ParsedLine> a, List<ParsedLine> b, String label) {
     expect(a.length, b.length, reason: '$label: line count');
@@ -20,7 +20,11 @@ void main() {
       expect(sa.length, sb.length, reason: '$label: line $i segment count');
       for (var j = 0; j < sa.length; j++) {
         expect(sa[j].text, sb[j].text, reason: '$label: line $i seg $j text');
-        expect(sa[j].style, sb[j].style, reason: '$label: line $i seg $j style');
+        expect(
+          sa[j].style,
+          sb[j].style,
+          reason: '$label: line $i seg $j style',
+        );
       }
       expect(a[i].endStyle, b[i].endStyle, reason: '$label: line $i endStyle');
     }
@@ -42,8 +46,11 @@ void main() {
     const reset = '\x1b[0m';
 
     test('identical text reuses everything and stays correct', () {
-      checkIncremental('line a\nline b\nline c', 'line a\nline b\nline c',
-          'identical');
+      checkIncremental(
+        'line a\nline b\nline c',
+        'line a\nline b\nline c',
+        'identical',
+      );
     });
 
     test('appended lines', () {
@@ -71,11 +78,19 @@ void main() {
       // prev: red is reset on line 0, so line 1 is default.
       // next: reset removed on line 0 -> red now bleeds into line 1.
       // The incremental parser MUST re-parse line 1 (entering style changed).
-      checkIncremental('${red}x$reset\nplain', '${red}x\nplain', 'carried style');
+      checkIncremental(
+        '${red}x$reset\nplain',
+        '${red}x\nplain',
+        'carried style',
+      );
     });
 
     test('style reset restored makes following line default again', () {
-      checkIncremental('${red}x\nplain', '${red}x$reset\nplain', 'reset restored');
+      checkIncremental(
+        '${red}x\nplain',
+        '${red}x$reset\nplain',
+        'reset restored',
+      );
     });
 
     test('multi-step edits stay consistent', () {
@@ -96,7 +111,11 @@ void main() {
       // The active-tmux case: drop the top line, append a new bottom line.
       // Every index changes, so a position-based cache would miss; the
       // content-keyed cache must still yield output identical to a fresh parse.
-      checkIncremental('l0\nl1\nl2\nl3\nl4', 'l1\nl2\nl3\nl4\nl5', 'scroll shift');
+      checkIncremental(
+        'l0\nl1\nl2\nl3\nl4',
+        'l1\nl2\nl3\nl4\nl5',
+        'scroll shift',
+      );
     });
 
     test('scrolling colored output shift stays correct', () {

@@ -6,6 +6,9 @@ library;
 
 import 'dart:async';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_lookup.dart';
+import '../command/command_request.dart';
 import 'tmux_command_builder.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_contract.dart';
@@ -20,10 +23,18 @@ final TmuxContract tmuxFacade = TmuxFacade();
 
 // inventory: TMUX-FACADE-002
 class TmuxFacade implements TmuxContract {
+  /// 任意のローカライズ文字列。null の場合は英語フォールバック（テスト互換）。
+  /// グローバルシングルトン [tmuxFacade] は生成時に渡されないため null のまま。
+  final AppLocalizations? _l10n;
+
+  TmuxFacade({AppLocalizations? l10n}) : _l10n = l10n;
+
   @override
-  List<TmuxSession> parseSessions(String output) => TmuxParser.parseSessions(output);
+  List<TmuxSession> parseSessions(String output) =>
+      TmuxParser.parseSessions(output);
   @override
-  List<TmuxSession> parseFullTree(String output) => TmuxParser.parseFullTree(output);
+  List<TmuxSession> parseFullTree(String output) =>
+      TmuxParser.parseFullTree(output);
   @override
   TmuxPaneContent parsePaneContent(
     String output, {
@@ -47,87 +58,188 @@ class TmuxFacade implements TmuxContract {
       return null;
     }
   }
+
   @override
-  Future<bool> hasSession(TmuxCommandExecutor executor, String sessionName) async {
-    final output = await _execChecked(executor, TmuxCommands.hasSession(sessionName));
+  Future<bool> hasSession(
+    TmuxCommandExecutor executor,
+    String sessionName,
+  ) async {
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.hasSession(sessionName),
+    );
     return output.trim() == '1';
   }
+
   @override
   Future<List<TmuxSession>> listSessions(TmuxCommandExecutor executor) async {
     final output = await _execChecked(executor, TmuxCommands.listSessions());
     return TmuxParser.parseSessions(output);
   }
+
   @override
   Future<List<TmuxSession>> listAllPanes(TmuxCommandExecutor executor) async {
     final output = await _execChecked(executor, TmuxCommands.listAllPanes());
     return TmuxParser.parseFullTree(output);
   }
+
   @override
   Future<void> startServer(TmuxCommandExecutor executor) async {
     await _execChecked(executor, TmuxCommands.startServer());
   }
+
   @override
-  Future<void> createSession(TmuxCommandExecutor executor, {required String name, String? windowName, String? startDirectory, bool detached = true}) async {
-    await _execChecked(executor, TmuxCommands.newSession(
-      name: name,
-      windowName: windowName,
-      startDirectory: startDirectory,
-      detached: detached,
-    ));
+  Future<void> createSession(
+    TmuxCommandExecutor executor, {
+    required String name,
+    String? windowName,
+    String? startDirectory,
+    bool detached = true,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.newSession(
+        name: name,
+        windowName: windowName,
+        startDirectory: startDirectory,
+        detached: detached,
+      ),
+    );
   }
+
   @override
-  Future<void> attachSession(TmuxCommandExecutor executor, String sessionName) async {
+  Future<void> attachSession(
+    TmuxCommandExecutor executor,
+    String sessionName,
+  ) async {
     await _execChecked(executor, TmuxCommands.attachSession(sessionName));
   }
+
   @override
-  Future<void> killSession(TmuxCommandExecutor executor, String sessionName) async {
+  Future<void> killSession(
+    TmuxCommandExecutor executor,
+    String sessionName,
+  ) async {
     await _execChecked(executor, TmuxCommands.killSession(sessionName));
   }
+
   @override
-  Future<void> renameSession(TmuxCommandExecutor executor, String oldName, String newName) async {
+  Future<void> renameSession(
+    TmuxCommandExecutor executor,
+    String oldName,
+    String newName,
+  ) async {
     await _execChecked(executor, TmuxCommands.renameSession(oldName, newName));
   }
+
   @override
-  Future<List<TmuxWindow>> listWindows(TmuxCommandExecutor executor, String sessionName) async {
-    final output = await _execChecked(executor, TmuxCommands.listWindows(sessionName));
+  Future<List<TmuxWindow>> listWindows(
+    TmuxCommandExecutor executor,
+    String sessionName,
+  ) async {
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.listWindows(sessionName),
+    );
     return TmuxParser.parseWindows(output);
   }
+
   @override
-  Future<void> createWindow(TmuxCommandExecutor executor, {required String sessionName, String? windowName, String? startDirectory, bool background = false}) async {
-    await _execChecked(executor, TmuxCommands.newWindow(
-      sessionName: sessionName,
-      windowName: windowName,
-      startDirectory: startDirectory,
-      background: background,
-    ));
+  Future<void> createWindow(
+    TmuxCommandExecutor executor, {
+    required String sessionName,
+    String? windowName,
+    String? startDirectory,
+    bool background = false,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.newWindow(
+        sessionName: sessionName,
+        windowName: windowName,
+        startDirectory: startDirectory,
+        background: background,
+      ),
+    );
   }
+
   @override
-  Future<void> selectWindow(TmuxCommandExecutor executor, String sessionName, int windowIndex) async {
-    await _execChecked(executor, TmuxCommands.selectWindow(sessionName, windowIndex));
+  Future<void> selectWindow(
+    TmuxCommandExecutor executor,
+    String sessionName,
+    int windowIndex,
+  ) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.selectWindow(sessionName, windowIndex),
+    );
   }
+
   @override
-  Future<void> killWindow(TmuxCommandExecutor executor, String sessionName, int windowIndex) async {
-    await _execChecked(executor, TmuxCommands.killWindow(sessionName, windowIndex));
+  Future<void> killWindow(
+    TmuxCommandExecutor executor,
+    String sessionName,
+    int windowIndex,
+  ) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.killWindow(sessionName, windowIndex),
+    );
   }
+
   @override
-  Future<void> renameWindow(TmuxCommandExecutor executor, String sessionName, int windowIndex, String newName) async {
-    await _execChecked(executor, TmuxCommands.renameWindow(sessionName, windowIndex, newName));
+  Future<void> renameWindow(
+    TmuxCommandExecutor executor,
+    String sessionName,
+    int windowIndex,
+    String newName,
+  ) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.renameWindow(sessionName, windowIndex, newName),
+    );
   }
+
   @override
-  Future<List<TmuxPane>> listPanes(TmuxCommandExecutor executor, String sessionName, int windowIndex) async {
-    final output = await _execChecked(executor, TmuxCommands.listPanes(sessionName, windowIndex));
+  Future<List<TmuxPane>> listPanes(
+    TmuxCommandExecutor executor,
+    String sessionName,
+    int windowIndex,
+  ) async {
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.listPanes(sessionName, windowIndex),
+    );
     return TmuxParser.parsePanes(output);
   }
+
   @override
-  Future<void> selectPane(TmuxCommandExecutor executor, String paneId, {String? previousPaneId}) async {
+  Future<void> selectPane(
+    TmuxCommandExecutor executor,
+    String paneId, {
+    String? previousPaneId,
+  }) async {
     if (previousPaneId != null && previousPaneId != paneId) {
-      await _execChecked(executor, TmuxCommands.sendKeys(previousPaneId, '\x1b[O', literal: true));
+      await _execChecked(
+        executor,
+        TmuxCommands.sendKeys(previousPaneId, '\x1b[O', literal: true),
+      );
     }
     await _execChecked(executor, TmuxCommands.selectPane(paneId));
-    await _execChecked(executor, TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true));
+    await _execChecked(
+      executor,
+      TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true),
+    );
   }
+
   @override
-  Future<void> splitPane(TmuxCommandExecutor executor, {required String target, required SplitDirection direction, String? startDirectory, int? percentage}) async {
+  Future<void> splitPane(
+    TmuxCommandExecutor executor, {
+    required String target,
+    required SplitDirection direction,
+    String? startDirectory,
+    int? percentage,
+  }) async {
     final command = direction == SplitDirection.vertical
         ? TmuxCommands.splitWindowVertical(
             target: target,
@@ -141,65 +253,134 @@ class TmuxFacade implements TmuxContract {
           );
     await _execChecked(executor, command);
   }
+
   @override
   Future<void> killPane(TmuxCommandExecutor executor, String paneId) async {
     await _execChecked(executor, TmuxCommands.killPane(paneId));
   }
+
   @override
-  Future<void> sendKeys(TmuxCommandExecutor executor, String target, String keys, {bool literal = false}) async {
-    await _execChecked(executor, TmuxCommands.sendKeys(target, keys, literal: literal));
+  Future<void> sendKeys(
+    TmuxCommandExecutor executor,
+    String target,
+    String keys, {
+    bool literal = false,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.sendKeys(target, keys, literal: literal),
+    );
   }
+
   @override
-  Future<void> sendKeysNoWait(TmuxCommandExecutor executor, String target, String keys, {bool literal = false}) async {
-    await executor.sendKeysCommand(TmuxCommands.sendKeys(target, keys, literal: literal));
+  Future<void> sendKeysNoWait(
+    TmuxCommandExecutor executor,
+    String target,
+    String keys, {
+    bool literal = false,
+  }) async {
+    await executor.sendKeysCommand(
+      TmuxCommands.sendKeys(target, keys, literal: literal),
+    );
   }
+
   @override
   Future<void> sendFocusIn(TmuxCommandExecutor executor, String paneId) async {
-    await _execChecked(executor, TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true));
+    await _execChecked(
+      executor,
+      TmuxCommands.sendKeys(paneId, '\x1b[I', literal: true),
+    );
   }
+
   @override
   Future<void> sendFocusOut(TmuxCommandExecutor executor, String paneId) async {
-    await _execChecked(executor, TmuxCommands.sendKeys(paneId, '\x1b[O', literal: true));
+    await _execChecked(
+      executor,
+      TmuxCommands.sendKeys(paneId, '\x1b[O', literal: true),
+    );
   }
+
   @override
-  Future<void> enterCopyModeNoWait(TmuxCommandExecutor executor, String target) async {
+  Future<void> enterCopyModeNoWait(
+    TmuxCommandExecutor executor,
+    String target,
+  ) async {
     await executor.sendKeysCommand(TmuxCommands.enterCopyMode(target));
   }
+
   @override
-  Future<void> cancelCopyModeNoWait(TmuxCommandExecutor executor, String target) async {
+  Future<void> cancelCopyModeNoWait(
+    TmuxCommandExecutor executor,
+    String target,
+  ) async {
     await executor.sendKeysCommand(TmuxCommands.cancelCopyMode(target));
   }
+
   @override
-  Future<void> pasteText(TmuxCommandExecutor executor, {required String target, required String text, bool execute = true}) async {
+  Future<void> pasteText(
+    TmuxCommandExecutor executor, {
+    required String target,
+    required String text,
+    bool execute = true,
+  }) async {
     try {
-      await _execChecked(executor, TmuxCommands.loadBufferAndPaste(target, text));
+      await _execChecked(
+        executor,
+        TmuxCommands.loadBufferAndPaste(target, text),
+      );
       if (execute) {
         await _execChecked(executor, TmuxCommands.sendKeys(target, 'Enter'));
       }
     } on TmuxCommandException {
-      await _execChecked(executor, TmuxCommands.loadBufferAndPasteNoBracketed(target, text));
+      await _execChecked(
+        executor,
+        TmuxCommands.loadBufferAndPasteNoBracketed(target, text),
+      );
       if (execute) {
         await _execChecked(executor, TmuxCommands.sendKeys(target, 'Enter'));
       }
     }
   }
+
   @override
-  Future<void> sendBracketedPaste(TmuxCommandExecutor executor, {required String paneId, required String path, bool autoEnter = false, bool bracketedPaste = true}) async {
+  Future<void> sendBracketedPaste(
+    TmuxCommandExecutor executor, {
+    required String paneId,
+    required String path,
+    bool autoEnter = false,
+    bool bracketedPaste = true,
+  }) async {
     if (bracketedPaste) {
       executor.write('\x1b[200~$path\x1b[201~');
     } else {
-      await _execChecked(executor, TmuxCommands.sendKeys(paneId, path, literal: true));
+      await _execChecked(
+        executor,
+        TmuxCommands.sendKeys(paneId, path, literal: true),
+      );
     }
     if (autoEnter) {
       await _execChecked(executor, TmuxCommands.sendKeys(paneId, 'Enter'));
     }
   }
+
   @override
-  Future<TmuxPaneSnapshot> pollPane(TmuxCommandExecutor executor, {required String target, int historyLines = -120}) async {
-    final combined = '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: historyLines)}; '
+  Future<TmuxPaneSnapshot> pollPane(
+    TmuxCommandExecutor executor, {
+    required String target,
+    int historyLines = -120,
+  }) async {
+    final combined =
+        '${TmuxCommands.capturePane(target, escapeSequences: true, startLine: historyLines)}; '
         '${TmuxCommands.getCursorPosition(target)}; '
         '${TmuxCommands.getPaneMode(target)}';
-    final output = await executor.execPersistent(combined);
+    final result = await executor.execute(
+      CommandRequest(
+        command: combined,
+        transport: CommandTransportPreference.persistentPreferred,
+        output: CommandOutputRequirement.outputOnly,
+      ),
+    );
+    final output = result.primaryOutput;
 
     final modeCut = output.lastIndexOf('\n');
     final paneModeOutput = modeCut >= 0 ? output.substring(modeCut + 1) : '';
@@ -237,14 +418,24 @@ class TmuxFacade implements TmuxContract {
       paneMode: paneModeOutput.trim(),
     );
   }
+
   @override
-  Future<TmuxPaneContent> capturePane(TmuxCommandExecutor executor, {required String target, int? startLine, int? endLine, bool escapeSequences = true}) async {
-    final output = await _execChecked(executor, TmuxCommands.capturePane(
-      target,
-      escapeSequences: escapeSequences,
-      startLine: startLine,
-      endLine: endLine,
-    ));
+  Future<TmuxPaneContent> capturePane(
+    TmuxCommandExecutor executor, {
+    required String target,
+    int? startLine,
+    int? endLine,
+    bool escapeSequences = true,
+  }) async {
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.capturePane(
+        target,
+        escapeSequences: escapeSequences,
+        startLine: startLine,
+        endLine: endLine,
+      ),
+    );
     final processedOutput = output.endsWith('\n')
         ? output.substring(0, output.length - 1)
         : output;
@@ -253,52 +444,107 @@ class TmuxFacade implements TmuxContract {
       stripTrailingEmptyLines: false,
     );
   }
+
   @override
-  Future<void> setHistoryLimit(TmuxCommandExecutor executor, int lines, {required String target}) async {
-    await _execChecked(executor, TmuxCommands.setHistoryLimit(lines, target: target));
+  Future<void> setHistoryLimit(
+    TmuxCommandExecutor executor,
+    int lines, {
+    required String target,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.setHistoryLimit(lines, target: target),
+    );
   }
+
   @override
-  Future<void> resizeWindow(TmuxCommandExecutor executor, String target, {int? cols, int? rows}) async {
-    await _execChecked(executor, TmuxCommands.resizeWindow(target, cols: cols, rows: rows));
+  Future<void> resizeWindow(
+    TmuxCommandExecutor executor,
+    String target, {
+    int? cols,
+    int? rows,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.resizeWindow(target, cols: cols, rows: rows),
+    );
   }
+
   @override
-  Future<void> resizePane(TmuxCommandExecutor executor, String paneId, {int? cols, int? rows}) async {
-    await _execChecked(executor, TmuxCommands.resizePaneToSize(paneId, cols: cols, rows: rows));
+  Future<void> resizePane(
+    TmuxCommandExecutor executor,
+    String paneId, {
+    int? cols,
+    int? rows,
+  }) async {
+    await _execChecked(
+      executor,
+      TmuxCommands.resizePaneToSize(paneId, cols: cols, rows: rows),
+    );
   }
+
   @override
-  Future<void> autoResizeWindow(TmuxCommandExecutor executor, String target) async {
+  Future<void> autoResizeWindow(
+    TmuxCommandExecutor executor,
+    String target,
+  ) async {
     await executor.sendKeysCommand(TmuxCommands.resizeWindowAuto(target));
   }
+
   @override
-  Future<void> selectLayout(TmuxCommandExecutor executor, String target, TmuxLayout layout) async {
+  Future<void> selectLayout(
+    TmuxCommandExecutor executor,
+    String target,
+    TmuxLayout layout,
+  ) async {
     await _execChecked(executor, TmuxCommands.selectLayout(target, layout));
   }
+
   @override
-  Future<void> setWindowRestoreTrap(TmuxCommandExecutor executor, List<String> targets) async {
+  Future<void> setWindowRestoreTrap(
+    TmuxCommandExecutor executor,
+    List<String> targets,
+  ) async {
     await executor.setWindowRestoreTrap(targets);
   }
+
   @override
   Future<void> clearWindowRestoreTrap(TmuxCommandExecutor executor) async {
     await executor.setWindowRestoreTrap([]);
   }
+
   @override
-  Future<void> restoreWindows(TmuxCommandExecutor executor, List<String> targets) async {
+  Future<void> restoreWindows(
+    TmuxCommandExecutor executor,
+    List<String> targets,
+  ) async {
     await executor.restoreWindowsNoWait(targets);
   }
 
   // inventory: TMUX-FACADE-CHECK-001
-  /// [execWithExitCode] を使ってコマンドを実行し、
+  /// [CommandExecutor.execute] を使ってコマンドを実行し、
   /// 終了コード/標準エラーがあれば [TmuxCommandException] を投げる。
   ///
-  /// 標準エラーが [stdout] に混ざる [SshClient.exec] とは異なり、
-  /// ここでは [stdout] のみを呼び出しに返す。
-  Future<String> _execChecked(TmuxCommandExecutor executor, String command) async {
-    final result = await executor.execWithExitCode(command);
+  /// ephemeral + separatedOutput を要求する（stderr 分離が必要な tmux
+  /// mutation / チェック系コマンド。Codex 根本設計レビュー・バグ2 根本対応）。
+  Future<String> _execChecked(
+    TmuxCommandExecutor executor,
+    String command,
+  ) async {
+    final result = await executor.execute(
+      CommandRequest(
+        command: command,
+        transport: CommandTransportPreference.ephemeralOnly,
+        output: CommandOutputRequirement.separatedOutput,
+      ),
+    );
     if (result.exitCode != 0 || result.stderr.isNotEmpty) {
       throw TmuxCommandException(
         result.stderr.isNotEmpty
             ? result.stderr.trim()
-            : 'tmux command failed (exit code: ${result.exitCode})',
+            : (_l10n ?? lookupL10n()).connTmuxCommandFailed(
+                '${result.exitCode}',
+              ),
       );
     }
     return result.stdout;

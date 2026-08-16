@@ -7,8 +7,10 @@ import 'package:uuid/uuid.dart';
 
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/multiplexer_config.dart';
+import '../../services/command/command_request.dart';
 import '../../services/herdr/herdr_adapter.dart';
 import '../../services/herdr/herdr_commands.dart';
 import '../../services/keychain/secure_storage.dart';
@@ -21,22 +23,21 @@ import '../../theme/design_colors.dart';
 /// [ConnectionFormScreen] の接続テストで使用する [SshClient] のファクトリ。
 ///
 /// テスト時に fake client を差し込めるよう Provider として公開する。
-final connectionFormSshClientFactoryProvider =
-    Provider<SshClient Function()>((ref) => createSshClient);
+final connectionFormSshClientFactoryProvider = Provider<SshClient Function()>(
+  (ref) => createSshClient,
+);
 
 /// 接続編集画面
 class ConnectionFormScreen extends ConsumerStatefulWidget {
   final String? connectionId;
 
-  const ConnectionFormScreen({
-    super.key,
-    this.connectionId,
-  });
+  const ConnectionFormScreen({super.key, this.connectionId});
 
   bool get isEditing => connectionId != null;
 
   @override
-  ConsumerState<ConnectionFormScreen> createState() => _ConnectionFormScreenState();
+  ConsumerState<ConnectionFormScreen> createState() =>
+      _ConnectionFormScreenState();
 }
 
 class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
@@ -67,7 +68,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   }
 
   void _loadExistingConnection() {
-    final connection = ref.read(connectionsProvider.notifier).getById(widget.connectionId!);
+    final connection = ref
+        .read(connectionsProvider.notifier)
+        .getById(widget.connectionId!);
     if (connection != null) {
       _nameController.text = connection.name;
       _hostController.text = connection.host;
@@ -76,7 +79,8 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       _authMethod = connection.authMethod;
       _selectedKeyId = connection.keyId;
       _backend = connection.multiplexer.backend;
-      _multiplexerPathController.text = connection.multiplexer.executablePath ?? '';
+      _multiplexerPathController.text =
+          connection.multiplexer.executablePath ?? '';
       _deepLinkIdController.text = connection.deepLinkId ?? '';
     }
   }
@@ -143,16 +147,20 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       leading: TextButton(
         onPressed: () => Navigator.of(context).pop(),
         child: Text(
-          'Cancel',
+          context.l10n.connCancel,
           style: GoogleFonts.spaceGrotesk(
-            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
             fontWeight: FontWeight.w500,
           ),
         ),
       ),
       leadingWidth: 80,
       title: Text(
-        widget.isEditing ? 'Edit Connection' : 'Add Connection',
+        widget.isEditing
+            ? context.l10n.connEditTitle
+            : context.l10n.connAddTitle,
         style: GoogleFonts.spaceGrotesk(
           fontWeight: FontWeight.w700,
           letterSpacing: -0.5,
@@ -169,7 +177,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Text(
-                  'Save',
+                  context.l10n.connSave,
                   style: GoogleFonts.spaceGrotesk(
                     color: colorScheme.primary,
                     fontWeight: FontWeight.w700,
@@ -183,7 +191,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
   Widget _buildSectionHeader(String title) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
@@ -203,24 +213,26 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader('Server'),
+        _buildSectionHeader(context.l10n.connSectionServer),
         Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.2),
+            ),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Connection name
-              _buildFieldLabel('CONNECTION NAME'),
+              _buildFieldLabel(context.l10n.connFieldConnectionName),
               const SizedBox(height: 8),
               _buildNameInput(),
               const SizedBox(height: 16),
               // Host field
-              _buildFieldLabel('HOST / IP ADDRESS'),
+              _buildFieldLabel(context.l10n.connFieldHost),
               const SizedBox(height: 8),
               _buildHostInput(),
               const SizedBox(height: 16),
@@ -232,7 +244,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildFieldLabel('PORT'),
+                        _buildFieldLabel(context.l10n.connFieldPort),
                         const SizedBox(height: 8),
                         _buildPortInput(),
                       ],
@@ -244,7 +256,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildFieldLabel('USERNAME'),
+                        _buildFieldLabel(context.l10n.connFieldUsername),
                         const SizedBox(height: 8),
                         _buildUsernameInput(),
                       ],
@@ -254,24 +266,24 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
               ),
               const SizedBox(height: 16),
               // backend toggle
-              _buildFieldLabel('BACKEND'),
+              _buildFieldLabel(context.l10n.connFieldBackend),
               const SizedBox(height: 8),
               _buildBackendToggle(),
               const SizedBox(height: 16),
               // multiplexer path
               _buildFieldLabel(
                 _backend == BackendType.herdr
-                    ? 'HERDR PATH (OPTIONAL)'
-                    : 'MULTIPLEXER PATH (OPTIONAL)',
+                    ? context.l10n.connFieldHerdrPath
+                    : context.l10n.connFieldMultiplexerPath,
               ),
               const SizedBox(height: 8),
               _buildMultiplexerPathInput(),
               const SizedBox(height: 16),
               // Deep Link ID
-              _buildFieldLabel('DEEP LINK ID (OPTIONAL)'),
+              _buildFieldLabel(context.l10n.connFieldDeepLinkId),
               const SizedBox(height: 4),
               Text(
-                'Stable identifier for muxpod:// URLs',
+                context.l10n.connDeepLinkIdDescription,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 10,
                   color: Theme.of(context).brightness == Brightness.dark
@@ -293,12 +305,14 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSectionHeader('Authentication'),
+        _buildSectionHeader(context.l10n.connSectionAuth),
         Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
+            border: Border.all(
+              color: colorScheme.outline.withValues(alpha: 0.2),
+            ),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -319,7 +333,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildFieldLabel(String label) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Text(
-      label,
+      label.toUpperCase(),
       style: GoogleFonts.spaceGrotesk(
         fontSize: 10,
         fontWeight: FontWeight.w500,
@@ -332,8 +346,12 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildNameInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _nameController,
       style: GoogleFonts.spaceGrotesk(
@@ -342,28 +360,37 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: 'e.g. Production AWS',
-        hintStyle: GoogleFonts.spaceGrotesk(color: mutedColor.withValues(alpha: 0.5)),
+        hintText: context.l10n.connNameHint,
+        hintStyle: GoogleFonts.spaceGrotesk(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.label_outline, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a name';
+          return context.l10n.connNameRequired;
         }
         return null;
       },
@@ -373,30 +400,46 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildHostInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _hostController,
       keyboardType: TextInputType.url,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
-        hintText: '192.168.1.1 or example.com',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintText: context.l10n.connHostHint,
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         suffixIcon: Container(
           padding: const EdgeInsets.all(12),
           child: Container(
@@ -421,7 +464,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a host';
+          return context.l10n.connHostRequired;
         }
         return null;
       },
@@ -432,38 +475,54 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildPortInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _portController,
       keyboardType: TextInputType.number,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: '22',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Required';
+          return context.l10n.connPortRequired;
         }
         final port = int.tryParse(value);
         if (port == null || port < 1 || port > 65535) {
-          return 'Invalid';
+          return context.l10n.connPortInvalid;
         }
         return null;
       },
@@ -473,34 +532,50 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildUsernameInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _usernameController,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: 'root',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.person_outline, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter a username';
+          return context.l10n.connUsernameRequired;
         }
         return null;
       },
@@ -510,76 +585,76 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildMultiplexerPathInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     final isHerdr = _backend == BackendType.herdr;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextFormField(
           controller: _multiplexerPathController,
-          style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+          ),
           decoration: InputDecoration(
             hintText: isHerdr
-                ? '/usr/local/bin/herdr (auto-detect if empty)'
-                : '/usr/bin/tmux (auto-detect if empty)',
-            hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
-            prefixIcon: Icon(Icons.terminal_outlined, color: mutedColor, size: 20),
+                ? context.l10n.connMultiplexerPathHint('/usr/local/bin/herdr')
+                : context.l10n.connMultiplexerPathHint('/usr/bin/tmux'),
+            hintStyle: GoogleFonts.jetBrainsMono(
+              color: mutedColor.withValues(alpha: 0.5),
+            ),
+            prefixIcon: Icon(
+              Icons.terminal_outlined,
+              color: mutedColor,
+              size: 20,
+            ),
             filled: true,
             fillColor: inputColor,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+              borderSide: BorderSide(
+                color: colorScheme.outline.withValues(alpha: 0.2),
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: colorScheme.primary),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
           validator: (value) {
             if (value != null && value.isNotEmpty && !value.startsWith('/')) {
               return isHerdr
-                  ? 'Absolute path required (e.g., /usr/local/bin/herdr)'
-                  : 'Absolute path required (e.g., /usr/bin/tmux)';
+                  ? context.l10n.connAbsolutePathRequired(
+                      '/usr/local/bin/herdr',
+                    )
+                  : context.l10n.connAbsolutePathRequired('/usr/bin/tmux');
             }
             return null;
           },
         ),
         const SizedBox(height: 6),
         Text(
-          isHerdr
-              ? 'Leave empty for automatic detection'
-              : 'Leave empty for automatic detection',
+          context.l10n.connLeaveEmptyForAutoDetect,
           style: GoogleFonts.spaceGrotesk(
             fontSize: 11,
             color: mutedColor.withValues(alpha: 0.7),
           ),
         ),
-        if (isHerdr) ...[
-          const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.lock_outline, size: 14, color: mutedColor),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Read-only: you can view workspaces, tabs and panes, '
-                  'but not modify them.',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 11,
-                    color: mutedColor.withValues(alpha: 0.9),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ],
     );
   }
@@ -587,34 +662,50 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildDeepLinkIdInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _deepLinkIdController,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
-        hintText: 'e.g. macbook-pro',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintText: context.l10n.connDeepLinkIdHint,
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.link, color: mutedColor, size: 20),
         filled: true,
         fillColor: inputColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          borderSide: BorderSide(
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (value != null && value.isNotEmpty && value.contains(' ')) {
-          return 'No spaces allowed (use hyphens or underscores)';
+          return context.l10n.connDeepLinkIdNoSpaces;
         }
         return null;
       },
@@ -624,7 +715,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildBackendToggle() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
@@ -709,7 +802,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildAuthMethodToggle() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
@@ -739,7 +834,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                       : null,
                 ),
                 child: Text(
-                  'Password',
+                  context.l10n.connAuthPassword,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
@@ -773,7 +868,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                       : null,
                 ),
                 child: Text(
-                  'Private Key',
+                  context.l10n.connAuthPrivateKey,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
@@ -794,15 +889,24 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildPasswordInput() {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return TextFormField(
       controller: _passwordController,
       obscureText: _obscurePassword,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         hintText: '••••••••••••',
-        hintStyle: GoogleFonts.jetBrainsMono(color: mutedColor.withValues(alpha: 0.5)),
+        hintStyle: GoogleFonts.jetBrainsMono(
+          color: mutedColor.withValues(alpha: 0.5),
+        ),
         prefixIcon: Icon(Icons.key, color: mutedColor, size: 20),
         suffixIcon: IconButton(
           icon: Icon(
@@ -822,11 +926,14 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: colorScheme.primary),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
       ),
       validator: (value) {
         if (!widget.isEditing && (value == null || value.isEmpty)) {
-          return 'Please enter a password';
+          return context.l10n.connPasswordRequired;
         }
         return null;
       },
@@ -836,54 +943,109 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   Widget _buildKeyDropdown(KeysState keysState) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? DesignColors.textMuted : DesignColors.textMutedLight;
-    final inputColor = isDark ? DesignColors.inputDark : DesignColors.inputLight;
+    final mutedColor = isDark
+        ? DesignColors.textMuted
+        : DesignColors.textMutedLight;
+    final inputColor = isDark
+        ? DesignColors.inputDark
+        : DesignColors.inputLight;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         DropdownButtonFormField<String>(
           initialValue: _selectedKeyId,
           decoration: InputDecoration(
-            prefixIcon: Icon(Icons.vpn_key_outlined, color: mutedColor, size: 20),
+            prefixIcon: Icon(
+              Icons.vpn_key_outlined,
+              color: mutedColor,
+              size: 20,
+            ),
             filled: true,
             fillColor: inputColor,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
           ),
           dropdownColor: colorScheme.surface,
-          style: GoogleFonts.spaceGrotesk(fontSize: 14, color: colorScheme.onSurface),
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+          ),
           items: keysState.keys.map((key) {
+            final damaged = !key.isAvailable;
             return DropdownMenuItem(
               value: key.id,
-              child: Text(key.name),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(key.name),
+                  if (damaged) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.warning_amber,
+                      size: 14,
+                      color: colorScheme.error,
+                    ),
+                  ],
+                ],
+              ),
             );
           }).toList(),
           onChanged: (value) => setState(() => _selectedKeyId = value),
           validator: (value) {
             if (_authMethod == 'key' && value == null) {
-              return 'Please select an SSH key';
+              return context.l10n.connSelectKeyRequired;
             }
             return null;
           },
           hint: Text(
-            keysState.keys.isEmpty ? 'No keys available' : 'Select a key',
+            keysState.keys.isEmpty
+                ? context.l10n.connNoKeysAvailable
+                : context.l10n.connSelectKey,
             style: GoogleFonts.spaceGrotesk(color: mutedColor),
           ),
         ),
         if (_authMethod == 'key' && keysState.keys.isEmpty) ...[
           const SizedBox(height: 8),
           Text(
-            'No SSH keys found. Add keys in the Keys section.',
+            context.l10n.connNoKeysFoundAddInKeys,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 12,
               color: colorScheme.error,
             ),
           ),
         ],
+        if (_authMethod == 'key' &&
+            _selectedKeyId != null &&
+            isKeyDamaged(keysState, _selectedKeyId)) ...[
+          const SizedBox(height: 8),
+          _buildDamagedKeyWarning(context),
+        ],
       ],
+    );
+  }
+
+  /// 破損キー選択中の警告表示
+  Widget _buildDamagedKeyWarning(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        context.l10n.connDamagedKeyWarning,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontSize: 12,
+          color: colorScheme.onErrorContainer,
+        ),
+      ),
     );
   }
 
@@ -935,7 +1097,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                         const Icon(Icons.terminal, size: 20),
                         const SizedBox(width: 12),
                         Text(
-                          'TEST CONNECTION',
+                          context.l10n.connTestConnection,
                           style: GoogleFonts.spaceGrotesk(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -952,6 +1114,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   }
 
   Future<void> _testConnection() async {
+    final l10n = context.l10n;
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -974,17 +1137,17 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       if (_authMethod == 'password') {
         password = _passwordController.text;
         if (password.isEmpty) {
-          throw SshAuthenticationError('Password is required');
+          throw SshAuthenticationError(l10n.connPasswordRequiredForTest);
         }
       } else if (_authMethod == 'key') {
         if (_selectedKeyId == null) {
-          throw SshAuthenticationError('SSH key is required');
+          throw SshAuthenticationError(l10n.connKeyRequiredForTest);
         }
         final storage = SecureStorageService();
         privateKey = await storage.getPrivateKey(_selectedKeyId!);
         passphrase = await storage.getPassphrase(_selectedKeyId!);
         if (privateKey == null) {
-          throw SshAuthenticationError('Private key not found');
+          throw SshAuthenticationError(l10n.connPrivateKeyUnreadable);
         }
       }
 
@@ -1005,8 +1168,11 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   backend: BackendType.herdr,
                   executablePath: customPath.isNotEmpty ? customPath : null,
                 )
-              : MultiplexerConfig.tmux(customPath.isNotEmpty ? customPath : null),
+              : MultiplexerConfig.tmux(
+                  customPath.isNotEmpty ? customPath : null,
+                ),
         ),
+        l10n: l10n,
       );
 
       if (isHerdr) {
@@ -1017,53 +1183,59 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
           herdrReady = true;
         } on HerdrProtocolMismatchException catch (e) {
           herdrReady = false;
-          herdrWarning =
-              'Herdr protocol ${e.actual} is not supported (expected ${e.supported}).';
+          herdrWarning = l10n.connHerdrProtocolMismatch(
+            '${e.actual}',
+            '${e.supported}',
+          );
         } on HerdrCommandException catch (_) {
           herdrReady = false;
           herdrWarning = customPath.isNotEmpty
-              ? 'custom herdr path not found or not executable: $customPath'
-              : 'herdr not found';
+              ? l10n.connHerdrPathNotFound(customPath)
+              : l10n.connHerdrNotFound;
         } catch (e) {
           herdrReady = false;
-          herdrWarning = 'herdr check failed: $e';
+          herdrWarning = l10n.connHerdrCheckFailed('$e');
         }
       } else {
-      // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
-      try {
-        final result = await sshClient.tmuxExecutor.execWithExitCode(
-          TmuxCommands.version(),
-        );
-        if (result.exitCode != null && result.exitCode != 0) {
+        // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
+        try {
+          final result = await sshClient.tmuxExecutor.execute(
+            CommandRequest(
+              command: TmuxCommands.version(),
+              transport: CommandTransportPreference.ephemeralOnly,
+              output: CommandOutputRequirement.separatedOutput,
+            ),
+          );
+          if (result.exitCode != null && result.exitCode != 0) {
+            tmuxInstalled = false;
+            tmuxWarning = customPath.isNotEmpty
+                ? l10n.connTmuxPathNotFound(customPath)
+                : l10n.connTmuxNotFound;
+          } else {
+            final version = TmuxVersionInfo.parse(result.stdout);
+            if (version != null) {
+              tmuxInstalled = true;
+            } else {
+              tmuxInstalled = false;
+              tmuxWarning = l10n.connTmuxVersionUnrecognized;
+            }
+          }
+        } on SshConnectionError catch (_) {
           tmuxInstalled = false;
           tmuxWarning = customPath.isNotEmpty
-              ? 'custom tmux path not found or not executable: $customPath'
-              : 'tmux not found';
-        } else {
-          final version = TmuxVersionInfo.parse(result.stdout);
-          if (version != null) {
-            tmuxInstalled = true;
-          } else {
-            tmuxInstalled = false;
-            tmuxWarning = 'tmux found, but version output was not recognized';
-          }
+              ? l10n.connTmuxPathNotFound(customPath)
+              : l10n.connTmuxNotFound;
+        } catch (e) {
+          tmuxInstalled = false;
+          tmuxWarning = l10n.connTmuxCheckFailed('$e');
         }
-      } on SshConnectionError catch (_) {
-        tmuxInstalled = false;
-        tmuxWarning = customPath.isNotEmpty
-            ? 'custom tmux path not found or not executable: $customPath'
-            : 'tmux not found';
-      } catch (e) {
-        tmuxInstalled = false;
-        tmuxWarning = 'tmux check failed: $e';
-      }
       }
     } on SshAuthenticationError catch (e) {
-      errorMessage = 'Authentication failed: ${e.message}';
+      errorMessage = l10n.connTestAuthFailed(e.message);
     } on SshConnectionError catch (e) {
-      errorMessage = 'Connection failed: ${e.message}';
+      errorMessage = l10n.connTestConnectionFailed(e.message);
     } catch (e) {
-      errorMessage = 'Error: $e';
+      errorMessage = l10n.connTestError('$e');
     } finally {
       await sshClient?.dispose();
     }
@@ -1081,24 +1253,29 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         );
       } else if (_backend == BackendType.herdr) {
         final message = herdrReady
-            ? 'Connection successful! Herdr is available (read-only).'
-            : 'Connection successful! Warning: '
-                '${herdrWarning ?? 'herdr not found'}.';
+            ? l10n.connTestSuccessHerdr
+            : l10n.connTestSuccessWarning(
+                herdrWarning ?? l10n.connHerdrNotFound,
+              );
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor: herdrReady ? DesignColors.success : DesignColors.warning,
+            backgroundColor: herdrReady
+                ? DesignColors.success
+                : DesignColors.warning,
             duration: const Duration(seconds: 3),
           ),
         );
       } else {
         final message = tmuxInstalled
-            ? 'Connection successful! tmux is available.'
-            : 'Connection successful! Warning: ${tmuxWarning ?? 'tmux not found'}.';
+            ? l10n.connTestSuccessTmux
+            : l10n.connTestSuccessWarning(tmuxWarning ?? l10n.connTmuxNotFound);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
-            backgroundColor: tmuxInstalled ? DesignColors.success : DesignColors.warning,
+            backgroundColor: tmuxInstalled
+                ? DesignColors.success
+                : DesignColors.warning,
             duration: const Duration(seconds: 3),
           ),
         );
@@ -1119,10 +1296,16 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     try {
       final connectionId = widget.connectionId ?? const Uuid().v4();
-      developer.log('Connection ID: $connectionId (isEditing: ${widget.isEditing})', name: 'ConnectionForm');
+      developer.log(
+        'Connection ID: $connectionId (isEditing: ${widget.isEditing})',
+        name: 'ConnectionForm',
+      );
 
       if (_authMethod == 'password' && _passwordController.text.isNotEmpty) {
-        developer.log('Saving password to secure storage...', name: 'ConnectionForm');
+        developer.log(
+          'Saving password to secure storage...',
+          name: 'ConnectionForm',
+        );
         final storage = SecureStorageService();
         await storage.savePassword(connectionId, _passwordController.text);
         developer.log('Password saved successfully', name: 'ConnectionForm');
@@ -1147,32 +1330,53 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         multiplexer: multiplexer,
         deepLinkId: saveDeepLinkId.isNotEmpty ? saveDeepLinkId : null,
         createdAt: widget.isEditing
-            ? ref.read(connectionsProvider.notifier).getById(connectionId)?.createdAt ?? DateTime.now()
+            ? ref
+                      .read(connectionsProvider.notifier)
+                      .getById(connectionId)
+                      ?.createdAt ??
+                  DateTime.now()
             : DateTime.now(),
       );
-      developer.log('Connection object created: ${connection.name}', name: 'ConnectionForm');
+      developer.log(
+        'Connection object created: ${connection.name}',
+        name: 'ConnectionForm',
+      );
 
       if (widget.isEditing) {
-        developer.log('Updating existing connection...', name: 'ConnectionForm');
+        developer.log(
+          'Updating existing connection...',
+          name: 'ConnectionForm',
+        );
         await ref.read(connectionsProvider.notifier).update(connection);
-        developer.log('Connection updated successfully', name: 'ConnectionForm');
+        developer.log(
+          'Connection updated successfully',
+          name: 'ConnectionForm',
+        );
       } else {
         developer.log('Adding new connection...', name: 'ConnectionForm');
         await ref.read(connectionsProvider.notifier).add(connection);
         developer.log('Connection added successfully', name: 'ConnectionForm');
       }
 
-      developer.log('Save completed, popping navigator...', name: 'ConnectionForm');
+      developer.log(
+        'Save completed, popping navigator...',
+        name: 'ConnectionForm',
+      );
       if (mounted) {
         Navigator.of(context).pop(true);
         developer.log('Navigator popped', name: 'ConnectionForm');
       }
     } catch (e, stackTrace) {
-      developer.log('Error saving connection: $e', name: 'ConnectionForm', error: e, stackTrace: stackTrace);
+      developer.log(
+        'Error saving connection: $e',
+        name: 'ConnectionForm',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving connection: $e'),
+            content: Text(context.l10n.connSaveError('$e')),
             backgroundColor: DesignColors.error,
           ),
         );

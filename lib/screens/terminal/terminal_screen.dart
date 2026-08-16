@@ -19,6 +19,9 @@ import '../../services/backend/domain/multiplexer_session.dart';
 import '../../services/backend/domain/multiplexer_window.dart';
 import '../../services/backend/domain/herdr_pane_writer.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/backend/domain/pane_frame_reader.dart';
+import '../../services/backend/domain/pane_history_policy.dart';
+import '../../services/backend/domain/pane_read.dart';
 import '../../services/backend/domain/pane_writer.dart';
 import '../../services/backend/domain/tmux_pane_writer.dart';
 import '../../services/backend/domain/wheel_encoder.dart';
@@ -28,6 +31,9 @@ import '../../services/herdr/herdr_commands.dart'
 import '../../services/herdr/herdr_errors.dart';
 import '../../services/herdr/herdr_models.dart';
 import '../../services/herdr/herdr_pane_content_reader.dart';
+import '../../services/herdr/herdr_pane_frame_reader.dart';
+import '../../services/herdr/herdr_resize_bridge.dart';
+import '../../services/herdr/herdr_resize_math.dart';
 import '../../services/herdr/herdr_snapshot_cache.dart';
 import '../../services/herdr/herdr_target_resolver.dart';
 import '../../services/herdr/herdr_to_domain.dart';
@@ -45,8 +51,12 @@ import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
 
 import '../../services/tmux/tmux_version.dart';
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
+import '../../widgets/dialogs/pane_chooser_dialog.dart';
 import '../../widgets/dialogs/resize_dialog.dart';
 import '../../widgets/dialogs/rename_window_dialog.dart';
+import '../../widgets/dialogs/new_window_dialog.dart';
 import '../../theme/design_colors.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../widgets/key_overlay_widget.dart';
@@ -73,6 +83,24 @@ enum ScrollModeSource {
 
   /// tmux copy-modeを自動検出
   tmux,
+}
+
+// inventory: TERM-ENUM-002
+/// mutation 後同期（[_syncAfterHerdrMutation]）のターゲット解決ポリシー。
+///
+/// アプリ契約: Herdr の mutation は原則として現在表示中の pane を維持する
+/// （[preserveCurrent]・sticky）。ただし、バックエンドのフォーカス移動を伴う
+/// 操作（`--focus` 付き tab create 等）が成功した場合は、その操作に限り
+/// バックエンドの focused pane へ表示を移動する（[followBackendFocus]）。
+/// tmux 側の同契約: [_createWindow]（active=1 検出 → 自動切替）。
+enum HerdrSyncTargetPolicy {
+  /// 現在表示中の pane を最優先で維持する（既定。split/rename/zoom/close 等）。
+  preserveCurrent,
+
+  /// 現在 workspace のフォーカス tab → フォーカス pane を優先して解決する。
+  /// focused 情報が欠落している場合は null を返し、呼び出し側が
+  /// [preserveCurrent]（sticky）へフォールバックする（`--focus` 付き create 用）。
+  followBackendFocus,
 }
 
 // inventory: TERM-SCREEN-002
@@ -256,21 +284,21 @@ String? _herdrTabIdFromPaneId(String paneId) {
 /// 末尾セグメントから番号を抽出する（"w1:p1" → "Pane 1"）。抽出できない場合
 /// は "Pane 0" を返す。A10 の currentPath 優先ルールはセレクタ側
 /// （[_herdrPaneLabel]）で適用し、ブレッドクラムは番号ベースで統一する。
-String _herdrPaneSegmentLabel(String paneId) {
+String _herdrPaneSegmentLabel(String paneId, AppLocalizations l10n) {
   final last = paneId.split(':').last;
   final digits = last.replaceAll(RegExp(r'\D'), '');
   final index = int.tryParse(digits) ?? 0;
-  return 'Pane $index';
+  return l10n.termPaneLabel(index);
 }
 
 /// A10: herdr pane の表示名（3 段セレクタ用）。
 ///
 /// 現在ディレクトリ（currentPath = cwd ?? foregroundCwd）を優先し、無ければ
 /// 'Pane N'（index）をフォールバックする。
-String _herdrPaneLabel(MultiplexerPane pane) {
+String _herdrPaneLabel(MultiplexerPane pane, AppLocalizations l10n) {
   final cwd = pane.currentPath;
   if (cwd != null && cwd.isNotEmpty) return cwd;
-  return 'Pane ${pane.index}';
+  return l10n.termPaneLabel(pane.index);
 }
 
 // inventory: TERM-BREAD-000
@@ -536,6 +564,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // ペイン内容読み取り（backend 種別で tmux/herdr を選択）
   PaneContentReader? _paneReader;
 
+  // ペイン表示フレーム合成（content + geometry・バグ1 根本対応）。
+  // herdr は content と layout を合成する。tmux は PaneFrameReader を使わず
+  // 従来の PaneContentReader（poll で geometry 込み）をそのまま使う。
+  PaneFrameReader? _frameReader;
+
   // ペイン操作（write 側抽象）。backend 種別で生成する（T8: `TmuxPaneWriter` /
   // `HerdrPaneWriter`。Phase 0 の仮実装 `_Phase0PaneWriter` は廃止）。呼び出し
   // 側の明示（`readOnly: true`）・未接続時は null（全 capability false 扱い）。
@@ -547,6 +580,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // herdr スナップショットキャッシュ（A5: 唯一の read chokepoint）。
   // 再接続で adapter が差し替わるときは `_recreatePaneReader` で作り直す。
   HerdrSnapshotCache? _herdrSnapshotCache;
+
+  /// herdr のターミナル全体 resize を実現する hidden TUI 常駐ブリッジ。
+  ///
+  /// [HerdrResizeBridge]（lazy start）: 最初の Resize 操作時に起動し、SSH 接続中
+  /// のみ常駐する。接続時には起動しない（他クライアントのサイズを勝手に上書き
+  /// しない・Codex 方針）。再接続時は [_recreatePaneReader] が新インスタンスを
+  /// 生成し、古いブリッジの managed PTY は旧 SshClient の dispose（await）で終了する。
+  HerdrResizeBridge? _herdrResizeBridge;
 
   // server-down / 終端エラーでポーリングを停止したか（再開まで _scheduleNextPoll を抑止）。
   bool _pollingSuspended = false;
@@ -1038,7 +1079,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         throw Exception('Connection not found');
       }
 
-      // 1.5. backend 種別を確定（herdr は read-only 分岐に使う）
+      // 1.5. backend 種別を確定（backend 固有の操作・capability 判定に使う）
       final isHerdr = connection.multiplexer.backend == BackendType.herdr;
       _backendKind = isHerdr
           ? MultiplexerBackendKind.herdr
@@ -1066,7 +1107,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // herdr どちらの経路でも確実に実行されるよう、herdr 早期 return より前に置く。
       _resetTerminalMode();
 
-      // 3.4. herdr: read-only セッションを設定して終了
+      // 3.4. herdr: セッションを設定して終了
       if (isHerdr) {
         await _setupHerdrSession(client);
         if (!mounted || _isDisposed) return;
@@ -1259,6 +1300,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // inventory: TERM-RESIZE-003
         _scheduleInitialAutoResize();
       }
+    } on SshAuthenticationError {
+      // 注意: SshAuthenticationError 全種をこの文言にマップしている。現在の throw
+      // 元は _getAuthOptions の秘密鍵読み取り失敗のみ。将来 throw 元が増える
+      // 場合は例外の種別に応じた文言選択が必要。
+      if (!mounted) return;
+      final message = context.l10n.connPrivateKeyUnreadable;
+      setState(() {
+        _isConnecting = false;
+        _connectionError = message;
+      });
+      // inventory: TERM-DIALOG-001
+      _showErrorSnackBar(message);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1281,6 +1334,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null) return;
     if (widget.paneContentReader != null) {
       _paneReader = widget.paneContentReader;
+      _frameReader = null; // テスト注入 reader は content のみ（geometry は解決しない）
       // herdr: スナップショット読み取りは content reader とは独立に cache
       // （唯一の read chokepoint・A5 / A3改）経由にする。テスト注入 reader でも
       // cache を生成してエポック照合を有効にする（バックエンドは client 由来）。
@@ -1294,13 +1348,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // スナップショット読み取りは cache（唯一の read chokepoint・A5）経由に
       // する。adapter 差し替え（再接続・SSH client 再生成）は cache を作り直して追随。
       _herdrSnapshotCache = HerdrSnapshotCache(() => adapter);
+      // content + geometry の合成（バグ1 根本対応: 表示層の backend 分岐と
+      // 診断 getter の表示利用を除去）。cache.get() の TTL/single-flight/epoch
+      // 契約を守る PaneLayoutResolver を使う。
+      _frameReader = HerdrPaneFrameReader(
+        adapter,
+        HerdrPaneLayoutResolver(_herdrSnapshotCache!),
+      );
+      // hidden TUI 常駐ブリッジ（ターミナル全体 resize 用・lazy start）。
+      // 古いブリッジは旧 client の dispose（await）で managed PTY が終了するため、
+      // ここでは新しい client / cache に紐づくブリッジに置き換える。
+      _herdrResizeBridge = HerdrResizeBridge(
+        client: sshClient,
+        cache: _herdrSnapshotCache!,
+        executablePath: _herdrExecutablePath(sshClient),
+        tabIdProvider: () => _herdrDisplayNotifier.value?.tabId,
+      );
     } else {
       _paneReader = TmuxPaneContentReader(sshClient.tmuxExecutor);
+      _frameReader = null;
     }
   }
 
-  /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
+  /// hidden herdr TUI の起動コマンド用 executablePath を POSIX shell quote する。
   ///
+  /// 接続設定（[SshClient.userExecutablePath] / MultiplexerConfig.executablePath）が
+  /// 無ければ `herdr`（PATH 依存）を使用する。SSH exec はリモートシェル経由のため、
+  /// スペースやシングルクォートを含むパスを安全に渡す（承認条件 7）。
+  String _herdrExecutablePath(SshClient sshClient) {
+    final raw = sshClient.userExecutablePath?.trim();
+    final path = (raw == null || raw.isEmpty) ? 'herdr' : raw;
+    return "'${path.replaceAll("'", r"'\''")}'";
+  }
+
+  /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
   /// 呼び出し側の明示（[TerminalScreen.readOnly]）・未接続・backend 未確定の
   /// ときは null（全 capability false 扱い = read-only）。T8 で `_Phase0PaneWriter`
   /// を廃止し、実実装（`TmuxPaneWriter` / `HerdrPaneWriter`）を生成する。
@@ -1316,13 +1397,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // herdr: mutation 解禁（Phase 2・T13）。capability は PaneCapabilities 参照。
       MultiplexerBackendKind.herdr => HerdrPaneWriter(HerdrAdapter(sshClient)),
       // tmux: 既存 tmuxFacade をラップ（後方互換・コマンド文字列不変）。
-      MultiplexerBackendKind.tmux =>
-        TmuxPaneWriter(tmuxFacade, sshClient.tmuxExecutor),
+      MultiplexerBackendKind.tmux => TmuxPaneWriter(
+        tmuxFacade,
+        sshClient.tmuxExecutor,
+      ),
       MultiplexerBackendKind.unknown => null,
     };
   }
 
-  /// herdr の read-only セッションを設定する。
+  /// herdr のセッションを設定する。
   ///
   /// 表示対象 pane を解決し、ライブポーリングを開始する。mutation 系の
   /// tmux セットアップ（バージョン確認・セッション作成・ツリー取得・
@@ -1340,7 +1423,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 直接指定（initialPaneId / lastPaneId）時はスナップショット解決を伴わず、
     // workspaceId / tabId は pane ID からの best-effort 導出にフォールバックする。
     final directId = widget.initialPaneId ?? widget.lastPaneId;
-    final resolvedTarget = directId == null ? await _resolveHerdrPaneId() : null;
+    final resolvedTarget = directId == null
+        ? await _resolveHerdrPaneId()
+        : null;
     final resolvedId = resolvedTarget?.paneId ?? directId;
     if (resolvedId == null) {
       // 診断: 要求条件（sessionId / label）とスナップショット状態を記録する。
@@ -1450,7 +1535,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // sessionId 優先: スナップショット内に一致する workspace がある場合のみ
     // workspaceId として resolver へ渡す（無ければラベル一致にフォールバック）。
     final requestedId = widget.sessionId;
-    final workspaceId = (requestedId != null &&
+    final workspaceId =
+        (requestedId != null &&
             requestedId.isNotEmpty &&
             snapshot.workspaces.any((w) => w.id == requestedId))
         ? requestedId
@@ -1752,9 +1838,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return;
       }
 
-      // ペイン内容読み取り（PaneContentReader）からターゲットを取得
+      // ペイン内容読み取りからターゲットを取得
       final paneId = _targetSource?.currentPaneId;
       final reader = _paneReader;
+      final frameReader = _frameReader;
       if (paneId == null || reader == null) {
         _isPolling = false;
         return;
@@ -1766,13 +1853,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       final startTime = DateTime.now();
 
-      // PaneContentReader 経由で capture-pane + カーソル + モード（tmux）または
-      // pane read（herdr）を一括取得する。表示コア（AnsiTextView /
-      // ValueNotifier / ポーリングループ）は backend 非依存のためそのまま。
-      final snapshot = await reader.readPane(
-        paneId: paneId,
-        historyLines: -120,
-      );
+      // ペイン表示フレームを取得する。herdr は content + geometry を
+      // PaneFrameReader が合成し（バグ1 根本対応: 表示層の backend 分岐と
+      // 診断 getter の表示利用を除去）、tmux / テスト注入 reader は従来の
+      // PaneContentReader を使う。ライブポーリングは read intent（LiveTail）で
+      // 要求する（バグ4 根本対応: 行数の符号・大小による暗黙の意味判定を廃止）。
+      final snapshot = frameReader != null
+          ? (await frameReader.read(
+              PaneFrameRequest(PaneReadRequest.live(paneId: paneId)),
+            )).toSnapshot()
+          : await reader.readPane(PaneReadRequest.live(paneId: paneId));
 
       final endTime = DateTime.now();
 
@@ -1783,10 +1873,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (!_isCurrentHerdrTarget(herdrIdentity)) return;
 
       // カーソル位置とペインサイズを更新
-      // （herdr はサイズ不明のため width/height=0 になり、このブロックは
-      //   スキップされて既定の 80x24 が維持される。カーソルも 0 固定フォールバック）
-      final w = snapshot.width;
-      final h = snapshot.height;
+      // tmux は snapshot（poll）経由で geometry を得る。herdr は PaneFrameReader
+      // が layout から合成済み。zoom 時は pane rect が非 zoom 値のまま
+      // （herdr_models.dart）のため layout.area（タブ全面）を解決済み。
+      // rect が取得できない場合は従来どおり geometry 無しのままスキップし、
+      // 既定の 80x24（spec.md:75）に落ちる。
+      final geometry = snapshot.geometry;
+      final w = geometry?.width ?? 0;
+      final h = geometry?.height ?? 0;
       if (w > 0 && h > 0) {
         if (w != _viewNotifier.value.paneWidth ||
             h != _viewNotifier.value.paneHeight) {
@@ -1874,7 +1968,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             // 合流バッファクリア（遷移までに積んだティックは送信しない・D2）
             _discardPendingScrollTicks();
             // C12: 最小監視（A8 リングバッファ・SDK 送信なし）
-            _recordHerdrSwitchEvent('copy-mode auto transition from scrollSend');
+            _recordHerdrSwitchEvent(
+              'copy-mode auto transition from scrollSend',
+            );
           }
         } else if (!isTmuxCopyMode &&
             _scrollModeSource == ScrollModeSource.tmux) {
@@ -2069,7 +2165,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _recordHerdrSwitchEvent(
           '$eventLabel: snapshot fetch error (${e.runtimeType})',
         );
-        _showHerdrErrorSnackBar('Failed to load herdr tree: $e');
+        _showHerdrErrorSnackBar(
+          context.l10n.termFailedToLoadHerdrTree(e.toString()),
+        );
       }
       return null;
     }
@@ -2086,11 +2184,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 1. [HerdrSnapshotCache.get(force: true)] でスナップショットを強制再取得
   ///    （エポック++。adapter 差し替えは既存 `identical` 検出に委譲・A3改。
   ///    split/create 等の layout なし応答（T0 実測）も force 再取得で反映）
-  /// 2. [_resolveHerdrTargetFromSessions]（[HerdrTargetResolver] と等価な決定順）
-  ///    でターゲットを再解決（現在表示中の pane を [preferredPaneId] で最優先）
+  /// 2. [policy] に従ってターゲットを再解決（既定 [HerdrSyncTargetPolicy.preserveCurrent]
+  ///    は現在表示中の pane を [preferredPaneId] で最優先。
+  ///    [HerdrSyncTargetPolicy.followBackendFocus] は現在 workspace のフォーカス
+  ///    pane を優先し、解決できない場合は preserveCurrent へフォールバック）
   /// 3. ターゲット変化時のみ [_switchHerdrTarget] で表示を単一コミット
   ///    （snapshot 実値の workspaceId / tabId / tabLabel を伝播）
   /// 4. [_boostPolling] で即時反映
+  ///
+  /// [policy] は操作のアプリ契約から決まる。**アプリ契約: 作成操作は作成した
+  /// 新規タブへ表示を自動移動する（作成後自動切替・tmux [_createWindow] の
+  /// active=1 検出と同一仕様）。** Herdr では `--focus` 付き create が成功した
+  /// 場合のみ [HerdrSyncTargetPolicy.followBackendFocus] で snapshot の focused
+  /// pane へ追従し、それ以外の mutation は [HerdrSyncTargetPolicy.preserveCurrent]
+  /// （現在表示維持）とする。focused pane が解決できない場合は現在表示へ
+  /// フォールバックする（focused 情報欠落時に誤って別タブへ跳ねない）。
   ///
   /// 破壊的操作（close / workspace close）でターゲットが消滅した場合は再解決で
   /// 別 pane に移る（連鎖 close は確認済みの上で遷移）。再解決不能（全 workspace
@@ -2103,7 +2211,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 戻り値: 表示を継続できる（同一 pane 表示継続 or 切替成功）場合は true。
   /// server-down / 終端（再解決不能）でポーリング停止 + 通知へ倒した場合は false。
-  Future<bool> _syncAfterHerdrMutation({String eventLabel = 'mutation sync'}) async {
+  Future<bool> _syncAfterHerdrMutation({
+    String eventLabel = 'mutation sync',
+    HerdrSyncTargetPolicy policy = HerdrSyncTargetPolicy.preserveCurrent,
+  }) async {
     // 1. force 再取得（エポック++。server-down は既存ルーティングへ）。
     final sessions = await _fetchHerdrSessions(
       force: true,
@@ -2112,9 +2223,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
     if (sessions == null || !mounted || _isDisposed) return false;
 
-    // 2. ターゲット再解決（現在表示中の pane を最優先・HerdrTargetResolver 等価）。
+    // 2. ターゲット再解決（ポリシーにより決定順が変わる）。
     final currentPaneId = _targetSource?.currentPaneId;
-    final resolved = _resolveHerdrTargetFromSessions(
+    var resolved = switch (policy) {
+      HerdrSyncTargetPolicy.preserveCurrent => _resolveHerdrTargetFromSessions(
+        sessions,
+        preferredPaneId: currentPaneId,
+      ),
+      HerdrSyncTargetPolicy.followBackendFocus =>
+        _resolveFocusedPaneFromSessions(sessions),
+    };
+    // followBackendFocus でも focused pane が解決できない場合（workspace 不在・
+    // focused 情報欠落）は preserveCurrent（sticky）へフォールバックして
+    // 現在表示を維持する。
+    resolved ??= _resolveHerdrTargetFromSessions(
       sessions,
       preferredPaneId: currentPaneId,
     );
@@ -2196,25 +2318,36 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final tab = focusedTab ?? workspace.windows.firstOrNull;
     if (tab != null) {
       final focusedPane = tab.panes.where((p) => p.active).firstOrNull;
-      if (focusedPane != null) return _herdrResolvedTargetOf(sessions, focusedPane);
-      if (tab.panes.isNotEmpty) return _herdrResolvedTargetOf(sessions, tab.panes.first);
+      if (focusedPane != null) {
+        return _herdrResolvedTargetOf(sessions, focusedPane);
+      }
+      if (tab.panes.isNotEmpty) {
+        return _herdrResolvedTargetOf(sessions, tab.panes.first);
+      }
     }
 
     // 5. workspace 内フォールバック（tab 解決不能・tab 内が空のとき）
     final workspacePanes = [for (final w in workspace.windows) ...w.panes];
     final workspaceFocused = workspacePanes.where((p) => p.active).firstOrNull;
-    if (workspaceFocused != null) return _herdrResolvedTargetOf(sessions, workspaceFocused);
-    if (workspacePanes.isNotEmpty) return _herdrResolvedTargetOf(sessions, workspacePanes.first);
+    if (workspaceFocused != null) {
+      return _herdrResolvedTargetOf(sessions, workspaceFocused);
+    }
+    if (workspacePanes.isNotEmpty) {
+      return _herdrResolvedTargetOf(sessions, workspacePanes.first);
+    }
 
     // 6. 全体フォールバック
     final allPanes = [
       for (final s in sessions)
-        for (final w in s.windows)
-          ...w.panes,
+        for (final w in s.windows) ...w.panes,
     ];
     final globalFocused = allPanes.where((p) => p.active).firstOrNull;
-    if (globalFocused != null) return _herdrResolvedTargetOf(sessions, globalFocused);
-    if (allPanes.isNotEmpty) return _herdrResolvedTargetOf(sessions, allPanes.first);
+    if (globalFocused != null) {
+      return _herdrResolvedTargetOf(sessions, globalFocused);
+    }
+    if (allPanes.isNotEmpty) {
+      return _herdrResolvedTargetOf(sessions, allPanes.first);
+    }
     return null;
   }
 
@@ -2269,7 +2402,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _suspendPollingAfterError();
     _herdrSnapshotCache?.invalidate();
     if (mounted && !_isDisposed) {
-      _showHerdrErrorSnackBar('Herdr server is not responding: $e');
+      _showHerdrErrorSnackBar(
+        context.l10n.termHerdrServerNotResponding(e.toString()),
+      );
     }
   }
 
@@ -2277,7 +2412,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _notifyHerdrTargetLost() {
     if (!mounted || _isDisposed) return;
     _suspendPollingAfterError();
-    _showHerdrErrorSnackBar('Herdr target pane not found');
+    _showHerdrErrorSnackBar(context.l10n.termHerdrTargetPaneNotFound);
   }
 
   /// ポーリングを停止し、[_scheduleNextPoll] による再スケジュールを抑止する。
@@ -2303,7 +2438,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         content: Text(message),
         backgroundColor: Colors.red,
         action: SnackBarAction(
-          label: 'Retry',
+          label: context.l10n.termRetry,
           textColor: Colors.white,
           onPressed: _resumePollingAfterError,
         ),
@@ -2315,21 +2450,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 踏襲したプレーン通知。分類別の文言は呼び出し側が組み立てる）。
   void _showHerdrMutationSnackBar(String message) {
     if (!mounted || _isDisposed) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// T19/S4: target-not-found の通知（SnackBar「対象が消えました。再同期しました」）。
   void _showHerdrTargetNotFoundSnackBar() {
-    _showHerdrMutationSnackBar('対象が消えました。再同期しました');
+    _showHerdrMutationSnackBar(context.l10n.termHerdrTargetLost);
   }
 
   /// T19/S4: 非対応キー（`invalid_key`）の防御的通知。
   ///
   /// Q-07 の全キー送信経路（[PaneKeyMap]）により通常は発生しない（R9）。
   void _showHerdrInvalidKeySnackBar() {
-    _showHerdrMutationSnackBar('このキーは herdr で送信できませんでした');
+    _showHerdrMutationSnackBar(context.l10n.termHerdrInvalidKey);
   }
 
   /// T19/S4: 方向なし / no-op（soft 失敗）の情報通知。
@@ -2338,10 +2473,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// `no_neighbor`（隣接 pane なし）→「その方向に pane はありません」/
   /// `unchanged`（分割境界外 resize）→「分割境界のため変更なし」。
   void _showHerdrMutationNoopSnackBar(PaneOperationNoopException e) {
+    final l10n = context.l10n;
     final message = switch (e.reason) {
-      'no_neighbor' => 'その方向に pane はありません',
-      'unchanged' => '分割境界のため変更なし',
-      _ => '操作は実行されましたが状態は変わりませんでした',
+      'no_neighbor' => l10n.termHerdrNoNeighbor,
+      'unchanged' => l10n.termHerdrUnchanged,
+      _ => l10n.termHerdrNoopGeneric,
     };
     _showHerdrMutationSnackBar(message);
   }
@@ -2399,7 +2535,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           _attemptReconnect();
         }
       } else {
-        _showHerdrMutationSnackBar('$operationLabel failed: $e');
+        _showHerdrMutationSnackBar(
+          context.l10n.termOperationFailed(operationLabel, e.toString()),
+        );
       }
     }
   }
@@ -2419,7 +2557,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-LIFE-020
-  /// スクロール＆選択モード開始時に履歴を一度だけ取得して表示する。
+  /// スクロール&選択モード開始時に履歴を一度だけ取得して表示する。
   /// ライブポーリングは軽量な直近行のままなので性能は落ちない。深い履歴は
   /// ポーリングとは別のexecチャネルで取得し、ホットパスに影響しない。
   Future<void> _loadHistoryForScroll({bool preservePosition = false}) async {
@@ -2427,16 +2565,25 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) return;
     final paneId = _targetSource?.currentPaneId;
     final reader = _paneReader;
+    final frameReader = _frameReader;
     if (paneId == null || reader == null) return;
     // A3改: 深い履歴 read 開始前に表示対象同一性を記録（完了時に照合）。
     final herdrIdentity = _captureHerdrTarget();
     try {
-      // スクロールバック全体を一括取得（大きな負値でヒストリ全体をキャプチャ）。
-      // tmux は履歴上限までにクランプ、herdr は行数で要求する。
-      final snapshot = await reader.readPane(
-        paneId: paneId,
-        historyLines: -100000,
+      // スクロールバック全体を一括取得（read intent = Scrollback で要求する）。
+      // 行数は backend ポリシー（PaneHistoryPolicy）が解決する（バグ4 根本対応:
+      // 設定解決を表示層から分離・魔法数 -100000/-120 の暗黙判定を廃止）。
+      final policy = PaneHistoryPolicyResolver.forBackend(
+        _backendKind,
+        configuredScrollbackLines: ref.read(settingsProvider).scrollbackLines,
       );
+      final request = PaneReadRequest.scrollback(
+        paneId: paneId,
+        maxLines: policy.scrollbackLimit,
+      );
+      final snapshot = frameReader != null
+          ? (await frameReader.read(PaneFrameRequest(request))).toSnapshot()
+          : await reader.readPane(request);
       if (!mounted || _isDisposed) return;
       // A3改: await 完了後に表示対象を照合。不一致（await 中に切替・再解決・
       // 再接続が発生）なら破棄し、ライブ表示のままにする。
@@ -2551,6 +2698,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   Future<SshConnectOptions> _getAuthOptions(Connection connection) async {
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await _secureStorage.getPrivateKey(connection.keyId!);
+      if (privateKey == null) {
+        throw SshAuthenticationError(
+          'Private key is not readable. Please re-import the key.',
+        );
+      }
       final passphrase = await _secureStorage.getPassphrase(connection.keyId!);
       return SshConnectOptions(
         privateKey: privateKey,
@@ -2574,7 +2726,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         content: Text(message),
         backgroundColor: Colors.red,
         action: SnackBarAction(
-          label: 'Retry',
+          label: context.l10n.termRetry,
           textColor: Colors.white,
           // inventory: TERM-LIFE-011
           onPressed: _connectAndSetup,
@@ -2649,6 +2801,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void dispose() {
     // まず_isDisposedをセットして非同期処理を停止
     _isDisposed = true;
+    // hidden herdr TUI ブリッジを終了（managed PTY close・fire-and-forget。
+    // SSH 切断時は SshClient.dispose 側でも閉じる・承認条件 9）。
+    unawaited(_herdrResizeBridge?.reset());
+    _herdrResizeBridge = null;
     WidgetsBinding.instance.removeObserver(this);
     // WakeLockを無効化
     WakelockPlus.disable();
@@ -2719,9 +2875,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               if (_backendKind == MultiplexerBackendKind.herdr)
                 ValueListenableBuilder<_HerdrDisplayData?>(
                   valueListenable: _herdrDisplayNotifier,
-                  builder: (context, display, _) => _buildBreadcrumbHeader(
-                    _herdrToBreadcrumb(display),
-                  ),
+                  builder: (context, display, _) =>
+                      _buildBreadcrumbHeader(_herdrToBreadcrumb(display)),
                 )
               else
                 Consumer(
@@ -2781,12 +2936,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                     // inventory: TERM-INPUT-001
                                     // scrollSend 中は専用キーハンドラへルート（H3・C8）
                                     onKeyInput:
-                                        _terminalMode ==
-                                                TerminalMode.scrollSend
-                                            ? _handleScrollSendKeyInput
-                                            : (_canSendText
-                                                  ? _handleKeyInput
-                                                  : null),
+                                        _terminalMode == TerminalMode.scrollSend
+                                        ? _handleScrollSendKeyInput
+                                        : (_canSendText
+                                              ? _handleKeyInput
+                                              : null),
                                     onTap: () {
                                       _scrollToBottomKey.currentState?.show();
                                     },
@@ -3082,8 +3236,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （「その方向に pane はありません」・S4/T19）。
   Future<void> _focusHerdrPaneDirection(SwipeDirection direction) async {
     final writer = _paneWriter;
-    final paneId = _targetSource?.currentPaneId;
-    if (writer == null || paneId == null) return;
+    final beforePane = _targetSource?.currentPaneId;
+    if (writer == null || beforePane == null) return;
 
     final directionName = switch (direction) {
       SwipeDirection.up => 'up',
@@ -3095,10 +3249,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ポーリング停止（SSH競合回避・mutation 実行中は既存方針）
     _pollTimer?.cancel();
     try {
-      await writer.focusPaneDirection(paneId, directionName);
+      await writer.focusPaneDirection(beforePane, directionName);
       if (!mounted || _isDisposed) return;
       // H5/T18 単一経路: 強制再取得 → 再解決 → ターゲット変化時のみ切替コミット。
-      await _syncAfterHerdrMutation(eventLabel: 'focus sync');
+      // スワイプはフォーカス移動を伴う操作のため、snapshot の focused pane へ
+      // 表示を追従させる（preserveCurrent では旧 pane 維持となり表示が変わらない）。
+      await _syncAfterHerdrMutation(
+        eventLabel: 'focus sync',
+        policy: HerdrSyncTargetPolicy.followBackendFocus,
+      );
     } on PaneOperationNoopException catch (e) {
       // 隣接 pane なし（soft 失敗・情報通知）。
       _showHerdrMutationNoopSnackBar(e);
@@ -3114,9 +3273,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在のペインからナビゲーション可能な方向を取得
   Map<SwipeDirection, bool>? _getNavigableDirections() {
     // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
-    // herdr では tmuxProvider が clear() されているため null を返し、
-    // スワイプヒントは非表示になる（方向 focus の herdr 配線は T12/T18）。
     if (!_canFocusDirection) return null;
+
+    // herdr: snapshot の layout（pane rect）から隣接判定する。
+    // tmux と同様に navigableDirections を提供し、隣接 pane が無い方向の
+    // 2 本指スワイプでエッジフラッシュ（赤）を表示できるようにする（バグ4）。
+    if (_backendKind == MultiplexerBackendKind.herdr) {
+      final herdrDirections = _herdrNavigableDirections();
+      if (herdrDirections == null) return null;
+      final settings = ref.read(settingsProvider);
+      if (settings.invertPaneNavigation) {
+        return {
+          for (final dir in SwipeDirection.values)
+            dir: herdrDirections[dir.inverted] ?? false,
+        };
+      }
+      return herdrDirections;
+    }
+
     final tmuxState = ref.read(tmuxProvider);
     final window = tmuxState.activeWindow;
     final activePane = tmuxState.activePane;
@@ -3139,6 +3313,79 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     return rawDirections;
   }
 
+  /// herdr: 現在表示中の pane の各方向に隣接 pane が存在するかを返す。
+  ///
+  /// snapshot の layout（pane の絶対座標 rect）から、[PaneNavigator] と
+  /// 同様の隣接判定を行う。snapshot 未取得時は null（スワイプヒント非表示）。
+  Map<SwipeDirection, bool>? _herdrNavigableDirections() {
+    final paneId = _targetSource?.currentPaneId;
+    final cache = _herdrSnapshotCache;
+    if (paneId == null || cache == null) return null;
+    final snapshot = cache.cachedSnapshot;
+    if (snapshot == null) return null;
+
+    // 現在の pane が属する layout（tab）を探す
+    HerdrLayout? layout;
+    for (final l in snapshot.layouts) {
+      if (l.panes.any((p) => p.paneId == paneId)) {
+        layout = l;
+        break;
+      }
+    }
+    if (layout == null) return null;
+
+    final current = layout.panes.where((p) => p.paneId == paneId).firstOrNull;
+    if (current == null) return null;
+
+    return {
+      for (final dir in SwipeDirection.values)
+        dir: _herdrHasAdjacentPane(layout.panes, current, dir),
+    };
+  }
+
+  /// herdr layout 内で [current] の [direction] 方向に隣接 pane があるか判定。
+  bool _herdrHasAdjacentPane(
+    List<HerdrLayoutPane> panes,
+    HerdrLayoutPane current,
+    SwipeDirection direction,
+  ) {
+    if (panes.length <= 1) return false;
+    for (final pane in panes) {
+      if (pane.paneId == current.paneId) continue;
+      final r = pane.rect;
+      final c = current.rect;
+      switch (direction) {
+        case SwipeDirection.right:
+          // 右: 左端が現在の右端以上 + 垂直方向の重なり
+          if (r.x >= c.x + c.width && _herdrVerticalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.left:
+          // 左: 右端が現在の左端以下 + 垂直方向の重なり
+          if (r.x + r.width <= c.x && _herdrVerticalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.down:
+          // 下: 上端が現在の下端以上 + 水平方向の重なり
+          if (r.y >= c.y + c.height && _herdrHorizontalOverlap(c, r)) {
+            return true;
+          }
+        case SwipeDirection.up:
+          // 上: 下端が現在の上端以下 + 水平方向の重なり
+          if (r.y + r.height <= c.y && _herdrHorizontalOverlap(c, r)) {
+            return true;
+          }
+      }
+    }
+    return false;
+  }
+
+  bool _herdrVerticalOverlap(HerdrRect a, HerdrRect b) =>
+      a.y < b.y + b.height && b.y < a.y + a.height;
+
+  bool _herdrHorizontalOverlap(HerdrRect a, HerdrRect b) =>
+      a.x < b.x + b.width && b.x < a.x + a.width;
+
   /// キーデータを PaneWriter 経由で送信（tmux: send-keys -l / herdr: send-text）
   Future<void> _sendKeyData(String data) async {
     // テキスト送信不可（read-only）では送信しない
@@ -3151,9 +3398,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _inputQueue.enqueue(data);
       if (!wasOverflow && _inputQueue.isOverflow && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Input queue is full; some keystrokes may be lost.'),
-          ),
+          SnackBar(content: Text(context.l10n.termInputQueueFull)),
         );
       }
       if (mounted) setState(() {}); // キューイング状態を更新
@@ -3327,29 +3572,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   @visibleForTesting
   Future<bool> syncAfterHerdrMutationForTesting({
     String eventLabel = 'test mutation sync',
-  }) =>
-      _syncAfterHerdrMutation(eventLabel: eventLabel);
+    HerdrSyncTargetPolicy policy = HerdrSyncTargetPolicy.preserveCurrent,
+  }) => _syncAfterHerdrMutation(eventLabel: eventLabel, policy: policy);
 
   /// テストフック: [_splitPane]（herdr 分岐）を widget テストから呼び出すための
   /// `@visibleForTesting` メソッド。本番コードからは呼ばない（セレクタの
   /// 分割導線が `_splitPane` を呼ぶ）。
   @visibleForTesting
-  Future<void> splitPaneForTesting(
-    String paneId,
-    SplitDirection direction,
-  ) =>
+  Future<void> splitPaneForTesting(String paneId, SplitDirection direction) =>
       _splitPane(paneId, direction);
 
   /// テストフック: [_renameHerdrPane]（herdr 分岐）を widget テストから
-  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （セレクタの Rename 導線が [_renameHerdrPane] を呼ぶ）。
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない。
   @visibleForTesting
   Future<void> renameHerdrPaneForTesting(String paneId, String label) =>
       _renameHerdrPane(paneId, label);
 
   /// テストフック: [_handleHerdrZoomPane]（herdr 分岐）を widget テストから
-  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない
-  /// （セレクタの Zoom 導線が [_handleHerdrZoomPane] を呼ぶ）。
+  /// 呼び出すための `@visibleForTesting` メソッド。本番コードからは呼ばない。
   @visibleForTesting
   Future<void> zoomHerdrPaneForTesting(String paneId) =>
       _handleHerdrZoomPane(paneId);
@@ -3358,8 +3598,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
   /// （tab セレクタの New Tab 導線が [_createHerdrTab] を呼ぶ）。
   @visibleForTesting
-  Future<void> createHerdrTabForTesting(String workspaceId) =>
-      _createHerdrTab(workspaceId);
+  Future<void> createHerdrTabForTesting(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) => _createHerdrTab(workspaceId, label: label, focus: focus);
 
   /// テストフック: [_renameHerdrTab]（herdr 分岐）を widget テストから呼び出す
   /// ための `@visibleForTesting` メソッド。本番コードからは呼ばない
@@ -3387,6 +3630,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   @visibleForTesting
   List<String> herdrSwitchEventsForTesting() =>
       List.unmodifiable(_herdrSwitchEvents);
+
+  /// テストフック: 深い履歴のロード（[_loadHistoryForScroll]）を widget テスト
+  /// から直接呼び出すための `@visibleForTesting` メソッド。本番コードからは
+  /// 呼ばない（オーバースクロール / スクロールモード遷移が呼ぶ）。
+  @visibleForTesting
+  Future<void> loadHistoryForScrollForTesting() => _loadHistoryForScroll();
 
   /// テストフック: `_can` 判定を widget テストから直接検証する（H4 等価性
   /// テスト・T4）。本番コードからは呼ばない。
@@ -3482,7 +3731,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _scrollToCaret() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted || _isDisposed) return;
-      _ansiTextViewKey.currentState?.scrollToCaret();
+      // herdr はカーソル位置情報を持たない（PaneFrame が cursorX/cursorY=0 を
+      // 返す固定値）ため、中央寄せだと最下部より (paneHeight-1)/2 行手前で
+      // 停止してしまう。末尾アライン（scrollToBottom 相当）で表示する。
+      // tmux は実カーソル位置があるため従来どおり中央寄せを維持。
+      if (_backendKind == MultiplexerBackendKind.herdr) {
+        _ansiTextViewKey.currentState?.scrollToBottom();
+      } else {
+        _ansiTextViewKey.currentState?.scrollToCaret();
+      }
     });
   }
 
@@ -3511,8 +3768,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             // inventory: LEGACY-0090
             Text(
               isWaitingForNetwork
-                  ? 'Waiting for network...'
-                  : (error ?? 'Connection error'),
+                  ? context.l10n.termWaitingForNetwork
+                  : (error ?? context.l10n.termConnectionError),
               style: TextStyle(color: colorScheme.onSurface),
               textAlign: TextAlign.center,
             ),
@@ -3535,7 +3792,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     Icon(Icons.keyboard, size: 16, color: DesignColors.primary),
                     const SizedBox(width: 8),
                     Text(
-                      '$queuedCount chars queued',
+                      context.l10n.termCharsQueued(queuedCount),
                       style: TextStyle(
                         color: DesignColors.primary,
                         fontSize: 12,
@@ -3566,7 +3823,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   onPressed: () {
                     ref.read(sshProvider.notifier).reconnectNow();
                   },
-                  child: const Text('Retry Now'),
+                  child: Text(context.l10n.termRetryNow),
                 ),
                 if (_sshState.isReconnecting) ...[
                   const SizedBox(width: 12),
@@ -3650,7 +3907,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       // セレクタ導線は各セグメントのタップに移行した）
                       _buildBreadcrumbSeparator(),
                       _buildBreadcrumbItem(
-                        'Read-only',
+                        context.l10n.termReadOnlyBadge,
                         icon: Icons.lock_outline,
                         isActive: false,
                         onTap: data.onReadOnlyTap,
@@ -3737,7 +3994,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 ),
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(),
-                tooltip: 'File Browser',
+                tooltip: context.l10n.termFileBrowser,
               ),
             // Settings button
             IconButton(
@@ -3772,7 +4029,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       window: isReadOnly ? null : (tmuxState.activeWindow?.name ?? ''),
       pane: isReadOnly || activePane == null
           ? null
-          : 'Pane ${activePane.index}',
+          : context.l10n.termPaneLabel(activePane.index),
       readOnlyBadge: isReadOnly,
       onSessionTap: isReadOnly ? null : () => _showSessionSelector(tmuxState),
       onWindowTap: isReadOnly ? null : () => _showWindowSelector(tmuxState),
@@ -3796,7 +4053,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // M-4: tab セグメントは数字抽出（旧 _herdrTabSegmentLabel）ではなく、
       // snapshot 解決済みの実ラベル（tabLabel = tab.label ?? tab.id 相当）を表示する。
       window: tabId != null ? (display?.tabLabel ?? tabId) : null,
-      pane: paneId != null ? _herdrPaneSegmentLabel(paneId) : null,
+      pane: paneId != null
+          ? _herdrPaneSegmentLabel(paneId, context.l10n)
+          : null,
       readOnlyBadge: isExplicitReadOnly,
       onSessionTap: () => _showHerdrWorkspaceSelector(),
       onWindowTap: () => _showHerdrTabSelector(),
@@ -3812,34 +4071,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （唯一の read chokepoint・A5）経由で取得した snapshot を `toDomainSessions()`
   /// で共通 domain ツリーへ変換したもの。workspace 一覧を 1 階層で表示し、選択
   /// するとその workspace の表示対象 pane を解決して [_switchHerdrTarget]
-  /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。read-only（A6）
-  /// のため mutation UI は持たない。
-  void _showHerdrWorkspaceSelector() async {
+  /// （切替コミットの単一入口・T6）で切替え、シートを即閉じする。
+  ///
+  /// **Resize 導線（ユーザー指示: Resize Window 相当を Select Session へ）**:
+  /// tmux の Resize Window（`resize-window -x cols -y rows`）と同じく、**ターミナル
+  /// 全体の絶対サイズ変更**を提供する（[_handleHerdrResizeTerminal]）。herdr では
+  /// ターミナル全体のサイズは SSH PTY サイズに追従し、PTY resize（SSH
+  /// window-change）で herdr daemon が全タブ・全 pane を自動再レイアウトする。
+  /// （pane 分割比の `herdr pane resize` は本導線とは無関係。pane 単位の resize は
+  /// pane セレクタの Resize Pane が従来どおり担当する。）
+  void _showHerdrWorkspaceSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
-
-    final current = _herdrSelectorContext();
+    // バグ3 根本対応: シートを即時 open し、asyncChildren で非同期取得して
+    // loading → data/error と表示する。fetch 完了を待たないため、遅延中に
+    // 再タップしてもシートは既に open されており、以後のタップは modal
+    // barrier に吸収される（app の共有 boolean ガードは不要）。
     _showMultiplexerSheet(
-      title: 'Select Session',
+      title: context.l10n.termSelectSession,
       icon: Icons.folder,
-      children: [
-        for (final session in sessions)
-          MultiplexerSessionTile(
-            key: ValueKey('mux-sel-session-${session.name}'),
-            session: session,
-            isActive: _isCurrentSession(session, current),
-            onTap: () {
-              Navigator.pop(context);
-              _herdrSelectWorkspace(sessions, session);
-            },
-          ),
-      ],
+      asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
+        final current = _herdrSelectorContext();
+        // ターミナル全体 resize は pane 数・タブ数に依存しないため、resize
+        // 能力があるときは常に表示する（tmux の Resize Window と同様）。
+        final canResize = _can(const PaneCapabilities(resize: true));
+        final headerActions = [
+          if (canResize)
+            IconButton(
+              icon: Icon(Icons.open_in_full, color: primary),
+              tooltip: l10n.termResizeTerminal,
+              onPressed: () =>
+                  _closeSelectorThen(() => _handleHerdrResizeTerminal()),
+            ),
+        ];
+        return _SelectorContent(
+          headerActions: headerActions,
+          children: [
+            for (final session in sessions)
+              MultiplexerSessionTile(
+                key: ValueKey('mux-sel-session-${session.name}'),
+                session: session,
+                isActive: _isCurrentSession(session, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectWorkspace(sessions, session);
+                },
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -3855,64 +4143,82 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// - タイル ⋮: Rename Tab（[PaneWriter.renameTab] = `herdr tab rename`）/
   ///   Close Tab（[PaneWriter.closeTab] = `herdr tab close`・最後の tab は
   ///   連鎖 close 確認付き・R2）
-  void _showHerdrTabSelector() async {
+  ///
+  /// ※ Resize 導線はユーザー指示により **Select Session（[_showHerdrWorkspaceSelector]）
+  /// へ移動**した。ターミナル全体の絶対サイズ変更（PTY resize）として
+  /// [_handleHerdrResizeTerminal] が担当する（pane 分割比の resize ではない）。
+  void _showHerdrTabSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
-
-    final workspace = _herdrFindWorkspace(sessions, _herdrDisplayNotifier.value);
-    if (workspace == null) return;
-
-    final current = _herdrSelectorContext();
-    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-    final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
-    final canRename = _can(const PaneCapabilities(rename: true));
-    final primary = Theme.of(context).colorScheme.primary;
+    // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
+    // loading → data/error と表示する（再タップは modal barrier が吸収）。
     _showMultiplexerSheet(
-      title: 'Select Window',
+      title: context.l10n.termSelectWindow,
       icon: Icons.tab,
-      headerActions: [
-        if (canTabCrud && workspace.id != null)
-          IconButton(
-            icon: Icon(Icons.add, color: primary),
-            tooltip: 'New Tab',
-            onPressed: () =>
-                _closeSelectorThen(() => _createHerdrTab(workspace.id!)),
-          ),
-      ],
-      children: [
-        for (final window in workspace.windows)
-          MultiplexerWindowTile(
-            key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
-            window: window,
-            isActive: _isCurrentWindow(window, current),
-            onTap: () {
-              Navigator.pop(context);
-              _herdrSelectTab(sessions, workspace, window);
-            },
-            onRename: canRename && window.id != null
-                ? () => _closeSelectorThen(() {
-                      _showHerdrRenameTabDialog(workspace, window);
-                    })
-                : null,
-            onClose: canTabCrud && window.id != null
-                ? () => _closeSelectorThen(() {
-                      // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
-                      // `tab close` を実行する。
-                      _confirmAndCloseHerdrTab(
-                        workspace: workspace,
-                        tab: window,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
-                : null,
-          ),
-      ],
+      asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
+
+        final workspace = _herdrFindWorkspace(
+          sessions,
+          _herdrDisplayNotifier.value,
+        );
+        if (workspace == null) throw StateError('No workspace found');
+
+        final current = _herdrSelectorContext();
+        // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+        final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
+        final canRename = _can(const PaneCapabilities(rename: true));
+        // New Tab（Q-05）はデータロード後に workspace.id が確定するため、
+        // headerActions を loader で返す（tooltip 付き IconButton）。
+        final headerActions = [
+          if (canTabCrud && workspace.id != null)
+            IconButton(
+              icon: Icon(Icons.add, color: primary),
+              tooltip: l10n.termNewTab,
+              onPressed: () => _closeSelectorThen(
+                () => _showHerdrCreateTabDialog(workspace),
+              ),
+            ),
+        ];
+        return _SelectorContent(
+          headerActions: headerActions,
+          children: [
+            for (final window in workspace.windows)
+              MultiplexerWindowTile(
+                key: ValueKey('mux-sel-window-${window.id ?? window.index}'),
+                window: window,
+                isActive: _isCurrentWindow(window, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectTab(sessions, workspace, window);
+                },
+                onRename: canRename && window.id != null
+                    ? () => _closeSelectorThen(() {
+                        _showHerdrRenameTabDialog(workspace, window);
+                      })
+                    : null,
+                onClose: canTabCrud && window.id != null
+                    ? () => _closeSelectorThen(() {
+                        // Q-03/R2: 最後の tab / workspace の連鎖 close を確認してから
+                        // `tab close` を実行する。
+                        _confirmAndCloseHerdrTab(
+                          workspace: workspace,
+                          tab: window,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                    : null,
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -3921,127 +4227,118 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 現在表示中の workspace / tab（[_HerdrDisplayData] から引き当て）の pane
   /// 一覧を 1 階層で表示する。pane 表示名は cwd 優先（A10 / [_herdrPaneLabel]）。
   /// 選択すると [_switchHerdrTarget] で切替え、シートを即閉じする。
-  /// mutation 解禁後（T13/T14）はリサイズを有効化する（Q-04: 方向 + ステップ
-  /// UI の [HerdrResizePaneDialog]。絶対値 UI は herdr 非対応のため tmux と
-  /// 経路を分ける）。Q-02（全操作解禁）ではヘッダーに Split / Rename / Zoom を
-  /// 追加する（tmux の [_showPaneSelector] を参照。ヘッダー操作の対象は
-  /// 現在表示中の pane = Resize と同じ導線）:
-  /// - Split: 方向選択ダイアログ（右/下）→ [_splitPane]（`herdr pane split`）
-  /// - Rename: 入力ダイアログ → [_renameHerdrPane]（`herdr pane rename`）
-  /// - Zoom: トグル（[_handleHerdrZoomPane] = `herdr pane zoom --toggle`。
-  ///   zoom 状態は snapshot の layout `zoomed` フラグで表示・可能なら）
-  void _showHerdrPaneSelector() async {
+  /// ヘッダーは Resize のみ（Q-04: 方向 + ステップ UI の [HerdrResizePaneDialog]。
+  /// 絶対値 UI は herdr 非対応のため tmux と経路を分ける）。上部に tmux と共通
+  /// の [_PaneLayoutVisualizer]（分割プレビュー）を表示し、プレビュー内タップで
+  /// 分割（[_splitPane] = `herdr pane split`）または対象 pane の選択
+  /// （[_switchHerdrTarget]）を行う。分割プレビューの active 基準は
+  /// [_targetSource.currentPaneId]（現在表示中の pane = Resize の対象と同じ
+  /// 導線）。`topExpected: true` によりローディング中から maxHeight 0.7 固定。
+  void _showHerdrPaneSelector() {
     if (!mounted || _isDisposed) return;
     if (_backendKind != MultiplexerBackendKind.herdr) return;
-
-    final sessions = await _fetchHerdrSessions(
-      eventLabel: 'selector snapshot',
-      isTerminal: false,
-    );
-    if (sessions == null || !mounted || _isDisposed) return;
-
-    final display = _herdrDisplayNotifier.value;
-    final workspace = _herdrFindWorkspace(sessions, display);
-    final window = _herdrFindWindow(workspace, display);
-    if (workspace == null || window == null) return;
-
-    final current = _herdrSelectorContext();
-    // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
-    final canResize = _can(const PaneCapabilities(resize: true));
-    final canClose = _can(const PaneCapabilities(close: true));
-    final canSplit = _can(const PaneCapabilities(split: true));
-    final canRename = _can(const PaneCapabilities(rename: true));
-    final canZoom = _can(const PaneCapabilities(zoom: true));
-    final primary = Theme.of(context).colorScheme.primary;
-    // ヘッダー操作の対象は現在表示中の pane（既存 Resize ボタンと同じ導線）。
-    final currentPaneId = _targetSource?.currentPaneId;
-    final currentPane = currentPaneId == null
-        ? null
-        : _findHerdrPane(sessions, currentPaneId);
-    // zoom 状態は snapshot の layout `zoomed` フラグから表示（可能なら）。
-    final isZoomed = _isHerdrTabZoomed(display?.tabId);
+    // バグ3 根本対応: シートを即時 open し、asyncContent で非同期取得して
+    // loading → data/error と表示する（再タップは modal barrier が吸収）。
     _showMultiplexerSheet(
-      title: 'Select Pane',
+      title: context.l10n.termSelectPane,
       icon: Icons.terminal,
-      headerActions: [
-        if (canSplit && currentPane != null)
-          IconButton(
-            icon: Icon(Icons.call_split, color: primary),
-            tooltip: 'Split Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _showHerdrSplitDirectionChooser(currentPane),
+      // 分割プレビューがローディング中から確定するため maxHeight 0.7 固定。
+      topExpected: true,
+      asyncContent: () async {
+        // theme 依存の値を async gap 前に取得（use_build_context_synchronously）。
+        final primary = Theme.of(context).colorScheme.primary;
+        final l10n = context.l10n;
+        final sessions = await _fetchHerdrSessions(
+          eventLabel: 'selector snapshot',
+          isTerminal: false,
+        );
+        if (sessions == null) throw StateError('Failed to load herdr tree');
+
+        final display = _herdrDisplayNotifier.value;
+        final workspace = _herdrFindWorkspace(sessions, display);
+        final window = _herdrFindWindow(workspace, display);
+        if (workspace == null || window == null) {
+          throw StateError('No workspace/tab found');
+        }
+
+        final current = _herdrSelectorContext();
+        // mutation アクションは能力単位で有効化（T4: `_can` の各 capability に分解）。
+        final canResize = _can(const PaneCapabilities(resize: true));
+        final canClose = _can(const PaneCapabilities(close: true));
+        final canSplit = _can(const PaneCapabilities(split: true));
+        // ヘッダー mutation（Q-02）はデータロード後に確定するため loader で返す。
+        final headerActions = [
+          if (canResize)
+            IconButton(
+              icon: Icon(Icons.open_in_full, color: primary),
+              tooltip: l10n.termResizePane,
+              onPressed: () => _closeSelectorThen(
+                // ヘッダーの Resize は選択モーダル経由（初期選択=現在表示中 pane）。
+                () => _showHerdrResizePaneChooser(sessions, window),
+              ),
             ),
-          ),
-        if (canRename && currentPane != null)
-          IconButton(
-            icon: Icon(Icons.drive_file_rename_outline, color: primary),
-            tooltip: 'Rename Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _showHerdrRenamePaneDialog(currentPane),
-            ),
-          ),
-        if (canZoom && currentPane != null)
-          IconButton(
-            icon: Icon(
-              isZoomed ? Icons.zoom_out : Icons.zoom_in,
-              color: primary,
-            ),
-            tooltip: isZoomed ? 'Unzoom Pane' : 'Zoom Pane',
-            onPressed: () => _closeSelectorThen(
-              () => _handleHerdrZoomPane(currentPane.id),
-            ),
-          ),
-        if (canResize)
-          IconButton(
-            icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Pane',
-            onPressed: () => _closeSelectorThen(() {
-              // ヘッダーの Resize は現在表示中の pane を対象にする。
-              final currentPaneId = _targetSource?.currentPaneId;
-              if (currentPaneId == null) return;
-              final pane = _findHerdrPane(sessions, currentPaneId);
-              if (pane != null) _handleHerdrResizePane(pane);
-            }),
-          ),
-      ],
-      children: [
-        for (final pane in window.panes)
-          MultiplexerPaneTile(
-            key: ValueKey('mux-sel-pane-${pane.id}'),
-            pane: pane,
-            paneTitle: _herdrPaneLabel(pane),
-            isActive: _isCurrentPane(pane, current),
-            onTap: () {
+        ];
+        return _SelectorContent(
+          headerActions: headerActions,
+          top: _buildPaneLayoutVisualizer(
+            window,
+            _targetSource?.currentPaneId,
+            (paneId) {
               Navigator.pop(context);
-              _herdrSelectPane(sessions, workspace, pane);
+              final pane = _findHerdrPane(sessions, paneId);
+              if (pane != null) _herdrSelectPane(sessions, workspace, pane);
             },
-            onLongPress: canClose
-                ? () => _closeSelectorThen(() {
-                      // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
-                      // 行い、連鎖 close を確認してから `pane close` を実行する。
-                      _confirmAndKillHerdrPane(
-                        paneId: pane.id,
-                        paneTitle: _herdrPaneLabel(pane),
-                        isLastPane: window.panes.length == 1,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
-                : null,
-            onResize: canResize
-                ? () => _closeSelectorThen(() => _handleHerdrResizePane(pane))
-                : null,
-            onClose: canClose
-                ? () => _closeSelectorThen(() {
-                      _confirmAndKillHerdrPane(
-                        paneId: pane.id,
-                        paneTitle: _herdrPaneLabel(pane),
-                        isLastPane: window.panes.length == 1,
-                        isLastTab: workspace.windows.length == 1,
-                      );
-                    })
+            canSplit
+                ? (paneId, direction) {
+                    Navigator.pop(context);
+                    _splitPane(paneId, direction);
+                  }
                 : null,
           ),
-      ],
+          children: [
+            for (final pane in window.panes)
+              MultiplexerPaneTile(
+                key: ValueKey('mux-sel-pane-${pane.id}'),
+                pane: pane,
+                paneTitle: _herdrPaneLabel(pane, l10n),
+                isActive: _isCurrentPane(pane, current),
+                onTap: () {
+                  Navigator.pop(context);
+                  _herdrSelectPane(sessions, workspace, pane);
+                },
+                onLongPress: canClose
+                    ? () => _closeSelectorThen(() {
+                        // T17（Q-03/R2）: 最後の pane / tab 判定を snapshot から
+                        // 行い、連鎖 close を確認してから `pane close` を実行する。
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane, context.l10n),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                    : null,
+                onResize: canResize
+                    ? () => _closeSelectorThen(
+                        // タイル⋮ Resize も選択モーダル経由に統一
+                        // （初期選択=現在表示中 pane・ユーザー決定①）。
+                        () => _showHerdrResizePaneChooser(sessions, window),
+                      )
+                    : null,
+                onClose: canClose
+                    ? () => _closeSelectorThen(() {
+                        _confirmAndKillHerdrPane(
+                          paneId: pane.id,
+                          paneTitle: _herdrPaneLabel(pane, context.l10n),
+                          isLastPane: window.panes.length == 1,
+                          isLastTab: workspace.windows.length == 1,
+                        );
+                      })
+                    : null,
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -4106,14 +4403,41 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     return null;
   }
 
+  /// [HerdrSyncTargetPolicy.followBackendFocus] 用のターゲット解決。
+  ///
+  /// 現在表示中の workspace（display 基準・[_herdrFindWorkspace]）の
+  /// 「フォーカス tab → フォーカス pane」を解決する。focused 情報が欠落
+  /// （フォーカス tab / pane が無い）の場合は null を返し、呼び出し側が
+  /// [_syncAfterHerdrMutation] 内で [HerdrSyncTargetPolicy.preserveCurrent]
+  /// （sticky）へフォールバックすることで「focused 情報欠落 => 現在の tab を
+  /// 維持」を保証する。
+  ///
+  /// [_herdrResolveWorkspaceTarget] は「先頭 tab → 先頭 pane」へフォールバック
+  /// するため、追従はフォーカスが明示された場合に限定する（focused 情報欠落時
+  /// に誤って別タブへ跳ねない）。
+  _HerdrResolvedTarget? _resolveFocusedPaneFromSessions(
+    List<MultiplexerSession> sessions,
+  ) {
+    final workspace = _herdrFindWorkspace(
+      sessions,
+      _herdrDisplayNotifier.value,
+    );
+    if (workspace == null) return null;
+    final focusedTab = workspace.windows.where((w) => w.active).firstOrNull;
+    final focusedPane = focusedTab?.panes.where((p) => p.active).firstOrNull;
+    if (focusedPane == null) return null;
+    // フォーカス存在確認の後に既存解決を再利用（同一のフォーカス pane へ解決される）。
+    return _herdrResolveWorkspaceTarget(sessions, workspace);
+  }
+
   /// tab 選択（Select Window 相当）: その tab のフォーカス pane へ切替える。
   void _herdrSelectTab(
     List<MultiplexerSession> sessions,
     MultiplexerSession workspace,
     MultiplexerWindow tab,
   ) {
-    final pane = tab.panes.where((p) => p.active).firstOrNull ??
-        tab.panes.firstOrNull;
+    final pane =
+        tab.panes.where((p) => p.active).firstOrNull ?? tab.panes.firstOrNull;
     if (pane == null) return;
     final target = _herdrResolvedTargetOf(sessions, pane);
     _switchHerdrTarget(
@@ -4181,7 +4505,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final sessions = tmuxState.sessions.map((s) => s.toDomain()).toList();
     final current = _selectorContextOf(tmuxState);
     _showMultiplexerSheet(
-      title: 'Select Session',
+      title: context.l10n.termSelectSession,
       icon: Icons.folder,
       children: [
         for (final session in sessions)
@@ -4218,20 +4542,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
-      title: 'Select Window',
+      title: context.l10n.termSelectWindow,
       icon: Icons.tab,
       headerActions: [
         if (canResize)
           IconButton(
             icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Window',
+            tooltip: context.l10n.termResizeWindow,
             onPressed: () =>
                 _closeSelectorThen(() => _showResizeWindowChooser(tmuxState)),
           ),
         if (canTabCrud)
           IconButton(
             icon: Icon(Icons.add, color: primary),
-            tooltip: 'New Window',
+            tooltip: context.l10n.termNewWindow,
             onPressed: () =>
                 _closeSelectorThen(() => _showCreateWindowDialog(session)),
           ),
@@ -4248,27 +4572,28 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             },
             onRename: canRename
                 ? () => _closeSelectorThen(() {
-                      final tmuxWindow = _tmuxWindowOf(session, window);
-                      if (tmuxWindow != null) {
-                        // inventory: TERM-CRUD-009
-                        _showRenameWindowDialog(session, tmuxWindow);
-                      }
-                    })
+                    final tmuxWindow = _tmuxWindowOf(session, window);
+                    if (tmuxWindow != null) {
+                      // inventory: TERM-CRUD-009
+                      _showRenameWindowDialog(session, tmuxWindow);
+                    }
+                  })
                 : null,
             onResize: canResize
-                ? () =>
-                    _closeSelectorThen(() => _showResizeWindowChooser(tmuxState))
+                ? () => _closeSelectorThen(
+                    () => _showResizeWindowChooser(tmuxState),
+                  )
                 : null,
             onClose: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-007
-                      _confirmAndKillWindow(
-                        sessionName: session.name,
-                        windowIndex: window.index,
-                        windowName: window.name,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-007
+                    _confirmAndKillWindow(
+                      sessionName: session.name,
+                      windowIndex: window.index,
+                      windowName: window.name,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
           ),
       ],
@@ -4281,12 +4606,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// activeWindowIndex / activeWindowId / activePaneId）を渡す。sessionId は
   /// ハイライト判定の一義的な基準（$0 等）。
   _SelectorContext _selectorContextOf(TmuxState tmuxState) => _SelectorContext(
-        sessionName: tmuxState.activeSessionName,
-        sessionId: tmuxState.activeSession?.id,
-        windowIndex: tmuxState.activeWindowIndex,
-        windowId: tmuxState.activeWindow?.id,
-        paneId: tmuxState.activePaneId,
-      );
+    sessionName: tmuxState.activeSessionName,
+    sessionId: tmuxState.activeSession?.id,
+    windowIndex: tmuxState.activeWindowIndex,
+    windowId: tmuxState.activeWindow?.id,
+    paneId: tmuxState.activePaneId,
+  );
 
   /// 共通 1 段セレクタシート（[_MultiplexerSelectorSheet]）を開く汎用ヘルパー。
   ///
@@ -4295,12 +4620,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// [top] は一覧の上部に表示するウィジェット（tmux pane シートのレイアウト
   /// ビジュアライザ）。シートが閉じた後は [_scrollToBottomKey] を表示する
   /// （既存 3 段セレクタと同じライフサイクル）。
+  ///
+  /// [asyncContent] を指定すると、**シートを即時 open して loading を表示**し、
+  /// 非同期で取得完了後に一覧を表示する（バグ3 根本対応: fetch 後の open では
+  /// 遅延中に再タップが barrier に当たり即閉じする問題を解消）。
+  /// 戻り値の `_SelectorContent` に children と headerActions の両方を含める
+  /// ことで、データロード後にヘッダーの mutation ボタンも確定できる。
+  /// [retry] を指定すると、取得失敗時に Retry ボタンを表示する。
+  /// [children] が指定されている場合は従来どおり同期的に表示する。
   Future<void> _showMultiplexerSheet({
     required String title,
     required IconData icon,
     Widget? top,
+    bool topExpected = false,
     List<Widget> children = const [],
     List<Widget> headerActions = const [],
+    Future<_SelectorContent> Function()? asyncContent,
+    VoidCallback? retry,
   }) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -4316,7 +4652,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             title: title,
             icon: icon,
             top: top,
+            topExpected: topExpected,
             headerActions: headerActions,
+            asyncContent: asyncContent,
+            retry: retry,
             children: children,
           ),
         );
@@ -4356,14 +4695,27 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final canClose = _can(const PaneCapabilities(close: true));
     final primary = Theme.of(context).colorScheme.primary;
     _showMultiplexerSheet(
-      title: 'Select Pane',
+      title: context.l10n.termSelectPane,
       icon: Icons.terminal,
-      top: _buildPaneLayoutVisualizer(tmuxState, domainWindow),
+      top: _buildPaneLayoutVisualizer(
+        domainWindow,
+        tmuxState.activePaneId,
+        (paneId) {
+          Navigator.pop(context);
+          _selectPane(paneId);
+        },
+        _canSplitPane
+            ? (paneId, direction) {
+                Navigator.pop(context);
+                _splitPane(paneId, direction);
+              }
+            : null,
+      ),
       headerActions: [
         if (canResize)
           IconButton(
             icon: Icon(Icons.open_in_full, color: primary),
-            tooltip: 'Resize Pane',
+            tooltip: context.l10n.termResizePane,
             onPressed: () =>
                 _closeSelectorThen(() => _showResizePaneChooser(tmuxState)),
           ),
@@ -4373,7 +4725,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           MultiplexerPaneTile(
             key: ValueKey('mux-sel-pane-${pane.id}'),
             pane: pane,
-            paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
+            paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id, context.l10n),
             subtitle: _tmuxPaneSubtitleFor(tmuxState, pane),
             isActive: _isCurrentPane(pane, current),
             onTap: () {
@@ -4382,80 +4734,86 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             },
             onLongPress: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-004
-                      _confirmAndKillPane(
-                        paneId: pane.id,
-                        paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
-                        isLastPane: window.panes.length == 1,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-004
+                    _confirmAndKillPane(
+                      paneId: pane.id,
+                      paneTitle: _tmuxPaneLabelFor(
+                        tmuxState,
+                        pane.id,
+                        context.l10n,
+                      ),
+                      isLastPane: window.panes.length == 1,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
             onResize: canResize
-                ? () =>
-                    _closeSelectorThen(() => _showResizePaneChooser(tmuxState))
+                ? () => _closeSelectorThen(
+                    () => _showResizePaneChooser(tmuxState),
+                  )
                 : null,
             onClose: canClose
                 ? () => _closeSelectorThen(() {
-                      // inventory: TERM-CRUD-004
-                      _confirmAndKillPane(
-                        paneId: pane.id,
-                        paneTitle: _tmuxPaneLabelFor(tmuxState, pane.id),
-                        isLastPane: window.panes.length == 1,
-                        isLastWindow: session.windows.length == 1,
-                      );
-                    })
+                    // inventory: TERM-CRUD-004
+                    _confirmAndKillPane(
+                      paneId: pane.id,
+                      paneTitle: _tmuxPaneLabelFor(
+                        tmuxState,
+                        pane.id,
+                        context.l10n,
+                      ),
+                      isLastPane: window.panes.length == 1,
+                      isLastWindow: session.windows.length == 1,
+                    );
+                  })
                 : null,
           ),
       ],
     );
   }
 
-  /// tmux のペインレイアウトビジュアライザを構築する（T2 / Q3）。
+  /// tmux のペインレイアウトビジュアライザを構築する（T2 / Q3・domain ベース）。
   ///
-  /// 共通 domain の [MultiplexerWindow] から tmux の [TmuxWindow]（幾何情報を
-  /// 含む）を引き当て、[_PaneLayoutVisualizer] を返す。引き当てできない場合は
-  /// null（レイアウト非表示）。分割不可（`!_canSplitPane`）では split を
-  /// 無効化し選択のみ許可する（H-4）。
+  /// 共通 domain の [MultiplexerWindow]（geometry 込み）から
+  /// [_PaneLayoutVisualizer] を返す。[activePaneId] は呼び出し側（tmux:
+  /// provider のアクティブ pane id / herdr: `_targetSource.currentPaneId`）が
+  /// 明示的に渡す。分割不可（`!_canSplitPane`）では split を無効化し選択のみ
+  /// 許可する（H-4）。
   Widget? _buildPaneLayoutVisualizer(
-    TmuxState tmuxState,
     MultiplexerWindow window,
+    String? activePaneId,
+    void Function(String paneId) onPaneSelected,
+    void Function(String paneId, SplitDirection direction)? onSplitRequested,
   ) {
-    final tmuxWindow = _tmuxWindowInTree(tmuxState, window);
-    if (tmuxWindow == null) return null;
     return _PaneLayoutVisualizer(
-      panes: tmuxWindow.panes,
-      activePaneId: tmuxState.activePaneId,
-      onPaneSelected: (paneId) {
-        Navigator.pop(context);
-        _selectPane(paneId);
-      },
-      onSplitRequested: _canSplitPane
-          ? (paneId, direction) {
-              Navigator.pop(context);
-              _splitPane(paneId, direction);
-            }
-          : null,
+      panes: window.panes,
+      activePaneId: activePaneId,
+      onPaneSelected: onPaneSelected,
+      onSplitRequested: onSplitRequested,
     );
   }
 
   /// ウィンドウ作成ダイアログを表示
   void _showCreateWindowDialog(TmuxSession session) {
     final existingNames = session.windows.map((w) => w.name).toList();
-    showDialog<String>(
+    showDialog<NewWindowRequest>(
       context: context,
       builder: (dialogContext) =>
-          _NewWindowDialog(existingWindowNames: existingNames),
-    ).then((windowName) {
-      if (windowName != null) {
+          NewWindowDialog(existingWindowNames: existingNames),
+    ).then((request) {
+      if (request != null) {
         // inventory: TERM-CRUD-001
-        _createWindow(windowName.isEmpty ? null : windowName);
+        _createWindow(request);
       }
     });
   }
 
-  /// 新しいウィンドウを作成
-  Future<void> _createWindow(String? windowName) async {
+  /// 新しいウィンドウを作成する。
+  ///
+  /// [NewWindowRequest.command] が指定された場合は、新ウィンドウの pane を
+  /// 選択した後に send-text + Enter で入力する（キーボードを開かずに
+  /// コマンドを実行できるようにするため）。
+  Future<void> _createWindow(NewWindowRequest request) async {
     if (_isCreatingWindow) return;
     _isCreatingWindow = true;
     try {
@@ -4463,7 +4821,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (sshClient == null || !sshClient.isConnected) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SSH connection is not available')),
+            SnackBar(content: Text(context.l10n.termSshNotAvailable)),
           );
         }
         return;
@@ -4474,12 +4832,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       await tmuxFacade.createWindow(
         sshClient.tmuxExecutor,
         sessionName: session.name,
-        windowName: windowName,
+        windowName: request.name,
       );
       await _refreshSessionTree();
       if (!mounted) return;
 
+      final command = request.command;
+      var commandDispatched = false;
+
       // active=1のウィンドウを検出して自動切替
+      // （アプリ契約: 作成後自動切替。herdr 側は _createHerdrTab →
+      //  HerdrSyncTargetPolicy.followBackendFocus と同一仕様）
       final updatedSession = ref.read(tmuxProvider).activeSession;
       final activeWindow = updatedSession?.windows
           .where((w) => w.active)
@@ -4491,17 +4854,51 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         final activePaneId = ref.read(tmuxProvider).activePaneId;
         if (activePaneId != null) {
           await _selectPane(activePaneId);
+          if (command != null) {
+            if (!mounted) return;
+            commandDispatched = true;
+            await _sendNewWindowCommand(activePaneId, command);
+          }
         }
+      }
+      if (command != null && !commandDispatched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termWindowCreatedCommandNotSent)),
+        );
       }
       _boostPolling();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to create window: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToCreateWindow(e.toString())),
+          ),
+        );
       }
     } finally {
       _isCreatingWindow = false;
+    }
+  }
+
+  /// 新規ウィンドウ作成時の任意コマンドを PaneWriter 経由で入力する
+  /// （send-text + Enter）。送信失敗はウィンドウ作成の失敗として扱わない。
+  Future<void> _sendNewWindowCommand(String paneId, String command) async {
+    if (!_canSendText) return;
+    final writer = _paneWriter;
+    if (writer == null) return;
+    try {
+      await writer.sendText(paneId, command);
+      await writer.sendKey(paneId, 'Enter');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.l10n.termWindowCreatedCommandFailed(e.toString()),
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -4514,7 +4911,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -4546,9 +4943,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // ポーリング停止 + 通知 / その他 → エラー通知）。
         await _handleHerdrMutationError(e, operationLabel: 'split');
       } else if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to split pane: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToSplitPane(e.toString())),
+          ),
+        );
       }
     }
   }
@@ -4560,7 +4959,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     required String paneTitle,
     required bool isLastPane,
     required bool isLastWindow,
-  }) {    final isDark = Theme.of(context).brightness == Brightness.dark;
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -4569,7 +4969,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Pane?',
+            context.l10n.termClosePaneTitle,
             style: TextStyle(
               color: isDark
                   ? DesignColors.textPrimary
@@ -4578,10 +4978,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           ),
           content: Text(
             isLastPane && isLastWindow
-                ? 'This is the last pane in the last window. Closing it will end the session and disconnect from the server.'
+                ? context.l10n.termClosePaneLastWindowLastPane
                 : isLastPane
-                ? 'This is the last pane in this window. Closing it will also close the window.'
-                : 'Are you sure you want to close pane "$paneTitle"?',
+                ? context.l10n.termClosePaneLastPane
+                : context.l10n.termClosePaneConfirm(paneTitle),
             style: TextStyle(
               color: isDark
                   ? DesignColors.textSecondary
@@ -4592,7 +4992,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark
                       ? DesignColors.textSecondary
@@ -4609,8 +5009,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     !currentWindow.panes.any((p) => p.id == paneId)) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('This pane no longer exists'),
+                      SnackBar(
+                        content: Text(context.l10n.termPaneNoLongerExists),
                       ),
                     );
                   }
@@ -4627,7 +5027,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -4644,13 +5044,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return _ResizePaneChooserDialog(
-          panes: window.panes,
-          activePaneId: tmuxState.activePaneId,
-          onResize: (selectedPane) {
+        // 共通 PaneChooserDialog（MultiplexerPane ベース）へ移行。
+        // TmuxPane は toDomain()（tmux_to_domain.dart）で共通 domain 型へ変換する。
+        return PaneChooserDialog(
+          panes: window.panes.map((p) => p.toDomain()).toList(),
+          initialPaneId: tmuxState.activePaneId,
+          onResize: (paneId) {
             Navigator.pop(dialogContext);
             // inventory: TERM-RESIZE-004
-            _handleResizePane(selectedPane);
+            final pane = window.panes.where((p) => p.id == paneId).firstOrNull;
+            if (pane != null) _handleResizePane(pane);
+          },
+        );
+      },
+    );
+  }
+
+  /// herdr のリサイズ対象 pane 選択モーダル（条件2/3/10/11・ユーザー決定①〜③）。
+  ///
+  /// セレクタの asyncContent が取得済みの [sessions] をそのまま受け取り、
+  /// [PaneChooserDialog] へ渡す（fetch なし・バックグラウンド refresh なし・
+  /// フォールバックなし・ローディングなし・条件2/ユーザー決定③）。[window.panes]
+  /// が空なら黙って return（tmux [_showResizePaneChooser] と同型）。pane 数に
+  /// 関わらず常にモーダルを表示する（1枚でもスキップしない・条件3/ユーザー決定②）。
+  /// 初期選択は現在表示中の pane（[_targetSource.currentPaneId]・条件10/
+  /// ユーザー決定①）。onResize では [_findHerdrPane] で sessions 内に再引当して
+  /// から [_handleHerdrResizePane] へ渡す（条件11・実行前再検証）。
+  void _showHerdrResizePaneChooser(
+    List<MultiplexerSession> sessions,
+    MultiplexerWindow window,
+  ) {
+    if (window.panes.isEmpty) {
+      // stale 中断（空リストで黙って return・tmux L4487 と同型）。
+      _recordHerdrSwitchEvent('resize stale abort: empty pane list');
+      return;
+    }
+    _recordHerdrSwitchEvent('resize chooser shown');
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return PaneChooserDialog(
+          panes: window.panes,
+          initialPaneId: _targetSource?.currentPaneId,
+          labelBuilder: (pane) => _herdrPaneLabel(pane, context.l10n),
+          onResize: (paneId) {
+            Navigator.pop(dialogContext);
+            // 実行前再検証（条件11）: sessions 内に引当できない pane は中断。
+            final pane = _findHerdrPane(sessions, paneId);
+            if (pane == null) {
+              _recordHerdrSwitchEvent(
+                'resize stale abort: pane not found ($paneId)',
+              );
+              return;
+            }
+            // プレビュー用に選択モーダルと同じ window.panes を渡す（条件8・
+            // シート sessions 由来のまま・fetch なし）。
+            _handleHerdrResizePane(pane, panes: window.panes);
           },
         );
       },
@@ -4827,9 +5277,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Resize failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))),
+        );
       }
     } finally {
       _isResizing = false;
@@ -4838,28 +5288,50 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   // inventory: TERM-RESIZE-007
-  /// herdr ペインを「方向 + ステップ」でリサイズする（T14・Q-04）。
+  /// herdr ペインを絶対値（Cols/Rows）でリサイズする（T14・Q-04・ユーザー決定）。
   ///
-  /// herdr は絶対 cols/rows 不可・相対分数のみ（m11/m16 実測）のため、tmux の
-  /// 絶対値 [ResizePaneDialog] は使わず、方向（←→↑↓）+ ステップ量
-  /// （0.05/0.1/0.2 等）の [HerdrResizePaneDialog] を表示する。現在サイズは
-  /// layout の rect（[MultiplexerPane.width]/[height]）から表示する。
+  /// herdr は絶対 cols/rows を直接発行できない（`absoluteResize=false`・Q-04）
+  /// ため、tmux と同構造の絶対値 [HerdrResizePaneDialog]（プレビュー + Cols/Rows
+  /// 入力 + 絶対値プリセット）で目標サイズを選び、**相対量へ換算して送信**する:
   ///
-  /// 実行は [PaneWriter.resizePane]（`HerdrPaneWriter` → `herdr pane resize
-  /// --direction --amount`）へ委譲する。`changed:false`（分割境界外）は
-  /// [PaneOperationNoopException] として情報通知（S4）し、成功時はスナップ
-  /// ショットを強制再取得してレイアウトを同期する（H5 単一経路の resize 適用）。
-  Future<void> _handleHerdrResizePane(MultiplexerPane pane) async {
+  /// - [PaneResizeMath.absoluteToDelta] で絶対セル差 → 相対量 delta に換算
+  ///   （コンテナサイズは panes の rect から 0 起点正規化して算出）。
+  /// - [PaneResizeMath.resolveDirection] で対象 pane の隣接位置から方向を自動判定。
+  /// - 成長（delta > 0）は対象 pane に送信。**縮小（delta < 0）は隣接 pane を
+  ///   対象にした成長として実現**（方向反転 + |delta|・ユーザー決定5）。
+  /// - Cols / Rows の両方が変わった場合は Cols → Rows の順に 2 回送信（決定6）。
+  /// - `changed:false`（分割境界外）は [PaneOperationNoopException] として情報
+  ///   通知（S4）し、成功時はスナップショットを強制再取得してレイアウトを同期
+  ///   する（H5 単一経路の resize 適用）。
+  ///
+  /// [panes] はダイアログのプレビュー・コンテナサイズ算出用（選択モーダルで
+  /// 表示したウィンドウの pane 一覧・条件8）。呼び出し元（[_showHerdrResizePaneChooser]）
+  /// が保持するシート sessions 由来の [MultiplexerWindow.panes] をそのまま渡す
+  /// （条件2・fetch なし）。空の場合はダイアログ側でプレビュー非表示・
+  /// コンテナサイズ不明（換算 null）となり送信しない。
+  Future<void> _handleHerdrResizePane(
+    MultiplexerPane pane, {
+    List<MultiplexerPane> panes = const [],
+  }) async {
     if (_isResizing) return;
     // resize 可能（herdr は `absoluteResize` false のため絶対値 UI には到達しない）。
     if (!_can(const PaneCapabilities(resize: true))) return;
 
-    final result = await showDialog<HerdrResizeResult>(
+    // 表示設定（Match Screen プリセット用・tmux `_handleResizePane` と同一パターン）。
+    final displayState = ref.read(terminalDisplayProvider);
+    final settings = ref.read(settingsProvider);
+
+    final result = await showDialog<ResizeResult>(
       context: context,
       builder: (context) => HerdrResizePaneDialog(
-        paneId: pane.id,
-        currentWidth: pane.width,
-        currentHeight: pane.height,
+        targetPaneId: pane.id,
+        panes: panes,
+        currentCols: pane.width,
+        currentRows: pane.height,
+        screenWidth: displayState.screenWidth,
+        screenHeight: displayState.screenHeight,
+        fontSize: displayState.calculatedFontSize,
+        fontFamily: settings.fontFamily,
       ),
     );
     if (result == null || !mounted) return;
@@ -4869,15 +5341,244 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     try {
       final writer = _paneWriter;
       if (writer == null) return;
-      await writer.resizePane(pane.id, result.direction, result.amount);
+
+      // 絶対値（Cols/Rows）→ 相対量へ換算して送信（バックエンド不変・Q-04）。
+      // 両方変更時は Cols → Rows の順に 2 回送信（ユーザー決定6）。
+      await _herdrResizeOneAxis(
+        writer,
+        pane: pane,
+        panes: panes,
+        horizontal: true,
+        targetCells: result.cols,
+      );
+      await _herdrResizeOneAxis(
+        writer,
+        pane: pane,
+        panes: panes,
+        horizontal: false,
+        targetCells: result.rows,
+      );
+
       // 成功: H5/T18 単一経路（force 再取得 → 再解決 → ターゲット変化時のみ
       // 切替）で layout rect と表示対象を同期する。
       await _syncAfterHerdrMutation(eventLabel: 'resize sync');
+      // 実行テレメトリ（A8・機密情報非含有: pane ID / 目標サイズのみ・L623-625）。
+      _recordHerdrSwitchEvent(
+        'resize executed: pane=${pane.id} cols=${result.cols} '
+        'rows=${result.rows}',
+      );
     } on PaneOperationNoopException catch (e) {
       // 分割境界外（soft 失敗・情報通知）。
       _showHerdrMutationNoopSnackBar(e);
+      _recordHerdrSwitchEvent('resize no-op (reason: ${e.reason ?? '<null>'})');
     } catch (e) {
       await _handleHerdrMutationError(e, operationLabel: 'resize');
+    } finally {
+      _isResizing = false;
+      if (mounted && !_isDisposed) _startPolling();
+    }
+  }
+
+  /// コンテナ（ウィンドウ）のセル数を panes の rect から計算する。
+  ///
+  /// 0 起点へ正規化（全 pane の min を引く）して `max(end) - min(pos)` を返す。
+  /// [horizontal] = true は幅（Cols）方向・false は高さ（Rows）方向。
+  /// panes が空なら 0（換算関数側で null ガード）。
+  int _herdrContainerCells(
+    List<MultiplexerPane> panes, {
+    required bool horizontal,
+  }) {
+    if (panes.isEmpty) return 0;
+    var min = horizontal ? panes.first.left : panes.first.top;
+    var max = 0;
+    for (final p in panes) {
+      final pos = horizontal ? p.left : p.top;
+      final end = pos + (horizontal ? p.width : p.height);
+      if (pos < min) min = pos;
+      if (end > max) max = end;
+    }
+    return max - min;
+  }
+
+  /// 1 軸（横 = Cols / 縦 = Rows）の絶対値変更を相対量へ換算して送信する。
+  ///
+  /// - 換算: [PaneResizeMath.absoluteToDelta]（コンテナ不明・変化なしは送信しない）
+  /// - 成長（delta > 0）: 対象 pane に [PaneResizeMath.resolveDirection](grow:
+  ///   true) の方向で `|delta|` を送る。
+  /// - 縮小（delta < 0）: 隣接 pane を対象にした成長として実現（ユーザー決定5）。
+  ///   縮小側の方向（grow: false）の隣接 pane を特定し、隣接から見て対象側
+  ///   （方向反転）へ `|delta|` を送る。
+  Future<void> _herdrResizeOneAxis(
+    PaneWriter writer, {
+    required MultiplexerPane pane,
+    required List<MultiplexerPane> panes,
+    required bool horizontal,
+    required int targetCells,
+  }) async {
+    final container = _herdrContainerCells(panes, horizontal: horizontal);
+    final current = horizontal ? pane.width : pane.height;
+    final delta = PaneResizeMath.absoluteToDelta(
+      currentCells: current,
+      targetCells: targetCells,
+      containerCells: container,
+    );
+    if (delta == null || delta == 0) return;
+
+    if (delta > 0) {
+      // 対象を成長させる（隣接が縮む）。
+      final direction = PaneResizeMath.resolveDirection(
+        target: pane,
+        panes: panes,
+        horizontal: horizontal,
+        grow: true,
+      );
+      if (direction == null) return;
+      await writer.resizePane(pane.id, direction, delta);
+    } else {
+      // 対象を縮小する = 隣接 pane を成長させる（方向反転 + |delta|）。
+      final side = PaneResizeMath.resolveDirection(
+        target: pane,
+        panes: panes,
+        horizontal: horizontal,
+        grow: false,
+      );
+      if (side == null) return;
+      final neighbor = _herdrAdjacentPane(panes, pane.id, side);
+      if (neighbor == null) return;
+      await writer.resizePane(
+        neighbor.id,
+        _herdrOppositeDirection(side),
+        delta.abs(),
+      );
+    }
+  }
+
+  /// [direction]（`'right'` / `'left'` / `'down'` / `'up'`）の位置に隣接する
+  /// pane を rect の重なりから特定して返す（無ければ null）。
+  MultiplexerPane? _herdrAdjacentPane(
+    List<MultiplexerPane> panes,
+    String paneId,
+    String direction,
+  ) {
+    MultiplexerPane? target;
+    for (final p in panes) {
+      if (p.id == paneId) {
+        target = p;
+        break;
+      }
+    }
+    if (target == null || target.width <= 0 || target.height <= 0) return null;
+
+    final right = target.left + target.width;
+    final bottom = target.top + target.height;
+    for (final p in panes) {
+      if (p.id == paneId) continue;
+      if (p.width <= 0 || p.height <= 0) continue;
+      final overlapsVertically =
+          p.top < bottom && p.top + p.height > target.top;
+      final overlapsHorizontally =
+          p.left < right && p.left + p.width > target.left;
+      switch (direction) {
+        case 'right':
+          if (p.left >= right && overlapsVertically) return p;
+        case 'left':
+          if (p.left + p.width <= target.left && overlapsVertically) return p;
+        case 'down':
+          if (p.top >= bottom && overlapsHorizontally) return p;
+        case 'up':
+          if (p.top + p.height <= target.top && overlapsHorizontally) return p;
+      }
+    }
+    return null;
+  }
+
+  /// 方向の反転（`'right'` ↔ `'left'`・`'down'` ↔ `'up'`）。
+  String _herdrOppositeDirection(String direction) {
+    return switch (direction) {
+      'right' => 'left',
+      'left' => 'right',
+      'down' => 'up',
+      'up' => 'down',
+      _ => 'right',
+    };
+  }
+
+  // inventory: TERM-RESIZE-008
+  /// herdr のターミナル全体 resize（Select Session の Resize 導線・ユーザー指示）。
+  ///
+  /// tmux の Resize Window（`resize-window -x cols -y rows`）と同じく、**ターミナル
+  /// 全体の絶対サイズ変更**を行う。herdr ではターミナル全体のサイズは SSH PTY
+  /// サイズに追従するため、[HerdrResizeBridge]（hidden TUI 常駐・lazy start）
+  /// 経由で PTY resize（SSH window-change → SIGWINCH → TUI → ClientMessage::Resize
+  /// → herdr daemon が全タブ・全 pane を自動再レイアウト）を行う。pane 分割比の
+  /// `herdr pane resize`（[_handleHerdrResizePane]）は本操作とは無関係。
+  ///
+  /// [HerdrResizeTerminalDialog]（サイズ入力行 + プリセット: 80x24 / 120x40 /
+  /// 160x50 / Match Screen・tmux の [ResizeWindowDialog] と同一構成・グリッド
+  /// プレビューは省略）で PTY 要求サイズを選ぶ。ダイアログ初期値は
+  /// [HerdrResizeBridge.currentPtySize]（Bridge が保持する現在の PTY 要求サイズ・
+  /// Codex B1 の自己縮小バグ回避）。確定後は bridge が収束確認（fresh snapshot の
+  /// layout.area == 実測変換式の期待値）を行い、不達（他クライアント競合・
+  /// 非デフォルト表示設定）は SnackBar で通知する（fail closed）。
+  /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）で snapshot を再取得する。
+  Future<void> _handleHerdrResizeTerminal() async {
+    if (_isResizing) return;
+
+    final bridge = _herdrResizeBridge;
+    if (bridge == null) {
+      // 接続断・bridge 未生成時は通知（_killPane と同型）。
+      if (mounted && !_isDisposed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
+        );
+      }
+      return;
+    }
+
+    final displayState = ref.read(terminalDisplayProvider);
+    final settings = ref.read(settingsProvider);
+
+    // ダイアログ初期値は Bridge が保持する「現在の PTY 要求サイズ」。
+    // （layout.area から毎回逆算すると、非デフォルト表示設定で自己縮小する
+    // バグを避ける・Codex B1・ユーザー決定）
+    final current = await bridge.currentPtySize();
+    if (!mounted || _isDisposed) return;
+
+    final result = await showDialog<ResizeResult>(
+      context: context,
+      builder: (context) => HerdrResizeTerminalDialog(
+        currentCols: current.cols,
+        currentRows: current.rows,
+        screenWidth: displayState.screenWidth,
+        screenHeight: displayState.screenHeight,
+        fontSize: displayState.calculatedFontSize,
+        fontFamily: settings.fontFamily,
+      ),
+    );
+    if (result == null || !mounted) return;
+
+    _isResizing = true;
+    _pollTimer?.cancel();
+    try {
+      // hidden TUI を lazy start し、PTY 要求サイズを変更して収束を確認する。
+      final ok = await bridge.resize(result.cols, result.rows);
+      if (!ok) {
+        // 収束不達（5 秒間ポーリングしても実測変換式の期待値に一致しなかった /
+        // hidden TUI の起動失敗）→ fail closed として通知。非デフォルト表示設定
+        // （サイドバー幅・タブ行）が原因の可能性が高い。
+        if (mounted && !_isDisposed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(context.l10n.termResizeFailedHerdr)),
+          );
+        }
+        return;
+      }
+      if (!mounted || _isDisposed) return;
+      // H5/T18 単一経路: force 再取得 → 再解決 → ターゲット変化時のみ切替。
+      await _syncAfterHerdrMutation(eventLabel: 'resize terminal sync');
+    } catch (e) {
+      // resize 後の同期失敗は T19/S4 の分類別通知へ委譲（未処理例外を防ぐ）。
+      await _handleHerdrMutationError(e, operationLabel: 'resize terminal');
     } finally {
       _isResizing = false;
       if (mounted && !_isDisposed) _startPolling();
@@ -4942,9 +5643,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Resize failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(context.l10n.termResizeFailed(e.toString()))),
+        );
       }
     } finally {
       _isResizing = false;
@@ -4964,7 +5665,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5024,9 +5725,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to kill pane: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to close pane: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToClosePane(e.toString())),
+          ),
+        );
       }
     } finally {
       // ポーリング再開
@@ -5181,7 +5884,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     Icon(Icons.tune, color: DesignColors.primary),
                     const SizedBox(width: 8),
                     Text(
-                      'Terminal Options',
+                      context.l10n.termTerminalOptions,
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -5234,15 +5937,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   color: _isZoomed ? DesignColors.warning : inactiveIconColor,
                 ),
                 title: Text(
-                  'Reset Zoom',
+                  context.l10n.termResetZoom,
                   style: TextStyle(
                     color: _isZoomed ? textColor : mutedTextColor,
                   ),
                 ),
                 subtitle: Text(
                   _isZoomed
-                      ? 'Current: ${(_effectiveZoom * 100).round()}%'
-                      : 'Pinch to zoom in/out',
+                      ? context.l10n.termCurrentZoom(
+                          (_effectiveZoom * 100).round(),
+                        )
+                      : context.l10n.termPinchToZoom,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 enabled: _isZoomed,
@@ -5264,9 +5969,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               // 設定画面へ
               ListTile(
                 leading: Icon(Icons.settings, color: inactiveIconColor),
-                title: Text('Settings', style: TextStyle(color: textColor)),
+                title: Text(
+                  context.l10n.termSettings,
+                  style: TextStyle(color: textColor),
+                ),
                 subtitle: Text(
-                  'Font, theme, and other options',
+                  context.l10n.termSettingsSubtitle,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 onTap: () {
@@ -5290,14 +5998,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   color: DesignColors.error,
                 ),
                 title: Text(
-                  'Disconnect',
+                  context.l10n.termDisconnect,
                   style: TextStyle(
                     color: DesignColors.error,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 subtitle: Text(
-                  'Close SSH connection',
+                  context.l10n.termCloseSshConnection,
                   style: TextStyle(color: mutedTextColor, fontSize: 12),
                 ),
                 onTap: () {
@@ -5332,20 +6040,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Window?',
+            context.l10n.termCloseWindowTitle,
             style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           ),
           content: Text(
             isLastWindow
-                ? 'This is the last window in the session. Closing it will end the session and disconnect from the server.'
-                : 'Are you sure you want to close window "$windowName"?',
+                ? context.l10n.termCloseWindowLast
+                : context.l10n.termCloseWindowConfirm(windowName),
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -5367,7 +6075,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -5385,7 +6093,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5431,9 +6139,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to kill window: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to close window: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToCloseWindow(e.toString())),
+          ),
+        );
       }
     }
   }
@@ -5473,7 +6183,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (sshClient == null || !sshClient.isConnected) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('SSH connection is not available')),
+          SnackBar(content: Text(context.l10n.termSshNotAvailable)),
         );
       }
       return;
@@ -5492,9 +6202,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } catch (e) {
       debugPrint('[Terminal] Failed to rename window: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to rename window: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.termFailedToRenameWindow(e.toString())),
+          ),
+        );
       }
     }
   }
@@ -5510,18 +6222,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Disconnect?',
+            context.l10n.termDisconnectTitle,
             style: TextStyle(color: isDark ? Colors.white : Colors.black87),
           ),
           content: Text(
-            'Are you sure you want to disconnect from the server?',
+            context.l10n.termDisconnectConfirm,
             style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark ? Colors.white60 : Colors.black54,
                 ),
@@ -5536,7 +6248,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -5562,22 +6274,18 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       builder: (dialogContext) {
         final String message;
         if (isLastPane && isLastTab) {
-          message =
-              'This is the last pane in the last tab. Closing it will also '
-              'close the tab and the workspace.';
+          message = context.l10n.termClosePaneHerdrLastBoth;
         } else if (isLastPane) {
-          message =
-              'This is the last pane in this tab. Closing it will also '
-              'close the tab.';
+          message = context.l10n.termClosePaneHerdrLast;
         } else {
-          message = 'Are you sure you want to close pane "$paneTitle"?';
+          message = context.l10n.termClosePaneConfirm(paneTitle);
         }
         return AlertDialog(
           backgroundColor: isDark
               ? DesignColors.surfaceDark
               : DesignColors.surfaceLight,
           title: Text(
-            'Close Pane?',
+            context.l10n.termClosePaneTitle,
             style: TextStyle(
               color: isDark
                   ? DesignColors.textPrimary
@@ -5596,7 +6304,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                context.l10n.termCancel,
                 style: TextStyle(
                   color: isDark
                       ? DesignColors.textSecondary
@@ -5614,7 +6322,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 backgroundColor: DesignColors.error,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Close'),
+              child: Text(context.l10n.termClose),
             ),
           ],
         );
@@ -5658,93 +6366,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  // inventory: TERM-CRUD-012
-  /// herdr の分割方向選択ダイアログ（Q-02: split 解禁）。
-  ///
-  /// ヘッダーの Split ボタンから現在表示中の pane を対象に開く。右
-  /// （[SplitDirection.horizontal]）/ 下（[SplitDirection.vertical]）の 2 択で
-  /// [_splitPane]（`PaneWriter.splitPane` = `herdr pane split --direction
-  /// right|down`）へ委譲する。成功後は [_splitPane] 内の単一経路
-  /// （[_syncAfterHerdrMutation]）で同期、失敗時は分類別通知
-  /// （[_handleHerdrMutationError]）へ倒れる。
-  void _showHerdrSplitDirectionChooser(MultiplexerPane pane) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textSecondary = isDark
-        ? DesignColors.textSecondary
-        : DesignColors.textSecondaryLight;
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: isDark
-            ? DesignColors.surfaceDark
-            : DesignColors.surfaceLight,
-        title: Text(
-          'Split Pane',
-          style: TextStyle(
-            color: isDark
-                ? DesignColors.textPrimary
-                : DesignColors.textPrimaryLight,
-          ),
-        ),
-        content: Text(
-          'Split "${_herdrPaneLabel(pane)}" to the right or down?',
-          style: TextStyle(color: textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(
-              'Cancel',
-              style: TextStyle(
-                color: isDark
-                    ? DesignColors.textSecondary
-                    : DesignColors.textSecondaryLight,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _splitPane(pane.id, SplitDirection.horizontal);
-            },
-            child: const Text('Split Right'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              _splitPane(pane.id, SplitDirection.vertical);
-            },
-            child: const Text('Split Down'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // inventory: TERM-CRUD-013
-  /// herdr の pane ラベル変更ダイアログ（Q-02: rename 解禁）。
-  ///
-  /// 入力後は [_renameHerdrPane]（`PaneWriter.renamePane` =
-  /// `herdr pane rename`）を実行する。現在のラベルは domain に保持されない
-  /// ため（A10: 表示名は cwd 優先）、初期値は空で新規入力する。
-  void _showHerdrRenamePaneDialog(MultiplexerPane pane) {
-    showDialog<String>(
-      context: context,
-      builder: (dialogContext) => _HerdrLabelInputDialog(
-        title: 'Rename Pane',
-        labelText: 'Pane Label',
-        hintText: 'Enter a label for this pane',
-        confirmLabel: 'Rename',
-      ),
-    ).then((label) {
-      if (label == null || !mounted) return;
-      final trimmed = label.trim();
-      if (trimmed.isEmpty) return;
-      // inventory: TERM-CRUD-013
-      _renameHerdrPane(pane.id, trimmed);
-    });
-  }
-
   // inventory: TERM-CRUD-014
   /// herdr の pane ラベル変更（`PaneWriter.renamePane` = `herdr pane rename`）。
   ///
@@ -5784,22 +6405,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  /// snapshot の layout `zoomed` フラグから現在 tab の zoom 状態を返す
-  /// （Q-02: zoom 状態表示・可能なら）。
-  ///
-  /// zoom 状態は tab 単位（layout 単位）に保持される（[HerdrLayout.zoomed]。
-  /// T0 実測 6-b）。[HerdrSnapshotCache.cachedSnapshot] は診断用参照のため、
-  /// セレクタのボタン表示向け best-effort とし、snapshot 未取得（null）なら
-  /// false（非 zoom 表示）を返す。
-  bool _isHerdrTabZoomed(String? tabId) {
-    final snapshot = _herdrSnapshotCache?.cachedSnapshot;
-    if (snapshot == null || tabId == null) return false;
-    for (final layout in snapshot.layouts) {
-      if (layout.tabId == tabId) return layout.zoomed;
-    }
-    return false;
-  }
-
   // inventory: TERM-CRUD-016
   /// herdr の tab ラベル変更ダイアログ（Q-05: tab CRUD 解禁）。
   ///
@@ -5814,11 +6419,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     showDialog<String>(
       context: context,
       builder: (dialogContext) => _HerdrLabelInputDialog(
-        title: 'Rename Tab',
-        labelText: 'Tab Label',
-        hintText: 'Enter a label for this tab',
+        title: context.l10n.termRenameTabTitle,
+        labelText: context.l10n.termTabLabel,
+        hintText: context.l10n.termRenameTabHint,
         initialValue: tab.name,
-        confirmLabel: 'Rename',
+        confirmLabel: context.l10n.termRename,
       ),
     ).then((label) {
       if (label == null || !mounted) return;
@@ -5826,6 +6431,33 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (trimmed.isEmpty || trimmed == tab.name) return;
       // inventory: TERM-CRUD-016
       _renameHerdrTab(tabId, trimmed);
+    });
+  }
+
+  /// herdr の New Tab ラベル入力ダイアログ（タスク②・🤝#3・🤝#4）。
+  ///
+  /// ラベルは任意入力（[_HerdrLabelInputDialog.allowEmpty: true]）。空欄
+  /// （null / 空文字 / 空白のみ）はデフォルト名（`--label` なし）と同一視し、
+  /// 従来と同一の即時作成を保証する（trim 正規化・critic #4）。確定時は
+  /// **`focus: true` を渡し**、作成後は Tmux と同様に新タブへ自動フォーカス
+  /// 移動する（🤝#4・2026-08-11 追加指示）。キャンセルはコマンド未発行
+  /// （mounted ガード・rename フローと同型）。
+  void _showHerdrCreateTabDialog(MultiplexerSession workspace) {
+    final workspaceId = workspace.id;
+    if (workspaceId == null) return;
+    showDialog<String>(
+      context: context,
+      builder: (dialogContext) => _HerdrLabelInputDialog(
+        title: context.l10n.termNewTab,
+        labelText: context.l10n.termTabLabel,
+        hintText: context.l10n.termNewTabHint,
+        confirmLabel: context.l10n.termCreate,
+        allowEmpty: true,
+      ),
+    ).then((label) {
+      if (label == null || !mounted || _isDisposed) return;
+      final normalized = label.trim().isEmpty ? null : label;
+      _createHerdrTab(workspaceId, label: normalized, focus: true);
     });
   }
 
@@ -5851,19 +6483,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// herdr の tab 作成（Q-05: tab CRUD 解禁）。
   ///
   /// [PaneWriter.createTab]（`HerdrPaneWriter` → `herdr tab create --workspace`
-  /// `{workspace_id}`）を実行する。tab create 応答は layout を含まないため
-  /// （T18・`result.tab` のみ）、成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）
-  /// の force 再取得で snapshot から反映する。失敗時は T19/S4 の分類別通知
-  /// （[_handleHerdrMutationError]）へ倒れる。
-  Future<void> _createHerdrTab(String workspaceId) async {
+  /// `{workspace_id}`・[label]/[focus] 透過）を実行する。tab create 応答は layout
+  /// を含まないため（T18・`result.tab` のみ）、成功後は H5/T18 単一経路
+  /// （[_syncAfterHerdrMutation]）の force 再取得で snapshot から反映する。
+  /// [focus] が true（`--focus` 付与 = バックエンドが新タブをアクティブ化）の
+  /// ときは [HerdrSyncTargetPolicy.followBackendFocus] で snapshot の focused pane
+  /// へ表示を追従する（アプリ契約: 作成後自動切替・tmux [_createWindow] と同一
+  /// 仕様）。失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
+  Future<void> _createHerdrTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
     // tab CRUD 不可（read-only 明示）では送信しない
     if (!_can(const PaneCapabilities(tabCrud: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
     try {
-      await writer.createTab(workspaceId);
+      await writer.createTab(workspaceId, label: label, focus: focus);
       if (!mounted || _isDisposed) return;
-      await _syncAfterHerdrMutation(eventLabel: 'create tab sync');
+      await _syncAfterHerdrMutation(
+        eventLabel: 'create tab sync',
+        policy: focus == true
+            ? HerdrSyncTargetPolicy.followBackendFocus
+            : HerdrSyncTargetPolicy.preserveCurrent,
+      );
     } catch (e) {
       await _handleHerdrMutationError(e, operationLabel: 'create tab');
     }
@@ -5885,9 +6529,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (tabId == null) return;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final message = isLastTab
-        ? 'This is the last tab in this workspace. Closing it will also '
-            'close the workspace.'
-        : 'Are you sure you want to close tab "${tab.name}"?';
+        ? context.l10n.termCloseTabLast
+        : context.l10n.termCloseTabConfirm(tab.name);
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -5895,7 +6538,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             ? DesignColors.surfaceDark
             : DesignColors.surfaceLight,
         title: Text(
-          'Close Tab?',
+          context.l10n.termCloseTabTitle,
           style: TextStyle(
             color: isDark
                 ? DesignColors.textPrimary
@@ -5914,7 +6557,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
             child: Text(
-              'Cancel',
+              context.l10n.termCancel,
               style: TextStyle(
                 color: isDark
                     ? DesignColors.textSecondary
@@ -5932,7 +6575,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               backgroundColor: DesignColors.error,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Close'),
+            child: Text(context.l10n.termClose),
           ),
         ],
       ),
@@ -6075,8 +6718,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // ステータステキスト
         Text(
           isWaitingForNetwork
-              ? 'Offline'
-              : 'Reconnecting${attempt > 1 ? ' ($attempt)' : ''}',
+              ? context.l10n.termOffline
+              : context.l10n.termReconnecting +
+                    (attempt > 1 ? ' ($attempt)' : ''),
           style: GoogleFonts.jetBrainsMono(
             fontSize: 10,
             color: DesignColors.warning.withValues(alpha: 0.8),
@@ -6105,7 +6749,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              '$queuedCount chars',
+              context.l10n.termChars(queuedCount),
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 9,
                 color: DesignColors.primary,
@@ -6129,7 +6773,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
-              'Retry',
+              context.l10n.termRetry,
               style: GoogleFonts.jetBrainsMono(
                 fontSize: 9,
                 color: DesignColors.warning,
@@ -6158,11 +6802,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _inputQueue.enqueue(key);
         if (!wasOverflow && _inputQueue.isOverflow && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Input queue is full; some keystrokes may be lost.',
-              ),
-            ),
+            SnackBar(content: Text(context.l10n.termInputQueueFull)),
           );
         }
         if (mounted) setState(() {}); // キューイング状態を更新
@@ -6294,7 +6934,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (next.phase == ImageTransferPhase.error && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.errorMessage ?? 'Image transfer failed'),
+            content: Text(
+              next.errorMessage ?? context.l10n.termImageTransferFailed,
+            ),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -6305,7 +6947,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Uploaded: ${next.lastUploadedPath}'),
+            content: Text(context.l10n.termUploaded(next.lastUploadedPath!)),
             backgroundColor: Colors.green,
           ),
         );
@@ -6343,7 +6985,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Gallery'),
+              title: Text(context.l10n.termGallery),
               onTap: () {
                 Navigator.pop(ctx);
                 ref
@@ -6353,7 +6995,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt),
-              title: const Text('Camera'),
+              title: Text(context.l10n.termCamera),
               onTap: () {
                 Navigator.pop(ctx);
                 ref
@@ -6450,11 +7092,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // once connected rather than silently queuing via the legacy path.
       if (text.contains('\n') && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Multi-line send requires a live connection; please retry.',
-            ),
-          ),
+          SnackBar(content: Text(context.l10n.termMultilineNeedsConnection)),
         );
       } else {
         _inputQueue.enqueue(text);
@@ -6610,7 +7248,7 @@ class _PaneLayoutPainter extends CustomPainter {
 ///
 /// 各ペインをタップで選択可能。ペイン番号も表示。
 class _PaneLayoutVisualizer extends StatefulWidget {
-  final List<TmuxPane> panes;
+  final List<MultiplexerPane> panes;
   final String? activePaneId;
   // inventory: LEGACY-0084
   final void Function(String paneId) onPaneSelected;
@@ -6636,17 +7274,27 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   Widget build(BuildContext context) {
     if (widget.panes.isEmpty) return const SizedBox.shrink();
 
-    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）
+    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）。herdr の layout rect
+    // は 0 起点でないため（実測 x:26 / y:1）、min を 0 起点へ正規化する
+    // （tmux は 0 起点パースのため正規化は恒等）。
+    int minLeft = widget.panes.first.left;
+    int minTop = widget.panes.first.top;
     int maxRight = 0;
     int maxBottom = 0;
     for (final pane in widget.panes) {
       final right = pane.left + pane.width;
       final bottom = pane.top + pane.height;
+      if (pane.left < minLeft) minLeft = pane.left;
+      if (pane.top < minTop) minTop = pane.top;
       if (right > maxRight) maxRight = right;
       if (bottom > maxBottom) maxBottom = bottom;
     }
 
     if (maxRight == 0 || maxBottom == 0) return const SizedBox.shrink();
+
+    // 0 起点へ正規化した全体サイズ
+    maxRight -= minLeft;
+    maxBottom -= minTop;
 
     // アスペクト比を計算
     final aspectRatio = maxRight / maxBottom;
@@ -6670,9 +7318,9 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                 final isActive = pane.id == widget.activePaneId;
                 final isSplitMode = _splitModeActivePaneId == pane.id;
 
-                // 実際の位置とサイズからRectを計算
-                final left = pane.left * scaleX;
-                final top = pane.top * scaleY;
+                // 実際の位置とサイズからRectを計算（0 起点へ正規化済み）
+                final left = (pane.left - minLeft) * scaleX;
+                final top = (pane.top - minTop) * scaleY;
                 final width = pane.width * scaleX - gap;
                 final height = pane.height * scaleY - gap;
 
@@ -6723,7 +7371,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   static const _minInlineHeight = 60.0;
 
   void _handlePaneTap(
-    TmuxPane pane,
+    MultiplexerPane pane,
     bool isActive,
     double width,
     double height,
@@ -6746,14 +7394,14 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
     }
   }
 
-  void _showSplitDialog(TmuxPane pane) {
+  void _showSplitDialog(MultiplexerPane pane) {
     showDialog(
       context: context,
       builder: (dialogContext) {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         return AlertDialog(
           title: Text(
-            'Split Pane ${pane.index}',
+            context.l10n.termSplitPaneTitle(pane.index),
             style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
           ),
           content: Column(
@@ -6764,7 +7412,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                   size: const Size(24, 24),
                   painter: _SplitRightIconPainter(color: colorScheme.primary),
                 ),
-                title: const Text('Split Right'),
+                title: Text(context.l10n.termSplitRight),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -6778,7 +7426,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
                   size: const Size(24, 24),
                   painter: _SplitDownIconPainter(color: colorScheme.primary),
                 ),
-                title: const Text('Split Down'),
+                title: Text(context.l10n.termSplitDown),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -6792,7 +7440,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(context.l10n.termCancel),
             ),
           ],
         );
@@ -6801,7 +7449,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
   }
 
   Widget _buildPaneContent({
-    required TmuxPane pane,
+    required MultiplexerPane pane,
     required bool isActive,
     required bool isSplitMode,
     required double width,
@@ -6865,7 +7513,7 @@ class _PaneLayoutVisualizerState extends State<_PaneLayoutVisualizer> {
             height > 40) ...[
           const SizedBox(height: 2),
           Text(
-            'Tap to split',
+            context.l10n.termTapToSplit,
             style: GoogleFonts.jetBrainsMono(
               fontSize: 8,
               color: DesignColors.primary.withValues(alpha: 0.7),
@@ -7149,7 +7797,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
           Row(
             children: [
               Text(
-                'Enter Command',
+                context.l10n.termEnterCommand,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -7166,7 +7814,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Shift+Enter: 改行',
+                  context.l10n.termShiftEnterNewline,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     color: isDark
@@ -7192,7 +7840,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
               textInputAction: TextInputAction.newline, // ペースト時の複数行対応
               style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface),
               decoration: InputDecoration(
-                hintText: 'Type your command... (Enter to send)',
+                hintText: context.l10n.termCommandHint,
                 hintStyle: GoogleFonts.jetBrainsMono(
                   color: isDark
                       ? DesignColors.textMuted
@@ -7231,7 +7879,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                     ),
                   ),
                   child: Text(
-                    'Cancel',
+                    context.l10n.termCancel,
                     style: GoogleFonts.spaceGrotesk(
                       fontWeight: FontWeight.w700,
                     ),
@@ -7261,7 +7909,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                           ),
                         )
                       : Text(
-                          'Execute',
+                          context.l10n.termExecute,
                           style: GoogleFonts.spaceGrotesk(
                             fontWeight: FontWeight.w700,
                           ),
@@ -7273,110 +7921,6 @@ class _InputDialogContentState extends State<_InputDialogContent> {
           const SizedBox(height: 16),
         ],
       ),
-    );
-  }
-}
-
-/// ウィンドウ名入力ダイアログ
-class _NewWindowDialog extends StatefulWidget {
-  // inventory: LEGACY-0089
-  final List<String> existingWindowNames;
-
-  const _NewWindowDialog({required this.existingWindowNames});
-
-  @override
-  State<_NewWindowDialog> createState() => _NewWindowDialogState();
-}
-
-class _NewWindowDialogState extends State<_NewWindowDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  String? _validateWindowName(String? value) {
-    if (value == null || value.isEmpty) {
-      return null; // 空入力はtmuxデフォルト名で許容
-    }
-    if (value.length > 50) {
-      return 'Window name must be 50 characters or less';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - and _ allowed';
-    }
-    if (widget.existingWindowNames.contains(value)) {
-      return 'Window "$value" already exists';
-    }
-    return null;
-  }
-
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pop(context, _nameController.text);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: Text(
-        'New Window',
-        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
-      ),
-      content: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _nameController,
-          autofocus: true,
-          maxLength: 50,
-          decoration: InputDecoration(
-            labelText: 'Window Name',
-            hintText: 'Leave empty for default',
-            hintStyle: GoogleFonts.jetBrainsMono(
-              fontSize: 14,
-              color: isDark
-                  ? DesignColors.textMuted
-                  : DesignColors.textMutedLight,
-            ),
-            filled: true,
-            fillColor: isDark
-                ? DesignColors.inputDark
-                : DesignColors.inputLight,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.primary),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: DesignColors.error),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: DesignColors.error),
-            ),
-          ),
-          style: GoogleFonts.jetBrainsMono(fontSize: 14),
-          validator: _validateWindowName,
-          onFieldSubmitted: (_) => _submit(),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Create')),
-      ],
     );
   }
 }
@@ -7403,12 +7947,17 @@ class _HerdrLabelInputDialog extends StatefulWidget {
   /// 確定ボタンの文言（'Rename'）。
   final String confirmLabel;
 
+  /// 空入力（trim 後）を許容するか（既定 false = rename の空不可挙動を維持。
+  /// create のみ true で「空欄 = デフォルト名」を許容し、100 文字制限のみ課す）。
+  final bool allowEmpty;
+
   const _HerdrLabelInputDialog({
     required this.title,
     required this.labelText,
     this.hintText,
     this.initialValue = '',
     required this.confirmLabel,
+    this.allowEmpty = false,
   });
 
   @override
@@ -7432,11 +7981,12 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
   }
 
   String? _validateLabel(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Label cannot be empty';
+    final text = value ?? '';
+    if (!widget.allowEmpty && text.trim().isEmpty) {
+      return context.l10n.termLabelCannotBeEmpty;
     }
-    if (value.length > 100) {
-      return 'Label must be 100 characters or less';
+    if (text.length > 100) {
+      return context.l10n.termLabelTooLong;
     }
     return null;
   }
@@ -7472,7 +8022,9 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
                   : DesignColors.textMutedLight,
             ),
             filled: true,
-            fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+            fillColor: isDark
+                ? DesignColors.inputDark
+                : DesignColors.inputLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -7498,204 +8050,10 @@ class _HerdrLabelInputDialogState extends State<_HerdrLabelInputDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.termCancel),
         ),
         FilledButton(onPressed: _submit, child: Text(widget.confirmLabel)),
       ],
-    );
-  }
-}
-
-// ====================================================================
-// _ResizePaneChooserDialog
-// ====================================================================
-
-/// リサイズ対象ペインをグラフィカルに選択するダイアログ
-class _ResizePaneChooserDialog extends StatefulWidget {
-  final List<TmuxPane> panes;
-  final String? activePaneId;
-  final void Function(TmuxPane selectedPane) onResize;
-
-  const _ResizePaneChooserDialog({
-    required this.panes,
-    this.activePaneId,
-    required this.onResize,
-  });
-
-  @override
-  State<_ResizePaneChooserDialog> createState() =>
-      _ResizePaneChooserDialogState();
-}
-
-class _ResizePaneChooserDialogState extends State<_ResizePaneChooserDialog> {
-  late String? _selectedPaneId;
-
-  @override
-  void initState() {
-    super.initState();
-    // デフォルト: 現在アクティブなペインが選択状態
-    _selectedPaneId = widget.activePaneId;
-  }
-
-  TmuxPane? get _selectedPane {
-    if (_selectedPaneId == null) return null;
-    try {
-      return widget.panes.firstWhere((p) => p.id == _selectedPaneId);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final selected = _selectedPane;
-
-    return AlertDialog(
-      backgroundColor: DesignColors.surfaceDark,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Pane',
-        style: TextStyle(color: DesignColors.textPrimary),
-      ),
-      content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.8,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ペインレイアウトのグリッドプレビュー
-              _buildSelectablePaneGrid(),
-              const SizedBox(height: 12),
-              // 選択中のペイン情報
-              if (selected != null)
-                Text(
-                  'Selected: Pane ${selected.index} (${selected.width}x${selected.height})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textSecondary,
-                  ),
-                )
-              else
-                const Text(
-                  'Tap a pane to select',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: DesignColors.textSecondary,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: selected != null ? () => widget.onResize(selected) : null,
-          style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
-          child: const Text('Resize'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSelectablePaneGrid() {
-    if (widget.panes.isEmpty) return const SizedBox.shrink();
-
-    // ウィンドウ全体のサイズを計算
-    int maxRight = 0;
-    int maxBottom = 0;
-    for (final pane in widget.panes) {
-      final right = pane.left + pane.width;
-      final bottom = pane.top + pane.height;
-      if (right > maxRight) maxRight = right;
-      if (bottom > maxBottom) maxBottom = bottom;
-    }
-    if (maxRight == 0) maxRight = 1;
-    if (maxBottom == 0) maxBottom = 1;
-
-    return Container(
-      height: 150,
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: DesignColors.canvasDark,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: DesignColors.borderDark),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          const pad = 4.0;
-          final areaW = constraints.maxWidth - pad * 2;
-          final areaH = constraints.maxHeight - pad * 2;
-          final scaleX = areaW / maxRight;
-          final scaleY = areaH / maxBottom;
-
-          return Padding(
-            padding: const EdgeInsets.all(pad),
-            child: Stack(
-              children: [
-                SizedBox(width: areaW, height: areaH),
-                ...widget.panes.map((pane) {
-                  final isSelected = pane.id == _selectedPaneId;
-                  final left = pane.left * scaleX;
-                  final top = pane.top * scaleY;
-                  final width = (pane.width * scaleX).clamp(20.0, areaW - left);
-                  final height = (pane.height * scaleY).clamp(
-                    14.0,
-                    areaH - top,
-                  );
-
-                  return Positioned(
-                    left: left,
-                    top: top,
-                    width: width,
-                    height: height,
-                    child: GestureDetector(
-                      key: ValueKey('terminal-resize-pane-${pane.id}'),
-                      onTap: () => setState(() => _selectedPaneId = pane.id),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? DesignColors.primary.withValues(alpha: 0.25)
-                              : DesignColors.surfaceDark,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: isSelected
-                                ? DesignColors.primary
-                                : DesignColors.borderDark,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: Text(
-                              '${pane.index}\n${pane.width}x${pane.height}',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: isSelected
-                                    ? DesignColors.primary
-                                    : DesignColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-          );
-        },
-      ),
     );
   }
 }
@@ -7750,9 +8108,9 @@ class _ResizeWindowChooserDialogState
     return AlertDialog(
       backgroundColor: DesignColors.surfaceDark,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      title: const Text(
-        'Resize Window',
-        style: TextStyle(color: DesignColors.textPrimary),
+      title: Text(
+        context.l10n.termResizeWindow,
+        style: const TextStyle(color: DesignColors.textPrimary),
       ),
       content: SizedBox(
         width: MediaQuery.of(context).size.width * 0.8,
@@ -7773,16 +8131,19 @@ class _ResizeWindowChooserDialogState
               // 選択中のウィンドウ情報
               if (selected != null) ...[
                 Text(
-                  'Selected: ${selected.name} (${_windowSizeString(selected)})',
+                  context.l10n.termSelectedWindow(
+                    selected.name,
+                    _windowSizeString(selected),
+                  ),
                   style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
                 ),
               ] else
-                const Text(
-                  'Tap a window to select',
-                  style: TextStyle(
+                Text(
+                  context.l10n.termTapWindowToSelect,
+                  style: const TextStyle(
                     fontSize: 13,
                     color: DesignColors.textSecondary,
                   ),
@@ -7794,12 +8155,12 @@ class _ResizeWindowChooserDialogState
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.termCancel),
         ),
         FilledButton(
           onPressed: selected != null ? () => widget.onResize(selected) : null,
           style: FilledButton.styleFrom(backgroundColor: DesignColors.primary),
-          child: const Text('Resize'),
+          child: Text(context.l10n.termResize),
         ),
       ],
     );
@@ -7954,34 +8315,23 @@ TmuxPane? _findTmuxPaneIn(TmuxState tmuxState, String paneId) {
 /// 既存 3 セレクタ（L3604-3608 相当）のタイトル優先ルールを共通シート向けに
 /// 移設したもの。ツリーから引き当てできない pane ID は 'Pane 0' を返す
 /// （防御的フォールバック。実際にはシートの pane は同一ツリー由来のため不発）。
-String _tmuxPaneLabelFor(TmuxState tmuxState, String paneId) {
+String _tmuxPaneLabelFor(
+  TmuxState tmuxState,
+  String paneId,
+  AppLocalizations l10n,
+) {
   final pane = _findTmuxPaneIn(tmuxState, paneId);
-  if (pane == null) return 'Pane 0';
+  if (pane == null) return l10n.termPaneLabel(0);
   final title = pane.title;
   if (title != null && title.isNotEmpty) return title;
   final command = pane.currentCommand;
   if (command != null && command.isNotEmpty) return command;
-  return 'Pane ${pane.index}';
+  return l10n.termPaneLabel(pane.index);
 }
 
 /// tmux の pane サブタイトル（'WxH'・M-2）。引き当て不可なら null。
 String? _tmuxPaneSubtitleFor(TmuxState tmuxState, MultiplexerPane pane) {
   return _findTmuxPaneIn(tmuxState, pane.id)?.sizeString;
-}
-
-/// 共通 domain の [MultiplexerWindow] に一致する [TmuxWindow] をツリー全体から
-/// 引き当てる（ID 優先、次に index + name）。
-TmuxWindow? _tmuxWindowInTree(TmuxState tmuxState, MultiplexerWindow window) {
-  for (final session in tmuxState.sessions) {
-    for (final tmuxWindow in session.windows) {
-      if (window.id != null && tmuxWindow.id == window.id) return tmuxWindow;
-      if (tmuxWindow.index == window.index &&
-          tmuxWindow.name == window.name) {
-        return tmuxWindow;
-      }
-    }
-  }
-  return null;
 }
 
 /// [session] 内で [window] に一致する [TmuxWindow] を引き当てる。
@@ -8047,7 +8397,9 @@ bool _isCurrentSession(MultiplexerSession session, _SelectorContext? current) {
     if (sessionId != null && sessionId == currentSessionId) return true;
     // paneId が現在の session に属するか（pane 由来の ID 判定）
     final paneId = current.paneId;
-    if (paneId != null && sessionId != null && paneId.startsWith('$sessionId:')) {
+    if (paneId != null &&
+        sessionId != null &&
+        paneId.startsWith('$sessionId:')) {
       return true;
     }
     return false;
@@ -8091,7 +8443,7 @@ bool _isCurrentPane(MultiplexerPane pane, _SelectorContext? current) =>
 /// 呼び出し側が構築）。[top] は一覧の上部に表示するウィジェット（tmux pane
 /// シートの [_PaneLayoutVisualizer]）。ハイライト（H-1）は [_SelectorContext]
 /// から呼び出し側がタイルへ渡す。
-class _MultiplexerSelectorSheet extends StatelessWidget {
+class _MultiplexerSelectorSheet extends StatefulWidget {
   /// シートのタイトル（'Select Session' / 'Select Window' / 'Select Pane'）。
   final String title;
 
@@ -8107,61 +8459,195 @@ class _MultiplexerSelectorSheet extends StatelessWidget {
   /// 一覧の上部に表示するウィジェット（無ければ null）。
   final Widget? top;
 
+  /// top 表示がローディング中から確定するセレクタ（herdr pane セレクタ）で
+  /// maxHeight 0.7 を固定する（ローディング中の高さジャンプ防止）。
+  final bool topExpected;
+
+  /// 非同期で一覧を取得する（バグ3 根本対応: 即時 open + loading/data/error）。
+  ///
+  /// 戻り値は (children, headerActions, top) のセット。データロード後にヘッダーの
+  /// mutation ボタン（Resize 等）と top（分割プレビュー）も確定させるため、
+  /// headerActions / top も同時に返す（tooltip を維持・バグ3 根本対応）。
+  final Future<_SelectorContent> Function()? asyncContent;
+
+  /// 取得失敗時の Retry コールバック（無ければ null）。
+  final VoidCallback? retry;
+
   const _MultiplexerSelectorSheet({
     required this.title,
     required this.icon,
+    this.headerActions = const [],
+    this.top,
+    this.topExpected = false,
+    this.asyncContent,
+    this.retry,
     required this.children,
+  });
+
+  @override
+  State<_MultiplexerSelectorSheet> createState() =>
+      _MultiplexerSelectorSheetState();
+}
+
+/// 非同期ロードされたセレクタの内容（一覧 + ヘッダー action + top）。
+class _SelectorContent {
+  final List<Widget> children;
+  final List<Widget> headerActions;
+
+  /// 一覧の上部に表示するウィジェット（無ければ null）。
+  final Widget? top;
+  const _SelectorContent({
+    this.children = const [],
     this.headerActions = const [],
     this.top,
   });
+}
+
+class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
+  /// ロード結果（null なら loading・エラーは [_loadError] で表現）。
+  _SelectorContent? _content;
+  Object? _loadError;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.asyncContent != null) {
+      _load();
+    }
+  }
+
+  void _load() {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+      _content = null;
+    });
+    widget.asyncContent!().then(
+      (content) {
+        if (!mounted) return;
+        setState(() {
+          _content = content;
+          _loading = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _loadError = e;
+          _loading = false;
+        });
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    // pane 段でレイアウトビジュアライザを表示する場合は高めの最大高を使う
-    // （既存 pane セレクタの 0.7 相当）。
-    final hasTop = top != null;
-    final maxHeight =
-        MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
+    final hasTop =
+        widget.top != null || widget.topExpected || _content?.top != null;
+    final maxHeight = MediaQuery.of(context).size.height * (hasTop ? 0.7 : 0.6);
+    final topWidget = _content?.top ?? widget.top;
 
+    final loader = widget.asyncContent;
+    if (loader != null) {
+      final headerActions = _content?.headerActions ?? widget.headerActions;
+      final body = _loading
+          ? const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _loadError != null
+          ? _buildError(context, colorScheme)
+          : ListView(
+              shrinkWrap: true,
+              children: _content?.children ?? const <Widget>[],
+            );
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildHeader(context, colorScheme, headerActions),
+            Divider(height: 1, color: colorScheme.outline),
+            if (topWidget != null) ...[
+              topWidget,
+              Divider(height: 1, color: colorScheme.outline),
+            ],
+            Flexible(child: body),
+            const SizedBox(height: 16),
+          ],
+        ),
+      );
+    }
+
+    // 従来の同期 children 表示。
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(icon, color: colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                if (headerActions.isNotEmpty) ...[
-                  const Spacer(),
-                  ...headerActions,
-                ],
-              ],
-            ),
-          ),
+          _buildHeader(context, colorScheme, widget.headerActions),
           Divider(height: 1, color: colorScheme.outline),
-          if (top != null) ...[
-            top!,
+          if (topWidget != null) ...[
+            topWidget,
             Divider(height: 1, color: colorScheme.outline),
           ],
           Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              children: children,
-            ),
+            child: ListView(shrinkWrap: true, children: widget.children),
           ),
           const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<Widget> headerActions,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Icon(widget.icon, color: colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            widget.title,
+            style: GoogleFonts.spaceGrotesk(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          if (headerActions.isNotEmpty) ...[const Spacer(), ...headerActions],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError(BuildContext context, ColorScheme colorScheme) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, color: colorScheme.error),
+          const SizedBox(height: 8),
+          Text(
+            context.l10n.termFailedToLoad,
+            style: TextStyle(color: colorScheme.onSurface),
+          ),
+          const SizedBox(height: 8),
+          if (widget.retry != null)
+            FilledButton(
+              onPressed: () {
+                widget.retry!();
+                _load();
+              },
+              child: Text(context.l10n.termRetry),
+            ),
         ],
       ),
     );
@@ -8197,7 +8683,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            'READ ONLY — viewing only',
+            context.l10n.termReadOnlyBanner,
             style: GoogleFonts.jetBrainsMono(
               fontSize: 11,
               fontWeight: FontWeight.w600,

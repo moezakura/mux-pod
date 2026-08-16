@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/active_session_provider.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/image_transfer_provider.dart';
@@ -126,6 +127,9 @@ class TerminalTestScaffold {
     FakeImageTransferNotifier? imageTransferNotifier,
     Connection? connection,
     Map<String, String>? secureStorageValues,
+    // テスト用に FakeSshClient を差し替える（遅延・特殊応答の再現）。
+    // 指定が無ければ内部で生成する。
+    FakeSshClient Function()? clientFactory,
     // herdr（read-only）向け
     bool readOnly = false,
     String? initialPaneId,
@@ -152,7 +156,7 @@ class TerminalTestScaffold {
     SecureStorageService.setTestValues(secureStorageValues ?? const {});
     addTearDown(() => SecureStorageService.setTestValues(null));
 
-    final client = FakeSshClient();
+    final client = clientFactory != null ? clientFactory() : FakeSshClient();
     client.execOutputs = {
       'tmux -V': 'tmux 3.4',
       'list-panes -a': kFullTreeOutput,
@@ -192,6 +196,8 @@ class TerminalTestScaffold {
           alertPanesProvider.overrideWith(() => _FakeAlertPanesNotifier()),
         ],
         child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: TerminalScreen(
             connectionId: connectionId,
             sessionName: sessionName,

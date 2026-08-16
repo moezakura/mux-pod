@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/widgets/dialogs/theme_dialog.dart';
 
 void main() {
@@ -9,9 +10,9 @@ void main() {
     testWidgets('displays all theme options', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: ThemeDialog(isDarkMode: true)),
         ),
       );
 
@@ -20,34 +21,42 @@ void main() {
       expect(find.text('Light'), findsOneWidget);
     });
 
-    testWidgets('dark mode is selected when isDarkMode is true', (tester) async {
+    testWidgets('dark mode is selected when isDarkMode is true', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: true),
-          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: ThemeDialog(isDarkMode: true)),
         ),
       );
 
       final darkRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == true && widget.groupValue == true,
+            widget is RadioListTile<bool> &&
+            widget.value == true &&
+            widget.groupValue == true,
       );
       expect(darkRadio, findsOneWidget);
     });
 
-    testWidgets('light mode is selected when isDarkMode is false', (tester) async {
+    testWidgets('light mode is selected when isDarkMode is false', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: ThemeDialog(isDarkMode: false),
-          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: ThemeDialog(isDarkMode: false)),
         ),
       );
 
       final lightRadio = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<bool> && widget.value == false && widget.groupValue == false,
+            widget is RadioListTile<bool> &&
+            widget.value == false &&
+            widget.groupValue == false,
       );
       expect(lightRadio, findsOneWidget);
     });
@@ -57,6 +66,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
@@ -87,6 +98,8 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/widgets/dialogs/font_size_dialog.dart';
 
 void main() {
@@ -9,9 +10,9 @@ void main() {
     testWidgets('displays all font size options', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: FontSizeDialog(currentSize: 14.0),
-          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: FontSizeDialog(currentSize: 14.0)),
         ),
       );
 
@@ -27,16 +28,18 @@ void main() {
     testWidgets('current size is selected', (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
-          home: Scaffold(
-            body: FontSizeDialog(currentSize: 16.0),
-          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(body: FontSizeDialog(currentSize: 16.0)),
         ),
       );
 
       // Find the selected radio button
       final radio16 = find.byWidgetPredicate(
         (widget) =>
-            widget is RadioListTile<double> && widget.value == 16.0 && widget.groupValue == 16.0,
+            widget is RadioListTile<double> &&
+            widget.value == 16.0 &&
+            widget.groupValue == 16.0,
       );
       expect(radio16, findsOneWidget);
     });
@@ -46,13 +49,16 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
                   selectedSize = await showDialog<double>(
                     context: context,
-                    builder: (context) => const FontSizeDialog(currentSize: 14.0),
+                    builder: (context) =>
+                        const FontSizeDialog(currentSize: 14.0),
                   );
                 },
                 child: const Text('Open'),
@@ -76,13 +82,16 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
                   selectedSize = await showDialog<double>(
                     context: context,
-                    builder: (context) => const FontSizeDialog(currentSize: 14.0),
+                    builder: (context) =>
+                        const FontSizeDialog(currentSize: 14.0),
                   );
                 },
                 child: const Text('Open'),

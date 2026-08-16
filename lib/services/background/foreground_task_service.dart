@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../../l10n/app_localizations.dart';
+
 /// SSH接続をバックグラウンドで維持するためのForeground Serviceを管理
 class SshForegroundTaskService {
   static final SshForegroundTaskService _instance =
@@ -20,7 +22,11 @@ class SshForegroundTaskService {
   String? get currentConnectionName => _currentConnectionName;
 
   /// Foreground Taskを初期化
-  Future<void> initialize() async {
+  ///
+  /// [l10n] 通知チャンネル名/説明の解決に使用するローカライズ済み文字列。
+  /// チャンネルは登録後に変更できないため、最初の初期化時に設定言語の
+  /// [AppLocalizations] を渡すこと。
+  Future<void> initialize({required AppLocalizations l10n}) async {
     if (_isInitialized) return;
     if (!Platform.isAndroid) {
       _isInitialized = true;
@@ -30,8 +36,8 @@ class SshForegroundTaskService {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'muxpod_ssh_foreground',
-        channelName: 'SSH Connection',
-        channelDescription: 'Keeps SSH connection alive in background',
+        channelName: l10n.notifChannelName,
+        channelDescription: l10n.notifChannelDescription,
         channelImportance: NotificationChannelImportance.LOW,
         priority: NotificationPriority.LOW,
         playSound: false,
@@ -76,14 +82,19 @@ class SshForegroundTaskService {
   }
 
   /// SSH接続時にForeground Serviceを開始
+  ///
+  /// [l10n] 通知タイトル/本文とチャンネル名/説明の解決に使用する
+  /// ローカライズ済み文字列。呼び出し元は
+  /// `l10nForLanguage(ref.read(settingsProvider).language)` で渡すこと。
   Future<bool> startService({
     required String connectionName,
     required String host,
+    required AppLocalizations l10n,
   }) async {
     if (!Platform.isAndroid) return true;
     if (_isRunning) return true;
 
-    await initialize();
+    await initialize(l10n: l10n);
 
     final hasPermission = await requestPermissions();
     if (!hasPermission) {
@@ -93,8 +104,8 @@ class SshForegroundTaskService {
     _currentConnectionName = connectionName;
 
     final result = await FlutterForegroundTask.startService(
-      notificationTitle: 'SSH接続中: $connectionName',
-      notificationText: 'Host: $host',
+      notificationTitle: l10n.notifSshConnectedTitle(connectionName),
+      notificationText: l10n.notifHost(host),
       callback: _startCallback,
     );
 
@@ -103,10 +114,7 @@ class SshForegroundTaskService {
   }
 
   /// 通知テキストを更新
-  Future<void> updateNotification({
-    String? title,
-    String? text,
-  }) async {
+  Future<void> updateNotification({String? title, String? text}) async {
     if (!Platform.isAndroid || !_isRunning) return;
 
     await FlutterForegroundTask.updateService(
@@ -174,4 +182,3 @@ class _SshTaskHandler extends TaskHandler {
     // 通知がスワイプで削除された時
   }
 }
-

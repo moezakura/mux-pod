@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/active_session_provider.dart';
 import '../../providers/connection_provider.dart';
+import '../../providers/key_provider.dart';
 import '../home_screen.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
 import '../../services/backend/domain/multiplexer_session.dart';
@@ -32,9 +34,11 @@ class _SearchVisibleNotifier extends Notifier<bool> {
   void hide() => state = false;
 }
 
-final _searchVisibleProvider = NotifierProvider<_SearchVisibleNotifier, bool>(() {
-  return _SearchVisibleNotifier();
-});
+final _searchVisibleProvider = NotifierProvider<_SearchVisibleNotifier, bool>(
+  () {
+    return _SearchVisibleNotifier();
+  },
+);
 
 /// 接続一覧画面
 class ConnectionsScreen extends ConsumerWidget {
@@ -60,7 +64,12 @@ class ConnectionsScreen extends ConsumerWidget {
           _buildAppBar(context, ref, isSearchVisible, searchQuery),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 120),
-            sliver: _buildBody(context, ref, connectionsState, filteredConnections),
+            sliver: _buildBody(
+              context,
+              ref,
+              connectionsState,
+              filteredConnections,
+            ),
           ),
         ],
       ),
@@ -68,7 +77,12 @@ class ConnectionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAppBar(BuildContext context, WidgetRef ref, bool isSearchVisible, String searchQuery) {
+  Widget _buildAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isSearchVisible,
+    String searchQuery,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     return SliverAppBar(
@@ -84,7 +98,7 @@ class ConnectionsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Connections',
+              context.l10n.connTitle,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,
@@ -115,7 +129,11 @@ class ConnectionsScreen extends ConsumerWidget {
         IconButton(
           icon: Icon(
             isSearchVisible ? Icons.search_off : Icons.search,
-            color: isSearchVisible ? colorScheme.primary : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+            color: isSearchVisible
+                ? colorScheme.primary
+                : (isDark
+                      ? DesignColors.textSecondary
+                      : DesignColors.textSecondaryLight),
           ),
           onPressed: () {
             final wasVisible = isSearchVisible;
@@ -125,17 +143,24 @@ class ConnectionsScreen extends ConsumerWidget {
               ref.read(connectionSearchProvider.notifier).clear();
             }
           },
-          tooltip: isSearchVisible ? 'Close Search' : 'Search',
+          tooltip: isSearchVisible
+              ? context.l10n.connCloseSearch
+              : context.l10n.connSearch,
         ),
         IconButton(
-          icon: Icon(Icons.sort, color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+          icon: Icon(
+            Icons.sort,
+            color: isDark
+                ? DesignColors.textSecondary
+                : DesignColors.textSecondaryLight,
+          ),
           onPressed: () => _showSortDialog(context, ref),
-          tooltip: 'Sort',
+          tooltip: context.l10n.connSort,
         ),
         IconButton(
           icon: const Icon(Icons.settings, color: DesignColors.textSecondary),
           onPressed: () => _openSettings(context, ref),
-          tooltip: 'Settings',
+          tooltip: context.l10n.connSettings,
         ),
         const SizedBox(width: 8),
       ],
@@ -153,7 +178,9 @@ class ConnectionsScreen extends ConsumerWidget {
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+      backgroundColor: isDark
+          ? DesignColors.surfaceDark
+          : DesignColors.surfaceLight,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -170,7 +197,7 @@ class ConnectionsScreen extends ConsumerWidget {
                     Icon(Icons.sort, color: sheetColorScheme.primary),
                     const SizedBox(width: 8),
                     Text(
-                      'Sort Connections',
+                      context.l10n.connSortTitle,
                       style: GoogleFonts.spaceGrotesk(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -180,58 +207,75 @@ class ConnectionsScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              Divider(height: 1, color: isDark ? DesignColors.borderDark : DesignColors.borderLight),
+              Divider(
+                height: 1,
+                color: isDark
+                    ? DesignColors.borderDark
+                    : DesignColors.borderLight,
+              ),
               _SortOptionTile(
-                title: 'Name (A-Z)',
+                title: context.l10n.connSortNameAsc,
                 option: ConnectionSortOption.nameAsc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.nameAsc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.nameAsc);
                   Navigator.pop(context);
                 },
               ),
               _SortOptionTile(
-                title: 'Name (Z-A)',
+                title: context.l10n.connSortNameDesc,
                 option: ConnectionSortOption.nameDesc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.nameDesc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.nameDesc);
                   Navigator.pop(context);
                 },
               ),
               _SortOptionTile(
-                title: 'Last Connected (Recent First)',
+                title: context.l10n.connSortLastConnectedDesc,
                 option: ConnectionSortOption.lastConnectedDesc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.lastConnectedDesc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.lastConnectedDesc);
                   Navigator.pop(context);
                 },
               ),
               _SortOptionTile(
-                title: 'Last Connected (Oldest First)',
+                title: context.l10n.connSortLastConnectedAsc,
                 option: ConnectionSortOption.lastConnectedAsc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.lastConnectedAsc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.lastConnectedAsc);
                   Navigator.pop(context);
                 },
               ),
               _SortOptionTile(
-                title: 'Host (A-Z)',
+                title: context.l10n.connSortHostAsc,
                 option: ConnectionSortOption.hostAsc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.hostAsc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.hostAsc);
                   Navigator.pop(context);
                 },
               ),
               _SortOptionTile(
-                title: 'Host (Z-A)',
+                title: context.l10n.connSortHostDesc,
                 option: ConnectionSortOption.hostDesc,
                 currentOption: currentSort,
                 onTap: () {
-                  ref.read(connectionSortProvider.notifier).setSort(ConnectionSortOption.hostDesc);
+                  ref
+                      .read(connectionSortProvider.notifier)
+                      .setSort(ConnectionSortOption.hostDesc);
                   Navigator.pop(context);
                 },
               ),
@@ -255,7 +299,12 @@ class ConnectionsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, WidgetRef ref, ConnectionsState state, List<Connection> filteredConnections) {
+  Widget _buildBody(
+    BuildContext context,
+    WidgetRef ref,
+    ConnectionsState state,
+    List<Connection> filteredConnections,
+  ) {
     if (state.isLoading) {
       return const SliverFillRemaining(
         child: Center(child: CircularProgressIndicator()),
@@ -269,44 +318,36 @@ class ConnectionsScreen extends ConsumerWidget {
     }
 
     if (state.connections.isEmpty) {
-      return SliverFillRemaining(
-        child: _buildEmptyState(context),
-      );
+      return SliverFillRemaining(child: _buildEmptyState(context));
     }
 
     if (filteredConnections.isEmpty) {
-      return SliverFillRemaining(
-        child: _buildNoResultsState(context, ref),
-      );
+      return SliverFillRemaining(child: _buildNoResultsState(context, ref));
     }
 
     return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          final connection = filteredConnections[index];
-          return Padding(
-            key: ValueKey(connection.id),
-            padding: const EdgeInsets.only(bottom: 12),
-            child: RepaintBoundary(
-              child: _ConnectionCard(
-                connection: connection,
-                sshClientFactory: sshClientFactory,
-                onConnect: (sessionName, {sessionId}) =>
-                    _connectToServer(
-                      context,
-                      ref,
-                      connection,
-                      sessionName,
-                      sessionId: sessionId,
-                    ),
-                onEdit: () => _editConnection(context, ref, connection),
-                onDelete: () => _deleteConnection(context, ref, connection),
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final connection = filteredConnections[index];
+        return Padding(
+          key: ValueKey(connection.id),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: RepaintBoundary(
+            child: _ConnectionCard(
+              connection: connection,
+              sshClientFactory: sshClientFactory,
+              onConnect: (sessionName, {sessionId}) => _connectToServer(
+                context,
+                ref,
+                connection,
+                sessionName,
+                sessionId: sessionId,
               ),
+              onEdit: () => _editConnection(context, ref, connection),
+              onDelete: () => _deleteConnection(context, ref, connection),
             ),
-          );
-        },
-        childCount: filteredConnections.length,
-      ),
+          ),
+        );
+      }, childCount: filteredConnections.length),
     );
   }
 
@@ -320,31 +361,43 @@ class ConnectionsScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+              color: isDark
+                  ? DesignColors.surfaceDark
+                  : DesignColors.surfaceLight,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: isDark ? DesignColors.borderDark : DesignColors.borderLight),
+              border: Border.all(
+                color: isDark
+                    ? DesignColors.borderDark
+                    : DesignColors.borderLight,
+              ),
             ),
             child: Icon(
               Icons.search_off,
               size: 64,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            'No matching connections',
+            context.l10n.connNoResults,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Try a different search term',
+            context.l10n.connNoResultsHint,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
           const SizedBox(height: 16),
@@ -354,10 +407,8 @@ class ConnectionsScreen extends ConsumerWidget {
               ref.read(_searchVisibleProvider.notifier).hide();
             },
             icon: const Icon(Icons.clear),
-            label: const Text('Clear Search'),
-            style: TextButton.styleFrom(
-              foregroundColor: colorScheme.primary,
-            ),
+            label: Text(context.l10n.connClearSearch),
+            style: TextButton.styleFrom(foregroundColor: colorScheme.primary),
           ),
         ],
       ),
@@ -372,7 +423,7 @@ class ConnectionsScreen extends ConsumerWidget {
           const Icon(Icons.error_outline, size: 64, color: DesignColors.error),
           const SizedBox(height: 16),
           Text(
-            'Error loading connections',
+            context.l10n.connLoadError,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
@@ -381,7 +432,7 @@ class ConnectionsScreen extends ConsumerWidget {
           ElevatedButton.icon(
             onPressed: () => ref.read(connectionsProvider.notifier).reload(),
             icon: const Icon(Icons.refresh),
-            label: const Text('Retry'),
+            label: Text(context.l10n.connRetry),
           ),
         ],
       ),
@@ -397,31 +448,43 @@ class ConnectionsScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+              color: isDark
+                  ? DesignColors.surfaceDark
+                  : DesignColors.surfaceLight,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: isDark ? DesignColors.borderDark : DesignColors.borderLight),
+              border: Border.all(
+                color: isDark
+                    ? DesignColors.borderDark
+                    : DesignColors.borderLight,
+              ),
             ),
             child: Icon(
               Icons.dns_outlined,
               size: 64,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
           const SizedBox(height: 24),
           Text(
-            'No connections yet',
+            context.l10n.connEmpty,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 20,
               fontWeight: FontWeight.w600,
-              color: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+              color: isDark
+                  ? DesignColors.textSecondary
+                  : DesignColors.textSecondaryLight,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Tap the button below to add your first server',
+            context.l10n.connEmptyHint,
             style: GoogleFonts.spaceGrotesk(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
           ),
         ],
@@ -430,7 +493,10 @@ class ConnectionsScreen extends ConsumerWidget {
   }
 
   void _addConnection(BuildContext context, WidgetRef ref) async {
-    developer.log('_addConnection() - navigating to ConnectionFormScreen', name: 'ConnectionsScreen');
+    developer.log(
+      '_addConnection() - navigating to ConnectionFormScreen',
+      name: 'ConnectionsScreen',
+    );
     await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => const ConnectionFormScreen()),
     );
@@ -439,8 +505,15 @@ class ConnectionsScreen extends ConsumerWidget {
     // so the list reflects the new entry immediately via ref.watch.
   }
 
-  void _editConnection(BuildContext context, WidgetRef ref, Connection connection) async {
-    developer.log('_editConnection() - navigating to ConnectionFormScreen for ${connection.id}', name: 'ConnectionsScreen');
+  void _editConnection(
+    BuildContext context,
+    WidgetRef ref,
+    Connection connection,
+  ) async {
+    developer.log(
+      '_editConnection() - navigating to ConnectionFormScreen for ${connection.id}',
+      name: 'ConnectionsScreen',
+    );
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ConnectionFormScreen(connectionId: connection.id),
@@ -459,17 +532,17 @@ class ConnectionsScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Connection'),
-        content: Text('Are you sure you want to delete "${connection.name}"?'),
+        title: Text(context.l10n.connDeleteConfirmTitle),
+        content: Text(context.l10n.connDeleteConfirmMessage(connection.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Delete'),
+            child: Text(context.l10n.connDelete),
           ),
         ],
       ),
@@ -482,7 +555,9 @@ class ConnectionsScreen extends ConsumerWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${connection.name} deleted')),
+          SnackBar(
+            content: Text(context.l10n.connDeletedMessage(connection.name)),
+          ),
         );
       }
     }
@@ -498,11 +573,9 @@ class ConnectionsScreen extends ConsumerWidget {
     ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
     // 既存セッションを開く場合は最終アクセス日時を更新
     if (sessionName != null) {
-      ref.read(activeSessionsProvider.notifier).touchSession(
-            connection.id,
-            sessionName,
-            sessionId: sessionId,
-          );
+      ref
+          .read(activeSessionsProvider.notifier)
+          .touchSession(connection.id, sessionName, sessionId: sessionId);
     }
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -553,21 +626,33 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     final colorScheme = Theme.of(context).colorScheme;
     // アクティブセッションからこの接続のセッション情報を取得
     final activeSessionsState = ref.watch(activeSessionsProvider);
-    final activeSessions =
-        activeSessionsState.getSessionsForConnection(widget.connection.id);
+    final activeSessions = activeSessionsState.getSessionsForConnection(
+      widget.connection.id,
+    );
     final hasActiveSessions = activeSessions.isNotEmpty;
 
+    // 破損キー（秘密鍵を読み出せない鍵）を参照している接続かどうか
+    final keysState = ref.watch(keysProvider);
+    final hasDamagedKey = isKeyDamaged(keysState, widget.connection.keyId);
+
     // 接続状態の判定（アクティブセッションがあるか、lastConnectedAtがあるか）
-    final isConnected = hasActiveSessions || widget.connection.lastConnectedAt != null;
+    final isConnected =
+        hasActiveSessions || widget.connection.lastConnectedAt != null;
     final statusColor = hasActiveSessions
         ? DesignColors.success
-        : (isConnected ? Colors.orange : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight));
+        : (isConnected
+              ? Colors.orange
+              : (isDark
+                    ? DesignColors.textMuted
+                    : DesignColors.textMutedLight));
 
     return Container(
       decoration: BoxDecoration(
         color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? DesignColors.borderDark : DesignColors.borderLight),
+        border: Border.all(
+          color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.1),
@@ -594,12 +679,18 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                         height: 40,
                         decoration: BoxDecoration(
                           color: hasActiveSessions
-                              ? (isDark ? DesignColors.connectingCardDark : DesignColors.connectingCardLight)
-                              : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                              ? (isDark
+                                    ? DesignColors.connectingCardDark
+                                    : DesignColors.connectingCardLight)
+                              : (isDark
+                                    ? DesignColors.borderDark
+                                    : DesignColors.borderLight),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: hasActiveSessions
-                                ? (isDark ? DesignColors.connectingCardBorderDark : DesignColors.connectingCardBorderLight)
+                                ? (isDark
+                                      ? DesignColors.connectingCardBorderDark
+                                      : DesignColors.connectingCardBorderLight)
                                 : Colors.transparent,
                           ),
                         ),
@@ -608,7 +699,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                           size: 20,
                           color: hasActiveSessions
                               ? colorScheme.primary
-                              : (isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight),
+                              : (isDark
+                                    ? DesignColors.textSecondary
+                                    : DesignColors.textSecondaryLight),
                         ),
                       ),
                       Positioned(
@@ -621,7 +714,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                             color: statusColor,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+                              color: isDark
+                                  ? DesignColors.surfaceDark
+                                  : DesignColors.surfaceLight,
                               width: 2,
                             ),
                             boxShadow: hasActiveSessions
@@ -643,43 +738,66 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          widget.connection.name,
-                          style: GoogleFonts.spaceGrotesk(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: colorScheme.onSurface,
-                            letterSpacing: 0.3,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.connection.name,
+                                style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: colorScheme.onSurface,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                            if (hasDamagedKey) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.warning_amber,
+                                size: 16,
+                                color: colorScheme.error,
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${widget.connection.host} • ${widget.connection.username}',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 12,
-                            color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                            color: isDark
+                                ? DesignColors.textMuted
+                                : DesignColors.textMutedLight,
                           ),
                         ),
+                        if (hasDamagedKey) ...[
+                          const SizedBox(height: 4),
+                          _buildDamagedKeyBadge(context),
+                        ],
                       ],
                     ),
                   ),
                   // Expand Icon
                   Icon(
                     _isExpanded ? Icons.expand_less : Icons.expand_more,
-                    color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                    color: isDark
+                        ? DesignColors.textMuted
+                        : DesignColors.textMutedLight,
                   ),
                 ],
               ),
             ),
           ),
           // Expanded Content - Sessions List
-          if (_isExpanded) _buildExpandedContent(activeSessions, isDark, colorScheme),
+          if (_isExpanded)
+            _buildExpandedContent(activeSessions, isDark, colorScheme),
         ],
       ),
     );
   }
 
-  /// 接続の backend 種別（表示側の read-only 分岐用）。
+  /// 接続の backend 種別（表示側の backend 固有分岐用）。
   MultiplexerBackendKind get _backendKind {
     return switch (widget.connection.multiplexer.backend) {
       BackendType.tmux => MultiplexerBackendKind.tmux,
@@ -705,6 +823,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   /// 認証情報を取得してSSH接続し、接続済みクライアントを返す。
   Future<SshClient> _connectSsh() async {
+    final l10n = context.l10n;
     final connection = widget.connection;
     final factory = widget.sshClientFactory;
     if (factory != null) return factory(connection);
@@ -712,6 +831,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     SshConnectOptions options;
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await storage.getPrivateKey(connection.keyId!);
+      if (privateKey == null) {
+        throw SshAuthenticationError(l10n.connPrivateKeyUnreadable);
+      }
       final passphrase = await storage.getPassphrase(connection.keyId!);
       options = SshConnectOptions(
         privateKey: privateKey,
@@ -732,6 +854,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       username: connection.username,
       options: options,
       lightweight: true,
+      l10n: l10n,
     );
     return sshClient;
   }
@@ -746,7 +869,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     try {
       client = await _connectSsh();
       if (_backendKind == MultiplexerBackendKind.herdr) {
-        // herdr: read-only スナップショットを取得して共通 domain に変換する。
+        // herdr: スナップショットを取得して共通 domain に変換する。
         final adapter = HerdrAdapter(client);
         final snapshot = await adapter.snapshot();
         if (!mounted) return;
@@ -755,7 +878,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           _isLoadingSessions = false;
         });
         // アクティブセッションへも共通 domain 経由で登録する。
-        ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+        ref
+            .read(activeSessionsProvider.notifier)
+            .updateSessionsFromDomain(
               connectionId: widget.connection.id,
               connectionName: widget.connection.name,
               host: widget.connection.host,
@@ -784,7 +909,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       _sessions = sessions;
       _isLoadingSessions = false;
     });
-    ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+    ref
+        .read(activeSessionsProvider.notifier)
+        .updateSessionsFromDomain(
           connectionId: widget.connection.id,
           connectionName: widget.connection.name,
           host: widget.connection.host,
@@ -807,20 +934,17 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Kill Session'),
-        content: Text(
-          'Kill tmux session "$sessionName"? '
-          'Its windows and processes will be terminated.',
-        ),
+        title: Text(context.l10n.connKillSessionTitle),
+        content: Text(context.l10n.connKillSessionMessage(sessionName)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Kill'),
+            child: Text(context.l10n.connKill),
           ),
         ],
       ),
@@ -841,7 +965,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
       await _reloadSessions(client);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Session $sessionName killed')),
+          SnackBar(content: Text(context.l10n.connSessionKilled(sessionName))),
         );
       }
     } catch (e) {
@@ -865,7 +989,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     if (workspaceId == null || workspaceId.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot close workspace without an ID')),
+          SnackBar(content: Text(context.l10n.connCannotCloseWorkspace)),
         );
       }
       return;
@@ -874,20 +998,17 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Close Workspace?'),
-        content: Text(
-          'Close herdr workspace "${workspace.name}"? '
-          'All tabs and panes in this workspace will be terminated.',
-        ),
+        title: Text(context.l10n.connCloseWorkspaceTitle),
+        content: Text(context.l10n.connCloseWorkspaceMessage(workspace.name)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.connCancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
             style: TextButton.styleFrom(foregroundColor: DesignColors.error),
-            child: const Text('Close'),
+            child: Text(context.l10n.connClose),
           ),
         ],
       ),
@@ -911,7 +1032,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         _herdrSnapshot = snapshot;
         _isLoadingSessions = false;
       });
-      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+      ref
+          .read(activeSessionsProvider.notifier)
+          .updateSessionsFromDomain(
             connectionId: widget.connection.id,
             connectionName: widget.connection.name,
             host: widget.connection.host,
@@ -920,7 +1043,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Workspace ${workspace.name} closed')),
+          SnackBar(
+            content: Text(context.l10n.connWorkspaceClosed(workspace.name)),
+          ),
         );
       }
     } catch (e) {
@@ -935,7 +1060,10 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   }
 
   Widget _buildExpandedContent(
-      List<ActiveSession> activeSessions, bool isDark, ColorScheme colorScheme) {
+    List<ActiveSession> activeSessions,
+    bool isDark,
+    ColorScheme colorScheme,
+  ) {
     // Tmux/Herdr を共通 domain モデル（MultiplexerSession）で表示する。
     // T16（Q-05）: herdr も workspace 操作（New/Kill）を有効化するため
     // read-only 分岐は撤廃する。
@@ -964,7 +1092,11 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF15161C) : const Color(0xFFF8F9FA),
-        border: Border(top: BorderSide(color: isDark ? DesignColors.borderDark : DesignColors.borderLight)),
+        border: Border(
+          top: BorderSide(
+            color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+          ),
+        ),
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
       ),
       child: Column(
@@ -976,11 +1108,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
             child: Row(
               children: [
                 Text(
-                  'ACTIVE SESSIONS',
+                  context.l10n.connActiveSessions,
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                    color: isDark
+                        ? DesignColors.textMuted
+                        : DesignColors.textMutedLight,
                     letterSpacing: 1.5,
                   ),
                 ),
@@ -993,10 +1127,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                     iconSize: 16,
                     icon: Icon(
                       Icons.refresh,
-                      color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                      color: isDark
+                          ? DesignColors.textMuted
+                          : DesignColors.textMutedLight,
                     ),
                     onPressed: _isLoadingSessions ? null : _fetchSessions,
-                    tooltip: 'Reload sessions',
+                    tooltip: context.l10n.connReloadSessions,
                   ),
                 ),
               ],
@@ -1030,11 +1166,13 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 _backendKind == MultiplexerBackendKind.herdr
-                    ? 'No herdr workspaces found'
-                    : 'No tmux sessions found',
+                    ? context.l10n.connNoWorkspacesFound
+                    : context.l10n.connNoSessionsFound,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 12,
-                  color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                  color: isDark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                 ),
               ),
             )
@@ -1054,8 +1192,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               icon: const Icon(Icons.add, size: 16),
               label: Text(
                 _backendKind == MultiplexerBackendKind.herdr
-                    ? 'New Workspace'
-                    : 'New Session',
+                    ? context.l10n.connNewWorkspace
+                    : context.l10n.connNewSession,
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: colorScheme.primary.withValues(alpha: 0.8),
@@ -1068,7 +1206,10 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               ),
             ),
           ),
-          Divider(color: isDark ? DesignColors.borderDark : DesignColors.borderLight, height: 1),
+          Divider(
+            color: isDark ? DesignColors.borderDark : DesignColors.borderLight,
+            height: 1,
+          ),
           // Action Buttons
           Padding(
             padding: const EdgeInsets.all(12),
@@ -1078,9 +1219,11 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   child: TextButton.icon(
                     onPressed: widget.onEdit,
                     icon: const Icon(Icons.edit, size: 16),
-                    label: const Text('Edit'),
+                    label: Text(context.l10n.connEdit),
                     style: TextButton.styleFrom(
-                      foregroundColor: isDark ? DesignColors.textSecondary : DesignColors.textSecondaryLight,
+                      foregroundColor: isDark
+                          ? DesignColors.textSecondary
+                          : DesignColors.textSecondaryLight,
                     ),
                   ),
                 ),
@@ -1088,7 +1231,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                   child: TextButton.icon(
                     onPressed: widget.onDelete,
                     icon: const Icon(Icons.delete, size: 16),
-                    label: const Text('Delete'),
+                    label: Text(context.l10n.connDelete),
                     style: TextButton.styleFrom(
                       foregroundColor: DesignColors.error,
                     ),
@@ -1104,8 +1247,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
   Future<void> _showNewSessionDialog() async {
     // tmux: セッション名 / herdr: workspace 名。既存名で重複チェックする。
-    final existingSessionNames =
-        _backendKind == MultiplexerBackendKind.herdr
+    final existingSessionNames = _backendKind == MultiplexerBackendKind.herdr
         ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
               .map((s) => s.name)
               .toList()
@@ -1113,9 +1255,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
 
     final sessionName = await showDialog<String>(
       context: context,
-      builder: (context) => _NewSessionDialog(
-        existingSessionNames: existingSessionNames,
-      ),
+      builder: (context) =>
+          _NewSessionDialog(existingSessionNames: existingSessionNames),
     );
 
     if (sessionName == null || sessionName.isEmpty) return;
@@ -1148,7 +1289,9 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         _herdrSnapshot = snapshot;
         _isLoadingSessions = false;
       });
-      ref.read(activeSessionsProvider.notifier).updateSessionsFromDomain(
+      ref
+          .read(activeSessionsProvider.notifier)
+          .updateSessionsFromDomain(
             connectionId: widget.connection.id,
             connectionName: widget.connection.name,
             host: widget.connection.host,
@@ -1157,7 +1300,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Workspace $label created')),
+          SnackBar(content: Text(context.l10n.connWorkspaceCreated(label))),
         );
       }
     } catch (e) {
@@ -1188,7 +1331,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     // キーは sessionId ?? sessionName（ID 優先）で、同名ラベル（herdr の
     // "tmp" w3/w4）によるカウント混線を防ぐ。
     final liveWindowCounts = {
-      for (final a in activeSessions) a.sessionId ?? a.sessionName: a.windowCount,
+      for (final a in activeSessions)
+        a.sessionId ?? a.sessionName: a.windowCount,
     };
 
     return sessions.map((session) {
@@ -1206,7 +1350,11 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
               Icon(
                 Icons.terminal,
                 size: 16,
-                color: isAttached ? colorScheme.primary : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
+                color: isAttached
+                    ? colorScheme.primary
+                    : (isDark
+                          ? DesignColors.textMuted
+                          : DesignColors.textMutedLight),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1222,10 +1370,12 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       ),
                     ),
                     Text(
-                      '$windowCount windows',
+                      context.l10n.connWindowsCount(windowCount),
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 11,
-                        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                        color: isDark
+                            ? DesignColors.textMuted
+                            : DesignColors.textMutedLight,
                       ),
                     ),
                   ],
@@ -1236,23 +1386,41 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: isAttached
-                      ? (isDark ? DesignColors.connectedCardDark.withValues(alpha: 0.5) : DesignColors.connectedCardLight)
-                      : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                      ? (isDark
+                            ? DesignColors.connectedCardDark.withValues(
+                                alpha: 0.5,
+                              )
+                            : DesignColors.connectedCardLight)
+                      : (isDark
+                            ? DesignColors.borderDark
+                            : DesignColors.borderLight),
                   borderRadius: BorderRadius.circular(4),
                   border: Border.all(
                     color: isAttached
-                        ? (isDark ? DesignColors.connectedCardBorderDark.withValues(alpha: 0.7) : DesignColors.connectedCardBorderLight)
-                        : (isDark ? DesignColors.borderDark : DesignColors.borderLight),
+                        ? (isDark
+                              ? DesignColors.connectedCardBorderDark.withValues(
+                                  alpha: 0.7,
+                                )
+                              : DesignColors.connectedCardBorderLight)
+                        : (isDark
+                              ? DesignColors.borderDark
+                              : DesignColors.borderLight),
                   ),
                 ),
                 child: Text(
-                  isAttached ? 'Attached' : 'Detached',
+                  isAttached
+                      ? context.l10n.connAttached
+                      : context.l10n.connDetached,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                     color: isAttached
-                        ? (isDark ? DesignColors.connectedCardTextDark : DesignColors.connectedCardTextLight)
-                        : (isDark ? DesignColors.textMuted : DesignColors.textMutedLight),
+                        ? (isDark
+                              ? DesignColors.connectedCardTextDark
+                              : DesignColors.connectedCardTextLight)
+                        : (isDark
+                              ? DesignColors.textMuted
+                              : DesignColors.textMutedLight),
                   ),
                 ),
               ),
@@ -1269,8 +1437,8 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
                       ? null
                       : () => _killSession(session),
                   tooltip: _backendKind == MultiplexerBackendKind.herdr
-                      ? 'Kill workspace'
-                      : 'Kill session',
+                      ? context.l10n.connKillWorkspaceTooltip
+                      : context.l10n.connKillSessionTooltip,
                 ),
               ),
             ],
@@ -1278,6 +1446,25 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
         ),
       );
     }).toList();
+  }
+
+  /// 破損キー使用中のバッジ
+  Widget _buildDamagedKeyBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        context.l10n.connDamagedKeyBadge,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          fontSize: 9,
+          color: colorScheme.onErrorContainer,
+        ),
+      ),
+    );
   }
 }
 
@@ -1309,7 +1496,8 @@ class _SearchFieldState extends State<_SearchField> {
   @override
   void didUpdateWidget(covariant _SearchField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialValue != _controller.text && widget.initialValue.isEmpty) {
+    if (widget.initialValue != _controller.text &&
+        widget.initialValue.isEmpty) {
       _controller.clear();
     }
   }
@@ -1333,7 +1521,7 @@ class _SearchFieldState extends State<_SearchField> {
         color: colorScheme.onSurface,
       ),
       decoration: InputDecoration(
-        hintText: 'Search connections...',
+        hintText: context.l10n.connSearchHint,
         hintStyle: GoogleFonts.jetBrainsMono(
           fontSize: 12,
           color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
@@ -1356,7 +1544,9 @@ class _SearchFieldState extends State<_SearchField> {
                   _controller.clear();
                   widget.onClear();
                 },
-                color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+                color: isDark
+                    ? DesignColors.textMuted
+                    : DesignColors.textMutedLight,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               )
@@ -1437,13 +1627,13 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
 
   String? _validateSessionName(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter a session name';
+      return context.l10n.connSessionNameRequired;
     }
     if (!RegExp(r'^[a-zA-Z0-9_.-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, - _ . allowed';
+      return context.l10n.connSessionNameInvalidChars;
     }
     if (widget.existingSessionNames.contains(value)) {
-      return 'Session "$value" already exists';
+      return context.l10n.connSessionNameExists(value);
     }
     return null;
   }
@@ -1460,10 +1650,8 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
     final colorScheme = Theme.of(context).colorScheme;
     return AlertDialog(
       title: Text(
-        'New Session',
-        style: GoogleFonts.spaceGrotesk(
-          fontWeight: FontWeight.w700,
-        ),
+        context.l10n.connNewSession,
+        style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
       ),
       content: Form(
         key: _formKey,
@@ -1471,14 +1659,18 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
           controller: _nameController,
           autofocus: true,
           decoration: InputDecoration(
-            labelText: 'Session Name',
+            labelText: context.l10n.connSessionNameLabel,
             hintText: 'session-1',
             hintStyle: GoogleFonts.jetBrainsMono(
               fontSize: 14,
-              color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
+              color: isDark
+                  ? DesignColors.textMuted
+                  : DesignColors.textMutedLight,
             ),
             filled: true,
-            fillColor: isDark ? DesignColors.inputDark : DesignColors.inputLight,
+            fillColor: isDark
+                ? DesignColors.inputDark
+                : DesignColors.inputLight,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -1504,12 +1696,9 @@ class _NewSessionDialogState extends State<_NewSessionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.connCancel),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Create'),
-        ),
+        FilledButton(onPressed: _submit, child: Text(context.l10n.connCreate)),
       ],
     );
   }

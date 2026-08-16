@@ -1,3 +1,4 @@
+import 'package:flutter_muxpod/services/command/command_request.dart';
 import 'package:flutter_muxpod/services/connection_error.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_connection_state.dart';
 import 'package:flutter_muxpod/services/tmux/ssh_tmux_command_executor.dart';
@@ -44,7 +45,14 @@ void main() {
     });
 
     test('detects tmux path and resolves commands with it', () async {
-      final output = await executor.exec(TmuxCommands.version());
+      final result = await executor.execute(
+        CommandRequest(
+          command: TmuxCommands.version(),
+          transport: CommandTransportPreference.ephemeralOnly,
+          output: CommandOutputRequirement.outputOnly,
+        ),
+      );
+      final output = result.primaryOutput;
 
       expect(output, 'tmux 3.2a');
       expect(TmuxVersionInfo.parse(output), isNotNull);
@@ -153,7 +161,13 @@ void main() {
       final retryExecutor = SshTmuxCommandExecutor(client);
 
       await expectLater(
-        retryExecutor.exec(TmuxCommands.version()),
+        retryExecutor.execute(
+          CommandRequest(
+            command: TmuxCommands.version(),
+            transport: CommandTransportPreference.ephemeralOnly,
+            output: CommandOutputRequirement.outputOnly,
+          ),
+        ),
         throwsA(isA<SshConnectionError>()),
       );
 
@@ -161,8 +175,14 @@ void main() {
       client.execExitCodes = {"test -x '/custom/tmux'": 0};
       client.execOutputs = {'/custom/tmux -V': 'tmux 3.2a'};
 
-      final output = await retryExecutor.exec(TmuxCommands.version());
-      expect(output, 'tmux 3.2a');
+      final result = await retryExecutor.execute(
+        CommandRequest(
+          command: TmuxCommands.version(),
+          transport: CommandTransportPreference.ephemeralOnly,
+          output: CommandOutputRequirement.outputOnly,
+        ),
+      );
+      expect(result.primaryOutput, 'tmux 3.2a');
       expect(retryExecutor.tmuxPath, '/custom/tmux');
     });
 

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 
 import '../services/settings_migration.dart';
+import '../l10n/l10n_lookup.dart';
 
 /// アプリ設定
 class AppSettings {
@@ -47,6 +48,9 @@ class AppSettings {
   // inventory: SETTINGS-INVERT-SCROLL-001
   final bool invertScrollSendDirection;
 
+  /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
+  final String language;
+
   // --- キーオーバーレイ設定 ---
   /// キーオーバーレイ全体ON/OFF
   final bool showKeyOverlay;
@@ -70,7 +74,8 @@ class AppSettings {
   final String imageRemotePath;
   final String imageOutputFormat;
   final int imageJpegQuality;
-  final String imageResizePreset; // 'original'/'small'/'medium'/'large'/'custom'
+  final String
+  imageResizePreset; // 'original'/'small'/'medium'/'large'/'custom'
   final int imageMaxWidth;
   final int imageMaxHeight;
   final String imagePathFormat;
@@ -98,6 +103,7 @@ class AppSettings {
     this.scrollSendInput = 'wheel',
     // inventory: SETTINGS-INVERT-SCROLL-002
     this.invertScrollSendDirection = false,
+    this.language = 'system',
     this.showKeyOverlay = true,
     this.keyOverlayModifier = true,
     this.keyOverlaySpecial = true,
@@ -139,6 +145,7 @@ class AppSettings {
     String? scrollSendInput,
     // inventory: SETTINGS-INVERT-SCROLL-003
     bool? invertScrollSendDirection,
+    String? language,
     bool? showKeyOverlay,
     bool? keyOverlayModifier,
     bool? keyOverlaySpecial,
@@ -173,7 +180,9 @@ class AppSettings {
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
       scrollSendInput: scrollSendInput ?? this.scrollSendInput,
-      invertScrollSendDirection: invertScrollSendDirection ?? this.invertScrollSendDirection,
+      invertScrollSendDirection:
+          invertScrollSendDirection ?? this.invertScrollSendDirection,
+      language: language ?? this.language,
       showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
       keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
       keyOverlaySpecial: keyOverlaySpecial ?? this.keyOverlaySpecial,
@@ -214,7 +223,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   // inventory: SETTINGS-SCROLL-SEND-004
   static const String _scrollSendInputKey = 'settings_scroll_send_input';
   // inventory: SETTINGS-INVERT-SCROLL-004
-  static const String _invertScrollSendDirectionKey = 'settings_invert_scroll_send_direction';
+  static const String _invertScrollSendDirectionKey =
+      'settings_invert_scroll_send_direction';
+  static const String _languageKey = 'settings_language';
   static const String _imageRemotePathKey = 'settings_image_remote_path';
   static const String _imageOutputFormatKey = 'settings_image_output_format';
   static const String _imageJpegQualityKey = 'settings_image_jpeg_quality';
@@ -223,7 +234,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _imageMaxHeightKey = 'settings_image_max_height';
   static const String _imagePathFormatKey = 'settings_image_path_format';
   static const String _imageAutoEnterKey = 'settings_image_auto_enter';
-  static const String _imageBracketedPasteKey = 'settings_image_bracketed_paste';
+  static const String _imageBracketedPasteKey =
+      'settings_image_bracketed_paste';
   static const String _showKeyOverlayKey = 'settings_show_key_overlay';
   static const String _keyOverlayModifierKey = 'settings_key_overlay_modifier';
   static const String _keyOverlaySpecialKey = 'settings_key_overlay_special';
@@ -240,6 +252,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await SettingsMigrationRunner.run(prefs);
+
+    // コンテナ破棄後の state 更新を防止する (テスト等で async ギャップ後に破棄されるケース)。
+    if (!ref.mounted) return;
 
     state = AppSettings(
       darkMode: prefs.getBool(_darkModeKey) ?? true,
@@ -261,13 +276,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
       // inventory: SETTINGS-SCROLL-SEND-005
       scrollSendInput: prefs.getString(_scrollSendInputKey) ?? 'wheel',
       // inventory: SETTINGS-INVERT-SCROLL-005
-      invertScrollSendDirection: prefs.getBool(_invertScrollSendDirectionKey) ?? false,
+      invertScrollSendDirection:
+          prefs.getBool(_invertScrollSendDirectionKey) ?? false,
+      language: prefs.getString(_languageKey) ?? 'system',
       showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
       keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
       keyOverlaySpecial: prefs.getBool(_keyOverlaySpecialKey) ?? true,
       keyOverlayArrow: prefs.getBool(_keyOverlayArrowKey) ?? true,
       keyOverlayShortcut: prefs.getBool(_keyOverlayShortcutKey) ?? true,
-      keyOverlayPosition: prefs.getString(_keyOverlayPositionKey) ?? 'aboveKeyboard',
+      keyOverlayPosition:
+          prefs.getString(_keyOverlayPositionKey) ?? 'aboveKeyboard',
       imageRemotePath: prefs.getString(_imageRemotePathKey) ?? '/tmp/muxpod/',
       imageOutputFormat: prefs.getString(_imageOutputFormatKey) ?? 'original',
       imageJpegQuality: prefs.getInt(_imageJpegQualityKey) ?? 85,
@@ -278,6 +296,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
     );
+
+    // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
+    setCachedLanguage(state.language);
 
     await _applyScreenOrientation(state.screenOrientation);
     await _applyRefreshRate(state.refreshRate);
@@ -369,7 +390,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
       default:
         orientations = const <DeviceOrientation>[]; // すべて許可
     }
-    await SystemChrome.setPreferredOrientations(orientations);
+    // テスト等、binding が未初期化の環境では platform channel が利用できないため無視する。
+    try {
+      await SystemChrome.setPreferredOrientations(orientations);
+    } catch (_) {
+      // no-op: 向き設定の適用に失敗しても設定値自体は保持される
+    }
   }
 
   /// 最大リフレッシュレートを設定（即座に適用）
@@ -404,8 +430,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       bool ok(DisplayMode m) => m.refreshRate > 0 && m.refreshRate <= cap + 0.5;
       // まず同一解像度で上限以下、無ければ全体から上限以下を選ぶ
       var pool = modes
-          .where((m) =>
-              m.width == active.width && m.height == active.height && ok(m))
+          .where(
+            (m) =>
+                m.width == active.width && m.height == active.height && ok(m),
+          )
           .toList();
       if (pool.isEmpty) {
         pool = modes.where(ok).toList();
@@ -473,6 +501,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setInvertScrollSendDirection(bool value) async {
     state = state.copyWith(invertScrollSendDirection: value);
     await _saveSetting(_invertScrollSendDirectionKey, value);
+  }
+
+  /// 表示言語を設定（'system' / 'ja' / 'en'）
+  Future<void> setLanguage(String value) async {
+    state = state.copyWith(language: value);
+    setCachedLanguage(value);
+    await _saveSetting(_languageKey, value);
   }
 
   // --- キーオーバーレイ設定のsetter ---

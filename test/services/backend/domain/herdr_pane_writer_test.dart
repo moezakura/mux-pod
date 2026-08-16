@@ -2,6 +2,8 @@ import 'package:flutter_muxpod/services/backend/backend_adapter.dart';
 import 'package:flutter_muxpod/services/backend/domain/herdr_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -54,14 +56,8 @@ void main() {
     test('mapSpecialKey: PaneKeyMap の全キー送信経路を返す（Q-07）', () {
       expect(writer.mapSpecialKey('Enter'), isA<HerdrKeyRouteSendKeys>());
       expect(writer.mapSpecialKey('F5'), isA<HerdrKeyRouteSendKeys>());
-      expect(
-        writer.mapSpecialKey('Home'),
-        isA<HerdrKeyRouteSendTextEscape>(),
-      );
-      expect(
-        writer.mapSpecialKey('C-d'),
-        isA<HerdrKeyRouteSendTextControl>(),
-      );
+      expect(writer.mapSpecialKey('Home'), isA<HerdrKeyRouteSendTextEscape>());
+      expect(writer.mapSpecialKey('C-d'), isA<HerdrKeyRouteSendTextControl>());
     });
 
     test('sendText: send-text コマンドへ委譲する', () async {
@@ -77,13 +73,55 @@ void main() {
     test('sendKey: 拒否キーは send-text でエスケープシーケンスを送信する', () async {
       await writer.sendKey('w1:p1', 'Home');
       expect(backend.commands.single, contains('herdr pane send-text w1:p1'));
-      expect(backend.commands.single, contains('\x1b[H'));
+      // エスケープシーケンスは ANSI-C quoting（$'...'）で送る
+      expect(backend.commands.single, contains(r'\x1b[H'));
     });
 
     test('sendKey: 制御文字は send-text で制御文字そのものを送信する', () async {
       await writer.sendKey('w1:p1', 'C-d');
       expect(backend.commands.single, contains('herdr pane send-text w1:p1'));
-      expect(backend.commands.single.codeUnits, contains(0x04));
+      // 制御文字は ANSI-C quoting（$'...'）の \x04 リテラルで送る
+      expect(backend.commands.single, contains(r'\x04'));
+    });
+
+    test('sendText: 入力シェルがあれば fire-and-forget（sendNoWait）で送信される'
+        '（バグ2: 直列化キューから除外）', () async {
+      final sent = <String>[];
+      backend.fakeInputTransport = _FakeInputTransport(
+        onSend: sent.add,
+        started: true,
+      );
+
+      await writer.sendText('w1:p1', 'hello');
+
+      // exec チャネル（commands）には乗らず、入力シェルへ即時送信される。
+      expect(
+        backend.commands,
+        isEmpty,
+        reason: 'バグ2: 入力シェルがある場合 sendText は exec を呼ばない',
+      );
+      expect(sent.single, 'herdr pane send-text w1:p1 \'hello\'');
+    });
+
+    test('sendKey: 入力シェルがあれば受理キーも fire-and-forget（sendNoWait）', () async {
+      final sent = <String>[];
+      backend.fakeInputTransport = _FakeInputTransport(
+        onSend: sent.add,
+        started: true,
+      );
+
+      await writer.sendKey('w1:p1', 'Enter');
+
+      expect(backend.commands, isEmpty);
+      expect(sent.single, 'herdr pane send-keys w1:p1 Enter');
+    });
+
+    test('sendText: 入力シェルが無ければ exec チャネルにフォールバックする', () async {
+      backend.fakeInputTransport = null;
+
+      await writer.sendText('w1:p1', 'hello');
+
+      expect(backend.commands.single, 'herdr pane send-text w1:p1 \'hello\'');
     });
 
     test('focusPaneDirection: pane focus へ委譲する', () async {
@@ -94,33 +132,30 @@ void main() {
       );
     });
 
-    test(
-      'focusPaneDirection: changed:false（no_neighbor・隣接なし）は '
-      'PaneOperationNoopException（S4/T20）',
-      () async {
-        // T0 実測 5-b: focus の soft 失敗（changed:false + reason:no_neighbor）。
-        backend.execWithExitCodeResult = (
-          stdout:
-              '{"id":"cli:pane:focus","result":{"focus":{'
-              '"changed":false,"focused_pane_id":"w1:p1",'
-              '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
-              '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
-              '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false},'
-              '"reason":"no_neighbor","source_pane_id":"w1:p1"},'
-              '"type":"pane_focus_direction"}}',
-          stderr: '',
-          exitCode: 0,
-        );
-        await expectLater(
-          writer.focusPaneDirection('w1:p1', 'right'),
-          throwsA(
-            isA<PaneOperationNoopException>()
-                .having((e) => e.operation, 'operation', 'focusPaneDirection')
-                .having((e) => e.reason, 'reason', 'no_neighbor'),
-          ),
-        );
-      },
-    );
+    test('focusPaneDirection: changed:false（no_neighbor・隣接なし）は '
+        'PaneOperationNoopException（S4/T20）', () async {
+      // T0 実測 5-b: focus の soft 失敗（changed:false + reason:no_neighbor）。
+      backend.execWithExitCodeResult = (
+        stdout:
+            '{"id":"cli:pane:focus","result":{"focus":{'
+            '"changed":false,"focused_pane_id":"w1:p1",'
+            '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
+            '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
+            '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false},'
+            '"reason":"no_neighbor","source_pane_id":"w1:p1"},'
+            '"type":"pane_focus_direction"}}',
+        stderr: '',
+        exitCode: 0,
+      );
+      await expectLater(
+        writer.focusPaneDirection('w1:p1', 'right'),
+        throwsA(
+          isA<PaneOperationNoopException>()
+              .having((e) => e.operation, 'operation', 'focusPaneDirection')
+              .having((e) => e.reason, 'reason', 'no_neighbor'),
+        ),
+      );
+    });
 
     test('focusPaneDirection: changed:true（layout 応答）は例外なし', () async {
       // T0 実測 5-b の成功系（reason なし・layout 込み）→ soft 失敗にならない。
@@ -159,10 +194,7 @@ void main() {
 
     test('renamePane: pane rename へ委譲する', () async {
       await writer.renamePane('w1:p1', 'new label');
-      expect(
-        backend.commands.single,
-        'herdr pane rename w1:p1 \'new label\'',
-      );
+      expect(backend.commands.single, 'herdr pane rename w1:p1 \'new label\'');
     });
 
     test('zoomPane: pane zoom へ委譲する（mode 付き）', () async {
@@ -178,65 +210,96 @@ void main() {
       );
     });
 
-    test('resizePane: changed:false（分割境界外）は PaneOperationNoopException', () async {
-      // 応答 layout なし・changed:false（T0 実測 4-b の分割境界外）を返す。
-      backend.execWithExitCodeResult = (
-        stdout:
-            '{"result":{"resize":{"changed":false,"reason":"unchanged",'
-            '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
-            '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
-            '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}},'
-            '"type":"pane_resize"}}',
-        stderr: '',
-        exitCode: 0,
-      );
-      await expectLater(
-        writer.resizePane('w1:p1', 'right', 0.1),
-        throwsA(
-          isA<PaneOperationNoopException>()
-              .having((e) => e.operation, 'operation', 'resizePane')
-              .having((e) => e.reason, 'reason', 'unchanged'),
-        ),
-      );
-    });
+    test(
+      'resizePane: changed:false（分割境界外）は PaneOperationNoopException',
+      () async {
+        // 応答 layout なし・changed:false（T0 実測 4-b の分割境界外）を返す。
+        backend.execWithExitCodeResult = (
+          stdout:
+              '{"result":{"resize":{"changed":false,"reason":"unchanged",'
+              '"layout":{"area":{"x":0,"y":0,"width":80,"height":24},'
+              '"focused_pane_id":"w1:p1","panes":[],"splits":[],'
+              '"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}},'
+              '"type":"pane_resize"}}',
+          stderr: '',
+          exitCode: 0,
+        );
+        await expectLater(
+          writer.resizePane('w1:p1', 'right', 0.1),
+          throwsA(
+            isA<PaneOperationNoopException>()
+                .having((e) => e.operation, 'operation', 'resizePane')
+                .having((e) => e.reason, 'reason', 'unchanged'),
+          ),
+        );
+      },
+    );
 
     test('pasteText: send-text で複数行を貼り付ける（Q-06）', () async {
       await writer.pasteText('w1:p1', 'a\nb');
       expect(
         backend.commands.single,
-        contains("herdr pane send-text w1:p1 'a"),
+        contains(r"herdr pane send-text w1:p1 $'a\x0ab'"),
       );
     });
 
     test('sendScroll: kind=wheel は SGR を send-text で完全一致送信する', () async {
-      await writer.sendScroll('w1:p1', kind: ScrollSendKind.wheel, up: true, ticks: 1);
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.wheel,
+        up: true,
+        ticks: 1,
+      );
       expect(
         backend.commands.single,
-        "herdr pane send-text w1:p1 '\x1b[<64;1;1M'",
+        r"herdr pane send-text w1:p1 $'\x1b[<64;1;1M'",
       );
     });
 
     test('sendScroll: kind=wheel 下スクロールは ESC[<65;1;1M を ticks 個連結', () async {
-      await writer.sendScroll('w1:p1', kind: ScrollSendKind.wheel, up: false, ticks: 8);
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.wheel,
+        up: false,
+        ticks: 8,
+      );
       expect(
         backend.commands.single,
         "herdr pane send-text w1:p1 "
-        "'\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M"
-        "\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M'",
+        r"$'\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M"
+        r"\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M'",
       );
     });
 
     test('sendScroll: kind=key は PgUp/PgDn を send-text で完全一致送信する', () async {
-      await writer.sendScroll('w1:p1', kind: ScrollSendKind.key, up: true, ticks: 1);
-      await writer.sendScroll('w1:p1', kind: ScrollSendKind.key, up: false, ticks: 1);
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.key,
+        up: true,
+        ticks: 1,
+      );
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.key,
+        up: false,
+        ticks: 1,
+      );
       expect(backend.commands, hasLength(2));
-      expect(backend.commands[0], "herdr pane send-text w1:p1 '\x1b[5~'");
-      expect(backend.commands[1], "herdr pane send-text w1:p1 '\x1b[6~'");
+      expect(backend.commands[0], r"herdr pane send-text w1:p1 $'\x1b[5~'");
+      expect(backend.commands[1], r"herdr pane send-text w1:p1 $'\x1b[6~'");
     });
 
     test('createTab: tab create へ委譲する（Q-05）', () async {
       await writer.createTab('w1');
       expect(backend.commands.single, 'herdr tab create --workspace w1');
+    });
+
+    test('createTab: label と focus を tab create へ透過する（Q-05）', () async {
+      await writer.createTab('w1', label: 'logs', focus: true);
+      expect(
+        backend.commands.single,
+        "herdr tab create --workspace w1 --label 'logs' --focus",
+      );
     });
 
     test('closeTab: tab close へ委譲する（Q-05）', () async {
@@ -292,8 +355,11 @@ void main() {
       expect(
         () => writer.imageTransfer('/tmp/a.png'),
         throwsA(
-          isA<UnsupportedPaneOperationException>()
-              .having((e) => e.operation, 'operation', 'imageTransfer'),
+          isA<UnsupportedPaneOperationException>().having(
+            (e) => e.operation,
+            'operation',
+            'imageTransfer',
+          ),
         ),
       );
     });
@@ -303,6 +369,9 @@ void main() {
 /// 記録用の fake [BackendAdapter]。`_execMutation` は rc=0 / stdout 空で成功する。
 class _FakeBackend implements BackendAdapter {
   final List<String> commands = [];
+
+  /// 入力専用の持続的シェル（fire-and-forget 送信の検証用）。
+  BackendInputTransport? fakeInputTransport;
 
   /// この値が null 以外なら `execWithExitCode` がこの結果を返す
   /// （`changed:false` 応答のテスト用）。
@@ -315,7 +384,7 @@ class _FakeBackend implements BackendAdapter {
   String? get userExecutablePath => null;
 
   @override
-  BackendInputTransport? get inputTransport => null;
+  BackendInputTransport? get inputTransport => fakeInputTransport;
 
   @override
   void Function()? get onInputTransportRebooted => null;
@@ -327,26 +396,33 @@ class _FakeBackend implements BackendAdapter {
   Future<void> restartInputTransport() async {}
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async {
-    commands.add(command);
-    return '';
-  }
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    commands.add(command);
-    return execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
+  Future<CommandResult> execute(CommandRequest request) async {
+    commands.add(request.command);
+    final result =
+        execWithExitCodeResult ?? (stdout: '', stderr: '', exitCode: 0);
+    return CommandResult(
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: CommandTransport.ephemeral,
+    );
   }
 
   @override
   void write(String data) {}
+}
+
+/// 記録用の fake [BackendInputTransport]。
+class _FakeInputTransport implements BackendInputTransport {
+  _FakeInputTransport({required this.onSend, required this.started});
+
+  final void Function(String command) onSend;
+  final bool started;
+
+  @override
+  bool get isStarted => started;
+
+  @override
+  void sendNoWait(String data) => onSend(data);
 }

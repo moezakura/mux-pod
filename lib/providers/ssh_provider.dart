@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/app_localizations.dart';
+import '../l10n/l10n_lookup.dart';
 import '../services/background/foreground_task_service.dart';
 import '../services/network/network_monitor.dart';
 import '../services/ssh/ssh_client.dart';
@@ -73,7 +75,11 @@ class SshState {
 /// SSH接続を管理するNotifier
 class SshNotifier extends Notifier<SshState> {
   SshClient? _client;
-  final SshForegroundTaskService _foregroundService = SshForegroundTaskService();
+  final SshForegroundTaskService _foregroundService =
+      SshForegroundTaskService();
+
+  /// 設定言語から解決したローカライズ文字列。
+  AppLocalizations get _l10n => lookupL10n();
 
   // 再接続用のキャッシュ
   Connection? _lastConnection;
@@ -95,6 +101,11 @@ class SshNotifier extends Notifier<SshState> {
 
   // 再接続タイマー
   Timer? _reconnectTimer;
+
+  // 再接続の single-flight（Codex B3）: timer callback と reconnectNow の同時
+  // 実行を防ぎ、進行中の結果を共有する。
+  bool _reconnectInFlight = false;
+  Completer<bool>? _reconnectInFlightResult;
 
   // 切断検知コールバック（外部から設定可能）
   void Function()? onDisconnectDetected;
@@ -121,7 +132,9 @@ class SshNotifier extends Notifier<SshState> {
   /// ネットワーク状態の監視を開始
   void _startNetworkMonitoring() {
     final monitor = ref.read(networkMonitorProvider);
-    _networkStatusSubscription = monitor.statusStream.listen(_onNetworkStatusChanged);
+    _networkStatusSubscription = monitor.statusStream.listen(
+      _onNetworkStatusChanged,
+    );
   }
 
   /// ネットワーク状態変化のハンドラ
@@ -188,13 +201,12 @@ class SshNotifier extends Notifier<SshState> {
         port: connection.port,
         username: connection.username,
         options: options,
+        l10n: _l10n,
       );
 
       await _client!.startShell();
 
-      state = state.copyWith(
-        connectionState: SshConnectionState.connected,
-      );
+      state = state.copyWith(connectionState: SshConnectionState.connected);
 
       // 最終接続日時を更新
       ref.read(connectionsProvider.notifier).updateLastConnected(connection.id);
@@ -203,6 +215,7 @@ class SshNotifier extends Notifier<SshState> {
       await _foregroundService.startService(
         connectionName: connection.name,
         host: connection.host,
+        l10n: _l10n,
       );
     } on SshConnectionError catch (e) {
       state = state.copyWith(
@@ -231,7 +244,10 @@ class SshNotifier extends Notifier<SshState> {
   /// SSH接続を確立（シェルなし - tmuxコマンド方式用）
   ///
   /// exec()のみ使用するため、シェルは起動しない。
-  Future<void> connectWithoutShell(Connection connection, SshConnectOptions options) async {
+  Future<void> connectWithoutShell(
+    Connection connection,
+    SshConnectOptions options,
+  ) async {
     // 再接続用にキャッシュ
     _lastConnection = connection;
     _lastOptions = options;
@@ -260,6 +276,7 @@ class SshNotifier extends Notifier<SshState> {
         port: connection.port,
         username: connection.username,
         options: options,
+        l10n: _l10n,
       );
 
       // シェルは起動しない（exec専用）
@@ -277,6 +294,7 @@ class SshNotifier extends Notifier<SshState> {
       await _foregroundService.startService(
         connectionName: connection.name,
         host: connection.host,
+        l10n: _l10n,
       );
     } on SshConnectionError catch (e) {
       state = state.copyWith(
@@ -309,11 +327,13 @@ class SshNotifier extends Notifier<SshState> {
     // 接続中の状態から切断/エラーになった場合
     if (state.isConnected &&
         (newState == SshConnectionState.error ||
-         newState == SshConnectionState.disconnected)) {
+            newState == SshConnectionState.disconnected)) {
       // 状態を更新
       state = state.copyWith(
         connectionState: newState,
-        error: newState == SshConnectionState.error ? 'Connection lost' : null,
+        error: newState == SshConnectionState.error
+            ? _l10n.sshConnectionLost
+            : null,
       );
 
       // 切断検知コールバックを呼び出し
@@ -340,7 +360,7 @@ class SshNotifier extends Notifier<SshState> {
       state = state.copyWith(
         isReconnecting: true,
         isPaused: true,
-        error: 'Waiting for network...',
+        error: _l10n.termWaitingForNetwork,
       );
       return false;
     }
@@ -351,7 +371,7 @@ class SshNotifier extends Notifier<SshState> {
     if (_maxReconnectAttempts > 0 && attempt >= _maxReconnectAttempts) {
       state = state.copyWith(
         isReconnecting: false,
-        error: 'Max reconnect attempts reached',
+        error: _l10n.sshMaxReconnectAttemptsReached,
       );
       return false;
     }
@@ -381,24 +401,37 @@ class SshNotifier extends Notifier<SshState> {
   }
 
   /// 実際の再接続処理
+  ///
+  /// **single-flight（Codex B3）**: timer callback（[reconnect]）と
+  /// [reconnectNow] の両方から同時に呼ばれ得るため、実行中は重複実行せず
+  /// 進行中の結果を共有する（古い完了結果による state 上書きも発生しない）。
   Future<bool> _doReconnect() async {
-    if (_lastConnection == null || _lastOptions == null) {
-      return false;
+    if (_reconnectInFlight) {
+      return _reconnectInFlightResult?.future ?? false;
     }
-
-    // ネットワークがオフラインの場合は中断
-    if (!state.isNetworkAvailable) {
-      state = state.copyWith(isPaused: true);
-      return false;
-    }
-
+    _reconnectInFlight = true;
+    final completer = Completer<bool>();
+    _reconnectInFlightResult = completer;
     try {
+      if (_lastConnection == null || _lastOptions == null) {
+        completer.complete(false);
+        return false;
+      }
+
+      // ネットワークがオフラインの場合は中断
+      if (!state.isNetworkAvailable) {
+        state = state.copyWith(isPaused: true);
+        completer.complete(false);
+        return false;
+      }
+
       // 既存の接続状態監視をキャンセル
       await _connectionStateSubscription?.cancel();
       _connectionStateSubscription = null;
 
-      // 古いクライアントをクリーンアップ
-      _client?.dispose();
+      // 古いクライアントをクリーンアップ（await: 旧 managed PTY / TUI が
+      // 閉じる前に新クライアントで起動しないことを保証・Codex B3）。
+      await _client?.dispose();
       _client = SshClient();
 
       // 接続状態のストリームを監視（切断検知の高速化）
@@ -411,6 +444,7 @@ class SshNotifier extends Notifier<SshState> {
         port: _lastConnection!.port,
         username: _lastConnection!.username,
         options: _lastOptions!,
+        l10n: _l10n,
       );
 
       state = state.copyWith(
@@ -425,31 +459,34 @@ class SshNotifier extends Notifier<SshState> {
       // 再接続成功コールバック
       onReconnectSuccess?.call();
 
+      completer.complete(true);
       return true;
     } catch (e) {
       // 再接続失敗、次の試行をスケジュール
       state = state.copyWith(
         connectionState: SshConnectionState.error,
-        error: 'Reconnect failed: $e',
+        error: _l10n.sshReconnectFailed(e.toString()),
       );
 
       // 自動で次の試行をスケジュール（無制限リトライの場合）
-      if (_maxReconnectAttempts == 0 || state.reconnectAttempt < _maxReconnectAttempts) {
+      if (_maxReconnectAttempts == 0 ||
+          state.reconnectAttempt < _maxReconnectAttempts) {
         // 非同期で次の再接続をスケジュール
         Future.microtask(() => reconnect());
       }
 
+      completer.complete(false);
       return false;
+    } finally {
+      _reconnectInFlight = false;
+      _reconnectInFlightResult = null;
     }
   }
 
   /// 今すぐ再接続を試みる（ユーザー操作用）
   Future<bool> reconnectNow() async {
     _reconnectTimer?.cancel();
-    state = state.copyWith(
-      reconnectAttempt: 0,
-      isPaused: false,
-    );
+    state = state.copyWith(reconnectAttempt: 0, isPaused: false);
     return _doReconnect();
   }
 

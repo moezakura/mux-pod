@@ -50,7 +50,7 @@ void main() {
         final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
         client.execOutputs = {
           '-S -100000': '${List.generate(160, (i) => 'deep-$i').join('\n')}\n',
-          'capture-pane': _pollSnapshot('live', 100),
+          'capture-pane': _pollSnapshot('live', 300),
         };
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump();

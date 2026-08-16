@@ -48,5 +48,4 @@ double zoomedFontSize({
   required double zoomFactor,
   required double minFontSize,
   double maxFontSize = kMaxTerminalFontSize,
-}) =>
-    (baseFontSize * zoomFactor).clamp(minFontSize, maxFontSize).toDouble();
+}) => (baseFontSize * zoomFactor).clamp(minFontSize, maxFontSize).toDouble();

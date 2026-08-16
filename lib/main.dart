@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
+import 'package:flutter_muxpod/l10n/app_localizations.dart';
+import 'package:flutter_muxpod/l10n/l10n_ext.dart';
 import 'package:flutter_muxpod/screens/home_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/deep_link/deep_link_service.dart';
@@ -24,16 +27,14 @@ void main() {
   LicenseService.registerLicenses();
 
   // ステータスバーを透明に
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
-
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
     ),
   );
+
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerStatefulWidget {
@@ -98,13 +99,17 @@ class _MyAppState extends ConsumerState<MyApp> {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
 
-    final connection = ref.read(connectionsProvider.notifier)
-        .findByDeepLinkIdOrName(data.server!);
+    final server = data.server;
+    if (server == null) return;
+
+    final connection = ref
+        .read(connectionsProvider.notifier)
+        .findByDeepLinkIdOrName(server);
 
     if (connection == null) {
       ScaffoldMessenger.maybeOf(navigator.context)?.showSnackBar(
         SnackBar(
-          content: Text('Server not found: ${data.server}'),
+          content: Text(navigator.context.l10n.appServerNotFound(server)),
           backgroundColor: Colors.red,
         ),
       );
@@ -144,12 +149,31 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
 
+    // settings の言語設定解決後に Intl.defaultLocale を設定
+    // （'system' は端末ロケールの languageCode へ解決）
+    Intl.defaultLocale = settings.language == 'system'
+        ? PlatformDispatcher.instance.locale.languageCode
+        : settings.language;
+
     return MaterialApp(
       navigatorKey: _navigatorKey,
       title: 'MuxPod',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
+      // 言語設定: 'system' なら端末のロケールに追従、それ以外は明示指定
+      locale: settings.language == 'system' ? null : Locale(settings.language),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      // languageCode が supportedLocales に一致すればそれを採用、無ければ en
+      localeResolutionCallback: (locale, supportedLocales) {
+        for (final supported in supportedLocales) {
+          if (supported.languageCode == locale?.languageCode) {
+            return supported;
+          }
+        }
+        return const Locale('en');
+      },
       home: const HomeScreen(),
       debugShowCheckedModeBanner: false,
     );

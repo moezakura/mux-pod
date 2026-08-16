@@ -1,0 +1,4 @@
+/* Info.plist キーのローカライズ版 (日本語) */
+"NSFaceIDUsageDescription" = "SSH接続情報への安全なアクセスのためにFace IDを使用します";
+"NSPhotoLibraryUsageDescription" = "画像をリモートサーバーに転送するためにフォトライブラリを使用します";
+"NSCameraUsageDescription" = "撮影した画像をリモートサーバーに転送するためにカメラを使用します";

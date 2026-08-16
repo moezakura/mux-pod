@@ -170,7 +170,12 @@ void main() {
       workspaces: [HerdrWorkspace(id: 'w1', label: 'ws', tabCount: 1)],
       tabs: [HerdrTab(id: 'w1:t1', workspaceId: 'w1', number: 1, paneCount: 2)],
       panes: [
-        HerdrPane(id: 'w1:p1', workspaceId: 'w1', tabId: 'w1:t1', focused: true),
+        HerdrPane(
+          id: 'w1:p1',
+          workspaceId: 'w1',
+          tabId: 'w1:t1',
+          focused: true,
+        ),
         HerdrPane(id: 'w1:p2', workspaceId: 'w1', tabId: 'w1:t1'),
       ],
       layouts: [layout],
@@ -205,7 +210,13 @@ void main() {
         ],
         panes: [HerdrPane(id: 'w1:p9', workspaceId: 'w1', tabId: 'w1:t1')],
       );
-      final pane = noRects.toDomainSessions().single.windows.single.panes.single;
+      final pane = noRects
+          .toDomainSessions()
+          .single
+          .windows
+          .single
+          .panes
+          .single;
       expect(pane.left, 0);
       expect(pane.top, 0);
       expect(pane.width, 0);

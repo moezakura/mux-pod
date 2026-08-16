@@ -1,4 +1,3 @@
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../services/terminal/font_calculator.dart';
@@ -73,8 +72,10 @@ class TerminalDisplayState {
       screenWidth: screenWidth ?? this.screenWidth,
       screenHeight: screenHeight ?? this.screenHeight,
       calculatedFontSize: calculatedFontSize ?? this.calculatedFontSize,
-      needsHorizontalScroll: needsHorizontalScroll ?? this.needsHorizontalScroll,
-      horizontalScrollOffset: horizontalScrollOffset ?? this.horizontalScrollOffset,
+      needsHorizontalScroll:
+          needsHorizontalScroll ?? this.needsHorizontalScroll,
+      horizontalScrollOffset:
+          horizontalScrollOffset ?? this.horizontalScrollOffset,
     );
   }
 
@@ -95,20 +96,19 @@ class TerminalDisplayState {
   @override
   // inventory: LEGACY-0192
   int get hashCode => Object.hash(
-        paneWidth,
-        paneHeight,
-        screenWidth,
-        screenHeight,
-        calculatedFontSize,
-        needsHorizontalScroll,
-        horizontalScrollOffset,
-      );
+    paneWidth,
+    paneHeight,
+    screenWidth,
+    screenHeight,
+    calculatedFontSize,
+    needsHorizontalScroll,
+    horizontalScrollOffset,
+  );
 }
 
 // inventory: PROV-DISP-011
 /// ターミナル表示状態を管理するNotifier
 class TerminalDisplayNotifier extends Notifier<TerminalDisplayState> {
-
   @override
   // inventory: PROV-DISP-012
   // inventory: LEGACY-0193
@@ -203,5 +203,5 @@ class TerminalDisplayNotifier extends Notifier<TerminalDisplayState> {
 /// ターミナル表示プロバイダー
 final terminalDisplayProvider =
     NotifierProvider<TerminalDisplayNotifier, TerminalDisplayState>(
-  () => TerminalDisplayNotifier(),
-);
+      () => TerminalDisplayNotifier(),
+    );

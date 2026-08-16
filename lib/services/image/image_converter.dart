@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
 
+import '../../l10n/app_localizations.dart';
+
 /// 画像出力フォーマット
 enum ImageOutputFormat {
   original,
@@ -43,6 +45,7 @@ class ImageConverter {
   /// [autoResize] リサイズを行うか
   /// [maxWidth] 最大幅（0 = 無制限）
   /// [maxHeight] 最大高さ（0 = 無制限）
+  /// [l10n] は任意。null の場合は英語フォールバック（テスト互換）。
   static Future<ImageConvertResult> convert({
     required Uint8List bytes,
     required ImageOutputFormat format,
@@ -50,6 +53,7 @@ class ImageConverter {
     bool autoResize = false,
     int maxWidth = 1920,
     int maxHeight = 1080,
+    AppLocalizations? l10n,
   }) async {
     final detectedExt = detectExtension(bytes);
 
@@ -57,33 +61,36 @@ class ImageConverter {
     Uint8List processedBytes = bytes;
     String effectiveExt = detectedExt;
     if (detectedExt == 'heic') {
-      final converted = await _preProcessHeic(bytes);
+      final converted = await _preProcessHeic(bytes, l10n);
       processedBytes = converted.bytes;
       effectiveExt = converted.extension;
     }
 
     // 変換不要の場合はそのまま返す
     if (format == ImageOutputFormat.original && !autoResize) {
-      return ImageConvertResult(
-        bytes: processedBytes,
-        extension: effectiveExt,
-      );
+      return ImageConvertResult(bytes: processedBytes, extension: effectiveExt);
     }
 
     // Isolate でバックグラウンド実行（UIスレッドブロック防止）
-    return await Isolate.run(() => _processImage(
-          bytes: processedBytes,
-          format: format,
-          jpegQuality: jpegQuality,
-          autoResize: autoResize,
-          maxWidth: maxWidth,
-          maxHeight: maxHeight,
-          sourceExtension: effectiveExt,
-        ));
+    return await Isolate.run(
+      () => _processImage(
+        bytes: processedBytes,
+        format: format,
+        jpegQuality: jpegQuality,
+        autoResize: autoResize,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        sourceExtension: effectiveExt,
+        l10n: l10n,
+      ),
+    );
   }
 
   /// HEIC/HEIF をネイティブAPIでJPEGに変換
-  static Future<ImageConvertResult> _preProcessHeic(Uint8List bytes) async {
+  static Future<ImageConvertResult> _preProcessHeic(
+    Uint8List bytes,
+    AppLocalizations? l10n,
+  ) async {
     try {
       final result = await FlutterImageCompress.compressWithList(
         bytes,
@@ -91,7 +98,10 @@ class ImageConverter {
         format: CompressFormat.jpeg,
       );
       if (result.isEmpty) {
-        throw const FormatException('Native HEIC conversion returned empty result');
+        throw FormatException(
+          l10n?.imgTransferHeicEmptyResult ??
+              'Native HEIC conversion returned empty result',
+        );
       }
       return ImageConvertResult(
         bytes: Uint8List.fromList(result),
@@ -99,7 +109,10 @@ class ImageConverter {
       );
     } catch (e) {
       if (e is FormatException) rethrow;
-      throw FormatException('Failed to convert HEIC image: $e');
+      throw FormatException(
+        l10n?.imgTransferHeicConvertFailed('$e') ??
+            'Failed to convert HEIC image: $e',
+      );
     }
   }
 
@@ -112,17 +125,21 @@ class ImageConverter {
     required int maxWidth,
     required int maxHeight,
     required String sourceExtension,
+    AppLocalizations? l10n,
   }) {
     final image = img.decodeImage(bytes);
     if (image == null) {
-      throw const FormatException('Failed to decode image');
+      throw FormatException(
+        l10n?.imgTransferDecodeFailed ?? 'Failed to decode image',
+      );
     }
 
     var processed = image;
 
     // リサイズ
     if (autoResize) {
-      final needsResize = (maxWidth > 0 && processed.width > maxWidth) ||
+      final needsResize =
+          (maxWidth > 0 && processed.width > maxWidth) ||
           (maxHeight > 0 && processed.height > maxHeight);
       if (needsResize) {
         // アスペクト比を維持してリサイズ
@@ -148,7 +165,9 @@ class ImageConverter {
         );
       case ImageOutputFormat.jpeg:
         return ImageConvertResult(
-          bytes: Uint8List.fromList(img.encodeJpg(processed, quality: jpegQuality)),
+          bytes: Uint8List.fromList(
+            img.encodeJpg(processed, quality: jpegQuality),
+          ),
           extension: 'jpg',
         );
       case ImageOutputFormat.original:
@@ -156,7 +175,9 @@ class ImageConverter {
         final ext = sourceExtension;
         if (ext == 'jpg' || ext == 'jpeg') {
           return ImageConvertResult(
-            bytes: Uint8List.fromList(img.encodeJpg(processed, quality: jpegQuality)),
+            bytes: Uint8List.fromList(
+              img.encodeJpg(processed, quality: jpegQuality),
+            ),
             extension: ext,
           );
         }
@@ -169,20 +190,43 @@ class ImageConverter {
 
   /// バイトデータのマジックバイトからファイルフォーマットを検出
   static String detectExtension(Uint8List bytes) {
-    if (bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
       return 'jpg';
     }
-    if (bytes.length >= 4 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47) {
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
       return 'png';
     }
-    if (bytes.length >= 3 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0x47 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46) {
       return 'gif';
     }
     // HEIF/HEIC: ISOBMFF ftyp box
     if (bytes.length >= 12 &&
-        bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70) {
+        bytes[4] == 0x66 &&
+        bytes[5] == 0x74 &&
+        bytes[6] == 0x79 &&
+        bytes[7] == 0x70) {
       final brand = String.fromCharCodes(bytes.sublist(8, 12));
-      if (const {'heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1'}.contains(brand)) {
+      if (const {
+        'heic',
+        'heix',
+        'hevc',
+        'hevx',
+        'heim',
+        'heis',
+        'hevm',
+        'hevs',
+        'mif1',
+      }.contains(brand)) {
         return 'heic';
       }
     }

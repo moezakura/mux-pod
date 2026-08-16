@@ -15,10 +15,7 @@ class SftpBrowserService {
   /// [path] のディレクトリ内容を [FileEntry] のリストとして返す。
   /// `.` と `..` エントリは除外される。
   /// タイムアウト（10秒）を超えた場合は例外をスローする。
-  Future<List<FileEntry>> listDirectory(
-    SftpClient sftp,
-    String path,
-  ) async {
+  Future<List<FileEntry>> listDirectory(SftpClient sftp, String path) async {
     final normalizedPath = validatePath(path);
     final names = await sftp.listdir(normalizedPath).timeout(_listTimeout);
 
@@ -41,11 +38,7 @@ class SftpBrowserService {
   }
 
   /// ファイルまたはディレクトリの名前を変更
-  Future<void> rename(
-    SftpClient sftp,
-    String oldPath,
-    String newPath,
-  ) async {
+  Future<void> rename(SftpClient sftp, String oldPath, String newPath) async {
     final normalizedOld = validatePath(oldPath);
     final normalizedNew = validatePath(newPath);
     await sftp.rename(normalizedOld, normalizedNew);

@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -41,7 +40,7 @@ class ActiveSession {
   // inventory: LEGACY-0007
   final bool isAttached;
 
-  /// backend 種別（herdr は read-only のため Terminal 遷移不可）。
+  /// backend 種別（backend 固有の UI・操作分岐に使う）。
   final MultiplexerBackendKind backend;
 
   // inventory: PROV-ACTIVE-009
@@ -147,7 +146,9 @@ class ActiveSession {
       ),
       lastWindowIndex: json['lastWindowIndex'] as int?,
       lastPaneId: json['lastPaneId'] as String?,
-      lastAccessedAt: lastAccessedAtStr != null ? DateTime.parse(lastAccessedAtStr) : null,
+      lastAccessedAt: lastAccessedAtStr != null
+          ? DateTime.parse(lastAccessedAtStr)
+          : null,
     );
   }
 
@@ -173,10 +174,7 @@ class ActiveSessionsState {
   // inventory: LEGACY-0016
   final String? currentSessionKey; // connectionId:sessionName
 
-  const ActiveSessionsState({
-    this.sessions = const [],
-    this.currentSessionKey,
-  });
+  const ActiveSessionsState({this.sessions = const [], this.currentSessionKey});
 
   // inventory: PROV-ACTIVE-019
   ActiveSessionsState copyWith({
@@ -187,8 +185,9 @@ class ActiveSessionsState {
   }) {
     return ActiveSessionsState(
       sessions: sessions ?? this.sessions,
-      currentSessionKey:
-          clearCurrentSession ? null : (currentSessionKey ?? this.currentSessionKey),
+      currentSessionKey: clearCurrentSession
+          ? null
+          : (currentSessionKey ?? this.currentSessionKey),
     );
   }
 
@@ -258,7 +257,11 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
         final jsonList = state.sessions.map((s) => s.toJson()).toList();
         await prefs.setString(_storageKey, jsonEncode(jsonList));
       } catch (e) {
-        developer.log('ActiveSessions save error: $e', name: 'ActiveSessionsProvider', error: e);
+        developer.log(
+          'ActiveSessions save error: $e',
+          name: 'ActiveSessionsProvider',
+          error: e,
+        );
       }
     });
     await save;
@@ -267,7 +270,10 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   /// 保存処理を直列キューに入れる。
   Future<void> _enqueueSave(Future<void> Function() operation) {
     final previous = _saveFuture ?? Future.value();
-    final current = previous.then((_) => operation(), onError: (_) => operation());
+    final current = previous.then(
+      (_) => operation(),
+      onError: (_) => operation(),
+    );
     _saveFuture = current;
     return current;
   }
@@ -287,11 +293,11 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     String? lastPaneId,
   }) {
     final key = '$connectionId:${sessionId ?? sessionName}';
-    final existingIndex = state.sessions.indexWhere(
-      (s) => s.key == key,
-    );
+    final existingIndex = state.sessions.indexWhere((s) => s.key == key);
 
-    final existingSession = existingIndex >= 0 ? state.sessions[existingIndex] : null;
+    final existingSession = existingIndex >= 0
+        ? state.sessions[existingIndex]
+        : null;
     final now = DateTime.now();
 
     final session = ActiveSession(
@@ -358,8 +364,9 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
     if (existingIndex < 0) return;
     if (state.sessions[existingIndex].windowCount == windowCount) return;
     final sessions = [...state.sessions];
-    sessions[existingIndex] =
-        sessions[existingIndex].copyWith(windowCount: windowCount);
+    sessions[existingIndex] = sessions[existingIndex].copyWith(
+      windowCount: windowCount,
+    );
     state = state.copyWith(sessions: sessions);
     _saveToStorage();
   }
@@ -367,7 +374,11 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-029
   // inventory: LEGACY-0022
   /// セッションを開いた時に最終アクセス日時を更新
-  void touchSession(String connectionId, String sessionName, {String? sessionId}) {
+  void touchSession(
+    String connectionId,
+    String sessionName, {
+    String? sessionId,
+  }) {
     final key = '$connectionId:${sessionId ?? sessionName}';
     final existingIndex = state.sessions.indexWhere((s) => s.key == key);
     if (existingIndex < 0) return;
@@ -502,11 +513,13 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-033
   // inventory: LEGACY-0026
   /// セッションを明示的に閉じる（削除）
-  void closeSession(String connectionId, String sessionName, {String? sessionId}) {
+  void closeSession(
+    String connectionId,
+    String sessionName, {
+    String? sessionId,
+  }) {
     final targetKey = '$connectionId:${sessionId ?? sessionName}';
-    final sessions = state.sessions
-        .where((s) => s.key != targetKey)
-        .toList();
+    final sessions = state.sessions.where((s) => s.key != targetKey).toList();
     state = state.copyWith(sessions: sessions);
     _saveToStorage();
   }
@@ -514,7 +527,11 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: PROV-ACTIVE-034
   // inventory: LEGACY-0027
   /// セッションを削除（closeSessionのエイリアス）
-  void removeSession(String connectionId, String sessionName, {String? sessionId}) {
+  void removeSession(
+    String connectionId,
+    String sessionName, {
+    String? sessionId,
+  }) {
     closeSession(connectionId, sessionName, sessionId: sessionId);
   }
 
@@ -522,8 +539,9 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
   // inventory: LEGACY-0028
   /// 接続の全セッションを削除
   void removeSessionsForConnection(String connectionId) {
-    final sessions =
-        state.sessions.where((s) => s.connectionId != connectionId).toList();
+    final sessions = state.sessions
+        .where((s) => s.connectionId != connectionId)
+        .toList();
     state = state.copyWith(sessions: sessions);
     _saveToStorage();
   }
@@ -541,5 +559,5 @@ class ActiveSessionsNotifier extends Notifier<ActiveSessionsState> {
 /// アクティブセッションプロバイダー
 final activeSessionsProvider =
     NotifierProvider<ActiveSessionsNotifier, ActiveSessionsState>(() {
-  return ActiveSessionsNotifier();
-});
+      return ActiveSessionsNotifier();
+    });

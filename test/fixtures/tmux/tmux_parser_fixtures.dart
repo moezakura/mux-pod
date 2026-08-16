@@ -12,7 +12,8 @@ const _fs = TmuxParser.defaultFieldDelimiter;
 const _rs = TmuxParser.defaultRecordDelimiter;
 
 // セッション一覧（詳細版）
-const kSessionOutput = 'mysession${_fs}1735689600${_fs}1${_fs}3${_fs}\$0${_rs}'
+const kSessionOutput =
+    'mysession${_fs}1735689600${_fs}1${_fs}3${_fs}\$0${_rs}'
     'other${_fs}1735689700${_fs}0${_fs}1${_fs}\$1${_rs}';
 
 // セッション一覧（簡易版）
@@ -22,7 +23,8 @@ other:1:0
 ''';
 
 // ウィンドウ一覧（詳細版）
-const kWindowOutput = '0${_fs}@0${_fs}shell${_fs}1${_fs}2${_fs}-${_rs}'
+const kWindowOutput =
+    '0${_fs}@0${_fs}shell${_fs}1${_fs}2${_fs}-${_rs}'
     '1${_fs}@1${_fs}build${_fs}0${_fs}1${_fs}*${_rs}'
     '2${_fs}@2${_fs}zoomed${_fs}0${_fs}1${_fs}*Z${_rs}';
 
@@ -33,7 +35,8 @@ const kWindowOutputSimple = r'''
 ''';
 
 // ペイン一覧（詳細版）
-const kPaneOutput = '0${_fs}%0${_fs}1${_fs}bash${_fs}shell-title${_fs}80${_fs}24${_fs}0${_fs}0${_rs}'
+const kPaneOutput =
+    '0${_fs}%0${_fs}1${_fs}bash${_fs}shell-title${_fs}80${_fs}24${_fs}0${_fs}0${_rs}'
     '1${_fs}%1${_fs}0${_fs}vim${_fs}vim-title${_fs}80${_fs}24${_fs}10${_fs}5${_rs}';
 
 // ペイン一覧（簡易版）

@@ -122,7 +122,12 @@ void main() {
       await writer.focusWorkspace('w2');
       await writer.pasteText('w1:p1', 'line1\nline2');
       await writer.imageTransfer('/tmp/a.png');
-      await writer.sendScroll('w1:p1', kind: ScrollSendKind.wheel, up: true, ticks: 1);
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.wheel,
+        up: true,
+        ticks: 1,
+      );
 
       expect(writer.calls, hasLength(20));
     });
@@ -135,19 +140,19 @@ class _FakePaneWriter implements PaneWriter {
 
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
-        sendText: true,
-        sendKeys: true,
-        focus: true,
-        split: true,
-        close: true,
-        rename: true,
-        zoom: true,
-        resize: true,
-        paste: true,
-        imageTransfer: true,
-        workspaceCrud: true,
-        tabCrud: true,
-      );
+    sendText: true,
+    sendKeys: true,
+    focus: true,
+    split: true,
+    close: true,
+    rename: true,
+    zoom: true,
+    resize: true,
+    paste: true,
+    imageTransfer: true,
+    workspaceCrud: true,
+    tabCrud: true,
+  );
 
   @override
   HerdrKeyRoute mapSpecialKey(String tmuxKey) =>
@@ -208,7 +213,11 @@ class _FakePaneWriter implements PaneWriter {
   }
 
   @override
-  Future<void> createTab(String workspaceId) async {
+  Future<void> createTab(
+    String workspaceId, {
+    String? label,
+    bool? focus,
+  }) async {
     calls.add('createTab');
   }
 

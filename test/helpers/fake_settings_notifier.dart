@@ -6,7 +6,9 @@ import 'package:flutter_muxpod/providers/settings_provider.dart';
 class FakeSettingsNotifier extends SettingsNotifier {
   final AppSettings settings;
 
-  FakeSettingsNotifier({this.settings = const AppSettings(keepScreenOn: false)});
+  FakeSettingsNotifier({
+    this.settings = const AppSettings(keepScreenOn: false),
+  });
 
   @override
   AppSettings build() => settings;

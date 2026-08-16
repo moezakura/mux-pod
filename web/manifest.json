@@ -1,11 +1,11 @@
 {
-    "name": "flutter_muxpod",
-    "short_name": "flutter_muxpod",
+    "name": "MuxPod",
+    "short_name": "MuxPod",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Your tmux sessions, in your pocket. A mobile-first tmux client — SSH in, navigate sessions, and stay productive on the go.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

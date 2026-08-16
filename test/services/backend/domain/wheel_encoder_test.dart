@@ -17,17 +17,11 @@ void main() {
 
   group('WheelEncoder.encodeSgr', () {
     test('上スクロール（up=true）は ESC[<64;1;1M', () {
-      expect(
-        WheelEncoder.encodeSgr(up: true, ticks: 1),
-        '\x1b[<64;1;1M',
-      );
+      expect(WheelEncoder.encodeSgr(up: true, ticks: 1), '\x1b[<64;1;1M');
     });
 
     test('下スクロール（up=false）は ESC[<65;1;1M', () {
-      expect(
-        WheelEncoder.encodeSgr(up: false, ticks: 1),
-        '\x1b[<65;1;1M',
-      );
+      expect(WheelEncoder.encodeSgr(up: false, ticks: 1), '\x1b[<65;1;1M');
     });
 
     test('ticks=8 は 8 個連結（合流送信・最大 8 ティック）', () {

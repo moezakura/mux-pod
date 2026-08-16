@@ -62,8 +62,16 @@ class AnsiStyle {
           inverse == other.inverse;
 
   @override
-  int get hashCode => Object.hash(foreground, background, bold, italic,
-      underline, strikethrough, dim, inverse);
+  int get hashCode => Object.hash(
+    foreground,
+    background,
+    bold,
+    italic,
+    underline,
+    strikethrough,
+    dim,
+    inverse,
+  );
 
   static const AnsiStyle defaultStyle = AnsiStyle();
 }
@@ -84,10 +92,7 @@ class ParsedLine {
   /// この行の終了時のスタイル（次の行に引き継ぐ）
   final AnsiStyle endStyle;
 
-  const ParsedLine({
-    required this.segments,
-    required this.endStyle,
-  });
+  const ParsedLine({required this.segments, required this.endStyle});
 
   /// 空行かどうか
   bool get isEmpty => segments.isEmpty || segments.every((s) => s.text.isEmpty);
@@ -409,7 +414,9 @@ class AnsiParser {
             fontFamily,
             fontSize: fontSize,
             color: fg,
-            backgroundColor: (style.inverse || bg != defaultBackground) ? bg : null,
+            backgroundColor: (style.inverse || bg != defaultBackground)
+                ? bg
+                : null,
             fontWeight: style.bold ? FontWeight.bold : FontWeight.normal,
             fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
             decoration: TextDecoration.combine([
@@ -437,7 +444,10 @@ class AnsiParser {
   /// 各行を個別にパースし、スタイルを次の行に引き継ぐ。
   /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
   List<ParsedLine> parseLines(String input) {
-    final lines = input.split('\n');
+    // PTY 経由では \r\n や行末の \r が混入するため、行分割前に正規化する
+    // （\n\n 由来の空行はここでは削除せず、実データの空行として保持）。
+    final normalized = input.replaceAll('\r\n', '\n').replaceAll('\r', '');
+    final lines = normalized.split('\n');
     final prev = _lineCache;
     final next = <(AnsiStyle, String), ParsedLine>{};
     final parsed = <ParsedLine>[];
@@ -508,8 +518,11 @@ class AnsiParser {
         cached.fontFamily == fontFamily) {
       return cached.span;
     }
-    final span =
-        toTextSpan(line.segments, fontSize: fontSize, fontFamily: fontFamily);
+    final span = toTextSpan(
+      line.segments,
+      fontSize: fontSize,
+      fontFamily: fontFamily,
+    );
     _spanCache[line] = _LineSpan(span, fontSize, fontFamily);
     return span;
   }

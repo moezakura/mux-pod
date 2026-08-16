@@ -1,0 +1,6 @@
+tags:
+  repro:
+    # バグ再現用テスト (test/repro/)。
+    # ローカル sshd への実接続 (127.0.0.1:22 + /tmp 作業鍵) など
+    # CI 環境では成立しない前提に依存するため、CI では
+    # `flutter test --exclude-tags=repro` で除外して実行する。

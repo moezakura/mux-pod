@@ -1,0 +1,1409 @@
+{
+  "@@locale": "en",
+  "settingsLanguage": "Language",
+  "languageSystem": "System",
+  "languageSystemDescription": "System (follow device)",
+  "languageJapanese": "日本語",
+  "languageEnglish": "English",
+  "connTitle": "Connections",
+  "connSearch": "Search",
+  "connCloseSearch": "Close Search",
+  "connSort": "Sort",
+  "connSettings": "Settings",
+  "connCancel": "Cancel",
+  "connSave": "Save",
+  "connDelete": "Delete",
+  "connEdit": "Edit",
+  "connRetry": "Retry",
+  "connCreate": "Create",
+  "connKill": "Kill",
+  "connClose": "Close",
+  "connAddTitle": "Add Connection",
+  "connEditTitle": "Edit Connection",
+  "connTestConnection": "TEST CONNECTION",
+  "connSectionServer": "Server",
+  "connSectionAuth": "Authentication",
+  "connFieldConnectionName": "Connection name",
+  "connFieldHost": "Host / IP address",
+  "connFieldPort": "Port",
+  "connFieldUsername": "Username",
+  "connFieldBackend": "Backend",
+  "connFieldMultiplexerPath": "Multiplexer path (optional)",
+  "connFieldHerdrPath": "Herdr path (optional)",
+  "connFieldDeepLinkId": "Deep link ID (optional)",
+  "connDeepLinkIdDescription": "Stable identifier for muxpod:// URLs",
+  "connNameHint": "e.g. Production AWS",
+  "connNameRequired": "Please enter a name",
+  "connHostHint": "192.168.1.1 or example.com",
+  "connHostRequired": "Please enter a host",
+  "connPortRequired": "Required",
+  "connPortInvalid": "Invalid",
+  "connUsernameRequired": "Please enter a username",
+  "connMultiplexerPathHint": "{path} (auto-detect if empty)",
+  "@connMultiplexerPathHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "connAbsolutePathRequired": "Absolute path required (e.g., {path})",
+  "@connAbsolutePathRequired": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "connLeaveEmptyForAutoDetect": "Leave empty for automatic detection",
+  "connDeepLinkIdHint": "e.g. macbook-pro",
+  "connDeepLinkIdNoSpaces": "No spaces allowed (use hyphens or underscores)",
+  "connAuthPassword": "Password",
+  "connAuthPrivateKey": "Private Key",
+  "connPasswordRequired": "Please enter a password",
+  "connSelectKeyRequired": "Please select an SSH key",
+  "connNoKeysAvailable": "No keys available",
+  "connSelectKey": "Select a key",
+  "connNoKeysFoundAddInKeys": "No SSH keys found. Add keys in the Keys section.",
+  "connDamagedKeyWarning": "The selected key is damaged (the private key cannot be read). Select another key or re-import the key.",
+  "connTestSuccessHerdr": "Connection successful! Herdr is available.",
+  "connTestSuccessTmux": "Connection successful! tmux is available.",
+  "connTestSuccessWarning": "Connection successful! Warning: {warning}",
+  "@connTestSuccessWarning": {
+    "placeholders": {
+      "warning": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrNotFound": "herdr not found",
+  "connTmuxNotFound": "tmux not found",
+  "connHerdrProtocolMismatch": "Herdr protocol {actual} is not supported (expected {supported}).",
+  "@connHerdrProtocolMismatch": {
+    "placeholders": {
+      "actual": {
+        "type": "String"
+      },
+      "supported": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrPathNotFound": "custom herdr path not found or not executable: {path}",
+  "@connHerdrPathNotFound": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxPathNotFound": "custom tmux path not found or not executable: {path}",
+  "@connTmuxPathNotFound": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCheckFailed": "herdr check failed: {error}",
+  "@connHerdrCheckFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxCheckFailed": "tmux check failed: {error}",
+  "@connTmuxCheckFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxVersionUnrecognized": "tmux found, but version output was not recognized",
+  "connTestAuthFailed": "Authentication failed: {message}",
+  "@connTestAuthFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "connTestConnectionFailed": "Connection failed: {message}",
+  "@connTestConnectionFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "connTestError": "Error: {error}",
+  "@connTestError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connSaveError": "Error saving connection: {error}",
+  "@connSaveError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connPrivateKeyUnreadable": "Private key is not readable. Please re-import the key.",
+  "connPasswordRequiredForTest": "Password is required",
+  "connKeyRequiredForTest": "SSH key is required",
+  "connDeleteConfirmTitle": "Delete Connection",
+  "connDeleteConfirmMessage": "Are you sure you want to delete \"{name}\"?",
+  "@connDeleteConfirmMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connDeletedMessage": "{name} deleted",
+  "@connDeletedMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connKillSessionTitle": "Kill Session",
+  "connKillSessionMessage": "Kill tmux session \"{name}\"? Its windows and processes will be terminated.",
+  "@connKillSessionMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connSessionKilled": "Session {name} killed",
+  "@connSessionKilled": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connCannotCloseWorkspace": "Cannot close workspace without an ID",
+  "connCloseWorkspaceTitle": "Close Workspace?",
+  "connCloseWorkspaceMessage": "Close herdr workspace \"{name}\"? All tabs and panes in this workspace will be terminated.",
+  "@connCloseWorkspaceMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connWorkspaceClosed": "Workspace {name} closed",
+  "@connWorkspaceClosed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connWorkspaceCreated": "Workspace {name} created",
+  "@connWorkspaceCreated": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connActiveSessions": "ACTIVE SESSIONS",
+  "connReloadSessions": "Reload sessions",
+  "connNoSessionsFound": "No tmux sessions found",
+  "connNoWorkspacesFound": "No herdr workspaces found",
+  "connNewSession": "New Session",
+  "connNewWorkspace": "New Workspace",
+  "connSessionNameLabel": "Session Name",
+  "connSessionNameRequired": "Please enter a session name",
+  "connSessionNameInvalidChars": "Only letters, numbers, - _ . allowed",
+  "connSessionNameExists": "Session \"{name}\" already exists",
+  "@connSessionNameExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "connWindowsCount": "{count} windows",
+  "@connWindowsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "connAttached": "Attached",
+  "connDetached": "Detached",
+  "connKillSessionTooltip": "Kill session",
+  "connKillWorkspaceTooltip": "Kill workspace",
+  "connDamagedKeyBadge": "Damaged key in use",
+  "connSearchHint": "Search connections...",
+  "connSortTitle": "Sort Connections",
+  "connSortNameAsc": "Name (A-Z)",
+  "connSortNameDesc": "Name (Z-A)",
+  "connSortLastConnectedDesc": "Last Connected (Recent First)",
+  "connSortLastConnectedAsc": "Last Connected (Oldest First)",
+  "connSortHostAsc": "Host (A-Z)",
+  "connSortHostDesc": "Host (Z-A)",
+  "connNoResults": "No matching connections",
+  "connNoResultsHint": "Try a different search term",
+  "connClearSearch": "Clear Search",
+  "connLoadError": "Error loading connections",
+  "connEmpty": "No connections yet",
+  "connEmptyHint": "Tap the button below to add your first server",
+  "keyMgmtTitle": "Keys",
+  "keyMgmtSettings": "Settings",
+  "keyMgmtRetry": "Retry",
+  "keyMgmtLoadError": "Error: {error}",
+  "@keyMgmtLoadError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtEmpty": "No SSH keys yet",
+  "keyMgmtEmptyHint": "Tap the button below to add a key",
+  "keyMgmtPublicKeyCopied": "Public key copied to clipboard",
+  "keyMgmtDeleteKeyTitle": "Delete Key?",
+  "keyMgmtDeleteKeyMessage": "Are you sure you want to delete \"{name}\"?\n\nThis action cannot be undone.",
+  "@keyMgmtDeleteKeyMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtCancel": "Cancel",
+  "keyMgmtDelete": "Delete",
+  "keyMgmtDeleted": "Key \"{name}\" deleted",
+  "@keyMgmtDeleted": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtDeleteFailed": "Failed to delete key: {error}",
+  "@keyMgmtDeleteFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtGenerateNew": "Generate New Key",
+  "keyMgmtGenerateNewSubtitle": "Create a new RSA or Ed25519 key",
+  "keyMgmtImportKey": "Import Key",
+  "keyMgmtImportKeySubtitle": "Import an existing private key",
+  "keyMgmtDamagedKeysTitle": "Damaged keys found",
+  "keyMgmtDamagedKeysMessage": "Some keys cannot be read (private key unavailable). Choose to delete them or keep them as-is.",
+  "keyMgmtKeepDamaged": "Keep as-is",
+  "keyMgmtDeleteSelected": "Delete Selected",
+  "keyMgmtGenerateTitle": "Generate SSH Key",
+  "keyMgmtKeyName": "Key Name",
+  "keyMgmtKeyNameHint": "My SSH Key",
+  "keyMgmtNameRequired": "Please enter a name",
+  "keyMgmtKeyType": "Key Type",
+  "keyMgmtRsaKeySize": "RSA Key Size",
+  "keyMgmtBits": "{bits} bits",
+  "@keyMgmtBits": {
+    "placeholders": {
+      "bits": {
+        "type": "int"
+      }
+    }
+  },
+  "keyMgmtGenerate": "Generate",
+  "keyMgmtRsaGenerationNote": "RSA key generation may take a few seconds",
+  "keyMgmtGenerating": "Generating key...",
+  "keyMgmtGeneratingRsa": "Generating RSA key...",
+  "keyMgmtSaving": "Saving key...",
+  "keyMgmtGeneratedSuccess": "Key \"{name}\" generated successfully",
+  "@keyMgmtGeneratedSuccess": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtGenerateFailed": "Failed to generate key: {error}",
+  "@keyMgmtGenerateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtImportTitle": "Import SSH Key",
+  "keyMgmtSelectFile": "Select Private Key File",
+  "keyMgmtOrPaste": "Or paste the private key below:",
+  "keyMgmtPemLabel": "Private Key (PEM format)",
+  "keyMgmtKeyRequired": "Please select a file or paste the private key",
+  "keyMgmtInvalidPem": "Invalid PEM format",
+  "keyMgmtPassphraseRequired": "Passphrase (required - key is encrypted)",
+  "keyMgmtPassphraseOptional": "Passphrase (optional)",
+  "keyMgmtPassphraseDecryptHint": "Enter passphrase to decrypt",
+  "keyMgmtPassphraseEmptyHint": "Leave empty if key is not encrypted",
+  "keyMgmtPassphraseRequiredError": "Passphrase is required for encrypted keys",
+  "keyMgmtAddPassphrase": "Add passphrase (if key is encrypted)",
+  "keyMgmtImport": "Import",
+  "keyMgmtCouldNotReadFile": "Could not read file content",
+  "keyMgmtPickFileFailed": "Failed to pick file: {error}",
+  "@keyMgmtPickFileFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtImportedSuccess": "Key \"{name}\" imported successfully",
+  "@keyMgmtImportedSuccess": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtWrongPassphrase": "Wrong passphrase. Please check and try again.",
+  "keyMgmtInvalidKeyFormat": "Invalid key format: {message}",
+  "@keyMgmtInvalidKeyFormat": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtImportFailed": "Failed to import key: {error}",
+  "@keyMgmtImportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "keyMgmtCopyPublicKey": "Copy Public Key",
+  "keyMgmtGenerated": "Generated",
+  "keyMgmtImported": "Imported",
+  "keyMgmtUnavailable": "Unavailable",
+  "appCancel": "Cancel",
+  "appServerNotFound": "Server not found: {server}",
+  "@appServerNotFound": {
+    "placeholders": {
+      "server": {
+        "type": "String"
+      }
+    }
+  },
+  "appWindowCount": "{count, plural, =1{1 window} other{{count} windows}}",
+  "@appWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileHideHiddenFiles": "Hide hidden files",
+  "fileShowHiddenFiles": "Show hidden files",
+  "fileSort": "Sort",
+  "fileSortAscending": "Ascending",
+  "fileSortDescending": "Descending",
+  "fileSortName": "Name",
+  "fileSortSize": "Size",
+  "fileSortDate": "Date modified",
+  "fileSortType": "Type",
+  "fileLoading": "Loading...",
+  "fileErrorOccurred": "An error occurred",
+  "fileRetry": "Retry",
+  "fileEmptyDirectory": "This directory is empty",
+  "fileOpen": "Open",
+  "fileRename": "Rename",
+  "fileRenameConfirm": "Change",
+  "fileRenameSuccess": "Renamed successfully",
+  "fileRenameFailure": "Failed to rename",
+  "fileDelete": "Delete",
+  "fileDeleteConfirmTitle": "Confirm deletion",
+  "fileDeleteConfirmMessage": "Delete {type} \"{name}\"?\nThis action cannot be undone.",
+  "@fileDeleteConfirmMessage": {
+    "placeholders": {
+      "type": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "fileTypeDirectory": "directory",
+  "fileTypeFile": "file",
+  "fileDeleteSuccess": "Deleted",
+  "fileDeleteFailure": "Failed to delete",
+  "fileNewFolder": "New Folder",
+  "fileFolderNameHint": "Folder name",
+  "fileCreate": "Create",
+  "fileCreateFolderSuccess": "Folder created",
+  "fileCreateFolderFailure": "Failed to create folder",
+  "notifAlerts": "Alerts",
+  "notifRefreshAlerts": "Refresh alerts",
+  "notifNoAlerts": "No alerts",
+  "notifAllPanesQuiet": "All panes are quiet",
+  "notifDismiss": "Dismiss",
+  "notifFlagBell": "Bell",
+  "notifFlagActivity": "Activity",
+  "notifFlagSilence": "Silence",
+  "notifFlagAlert": "Alert",
+  "dashRecentSessions": "Recent Sessions",
+  "dashNoRecentSessions": "No recent sessions",
+  "dashConnectToServerToStart": "Connect to a server to get started",
+  "dashRemove": "Remove",
+  "dashRemoveFromHistoryTitle": "Remove from History?",
+  "dashRemoveFromHistoryMessage": "Remove \"{name}\" from recent sessions?\n\nThe tmux session will remain active on the server.",
+  "@dashRemoveFromHistoryMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "dashDamagedKeyInUse": "Damaged key in use",
+  "dashTimeJustNow": "Just now",
+  "dashTimeMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "@dashTimeMinutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@dashTimeHoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeDaysAgo": "{count, plural, =1{1 day ago} other{{count} days ago}}",
+  "@dashTimeDaysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "dashTimeWeeksAgo": "{count, plural, =1{1 week ago} other{{count} weeks ago}}",
+  "@dashTimeWeeksAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "homeServers": "Servers",
+  "homeKeys": "Keys",
+  "homeNotify": "Notify",
+  "homeSettings": "Settings",
+  "homeActiveSessions": "Active Sessions",
+  "homeReloadSessions": "Reload sessions",
+  "homeNoActiveSessions": "No Active Sessions",
+  "homeConnectToServerToStartTerminal": "Connect to a server to start a terminal session",
+  "homeCloseSessionTitle": "Close Session?",
+  "homeCloseSessionMessage": "Remove \"{name}\" from active sessions?",
+  "@homeCloseSessionMessage": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "homeClose": "Close",
+  "homeLastWindow": "Last: W{index}",
+  "@homeLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "homeAttached": "Attached",
+  "homeDetached": "Detached",
+  "termInputQueueFull": "Input queue is full; some keystrokes may be lost.",
+  "termRetryNow": "Retry Now",
+  "termRetry": "Retry",
+  "termSshNotAvailable": "SSH connection is not available",
+  "termWindowCreatedCommandNotSent": "Window created, but the command could not be sent",
+  "termFailedToCreateWindow": "Failed to create window: {error}",
+  "@termFailedToCreateWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termWindowCreatedCommandFailed": "Window created, but the command failed: {error}",
+  "@termWindowCreatedCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToSplitPane": "Failed to split pane: {error}",
+  "@termFailedToSplitPane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToClosePane": "Failed to close pane: {error}",
+  "@termFailedToClosePane": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToCloseWindow": "Failed to close window: {error}",
+  "@termFailedToCloseWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termFailedToRenameWindow": "Failed to rename window: {error}",
+  "@termFailedToRenameWindow": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailed": "Resize failed: {error}",
+  "@termResizeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termPaneNoLongerExists": "This pane no longer exists",
+  "termFailedToLoadHerdrTree": "Failed to load herdr tree: {error}",
+  "@termFailedToLoadHerdrTree": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrServerNotResponding": "Herdr server is not responding: {error}",
+  "@termHerdrServerNotResponding": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termHerdrTargetPaneNotFound": "Herdr target pane not found",
+  "termHerdrTargetLost": "Target pane disappeared. Re-synced.",
+  "termHerdrInvalidKey": "This key could not be sent via herdr",
+  "termHerdrNoNeighbor": "No pane in that direction",
+  "termHerdrUnchanged": "No change at the split boundary",
+  "termHerdrNoopGeneric": "The operation was executed but the state did not change",
+  "termOperationFailed": "{operation} failed: {error}",
+  "@termOperationFailed": {
+    "placeholders": {
+      "operation": {
+        "type": "String"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "termResizeFailedHerdr": "Resize failed. The terminal size could not be applied. Check herdr display settings or try again.",
+  "termImageTransferFailed": "Image transfer failed",
+  "termUploaded": "Uploaded: {path}",
+  "@termUploaded": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "termMultilineNeedsConnection": "Multi-line send requires a live connection; please retry.",
+  "termWaitingForNetwork": "Waiting for network...",
+  "termConnectionError": "Connection error",
+  "termCharsQueued": "{count} chars queued",
+  "@termCharsQueued": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termChars": "{count} chars",
+  "@termChars": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "termOffline": "Offline",
+  "termReconnecting": "Reconnecting",
+  "termFileBrowser": "File Browser",
+  "termResizeTerminal": "Resize Terminal",
+  "termNewTab": "New Tab",
+  "termResizePane": "Resize Pane",
+  "termResizeWindow": "Resize Window",
+  "termResize": "Resize",
+  "termNewWindow": "New Window",
+  "termSelectSession": "Select Session",
+  "termSelectWindow": "Select Window",
+  "termSelectPane": "Select Pane",
+  "termClosePaneTitle": "Close Pane?",
+  "termClosePaneLastWindowLastPane": "This is the last pane in the last window. Closing it will end the session and disconnect from the server.",
+  "termClosePaneLastPane": "This is the last pane in this window. Closing it will also close the window.",
+  "termClosePaneConfirm": "Are you sure you want to close pane \"{paneTitle}\"?",
+  "@termClosePaneConfirm": {
+    "placeholders": {
+      "paneTitle": {
+        "type": "String"
+      }
+    }
+  },
+  "termCancel": "Cancel",
+  "termClose": "Close",
+  "termTerminalOptions": "Terminal Options",
+  "termScrollSelectMode": "Scroll & Select Mode",
+  "termNormalMode": "Normal Mode",
+  "termTapReturnNormal": "Tap to return to normal mode",
+  "termTapEnableSelection": "Tap to enable text selection",
+  "termResetZoom": "Reset Zoom",
+  "termCurrentZoom": "Current: {percent}%",
+  "@termCurrentZoom": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "termPinchToZoom": "Pinch to zoom in/out",
+  "termSettings": "Settings",
+  "termSettingsSubtitle": "Font, theme, and other options",
+  "termDisconnect": "Disconnect",
+  "termCloseSshConnection": "Close SSH connection",
+  "termCloseWindowTitle": "Close Window?",
+  "termCloseWindowLast": "This is the last window in the session. Closing it will end the session and disconnect from the server.",
+  "termCloseWindowConfirm": "Are you sure you want to close window \"{windowName}\"?",
+  "@termCloseWindowConfirm": {
+    "placeholders": {
+      "windowName": {
+        "type": "String"
+      }
+    }
+  },
+  "termDisconnectTitle": "Disconnect?",
+  "termDisconnectConfirm": "Are you sure you want to disconnect from the server?",
+  "termClosePaneHerdrLastBoth": "This is the last pane in the last tab. Closing it will also close the tab and the workspace.",
+  "termClosePaneHerdrLast": "This is the last pane in this tab. Closing it will also close the tab.",
+  "termCloseTabTitle": "Close Tab?",
+  "termCloseTabLast": "This is the last tab in this workspace. Closing it will also close the workspace.",
+  "termCloseTabConfirm": "Are you sure you want to close tab \"{tabName}\"?",
+  "@termCloseTabConfirm": {
+    "placeholders": {
+      "tabName": {
+        "type": "String"
+      }
+    }
+  },
+  "termRenameTabTitle": "Rename Tab",
+  "termTabLabel": "Tab Label",
+  "termRenameTabHint": "Enter a label for this tab",
+  "termRename": "Rename",
+  "termCreate": "Create",
+  "termNewTabHint": "Leave empty for default",
+  "termLabelCannotBeEmpty": "Label cannot be empty",
+  "termLabelTooLong": "Label must be 100 characters or less",
+  "termSplitPaneTitle": "Split Pane {index}",
+  "@termSplitPaneTitle": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "termSplitRight": "Split Right",
+  "termSplitDown": "Split Down",
+  "termTapToSplit": "Tap to split",
+  "termEnterCommand": "Enter Command",
+  "termShiftEnterNewline": "Shift+Enter: newline",
+  "termCommandHint": "Type your command... (Enter to send)",
+  "termExecute": "Execute",
+  "termFailedToLoad": "Failed to load",
+  "termReadOnlyBadge": "Read-only",
+  "termReadOnlyBanner": "READ ONLY — viewing only",
+  "termGallery": "Gallery",
+  "termCamera": "Camera",
+  "termSelectedWindow": "Selected: {name} ({size})",
+  "@termSelectedWindow": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "termTapWindowToSelect": "Tap a window to select",
+  "newWindowTitle": "New Window",
+  "newWindowNameLabel": "Window Name",
+  "newWindowNameHint": "Leave empty for default",
+  "newWindowCommandLabel": "Command",
+  "newWindowCommandHint": "npm run dev (optional)",
+  "newWindowCancel": "Cancel",
+  "newWindowCreate": "Create",
+  "newWindowNameTooLong": "Window name must be 50 characters or less",
+  "newWindowNameChars": "Only letters, numbers, - and _ allowed",
+  "newWindowNameExists": "Window \"{name}\" already exists",
+  "@newWindowNameExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTitle": "Resize Pane",
+  "paneChooserSelected": "Selected: {label} ({size})",
+  "@paneChooserSelected": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "paneChooserTapToSelect": "Tap a pane to select",
+  "paneChooserCancel": "Cancel",
+  "paneChooserResize": "Resize",
+  "paneChooserSizeUnknown": "Unknown size",
+  "renameWindowTitle": "Rename Window",
+  "renameWindowNameLabel": "Window Name",
+  "renameWindowCancel": "Cancel",
+  "renameWindowConfirm": "Rename",
+  "renameWindowCannotBeEmpty": "Window name cannot be empty",
+  "renameWindowTooLong": "Window name must be 50 characters or less",
+  "renameWindowChars": "Only letters, numbers, - and _ allowed",
+  "renameWindowExists": "Window \"{name}\" already exists",
+  "@renameWindowExists": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizePaneTitle": "Resize Pane",
+  "resizeWindowTitle": "Resize Window",
+  "resizeTerminalTitle": "Resize Terminal",
+  "resizeCancel": "Cancel",
+  "resizeConfirm": "Resize",
+  "resizeWarningOtherPanes": "Other pane sizes may also change.",
+  "resizeWarningTmuxRequired": "Window resize requires tmux 2.9+. Resize button disabled.",
+  "resizeTerminalDescription": "Changes the size of the whole terminal (PTY). Applies to all workspaces.",
+  "resizePresetStandard": "80x24 (Standard)",
+  "resizePresetWide": "120x40 (Wide)",
+  "resizePresetFullHd": "160x50 (Full HD)",
+  "resizePresetMatchScreen": "Match Screen ({cols} x {rows})",
+  "@resizePresetMatchScreen": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizeCols": "Cols",
+  "resizeRows": "Rows",
+  "resizeEstimated": "Estimated",
+  "resizeSizeUnknown": "Unknown size",
+  "imgTransferSendImage": "Send image",
+  "imgTransferGallery": "Gallery",
+  "imgTransferCamera": "Camera",
+  "imgTransferTitle": "Upload Image",
+  "imgTransferFormatLabel": "Format",
+  "imgTransferFormatOriginal": "Original",
+  "imgTransferResizeLabel": "Resize",
+  "imgTransferSizeSmall": "S",
+  "imgTransferSizeMedium": "M",
+  "imgTransferSizeLarge": "L",
+  "imgTransferBracketedPaste": "Bracketed Paste",
+  "imgTransferAdvanced": "Advanced",
+  "imgTransferRemotePath": "Remote Path",
+  "imgTransferPathFormat": "Path Format",
+  "imgTransferPathFormatHint": "Use {path} as placeholder. e.g. @{path}",
+  "@imgTransferPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferJpegQuality": "JPEG Quality",
+  "imgTransferCustomSize": "Custom Size",
+  "imgTransferWidth": "Width",
+  "imgTransferHeight": "Height",
+  "imgTransferApply": "Apply",
+  "imgTransferAutoEnter": "Auto Enter",
+  "imgTransferAutoEnterSubtitle": "Send Enter after path injection",
+  "imgTransferCancel": "Cancel",
+  "imgTransferUpload": "Upload",
+  "settingsTitle": "Settings",
+  "commonCancel": "Cancel",
+  "commonSave": "Save",
+  "settingsSectionTerminal": "Terminal",
+  "settingsSectionKeyOverlay": "Key Overlay",
+  "settingsSectionBehavior": "Behavior",
+  "settingsSectionAppearance": "Appearance",
+  "settingsSectionImageTransfer": "Image Transfer",
+  "settingsSectionAbout": "About",
+  "settingsShowCursor": "Show Cursor",
+  "settingsShowCursorDescription": "Show terminal cursor indicator",
+  "settingsAdjustMode": "Adjust Mode",
+  "settingsAdjustModeNone": "None",
+  "settingsAdjustModeAutoFit": "Auto Fit",
+  "settingsAdjustModeAutoResize": "Auto Resize",
+  "settingsAdjustModeNoneDescription": "Manual font and pane size",
+  "settingsAdjustModeAutoFitDescription": "Adjust font size to fit screen width",
+  "settingsAdjustModeAutoResizeDescription": "Resize tmux pane to fit screen",
+  "settingsFontSize": "Font Size",
+  "settingsFontSizeAutoFit": "{size} pt (auto-fit enabled)",
+  "@settingsFontSizeAutoFit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsFontFamily": "Font Family",
+  "settingsMinimumFontSize": "Minimum Font Size",
+  "settingsMinFontSizeAutoFitLimit": "{size} pt (auto-fit limit)",
+  "@settingsMinFontSizeAutoFitLimit": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsMinFontSizeNotUsed": "{size} pt (not used)",
+  "@settingsMinFontSizeNotUsed": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsKeyOverlay": "Key Overlay",
+  "settingsKeyOverlayDescription": "Show key name overlay on special key press",
+  "settingsModifierKeys": "Modifier Keys",
+  "settingsModifierKeysDescription": "Ctrl, Alt, Shift combinations",
+  "settingsSpecialKeys": "Special Keys",
+  "settingsSpecialKeysDescription": "ESC, TAB, ENTER, Shift+Enter",
+  "settingsArrowKeys": "Arrow Keys",
+  "settingsArrowKeysDescription": "Up, Down, Left, Right",
+  "settingsShortcutKeys": "Shortcut Keys",
+  "settingsShortcutKeysDescription": "/, -, 1, 2, 3, 4",
+  "settingsOverlayPosition": "Overlay Position",
+  "settingsOverlayPositionCenter": "Center of Terminal",
+  "settingsOverlayPositionBelowHeader": "Below Header",
+  "settingsOverlayPositionAboveKeyboard": "Above Keyboard",
+  "settingsHapticFeedback": "Haptic Feedback",
+  "settingsHapticFeedbackDescription": "Vibrate on key press",
+  "settingsKeepScreenOn": "Keep Screen On",
+  "settingsKeepScreenOnDescription": "Prevent screen from sleeping",
+  "settingsScreenOrientation": "Screen Orientation",
+  "settingsOrientationAuto": "Auto (follow device)",
+  "settingsOrientationPortrait": "Portrait",
+  "settingsOrientationLandscape": "Landscape",
+  "settingsOrientationAutoDescription": "Follow device rotation",
+  "settingsOrientationPortraitDescription": "Lock to portrait",
+  "settingsOrientationLandscapeDescription": "Lock to landscape",
+  "settingsMaxRefreshRate": "Max Refresh Rate",
+  "settingsRefreshRateAuto": "Auto (highest)",
+  "settingsRefreshRateAutoDescription": "Use the highest available",
+  "settingsRefreshRateCap": "Cap at {rate} Hz",
+  "@settingsRefreshRateCap": {
+    "placeholders": {
+      "rate": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsInvertPaneNavigation": "Invert Pane Navigation",
+  "settingsInvertPaneNavigationDescription": "Reverse swipe direction for pane switching",
+  "settingsTheme": "Theme",
+  "settingsRemotePath": "Remote Path",
+  "settingsOutputFormat": "Output Format",
+  "settingsJpegQuality": "JPEG Quality",
+  "settingsResize": "Resize",
+  "settingsResizePreset": "Resize Preset",
+  "settingsResizePresetOriginal": "Original",
+  "settingsResizePresetSmall": "Small ({width}px)",
+  "@settingsResizePresetSmall": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetMedium": "Medium ({width}px)",
+  "@settingsResizePresetMedium": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetLarge": "Large ({width}px)",
+  "@settingsResizePresetLarge": {
+    "placeholders": {
+      "width": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsResizePresetCustom": "Custom",
+  "settingsMaxWidth": "Max Width",
+  "settingsMaxHeight": "Max Height",
+  "settingsPathFormat": "Path Format",
+  "settingsPathFormatHint": "Use {path} as placeholder. e.g. @{path}",
+  "@settingsPathFormatHint": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsAutoEnter": "Auto Enter",
+  "settingsAutoEnterDescription": "Send Enter after path injection",
+  "settingsBracketedPaste": "Bracketed Paste",
+  "settingsBracketedPasteDescription": "Use bracketed paste protocol",
+  "settingsVersion": "Version",
+  "settingsSourceCode": "Source Code",
+  "settingsLicenses": "Licenses",
+  "settingsLicensesDescription": "Open source licenses",
+  "themeTitle": "Theme",
+  "themeDark": "Dark",
+  "themeLight": "Light",
+  "fontFamilyTitle": "Font Family",
+  "fontSizeTitle": "Font Size",
+  "minFontSizeTitle": "Minimum Font Size",
+  "minFontSizeDescription": "Font size will not go below this value. Horizontal scroll is enabled for wider panes.",
+  "licensesTitle": "Licenses",
+  "licensesCopyright": "© 2025 mox",
+  "muxWindowCount": "{count} windows",
+  "@muxWindowCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxPaneCount": "{count} panes",
+  "@muxPaneCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "muxRenameWindow": "Rename Window",
+  "muxResizeWindow": "Resize Window",
+  "muxCloseWindow": "Close Window",
+  "muxResizePane": "Resize Pane",
+  "muxClosePane": "Close Pane",
+  "keyBarTypeHere": "Type here...",
+  "termPaneLabel": "Pane {index}",
+  "@termPaneLabel": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifPanePosition": " • Pane {index}",
+  "@notifPanePosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "dashLastWindow": "W{index}",
+  "@dashLastWindow": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "notifWindowPosition": "W{index}: {name}",
+  "@notifWindowPosition": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "resizeHerdrPtyHeader": "Herdr (PTY)  {cols} x {rows}",
+  "@resizeHerdrPtyHeader": {
+    "placeholders": {
+      "cols": {
+        "type": "int"
+      },
+      "rows": {
+        "type": "int"
+      }
+    }
+  },
+  "resizePanelLabel": "Panel",
+  "notifSshConnectedTitle": "SSH connected: {name}",
+  "@notifSshConnectedTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "notifHost": "Host: {host}",
+  "@notifHost": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "notifChannelName": "SSH Connection",
+  "notifChannelDescription": "Keeps SSH connection alive in background",
+  "sshHostRequired": "Host is required",
+  "sshUsernameRequired": "Username is required",
+  "sshInvalidPortNumber": "Invalid port number: {port}",
+  "@sshInvalidPortNumber": {
+    "placeholders": {
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "sshCredentialRequired": "Either password or privateKey must be provided",
+  "sshNoValidKeyInPem": "No valid key found in PEM data",
+  "sshInvalidPrivateKeyFormat": "Invalid private key format: {error}",
+  "@sshInvalidPrivateKeyFormat": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshPrivateKeyEncrypted": "Private key is encrypted, passphrase required",
+  "sshParsePrivateKeyFailed": "Failed to parse private key: {error}",
+  "@sshParsePrivateKeyFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshSftpRequiresConnection": "SFTP requires an active SSH connection",
+  "sshStartShellFailed": "Failed to start shell: {error}",
+  "@sshStartShellFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshNotConnected": "Not connected",
+  "sshNotConnectedOrShellNotStarted": "Not connected or shell not started",
+  "sshPersistentShellUnavailable": "Persistent shell is not available",
+  "sshCommandTimedOut": "Command execution timed out",
+  "sshExecuteCommandFailed": "Failed to execute command: {error}",
+  "@sshExecuteCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshShellNotStarted": "Shell not started",
+  "sshShellSessionIsClosed": "Shell session is closed",
+  "sshAnotherCommandRunning": "Another command is already running",
+  "sshShellSessionClosed": "Shell session closed",
+  "sshSendToShellFailed": "Failed to send to shell",
+  "sshConnectionLost": "Connection lost",
+  "sshMaxReconnectAttemptsReached": "Max reconnect attempts reached",
+  "sshReconnectFailed": "Reconnect failed: {error}",
+  "@sshReconnectFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrServerNotRunning": "Herdr server is not running. Start it with 'herdr server' first.",
+  "connHerdrParseStatusFailed": "Failed to parse herdr status output: {error}",
+  "@connHerdrParseStatusFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrParseSnapshotFailed": "Failed to parse herdr snapshot output: {error}",
+  "@connHerdrParseSnapshotFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrChannelClosed": "Command channel closed without exit status or output: {command}",
+  "@connHerdrChannelClosed": {
+    "placeholders": {
+      "command": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailed": "herdr command failed: {error}",
+  "@connHerdrCommandFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCode": "herdr command failed (exit code: {code})",
+  "@connHerdrCommandFailedExitCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connTmuxCommandFailed": "tmux command failed (exit code: {code})",
+  "@connTmuxCommandFailed": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupCreateFailed": "Failed to create backup before migration. Primary storage was not changed.",
+  "connMigrationBackupCreateFailedWarning": "Migration backup creation failed: {error}",
+  "@connMigrationBackupCreateFailedWarning": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationBackupValidationFailed": "Backup validation failed. Migration was not performed to avoid data loss.",
+  "connMigrationWriteRollbackFailed": "Failed to write migrated storage and data rollback also failed. {error}",
+  "@connMigrationWriteRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationOriginalError": "Original error: {error}",
+  "@connMigrationOriginalError": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationWriteRestored": "Failed to write migrated storage: {error}. Original data restored.",
+  "@connMigrationWriteRestored": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRollbackFailed": "Migrated storage validation failed and data rollback also failed. {error}",
+  "@connMigrationValidationRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationValidationRestored": "Migrated storage validation failed. Original data restored. Please check storage space or reinstall the app.",
+  "connMigrationRestoreFailed": "Failed to restore connection data from backup. Please check storage space or reinstall the app.",
+  "connMigrationRecoverUsingBackup": "Stored connections were invalid; using available backup. Error: {error}. Primary restore failed: {restoreError}",
+  "@connMigrationRecoverUsingBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      },
+      "restoreError": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecoveredFromBackup": "Stored connections were invalid; restored from backup. Error: {error}",
+  "@connMigrationRecoveredFromBackup": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationNoUsableBackup": "Stored connections are invalid and no usable backup is available. Please re-add your connections or clear app data.",
+  "keyMgmtInvalidPemOrWrongPassphrase": "Invalid PEM format or wrong passphrase",
+  "imgTransferHeicEmptyResult": "Native HEIC conversion returned empty result",
+  "imgTransferHeicConvertFailed": "Failed to convert HEIC image: {error}",
+  "@imgTransferHeicConvertFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferDecodeFailed": "Failed to decode image",
+  "fileDeleteFailureDetail": "Failed to delete: {error}",
+  "@fileDeleteFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileRenameFailureDetail": "Failed to rename: {error}",
+  "@fileRenameFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileCreateFolderFailureDetail": "Failed to create folder: {error}",
+  "@fileCreateFolderFailureDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileLoadHomeFailed": "Failed to get home directory: {error}",
+  "@fileLoadHomeFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "fileSshConnectionLost": "SSH connection lost",
+  "imgTransferPickFailed": "Failed to pick image: {error}",
+  "@imgTransferPickFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imgTransferSshNotAvailable": "SSH connection not available",
+  "imgTransferSshLostDuringUpload": "SSH connection lost during upload",
+  "imgTransferUploadFailed": "Upload failed: {error}",
+  "@imgTransferUploadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedRecordReason": "Failed to load connection record: {error}",
+  "@connCorruptedRecordReason": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connCorruptedWarning": "{count, plural, =1{1 connection could not be loaded.} other{{count} connections could not be loaded.}}",
+  "@connCorruptedWarning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "connHerdrCommandFailedErrorCode": "herdr command failed: {code} (exit code: {exitCode})",
+  "@connHerdrCommandFailedErrorCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "exitCode": {
+        "type": "String"
+      }
+    }
+  },
+  "connHerdrCommandFailedExitCodePreview": "herdr command failed (exit code: {code}, stdout({bytes}b))",
+  "@connHerdrCommandFailedExitCodePreview": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "bytes": {
+        "type": "int"
+      }
+    }
+  },
+  "connMigrationRecordRollbackFailed": "Migration of a connection record failed and data rollback also failed. {error}",
+  "@connMigrationRecordRollbackFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "connMigrationRecordFailedPreserved": "Migration of a connection record failed: {error}. Original data preserved.",
+  "@connMigrationRecordFailedPreserved": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sshConnectionLostDetail": "Connection lost: {error}",
+  "@sshConnectionLostDetail": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ import '../services/backend/multiplexer_config.dart';
 import '../services/connection/connection_migration.dart';
 import '../services/connection/connection_storage_schema.dart';
 import '../services/keychain/secure_storage.dart';
+import '../l10n/l10n_lookup.dart';
 
 /// 接続設定
 class Connection {
@@ -22,7 +23,8 @@ class Connection {
   /// 実値は service 層（[ConnectionMigration]）と共有するため
   /// [ConnectionStorageSchema] に集約している。provider 層から import すると
   /// 循環依存になるため、このエイリアス経由で参照する。
-  static const int currentStorageSchemaVersion = ConnectionStorageSchema.current;
+  static const int currentStorageSchemaVersion =
+      ConnectionStorageSchema.current;
 
   /// 旧 JSON（schemaVersion なし・tmuxPath 形式）のバージョン。
   static const int legacyStorageSchemaVersion = ConnectionStorageSchema.legacy;
@@ -162,18 +164,10 @@ class CorruptedConnection {
   /// 元の JSON レコード（デバッグ・回復用）。
   final Map<String, dynamic>? rawJson;
 
-  const CorruptedConnection({
-    this.id,
-    required this.reason,
-    this.rawJson,
-  });
+  const CorruptedConnection({this.id, required this.reason, this.rawJson});
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'reason': reason,
-      'rawJson': rawJson,
-    };
+    return {'id': id, 'reason': reason, 'rawJson': rawJson};
   }
 }
 
@@ -231,6 +225,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
   Future<void> _loadConnections() async {
     developer.log('_loadConnections() started', name: 'ConnectionsProvider');
+    final l10n = lookupL10n();
     try {
       final secure = SecureStorageService();
       String? jsonString = await secure.readValue(_storageKey);
@@ -245,16 +240,23 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
           await secure.writeValue(_storageKey, sharedPrefsJson);
           jsonString = sharedPrefsJson;
           fromSharedPreferences = true;
-          developer.log('Copied connections from SharedPreferences to secure storage for migration', name: 'ConnectionsProvider');
+          developer.log(
+            'Copied connections from SharedPreferences to secure storage for migration',
+            name: 'ConnectionsProvider',
+          );
         }
       }
 
-      developer.log('JSON from storage: ${jsonString != null ? 'exists' : 'null'}', name: 'ConnectionsProvider');
+      developer.log(
+        'JSON from storage: ${jsonString != null ? 'exists' : 'null'}',
+        name: 'ConnectionsProvider',
+      );
 
       // 旧 tmuxPath から multiplexer へのマイグレーション
       final migrationResult = await ConnectionMigration.migrate(
         secure: secure,
         sourceJson: jsonString,
+        l10n: l10n,
       );
 
       // SharedPreferences コピーは schema migration が成功してから削除
@@ -262,11 +264,17 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
           migrationResult.error == null &&
           migrationResult.json != null) {
         await prefs?.remove(_storageKey);
-        developer.log('Removed migrated SharedPreferences copy', name: 'ConnectionsProvider');
+        developer.log(
+          'Removed migrated SharedPreferences copy',
+          name: 'ConnectionsProvider',
+        );
       }
 
       if (migrationResult.error != null && migrationResult.json == null) {
-        developer.log('Migration error: ${migrationResult.error}', name: 'ConnectionsProvider');
+        developer.log(
+          'Migration error: ${migrationResult.error}',
+          name: 'ConnectionsProvider',
+        );
         if (!_disposed) {
           state = ConnectionsState(
             error: migrationResult.error,
@@ -290,17 +298,29 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
             }
             connections.add(Connection.fromJson(record));
           } catch (e, stackTrace) {
-            developer.log('Corrupted connection record: $e', name: 'ConnectionsProvider', error: e, stackTrace: stackTrace);
-            final id = record is Map<String, dynamic> ? record['id'] as String? : null;
-            corruptedRecords.add(CorruptedConnection(
-              id: id,
-              reason: 'Failed to load connection record: $e',
-              rawJson: record is Map<String, dynamic> ? record : null,
-            ));
+            developer.log(
+              'Corrupted connection record: $e',
+              name: 'ConnectionsProvider',
+              error: e,
+              stackTrace: stackTrace,
+            );
+            final id = record is Map<String, dynamic>
+                ? record['id'] as String?
+                : null;
+            corruptedRecords.add(
+              CorruptedConnection(
+                id: id,
+                reason: l10n.connCorruptedRecordReason('$e'),
+                rawJson: record is Map<String, dynamic> ? record : null,
+              ),
+            );
           }
         }
 
-        developer.log('Loaded ${connections.length} healthy and ${corruptedRecords.length} corrupted connection records from storage', name: 'ConnectionsProvider');
+        developer.log(
+          'Loaded ${connections.length} healthy and ${corruptedRecords.length} corrupted connection records from storage',
+          name: 'ConnectionsProvider',
+        );
 
         // 最終接続日時で並び替え（降順）
         connections.sort((a, b) {
@@ -311,7 +331,7 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
         String? warning;
         if (corruptedRecords.isNotEmpty) {
-          warning = '${corruptedRecords.length} connections could not be loaded.';
+          warning = l10n.connCorruptedWarning(corruptedRecords.length);
         }
         if (migrationResult.warning != null) {
           warning = warning == null
@@ -327,17 +347,26 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
             error: migrationResult.error,
           );
         }
-        developer.log('State updated with ${connections.length} connections, ${corruptedRecords.length} corrupted records', name: 'ConnectionsProvider');
+        developer.log(
+          'State updated with ${connections.length} connections, ${corruptedRecords.length} corrupted records',
+          name: 'ConnectionsProvider',
+        );
       } else {
         if (!_disposed) {
-          state = ConnectionsState(
-            warning: migrationResult.warning,
-          );
+          state = ConnectionsState(warning: migrationResult.warning);
         }
-        developer.log('No saved connections, initialized empty state', name: 'ConnectionsProvider');
+        developer.log(
+          'No saved connections, initialized empty state',
+          name: 'ConnectionsProvider',
+        );
       }
     } catch (e, stackTrace) {
-      developer.log('Error loading connections: $e', name: 'ConnectionsProvider', error: e, stackTrace: stackTrace);
+      developer.log(
+        'Error loading connections: $e',
+        name: 'ConnectionsProvider',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (!_disposed) {
         state = ConnectionsState(error: e.toString());
       }
@@ -352,22 +381,37 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 
   /// 接続を追加
   Future<void> add(Connection connection) async {
-    developer.log('add() called: ${connection.name} (${connection.id})', name: 'ConnectionsProvider');
-    developer.log('Current connections count: ${state.connections.length}', name: 'ConnectionsProvider');
+    developer.log(
+      'add() called: ${connection.name} (${connection.id})',
+      name: 'ConnectionsProvider',
+    );
+    developer.log(
+      'Current connections count: ${state.connections.length}',
+      name: 'ConnectionsProvider',
+    );
 
     final connections = [...state.connections, connection];
-    developer.log('New connections count: ${connections.length}', name: 'ConnectionsProvider');
+    developer.log(
+      'New connections count: ${connections.length}',
+      name: 'ConnectionsProvider',
+    );
 
     state = state.copyWith(
       connections: connections,
       corruptedRecords: const <CorruptedConnection>[],
       warning: null,
     );
-    developer.log('State updated, saving to secure storage...', name: 'ConnectionsProvider');
+    developer.log(
+      'State updated, saving to secure storage...',
+      name: 'ConnectionsProvider',
+    );
 
     await _saveConnections(connections);
     if (!_disposed) {
-      developer.log('Connections saved. Final count: ${state.connections.length}', name: 'ConnectionsProvider');
+      developer.log(
+        'Connections saved. Final count: ${state.connections.length}',
+        name: 'ConnectionsProvider',
+      );
     }
   }
 
@@ -382,13 +426,19 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
     );
     await _saveConnections(connections);
     if (!_disposed) {
-      developer.log('Connection removed. Remaining: ${state.connections.length}', name: 'ConnectionsProvider');
+      developer.log(
+        'Connection removed. Remaining: ${state.connections.length}',
+        name: 'ConnectionsProvider',
+      );
     }
   }
 
   /// 接続を更新
   Future<void> update(Connection connection) async {
-    developer.log('update() called: ${connection.name} (${connection.id})', name: 'ConnectionsProvider');
+    developer.log(
+      'update() called: ${connection.name} (${connection.id})',
+      name: 'ConnectionsProvider',
+    );
     final connections = state.connections.map((c) {
       return c.id == connection.id ? connection : c;
     }).toList();
@@ -465,8 +515,8 @@ class ConnectionsNotifier extends Notifier<ConnectionsState> {
 /// 接続一覧プロバイダー
 final connectionsProvider =
     NotifierProvider<ConnectionsNotifier, ConnectionsState>(() {
-  return ConnectionsNotifier();
-});
+      return ConnectionsNotifier();
+    });
 
 /// 選択中接続IDを管理するNotifier
 class SelectedConnectionIdNotifier extends Notifier<String?> {
@@ -495,8 +545,8 @@ class ConnectionSearchNotifier extends Notifier<String> {
 /// 検索クエリプロバイダー
 final connectionSearchProvider =
     NotifierProvider<ConnectionSearchNotifier, String>(() {
-  return ConnectionSearchNotifier();
-});
+      return ConnectionSearchNotifier();
+    });
 
 /// ソートオプション
 enum ConnectionSortOption {
@@ -521,8 +571,8 @@ class ConnectionSortNotifier extends Notifier<ConnectionSortOption> {
 /// ソートオプションプロバイダー
 final connectionSortProvider =
     NotifierProvider<ConnectionSortNotifier, ConnectionSortOption>(() {
-  return ConnectionSortNotifier();
-});
+      return ConnectionSortNotifier();
+    });
 
 /// フィルタリング・ソート済み接続リストプロバイダー
 final filteredConnectionsProvider = Provider<List<Connection>>((ref) {
@@ -571,8 +621,8 @@ final filteredConnectionsProvider = Provider<List<Connection>>((ref) {
 /// 現在選択中の接続IDプロバイダー
 final selectedConnectionIdProvider =
     NotifierProvider<SelectedConnectionIdNotifier, String?>(() {
-  return SelectedConnectionIdNotifier();
-});
+      return SelectedConnectionIdNotifier();
+    });
 
 /// 現在選択中の接続プロバイダー
 final selectedConnectionProvider = Provider<Connection?>((ref) {

@@ -20,10 +20,10 @@ class ShellMarkerScanner {
   ShellMarkerScanner({
     required List<int> startMarker,
     required List<int> endMarker,
-  })  : assert(startMarker.isNotEmpty, 'start marker must not be empty'),
-        assert(endMarker.isNotEmpty, 'end marker must not be empty'),
-        _start = Uint8List.fromList(startMarker),
-        _end = Uint8List.fromList(endMarker);
+  }) : assert(startMarker.isNotEmpty, 'start marker must not be empty'),
+       assert(endMarker.isNotEmpty, 'end marker must not be empty'),
+       _start = Uint8List.fromList(startMarker),
+       _end = Uint8List.fromList(endMarker);
 
   final Uint8List _start;
   final Uint8List _end;
@@ -110,7 +110,12 @@ class ShellMarkerScanner {
   /// First index of [needle] within the first [hayLen] bytes of [haystack] at
   /// or after [from], or -1.
   // inventory: SHELL-SCAN-006
-  static int _indexOf(Uint8List haystack, int hayLen, Uint8List needle, int from) {
+  static int _indexOf(
+    Uint8List haystack,
+    int hayLen,
+    Uint8List needle,
+    int from,
+  ) {
     final n = needle.length;
     final limit = hayLen - n;
     outer:

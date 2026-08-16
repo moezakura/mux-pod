@@ -5,6 +5,8 @@
 /// [BackendAdapter.execWithExitCode] 経由で実行される。
 library;
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_lookup.dart';
 import 'herdr_models.dart';
 
 // inventory: HERDR-CMD-PROTO-001
@@ -27,7 +29,7 @@ class HerdrCommands {
   static String preflightCommand() => 'herdr status --json';
 
   // inventory: HERDR-CMD-005
-  /// pane の内容を読み取る（read-only 表示用）。
+  /// pane の内容を読み取る（表示用）。
   ///
   /// コマンド形式:
   /// `herdr pane read <pane_id> --source <source> [--lines N] [--raw]`
@@ -217,11 +219,7 @@ class HerdrCommands {
   /// `.result.root_pane.pane_id`。herdr 0.7.5 CLI reference）。
   /// [focus]: null なら省略（herdr 既定: フォーカス不変）・true で `--focus`・
   /// false で `--no-focus`（既定を明示）。
-  static String workspaceCreate({
-    String? label,
-    String? cwd,
-    bool? focus,
-  }) {
+  static String workspaceCreate({String? label, String? cwd, bool? focus}) {
     final parts = ['herdr', 'workspace', 'create'];
     if (cwd != null && cwd.isNotEmpty) {
       parts.addAll(['--cwd', _shellQuote(cwd)]);
@@ -262,12 +260,38 @@ class HerdrCommands {
     return 'herdr workspace focus $workspaceId';
   }
 
-  /// シェル引用符（単一引用符）で囲む。`'` は `'\''` にエスケープする。
+  /// シェル引用符で囲む。`'` は `'\''` にエスケープする。
   ///
   /// コマンドは SSH 経由でシェルに渡るため、空白・改行・unicode を含む
   /// テキスト（send-text / rename label / split cwd）を安全に転送する。
-  static String _shellQuote(String value) =>
-      "'${value.replaceAll("'", r"'\''")}'";
+  ///
+  /// **制御文字（0x00-0x1F / 0x7F）を含む場合は bash の ANSI-C quoting
+  /// （`$'...'`）で送る**。通常の単一引用符で囲むと、コマンドライン内の
+  /// 制御文字（Ctrl+A = 行頭移動、Ctrl+O = 履歴操作、Ctrl+E = 行末移動等）
+  /// を、対話シェルの readline が解釈して失うため。`$'...'` 形式なら
+  /// 制御文字を `\xHH` のリテラル表現で送り、実行時に bash が制御文字へ
+  /// 復元する（readline に吸われない）。
+  static String _shellQuote(String value) {
+    if (value.codeUnits.any((c) => c < 0x20 || c == 0x7f)) {
+      final buffer = StringBuffer("\$'");
+      for (final rune in value.runes) {
+        if (rune < 0x20 || rune == 0x7f) {
+          buffer.write('\\x${rune.toRadixString(16).padLeft(2, '0')}');
+        } else if (rune == 0x5c) {
+          // backslash
+          buffer.write(r'\\');
+        } else if (rune == 0x27) {
+          // single quote
+          buffer.write(r"\'");
+        } else {
+          buffer.writeCharCode(rune);
+        }
+      }
+      buffer.write("'");
+      return buffer.toString();
+    }
+    return "'${value.replaceAll("'", r"'\''")}'";
+  }
 }
 
 // inventory: HERDR-ERR-001
@@ -292,7 +316,12 @@ class HerdrCommandException implements Exception {
   /// 元の例外（任意）。
   final Object? cause;
 
-  HerdrCommandException(this.message, {this.exitCode, this.errorCode, this.cause});
+  HerdrCommandException(
+    this.message, {
+    this.exitCode,
+    this.errorCode,
+    this.cause,
+  });
 
   @override
   String toString() => 'HerdrCommandException: $message';
@@ -382,9 +411,10 @@ class HerdrServerNotRunningException implements Exception {
   /// ユーザー向けの案内文。
   final String message;
 
-  HerdrServerNotRunningException()
-      : message =
-            "Herdr server is not running. Start it with 'herdr server' first.";
+  /// [l10n] は任意。null の場合は [lookupL10n]（設定言語キャッシュ）で解決する。
+  /// キャッシュ未設定時は端末ロケール（テストでは en）となるため英語互換。
+  HerdrServerNotRunningException({AppLocalizations? l10n})
+    : message = (l10n ?? lookupL10n()).connHerdrServerNotRunning;
 
   @override
   String toString() => 'HerdrServerNotRunningException: $message';
@@ -412,12 +442,12 @@ class HerdrPreflight {
   /// 2. client/server protocol が 17 以外なら [HerdrProtocolMismatchException]。
   ///
   /// 検証に成功した場合は [status] をそのまま返す。
-  static HerdrStatus validate(HerdrStatus status) {
+  static HerdrStatus validate(HerdrStatus status, {AppLocalizations? l10n}) {
     // server 未稼働は protocol 不整合より先に専用例外で報告する。
     // 実測では未稼働時に `server.protocol` が null となり `_asInt` が 0 へ
     // 変換されるため、protocol 判定だけでは「protocol 0 が非対応」と誤報告する。
     if (!status.running) {
-      throw HerdrServerNotRunningException();
+      throw HerdrServerNotRunningException(l10n: l10n);
     }
     final client = status.clientProtocol;
     final server = status.serverProtocol;

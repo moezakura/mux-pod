@@ -7,8 +7,22 @@ void main() {
     group('findAdjacentPane', () {
       test('水平2分割でleft/rightナビゲーション', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 40, height: 24),
-          const TmuxPane(index: 1, id: '%1', left: 41, top: 0, width: 39, height: 24),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 40,
+            height: 24,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 41,
+            top: 0,
+            width: 39,
+            height: 24,
+          ),
         ];
 
         // pane0から右 → pane1
@@ -46,8 +60,22 @@ void main() {
 
       test('垂直2分割でup/downナビゲーション', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 12),
-          const TmuxPane(index: 1, id: '%1', left: 0, top: 13, width: 80, height: 11),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 80,
+            height: 12,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 0,
+            top: 13,
+            width: 80,
+            height: 11,
+          ),
         ];
 
         // pane0から下 → pane1
@@ -79,9 +107,30 @@ void main() {
 
       test('垂直3分割で最も近いペインを返す', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 12),
-          const TmuxPane(index: 1, id: '%1', left: 0, top: 13, width: 80, height: 12),
-          const TmuxPane(index: 2, id: '%2', left: 0, top: 26, width: 80, height: 11),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 80,
+            height: 12,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 0,
+            top: 13,
+            width: 80,
+            height: 12,
+          ),
+          const TmuxPane(
+            index: 2,
+            id: '%2',
+            left: 0,
+            top: 26,
+            width: 80,
+            height: 11,
+          ),
         ];
 
         // pane0から下 → pane1（pane2ではなく最も近いpane1）
@@ -105,9 +154,30 @@ void main() {
         // 上: 1つの幅広ペイン
         // 下: 左右2つのペイン
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 12),
-          const TmuxPane(index: 1, id: '%1', left: 0, top: 13, width: 40, height: 11),
-          const TmuxPane(index: 2, id: '%2', left: 41, top: 13, width: 39, height: 11),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 80,
+            height: 12,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 0,
+            top: 13,
+            width: 40,
+            height: 11,
+          ),
+          const TmuxPane(
+            index: 2,
+            id: '%2',
+            left: 41,
+            top: 13,
+            width: 39,
+            height: 11,
+          ),
         ];
 
         // pane0から下: pane1またはpane2（両方重なりあり、最も近いものを返す）
@@ -141,9 +211,30 @@ void main() {
         // 右上: pane1
         // 左下: pane2（右下にはペインなし）
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 40, height: 12),
-          const TmuxPane(index: 1, id: '%1', left: 41, top: 0, width: 39, height: 24),
-          const TmuxPane(index: 2, id: '%2', left: 0, top: 13, width: 40, height: 11),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 40,
+            height: 12,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 41,
+            top: 0,
+            width: 39,
+            height: 24,
+          ),
+          const TmuxPane(
+            index: 2,
+            id: '%2',
+            left: 0,
+            top: 13,
+            width: 40,
+            height: 11,
+          ),
         ];
 
         // pane2から右 → pane1（垂直方向の重なりあり）
@@ -157,7 +248,14 @@ void main() {
 
       test('ペインが1つのみの場合は全方向null', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 24),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 80,
+            height: 24,
+          ),
         ];
 
         for (final direction in SwipeDirection.values) {
@@ -173,7 +271,14 @@ void main() {
       });
 
       test('ペインリストが空の場合はnull', () {
-        const current = TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 24);
+        const current = TmuxPane(
+          index: 0,
+          id: '%0',
+          left: 0,
+          top: 0,
+          width: 80,
+          height: 24,
+        );
         for (final direction in SwipeDirection.values) {
           expect(
             PaneNavigator.findAdjacentPane(
@@ -190,8 +295,22 @@ void main() {
     group('getNavigableDirections', () {
       test('水平2分割で正しい方向マップを返す', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 40, height: 24),
-          const TmuxPane(index: 1, id: '%1', left: 41, top: 0, width: 39, height: 24),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 40,
+            height: 24,
+          ),
+          const TmuxPane(
+            index: 1,
+            id: '%1',
+            left: 41,
+            top: 0,
+            width: 39,
+            height: 24,
+          ),
         ];
 
         final dirs = PaneNavigator.getNavigableDirections(
@@ -207,7 +326,14 @@ void main() {
 
       test('ペイン1つの場合は全方向false', () {
         final panes = [
-          const TmuxPane(index: 0, id: '%0', left: 0, top: 0, width: 80, height: 24),
+          const TmuxPane(
+            index: 0,
+            id: '%0',
+            left: 0,
+            top: 0,
+            width: 80,
+            height: 24,
+          ),
         ];
 
         final dirs = PaneNavigator.getNavigableDirections(
@@ -259,20 +385,17 @@ void main() {
           PaneNavigator.detectSwipeDirection(const Offset(10, 30)),
           isNull,
         );
-        expect(
-          PaneNavigator.detectSwipeDirection(Offset.zero),
-          isNull,
-        );
+        expect(PaneNavigator.detectSwipeDirection(Offset.zero), isNull);
       });
 
       test('カスタム閾値で検出', () {
         // デフォルト閾値(50)では検出されないが、閾値20なら検出される
+        expect(PaneNavigator.detectSwipeDirection(const Offset(30, 5)), isNull);
         expect(
-          PaneNavigator.detectSwipeDirection(const Offset(30, 5)),
-          isNull,
-        );
-        expect(
-          PaneNavigator.detectSwipeDirection(const Offset(30, 5), threshold: 20),
+          PaneNavigator.detectSwipeDirection(
+            const Offset(30, 5),
+            threshold: 20,
+          ),
           SwipeDirection.right,
         );
       });

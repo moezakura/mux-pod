@@ -62,10 +62,7 @@ abstract class TmuxService {
   });
 
   /// セッション作成
-  Future<void> newSession({
-    required String connectionId,
-    required String name,
-  });
+  Future<void> newSession({required String connectionId, required String name});
 
   /// セッション削除
   Future<void> killSession({

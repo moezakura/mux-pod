@@ -1,5 +1,5 @@
 name: flutter_muxpod
-description: "A new Flutter project."
+description: "Your tmux sessions, in your pocket. A mobile-first tmux client — SSH in, navigate sessions, and stay productive on the go."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,7 +34,7 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  dartssh2: ^2.13.0
+  dartssh2: ^2.16.0
   flutter_riverpod: ^3.1.0
   flutter_secure_storage: ^10.0.0
   local_auth: ^3.0.0
@@ -44,7 +44,7 @@ dependencies:
   # SSH key management dependencies
   file_picker: ^8.0.3
   cryptography: ^2.7.0
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   crypto: ^3.0.3
   # Image transfer
   image_picker: ^1.1.2
@@ -59,9 +59,12 @@ dependencies:
   # Display refresh-rate control (max FPS setting)
   flutter_displaymode: ^0.6.0
   # Network connectivity monitoring
-  connectivity_plus: ^6.0.0
+  connectivity_plus: ^7.3.1
   path: ^1.9.1
   intl: ^0.20.2
+  path_provider: ^2.1.6
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +78,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.3
 
+  wakelock_plus_platform_interface: any
 flutter_launcher_icons:
   android: true
   ios: true
@@ -88,6 +92,9 @@ flutter_launcher_icons:
 
 # The following section is specific to Flutter packages.
 flutter:
+
+  # Enable code generation for localization (flutter gen-l10n on pub get)
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

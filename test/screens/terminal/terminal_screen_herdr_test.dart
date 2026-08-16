@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_muxpod/providers/connection_provider.dart';
+import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
+import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
@@ -44,11 +47,7 @@ class _ReResolvePropagationReader implements PaneContentReader {
   bool failNextPoll = false;
 
   @override
-  Future<MultiplexerPaneSnapshot> readPane({
-    required String paneId,
-    int? historyLines,
-    String source = 'recent',
-  }) async {
+  Future<MultiplexerPaneSnapshot> readPane(PaneReadRequest request) async {
     if (failNextPoll) {
       failNextPoll = false;
       throw const HerdrTargetNotFoundException(
@@ -67,6 +66,50 @@ const kHerdrSnapshotFixture =
     '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
     '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
     '"focused_workspace_id":"w1","layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// layout 付き snapshot fixture（バグ1 AutoFit 用）: pane w1:p1 の rect が
+// 幅 120 x 高さ 24（文字セル単位・T0 実測⑥）。AutoFit がこの幅で計算される
+// ことを検証する（従来は layout が空のため width/height=0 → 既定 80 のまま）。
+const kHerdrSnapshotWithLayoutFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[{"area":{"height":24,"width":120,'
+    '"x":0,"y":0},"focused_pane_id":"w1:p1","panes":[{"focused":true,'
+    '"pane_id":"w1:p1","rect":{"height":24,"width":120,"x":0,"y":0}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
+    '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_6586edf6f766f1","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":1,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// zoom 中 snapshot fixture（バグ1 AutoFit 用）: zoomed=true のとき pane 表示は
+// タブ全面（layout.area）になる（T0 実測 6-b）。pane rect は非 zoom 値
+// （width 40）のままでも、AutoFit は area の幅 120 を使うことを検証する。
+const kHerdrSnapshotZoomedFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[{"area":{"height":24,"width":120,'
+    '"x":0,"y":0},"focused_pane_id":"w1:p1","panes":[{"focused":true,'
+    '"pane_id":"w1:p1","rect":{"height":24,"width":40,"x":0,"y":0}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":true}],'
     '"panes":[{"agent_status":"unknown","cwd":"/tmp","focused":true,'
     '"foreground_cwd":"/tmp","pane_id":"w1:p1","revision":0,'
     '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
@@ -244,6 +287,75 @@ void main() {
       expect(find.textContaining('world'), findsWidgets);
     });
 
+    testWidgets('ライブポーリングは持続的シェル経由（execPersistentCommands）で取得される'
+        '（バグ2: 描画遅延の修正）', (tester) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // ライブポーリング（--lines 120）は execPersistentWithExitCode 経由
+      // （FakeSshClient は execPersistentCommands に記録）。
+      expect(
+        client.execPersistentCommands.any(
+          (c) =>
+              c.contains('herdr pane read w1:p1 --source recent --lines 120'),
+        ),
+        isTrue,
+        reason: 'バグ2: herdr のライブポーリングは persistent shell 経由で取得されること',
+      );
+      // 内容は表示される（persistent 経由でも例外分類が維持される）
+      expect(find.textContaining('hello'), findsWidgets);
+    });
+
+    testWidgets('深い履歴は exec チャネル経由で取得され、行数は scrollbackLines と整合する'
+        '（tmux の capturePane 対比・バグ2 / バグ4）', (tester) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'content\n',
+          // 既定 scrollbackLines=10000 の要求行数（バグ4: 設定値と整合）。
+          'herdr pane read w1:p1 --source recent --lines 10000 --raw':
+              'deep-0\ndeep-1\n',
+        },
+        settle: false,
+      );
+
+      // スクロールモードに入れて深い履歴をロードする
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      state.loadHistoryForScrollForTesting();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // 深い履歴は exec チャネル（execWithExitCode → execCommands）で取得され、
+      // 要求行数はユーザー設定 scrollbackLines（既定 10000）と整合する。
+      expect(
+        client.execCommands.any(
+          (c) =>
+              c.contains('herdr pane read w1:p1 --source recent') &&
+              c.contains('--lines 10000'),
+        ),
+        isTrue,
+        reason:
+            'バグ2: 深い履歴は大量出力のため exec チャネルで取得されること'
+            'バグ4: 深い履歴の要求行数は scrollbackLines と整合すること',
+      );
+    });
+
     testWidgets(
       'sessionId disambiguates same-label workspaces (tmp w3/w4 pattern)',
       (tester) async {
@@ -336,9 +448,7 @@ void main() {
         // 診断ログがリングバッファ（[HerdrSwitch]）に記録される。
         final events = herdrSwitchEvents(tester);
         expect(
-          events.any(
-            (e) => e.contains('resolve failed: no pane in snapshot'),
-          ),
+          events.any((e) => e.contains('resolve failed: no pane in snapshot')),
           isTrue,
           reason: 'resolver の解決失敗理由（workspaces/panes 件数）が記録されること',
         );
@@ -364,9 +474,7 @@ void main() {
           readOnly: true,
           // `herdr api snapshot` が exit 1 で失敗する（server-down 相当・
           // stderr は fake が空文字のため "herdr command failed (exit code: 1)"）。
-          execExitCodes: {
-            'herdr api snapshot': 1,
-          },
+          execExitCodes: {'herdr api snapshot': 1},
           settle: false,
         );
 
@@ -387,53 +495,50 @@ void main() {
           reason: 'HerdrCommandException の種別・errorCode・exitCode が記録されること',
         );
         expect(
-          events.any((e) => e.contains('initial resolve failed: no pane found')),
+          events.any(
+            (e) => e.contains('initial resolve failed: no pane found'),
+          ),
           isTrue,
           reason: '最終的に「No herdr pane found」に帰着したことが記録されること',
         );
       },
     );
 
-    testWidgets(
-      'snapshot fetch failure (HerdrTargetNotFoundException) records '
-      'diagnostic events with kind/errorCode',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'tmp',
-          sessionId: 'w4',
-          readOnly: true,
-          // `herdr api snapshot` が構造化エラー
-          // `{"error":{"code":"workspace_not_found",...}}` を返して exit 1。
-          execOutputs: {
-            'herdr api snapshot':
-                '{"error":{"code":"workspace_not_found","message":"no workspace"}}',
-          },
-          execExitCodes: {
-            'herdr api snapshot': 1,
-          },
-          settle: false,
-        );
+    testWidgets('snapshot fetch failure (HerdrTargetNotFoundException) records '
+        'diagnostic events with kind/errorCode', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'tmp',
+        sessionId: 'w4',
+        readOnly: true,
+        // `herdr api snapshot` が構造化エラー
+        // `{"error":{"code":"workspace_not_found",...}}` を返して exit 1。
+        execOutputs: {
+          'herdr api snapshot':
+              '{"error":{"code":"workspace_not_found","message":"no workspace"}}',
+        },
+        execExitCodes: {'herdr api snapshot': 1},
+        settle: false,
+      );
 
-        expect(find.textContaining('No herdr pane found'), findsWidgets);
+      expect(find.textContaining('No herdr pane found'), findsWidgets);
 
-        final events = herdrSwitchEvents(tester);
-        expect(
-          events.any(
-            (e) =>
-                e.contains(
-                  'initial resolve failed: target not found in snapshot',
-                ) &&
-                e.contains('type=HerdrTargetNotFoundException') &&
-                e.contains('kind=HerdrTargetNotFoundKind.workspace') &&
-                e.contains('errorCode=workspace_not_found'),
-          ),
-          isTrue,
-          reason: 'HerdrTargetNotFoundException の種別・kind・errorCode が記録されること',
-        );
-      },
-    );
+      final events = herdrSwitchEvents(tester);
+      expect(
+        events.any(
+          (e) =>
+              e.contains(
+                'initial resolve failed: target not found in snapshot',
+              ) &&
+              e.contains('type=HerdrTargetNotFoundException') &&
+              e.contains('kind=HerdrTargetNotFoundKind.workspace') &&
+              e.contains('errorCode=workspace_not_found'),
+        ),
+        isTrue,
+        reason: 'HerdrTargetNotFoundException の種別・kind・errorCode が記録されること',
+      );
+    });
 
     testWidgets('uses an injected paneContentReader when provided', (
       tester,
@@ -707,37 +812,36 @@ void main() {
       },
     );
 
-    testWidgets(
-      'switch to the same target is a no-op (L-3: no flicker)',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          readOnly: true,
-          initialPaneId: 'w1:p1',
-          execOutputs: {'herdr pane read': 'content\n'},
-          settle: false,
-        );
+    testWidgets('switch to the same target is a no-op (L-3: no flicker)', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        initialPaneId: 'w1:p1',
+        execOutputs: {'herdr pane read': 'content\n'},
+        settle: false,
+      );
 
-        // 直接指定（initialPaneId）の初期表示: workspaceId 'w1' / tabId null。
-        // 同一ターゲット（paneId / workspaceId / tabId が全て一致）への切替は
-        // no-op で、表示リセット・切替イベント・ポーリングブーストを抑止する。
-        final dynamic state = tester.state(find.byType(TerminalScreen));
-        state.switchHerdrTargetForTesting('w1:p1');
-        await tester.pump();
+      // 直接指定（initialPaneId）の初期表示: workspaceId 'w1' / tabId null。
+      // 同一ターゲット（paneId / workspaceId / tabId が全て一致）への切替は
+      // no-op で、表示リセット・切替イベント・ポーリングブーストを抑止する。
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      state.switchHerdrTargetForTesting('w1:p1');
+      await tester.pump();
 
-        final events = herdrSwitchEvents(tester);
-        expect(
-          events.any((e) => e.contains('switch target')),
-          isFalse,
-          reason: '同一ターゲットへの切替は no-op で切替イベントを記録しないこと',
-        );
+      final events = herdrSwitchEvents(tester);
+      expect(
+        events.any((e) => e.contains('switch target')),
+        isFalse,
+        reason: '同一ターゲットへの切替は no-op で切替イベントを記録しないこと',
+      );
 
-        // 表示内容が維持されている（no-op でコンテンツがクリアされない）
-        expect(find.textContaining('content'), findsWidgets);
-      },
-    );
+      // 表示内容が維持されている（no-op でコンテンツがクリアされない）
+      expect(find.textContaining('content'), findsWidgets);
+    });
 
     testWidgets(
       'server-down stops polling, shows SnackBar with retry, no reconnect '
@@ -879,9 +983,7 @@ void main() {
           initialPaneId: 'w1:p1',
           paneContentReader: reader,
           // 直接指定（initialPaneId）のため初回の snapshot 取得は再解決時のみ
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotPane2Fixture,
-          },
+          execOutputs: {'herdr api snapshot': kHerdrSnapshotPane2Fixture},
           settle: false,
         );
 
@@ -1248,9 +1350,7 @@ void main() {
         expect(find.text('lab-ws2'), findsOneWidget);
 
         // workspace 選択 → シート即閉じ + 切替コミット（workspace のフォーカス pane）
-        await tester.tap(
-          find.byKey(const ValueKey('mux-sel-session-lab-ws2')),
-        );
+        await tester.tap(find.byKey(const ValueKey('mux-sel-session-lab-ws2')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.text('Select Session'), findsNothing);
@@ -1599,7 +1699,7 @@ void main() {
           client.execCommands.any(
             (c) =>
                 c.startsWith('herdr pane send-text w1:p1') &&
-                c.contains('\x1b[5~'),
+                c.contains(r'\x1b[5~'),
           ),
           isTrue,
           reason: '拒否キー（PgUp）は send-text でエスケープシーケンスが送られること',
@@ -1636,7 +1736,7 @@ void main() {
           client.execCommands.any(
             (c) =>
                 c.startsWith('herdr pane send-text w1:p1') &&
-                c.codeUnits.contains(0x04),
+                c.contains(r'\x04'),
           ),
           isTrue,
           reason: '制御文字（C-d）は send-text で制御文字そのものが送られること',
@@ -1670,7 +1770,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(
-          find.text('このキーは herdr で送信できませんでした'),
+          find.text('This key could not be sent via herdr'),
           findsOneWidget,
           reason: 'invalid_key は防御的に SnackBar 通知されること',
         );
@@ -1680,5 +1780,255 @@ void main() {
         await tester.pump(const Duration(milliseconds: 750));
       },
     );
+  });
+
+  group('TerminalScreen herdr AutoFit (bug1)', () {
+    testWidgets('layout の pane rect から paneWidth が解決され AutoFit に反映される', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
+          'herdr pane read': 'content\n',
+        },
+        settle: false,
+      );
+
+      // ポーリングで snapshot cache の layout rect（120x24）が解決され、
+      // _viewNotifier の paneWidth / paneHeight が更新される。
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final terminal = tester.widget<AnsiTextView>(find.byType(AnsiTextView));
+      expect(
+        terminal.paneWidth,
+        120,
+        reason: 'herdr の snapshot layout rect から paneWidth が解決されること',
+      );
+      expect(
+        terminal.paneHeight,
+        24,
+        reason: 'herdr の snapshot layout rect から paneHeight が解決されること',
+      );
+    });
+
+    testWidgets('zoom 中は pane rect でなく layout.area（タブ全面）の幅で AutoFit が計算される', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotZoomedFixture,
+          'herdr pane read': 'content\n',
+        },
+        settle: false,
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final terminal = tester.widget<AnsiTextView>(find.byType(AnsiTextView));
+      // pane rect は非 zoom 値（width 40）だが、表示はタブ全面（area 120）。
+      expect(
+        terminal.paneWidth,
+        120,
+        reason: 'zoom 中は pane rect でなく layout.area の幅が使われること',
+      );
+    });
+
+    testWidgets('layout が無い（rect 取得不能）場合は既定 80 のまま（spec.md:75 フォールバック）', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'content\n',
+        },
+        settle: false,
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final terminal = tester.widget<AnsiTextView>(find.byType(AnsiTextView));
+      // _viewNotifier の既定値は paneWidth 80（_TerminalViewData 既定）。
+      expect(
+        terminal.paneWidth,
+        80,
+        reason: 'rect 取得不能時は既定 80 幅で AutoFit が計算される',
+      );
+    });
+  });
+
+  group('TerminalScreen herdr セレクタ再タップガード (bug3)', () {
+    testWidgets('セレクタ開手中の再タップは無視され、シートが多重起動しない', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        execOutputs: {
+          'herdr api snapshot': kHerdrTwoWorkspaceSnapshotFixture,
+          'herdr pane read w1:p1': 'content from p1\n',
+          'herdr pane read w2:p1': 'content from p2\n',
+        },
+        settle: false,
+      );
+
+      // workspace セグメント（lab-ws1）を連続タップ。
+      // 1回目のタップで _herdrSelectorOpening=true になり、2回目以降は
+      // ガードで無視される（シートが多重起動しない・バグ3）。
+      await tester.tap(find.text('lab-ws1'));
+      await tester.tap(find.text('lab-ws1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // シートは1つだけ表示される（多重起動しない・バグ3）。
+      expect(find.text('Select Session'), findsOneWidget);
+
+      // シートを閉じるとフラグがリセットされ、再度開ける。
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('lab-ws1'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.text('Select Session'),
+        findsOneWidget,
+        reason: 'シートを閉じた後は再度セレクタを開けること',
+      );
+    });
+  });
+
+  group('TerminalScreen herdr スクロールバック (bug4)', () {
+    testWidgets('深い履歴の要求行数はユーザー設定 scrollbackLines と整合する', (tester) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        settings: const AppSettings(keepScreenOn: false, scrollbackLines: 2000),
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'content\n',
+          'herdr pane read w1:p1 --source recent --lines 2000 --raw':
+              'deep-0\ndeep-1\n',
+        },
+        settle: false,
+      );
+
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      state.loadHistoryForScrollForTesting();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(
+        client.execCommands.any(
+          (c) =>
+              c.contains('herdr pane read w1:p1 --source recent') &&
+              c.contains('--lines 2000'),
+        ),
+        isTrue,
+        reason: 'バグ4: herdr の深い履歴は scrollbackLines（2000）で要求されること',
+      );
+    });
+
+    testWidgets('scrollbackLines が最小値未満でもクランプされ、最大値超過でもクランプされる', (
+      tester,
+    ) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        // 20000 超過（例: 99999）→ クランプして 20000 で要求される。
+        settings: const AppSettings(
+          keepScreenOn: false,
+          scrollbackLines: 99999,
+        ),
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'content\n',
+          'herdr pane read w1:p1 --source recent --lines 20000 --raw':
+              'deep-0\ndeep-1\n',
+        },
+        settle: false,
+      );
+
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      state.loadHistoryForScrollForTesting();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(
+        client.execCommands.any(
+          (c) =>
+              c.contains('herdr pane read w1:p1 --source recent') &&
+              c.contains('--lines 20000'),
+        ),
+        isTrue,
+        reason: 'バグ4: scrollbackLines は [200, 20000] にクランプされること',
+      );
+    });
+
+    testWidgets('初回コンテンツ受信時は末尾アライン（scrollToBottom相当）で最下部に到達する', (tester) async {
+      // herdr は cursorX/cursorY=0 固定のため、scrollToCaret の中央寄せだと
+      // 最下部より手前で停止する。backendKind==herdr では末尾アラインに分岐し、
+      // 履歴がある状態でも maxScrollExtent（最下部）へ到達することを検証する。
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        readOnly: true,
+        settings: const AppSettings(
+          keepScreenOn: false,
+          adjustMode: 'manual',
+          fontSize: 14.0,
+        ),
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          // 履歴 + pane（24行）でビューポートを超えるだけの行数を返す
+          'herdr pane read': List.generate(300, (i) => 'content-$i').join('\n'),
+        },
+        settle: false,
+      );
+
+      // 初回コンテンツ受信（_applyUpdate → _scrollToCaret → 100ms遅延）
+      await tester.pump(const Duration(milliseconds: 100));
+      // scrollToBottom の animateTo(300ms) を消化
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final scrollable = find.descendant(
+        of: find.byType(AnsiTextView),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
+        ),
+      );
+      final position = tester.state<ScrollableState>(scrollable).position;
+      expect(
+        position.maxScrollExtent,
+        greaterThan(0),
+        reason: 'コンテンツがビューポートを超えスクロール可能な状態であること',
+      );
+      expect(
+        position.pixels,
+        closeTo(position.maxScrollExtent, 1.0),
+        reason: 'herdr（cursorY=0固定）では末尾アラインで最下部に到達すること',
+      );
+    });
   });
 }

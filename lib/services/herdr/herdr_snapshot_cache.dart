@@ -45,8 +45,8 @@ class HerdrSnapshotCache {
     this._adapterProvider, {
     Duration ttl = const Duration(seconds: 5),
     DateTime Function()? clock,
-  })  : _ttl = ttl,
-        _clock = clock ?? DateTime.now;
+  }) : _ttl = ttl,
+       _clock = clock ?? DateTime.now;
 
   /// snapshot の世代（adapter 差し替え / force 再取得で増える）。
   ///
@@ -75,9 +75,15 @@ class HerdrSnapshotCache {
   /// - adapter が差し替わっていれば自動再取得しエポック++ する。
   /// - TTL 切れの通常再取得はエポックを増やさない（表示対象は不変）。
   /// - 同時に呼ばれた場合は single-flight で 1 回の CLI 実行にまとめる。
+  ///   [joinInflight] が false のときは進行中の fetch に**合流せず**、その完了を
+  ///   待ってから必ず新規 fetch する（Codex B2: window-change 送信後に開始された
+  ///   snapshot を保証するための同期契約。hidden TUI resize の収束判定用）。
   ///
   /// 失敗時は throw（[HerdrAdapter.snapshot] の例外をそのまま伝播）。
-  Future<HerdrSnapshot> get({bool force = false}) async {
+  Future<HerdrSnapshot> get({
+    bool force = false,
+    bool joinInflight = true,
+  }) async {
     final adapter = _adapterProvider();
 
     // adapter 差し替え検出（再接続・SSH client 再生成）→ キャッシュ無効化。
@@ -96,9 +102,17 @@ class HerdrSnapshotCache {
       if (age < _ttl) return _snapshot!;
     }
 
-    // single-flight: 進行中の fetch があれば共有。
+    // single-flight: 進行中の fetch があれば共有（joinInflight: false では合流しない）。
     final inFlight = _inFlight;
-    if (inFlight != null) return inFlight;
+    if (inFlight != null && joinInflight) return inFlight;
+    if (inFlight != null) {
+      // 進行中の fetch の完了を待ってから新規 fetch する（古い取得結果を返さない）。
+      try {
+        await inFlight;
+      } catch (_) {
+        // 前回 fetch の失敗は無視して新規 fetch する。
+      }
+    }
 
     final bumpEpoch = force || adapterChanged;
     final future = _fetch(adapter, bumpEpoch: bumpEpoch);

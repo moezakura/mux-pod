@@ -1,3 +1,5 @@
+import 'package:flutter_muxpod/services/command/command_request.dart';
+import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_facade.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,25 +18,21 @@ class _FakeExecutor implements TmuxCommandExecutor {
   String? get tmuxPath => null;
 
   @override
-  Future<String> exec(String command, {Duration? timeout}) async {
-    commands.add(command);
-    for (final entry in outputs.entries) {
-      if (command.contains(entry.key)) return entry.value;
-    }
-    return '';
-  }
-
-  @override
-  Future<String> execPersistent(String command, {Duration? timeout}) async =>
-      exec(command);
-
-  @override
-  Future<({String stdout, String stderr, int? exitCode})> execWithExitCode(
-    String command, {
-    Duration? timeout,
-  }) async {
-    commands.add(command);
-    return (stdout: await exec(command), stderr: '', exitCode: 0);
+  Future<CommandResult> execute(CommandRequest request) async {
+    commands.add(request.command);
+    final stdout =
+        outputs.entries
+            .where((e) => request.command.contains(e.key))
+            .map((e) => e.value)
+            .firstOrNull ??
+        '';
+    return CommandResult(
+      stdout: stdout,
+      stderr: '',
+      exitCode: 0,
+      outputSeparation: CommandOutputSeparation.separated,
+      actualTransport: CommandTransport.ephemeral,
+    );
   }
 
   @override

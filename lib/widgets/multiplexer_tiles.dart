@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:flutter_muxpod/l10n/l10n_ext.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_pane.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_session.dart';
 import 'package:flutter_muxpod/services/backend/domain/multiplexer_window.dart';
@@ -33,7 +34,7 @@ class MultiplexerSessionTile extends StatelessWidget {
         color: ActiveListTile.iconColor(context, isActive: isActive),
       ),
       title: session.name,
-      subtitle: '${session.windowCount} windows',
+      subtitle: context.l10n.muxWindowCount(session.windowCount),
       trailing: trailing,
       onTap: onTap,
     );
@@ -50,6 +51,7 @@ class MultiplexerWindowTile extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onRename;
   final VoidCallback? onResize;
+  final String? resizeLabel;
   final VoidCallback? onClose;
 
   const MultiplexerWindowTile({
@@ -59,6 +61,7 @@ class MultiplexerWindowTile extends StatelessWidget {
     this.onTap,
     this.onRename,
     this.onResize,
+    this.resizeLabel,
     this.onClose,
   });
 
@@ -73,7 +76,7 @@ class MultiplexerWindowTile extends StatelessWidget {
         color: ActiveListTile.iconColor(context, isActive: isActive),
       ),
       title: '${window.index}: ${window.name}',
-      subtitle: '${window.paneCount} panes',
+      subtitle: context.l10n.muxPaneCount(window.paneCount),
       trailing: onRename != null || onResize != null || onClose != null
           ? PopupMenuButton<String>(
               icon: Icon(
@@ -88,10 +91,13 @@ class MultiplexerWindowTile extends StatelessWidget {
                     value: 'rename',
                     child: Row(
                       children: [
-                        Icon(Icons.drive_file_rename_outline, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.drive_file_rename_outline,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Rename Window'),
+                        Text(context.l10n.muxRenameWindow),
                       ],
                     ),
                   ),
@@ -100,10 +106,13 @@ class MultiplexerWindowTile extends StatelessWidget {
                     value: 'resize',
                     child: Row(
                       children: [
-                        Icon(Icons.aspect_ratio, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.aspect_ratio,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Resize Window'),
+                        Text(resizeLabel ?? context.l10n.muxResizeWindow),
                       ],
                     ),
                   ),
@@ -114,7 +123,10 @@ class MultiplexerWindowTile extends StatelessWidget {
                       children: [
                         Icon(Icons.close, size: 18, color: DesignColors.error),
                         const SizedBox(width: 8),
-                        Text('Close Window', style: TextStyle(color: DesignColors.error)),
+                        Text(
+                          context.l10n.muxCloseWindow,
+                          style: TextStyle(color: DesignColors.error),
+                        ),
                       ],
                     ),
                   ),
@@ -216,10 +228,13 @@ class MultiplexerPaneTile extends StatelessWidget {
                     value: 'resize',
                     child: Row(
                       children: [
-                        Icon(Icons.aspect_ratio, size: 18,
-                            color: colorScheme.onSurface),
+                        Icon(
+                          Icons.aspect_ratio,
+                          size: 18,
+                          color: colorScheme.onSurface,
+                        ),
                         const SizedBox(width: 8),
-                        const Text('Resize Pane'),
+                        Text(context.l10n.muxResizePane),
                       ],
                     ),
                   ),
@@ -230,8 +245,10 @@ class MultiplexerPaneTile extends StatelessWidget {
                       children: [
                         Icon(Icons.close, size: 18, color: DesignColors.error),
                         const SizedBox(width: 8),
-                        Text('Close Pane',
-                            style: TextStyle(color: DesignColors.error)),
+                        Text(
+                          context.l10n.muxClosePane,
+                          style: TextStyle(color: DesignColors.error),
+                        ),
                       ],
                     ),
                   ),

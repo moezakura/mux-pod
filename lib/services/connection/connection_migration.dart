@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../l10n/app_localizations.dart';
 import '../backend/multiplexer_config.dart';
 import '../keychain/secure_storage.dart';
 import 'connection_storage_schema.dart';
@@ -15,11 +16,7 @@ class ConnectionMigrationResult {
   /// ユーザー向けエラー（非機密）。
   final String? error;
 
-  const ConnectionMigrationResult({
-    this.json,
-    this.warning,
-    this.error,
-  });
+  const ConnectionMigrationResult({this.json, this.warning, this.error});
 
   @override
   String toString() {
@@ -46,6 +43,7 @@ class ConnectionMigration {
   static Future<ConnectionMigrationResult> migrate({
     required SecureStorageService secure,
     required String? sourceJson,
+    AppLocalizations? l10n,
   }) async {
     if (sourceJson == null) {
       // 古い backup が残っている場合は削除しておく
@@ -64,7 +62,7 @@ class ConnectionMigration {
       sourceList = decoded;
     } catch (e) {
       // Source invalid; try backup
-      return _recoverFromBackup(secure, e);
+      return _recoverFromBackup(secure, e, l10n: l10n);
     }
 
     // マイグレーションが必要かチェック
@@ -80,8 +78,12 @@ class ConnectionMigration {
     } catch (e) {
       return ConnectionMigrationResult(
         json: sourceJson,
-        error: 'Failed to create backup before migration. Primary storage was not changed.',
-        warning: 'Migration backup creation failed: $e',
+        error:
+            l10n?.connMigrationBackupCreateFailed ??
+            'Failed to create backup before migration. Primary storage was not changed.',
+        warning:
+            l10n?.connMigrationBackupCreateFailedWarning('$e') ??
+            'Migration backup creation failed: $e',
       );
     }
 
@@ -91,7 +93,9 @@ class ConnectionMigration {
         !_jsonEquals(jsonDecode(backupReadJson), sourceList)) {
       return ConnectionMigrationResult(
         json: sourceJson,
-        error: 'Backup validation failed. Migration was not performed to avoid data loss.',
+        error:
+            l10n?.connMigrationBackupValidationFailed ??
+            'Backup validation failed. Migration was not performed to avoid data loss.',
       );
     }
 
@@ -103,17 +107,22 @@ class ConnectionMigration {
           .toList();
     } catch (e) {
       // Migration of a record failed; rollback and return source
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
-          error: 'Migration of a connection record failed and data rollback also failed. $rollbackError',
-          warning: 'Original error: $e',
+          error:
+              l10n?.connMigrationRecordRollbackFailed(rollbackError) ??
+              'Migration of a connection record failed and data rollback also failed. $rollbackError',
+          warning:
+              l10n?.connMigrationOriginalError('$e') ?? 'Original error: $e',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
-        warning: 'Migration of a connection record failed: $e. Original data preserved.',
+        warning:
+            l10n?.connMigrationRecordFailedPreserved('$e') ??
+            'Migration of a connection record failed: $e. Original data preserved.',
       );
     }
     final migratedJson = jsonEncode(migratedList);
@@ -122,17 +131,22 @@ class ConnectionMigration {
     try {
       await secure.writeValue(_storageKey, migratedJson);
     } catch (e) {
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
-          error: 'Failed to write migrated storage and data rollback also failed. $rollbackError',
-          warning: 'Original error: $e',
+          error:
+              l10n?.connMigrationWriteRollbackFailed(rollbackError) ??
+              'Failed to write migrated storage and data rollback also failed. $rollbackError',
+          warning:
+              l10n?.connMigrationOriginalError('$e') ?? 'Original error: $e',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
-        warning: 'Failed to write migrated storage: $e. Original data restored.',
+        warning:
+            l10n?.connMigrationWriteRestored('$e') ??
+            'Failed to write migrated storage: $e. Original data restored.',
       );
     }
 
@@ -147,16 +161,20 @@ class ConnectionMigration {
       }
     }
     if (primaryReadJson == null || !primaryValid) {
-      final rollbackError = await _rollback(secure, sourceJson);
+      final rollbackError = await _rollback(secure, sourceJson, l10n: l10n);
       if (rollbackError != null) {
         return ConnectionMigrationResult(
           json: sourceJson,
-          error: 'Migrated storage validation failed and data rollback also failed. $rollbackError',
+          error:
+              l10n?.connMigrationValidationRollbackFailed(rollbackError) ??
+              'Migrated storage validation failed and data rollback also failed. $rollbackError',
         );
       }
       return ConnectionMigrationResult(
         json: sourceJson,
-        error: 'Migrated storage validation failed. Original data restored. Please check storage space or reinstall the app.',
+        error:
+            l10n?.connMigrationValidationRestored ??
+            'Migrated storage validation failed. Original data restored. Please check storage space or reinstall the app.',
       );
     }
 
@@ -201,7 +219,9 @@ class ConnectionMigration {
       final tmuxPath = newRecord.remove('tmuxPath') as String?;
       if (!hasMultiplexer) {
         final executablePath = tmuxPath?.isNotEmpty == true ? tmuxPath : null;
-        newRecord['multiplexer'] = MultiplexerConfig.tmux(executablePath).toJson();
+        newRecord['multiplexer'] = MultiplexerConfig.tmux(
+          executablePath,
+        ).toJson();
       }
     }
     return newRecord;
@@ -209,7 +229,11 @@ class ConnectionMigration {
 
   /// primary に [sourceJson] を書き戻す。失敗したら backup を読み込んで
   /// primary を復旧する。それでも失敗したら非機密エラーメッセージを返す。
-  static Future<String?> _rollback(SecureStorageService secure, String sourceJson) async {
+  static Future<String?> _rollback(
+    SecureStorageService secure,
+    String sourceJson, {
+    AppLocalizations? l10n,
+  }) async {
     try {
       await secure.writeValue(_storageKey, sourceJson);
       return null;
@@ -222,14 +246,16 @@ class ConnectionMigration {
           return null;
         } catch (_) {}
       }
-      return 'Failed to restore connection data from backup. Please check storage space or reinstall the app.';
+      return l10n?.connMigrationRestoreFailed ??
+          'Failed to restore connection data from backup. Please check storage space or reinstall the app.';
     }
   }
 
   static Future<ConnectionMigrationResult> _recoverFromBackup(
     SecureStorageService secure,
-    Object cause,
-  ) async {
+    Object cause, {
+    AppLocalizations? l10n,
+  }) async {
     final backupJson = await secure.readValue(_backupKey);
     if (backupJson != null) {
       try {
@@ -242,12 +268,16 @@ class ConnectionMigration {
             // Primary restore failed, but backup is still readable
             return ConnectionMigrationResult(
               json: backupJson,
-              warning: 'Stored connections were invalid; using available backup. Error: $cause. Primary restore failed: $e',
+              warning:
+                  l10n?.connMigrationRecoverUsingBackup('$cause', '$e') ??
+                  'Stored connections were invalid; using available backup. Error: $cause. Primary restore failed: $e',
             );
           }
           return ConnectionMigrationResult(
             json: backupJson,
-            warning: 'Stored connections were invalid; restored from backup. Error: $cause',
+            warning:
+                l10n?.connMigrationRecoveredFromBackup('$cause') ??
+                'Stored connections were invalid; restored from backup. Error: $cause',
           );
         }
       } catch (_) {
@@ -255,8 +285,12 @@ class ConnectionMigration {
       }
     }
     return ConnectionMigrationResult(
-      error: 'Stored connections are invalid and no usable backup is available. Please re-add your connections or clear app data.',
-      warning: 'Original error: $cause',
+      error:
+          l10n?.connMigrationNoUsableBackup ??
+          'Stored connections are invalid and no usable backup is available. Please re-add your connections or clear app data.',
+      warning:
+          l10n?.connMigrationOriginalError('$cause') ??
+          'Original error: $cause',
     );
   }
 
