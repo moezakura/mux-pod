@@ -958,6 +958,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 残すと scrollSend 中の R1 対策（copy-mode 検出）が不発になる。
   /// バッファクリア（H5・stale 再適用防止）と合流タイマー cancel（M4）を同時に行う。
   /// 設定 [autoFitZoomOnScrollSend] が ON ならターミナル全体フィットズームを適用する。
+  /// モード突入時に末尾（ライブ画面）へスクロールする。
   void _enterScrollSendMode() {
     _discardPendingScrollTicks();
     // inventory: TERM-ZOOM-FIT-003
@@ -970,6 +971,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _bufferedContent = '';
     _hasBufferedUpdate = false;
     _bufferedTargetIdentity = null;
+    // scrollSend 中はローカルスクロールが無効化される（D5）ため、履歴を遡った
+    // 位置で突入してもライブ画面の末尾を表示するよう末尾へスクロールする。
+    _ansiTextViewKey.currentState?.scrollToBottom();
   }
 
   // inventory: TERM-MODE-UI-002

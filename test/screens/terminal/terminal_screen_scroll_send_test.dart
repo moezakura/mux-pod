@@ -154,6 +154,60 @@ void main() {
       expect(state.bufferedContentForTesting(), '');
     });
 
+    testWidgets('TERM-SCROLL-028 scrollSend 突入時に末尾（ライブ画面）へスクロール', (
+      tester,
+    ) async {
+      // 履歴を遡った位置（上端）から scrollSend へ入ると末尾へスクロールされる。
+      // scrollSend 中はローカルスクロールが無効化（D5）されるため、突入時に
+      // ライブ画面の末尾を表示する。
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        settings: _kFixedFontSettings,
+        execOutputs: {
+          // ビューポート（1920px）を超える 300 行のコンテンツ。
+          // ポーリングは結合コマンド（capture-pane; cursor; pane_mode）への
+          // 1 応答を末尾 2 行で分割するため、cursor 行 + 空の pane_mode 行
+          // で終わらせる（pane_mode が空 → copy-mode 検出は発火しない）。
+          'capture-pane':
+              '${List.generate(300, (i) => 'line-$i').join('\n')}\n'
+              '1,299,80,300\n',
+        },
+      );
+
+      ScrollPosition scrollPosition(WidgetTester tester) =>
+          tester.state<ScrollableState>(find.descendant(
+            of: find.byType(AnsiTextView),
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is Scrollable && w.axisDirection == AxisDirection.down,
+            ),
+          )).position;
+
+      final initial = scrollPosition(tester);
+      expect(
+        initial.maxScrollExtent,
+        greaterThan(0),
+        reason: 'コンテンツがビューポートを超えスクロール可能な状態であること',
+      );
+
+      // 履歴を遡った（上端）状態を再現。
+      initial.jumpTo(0);
+      await tester.pump();
+      expect(initial.pixels, 0);
+
+      await _enterMode(tester, 'Scroll Send Mode');
+      expect(_mode(tester), TerminalMode.scrollSend);
+
+      // モード切替で physics が変わり ScrollPosition が再生成されるため再取得する。
+      // scrollToBottom の animateTo(300ms) は pumpAndSettle で消化済み。
+      final after = scrollPosition(tester);
+      expect(
+        after.pixels,
+        closeTo(after.maxScrollExtent, 1.0),
+        reason: 'scrollSend 突入時に末尾へスクロールされること',
+      );
+    });
+
     testWidgets(
       'TERM-SCROLL-019 scrollSend: SelectionArea なし + ドラッグで送信 + オフセット不動',
       (tester) async {
