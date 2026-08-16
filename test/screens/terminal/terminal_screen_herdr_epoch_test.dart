@@ -142,15 +142,15 @@ class _GatedDeepHistoryReader implements PaneContentReader {
   }
 }
 
-/// 設定メニュー（設定アイコン → モード切替）でスクロールモードへ入る。
+/// 設定メニュー（設定アイコン → モード切替）で選択（select）モードへ入る。
 ///
 /// ライブポーリングが動く間は pumpAndSettle が終わらないため、手動 pump で
 /// ボトムシートのアニメーションを進める。
-Future<void> _enterScrollMode(WidgetTester tester) async {
+Future<void> _enterSelectMode(WidgetTester tester) async {
   await tester.tap(find.byIcon(Icons.settings));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
-  await tester.tap(find.text('Normal Mode'));
+  await tester.tap(find.text('Select Mode'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 300));
 }
@@ -226,7 +226,7 @@ void main() {
         expect(find.textContaining('live-1'), findsWidgets);
 
         // スクロールモードへ（深い履歴 deep-1 が適用される）。
-        await _enterScrollMode(tester);
+        await _enterSelectMode(tester);
         expect(find.textContaining('deep-1'), findsWidgets);
 
         // 次のポーリング read を gate してから、バッファ内容へ差し替え。
@@ -293,7 +293,7 @@ void main() {
         );
 
         // スクロールモードへ → 深い履歴 read がゲートで保留される。
-        await _enterScrollMode(tester);
+        await _enterSelectMode(tester);
 
         // 保留中にポーリングを失敗させて再解決（エポック++・同 pane・切替なし）。
         // 2500ms はポーリング間隔の上限（2000ms）を超えるため必ず発火する。

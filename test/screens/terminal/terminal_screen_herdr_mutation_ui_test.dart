@@ -389,7 +389,7 @@ void main() {
     });
 
     testWidgets(
-      'Scroll & Select は herdr では copy-mode を出さず pane read 履歴のみ',
+      'Select モードは herdr では copy-mode を出さず pane read 履歴のみ',
       (tester) async {
         final client = await TerminalTestScaffold.pumpTerminalScreen(
           tester,
@@ -402,11 +402,11 @@ void main() {
           settle: false,
         );
 
-        // 設定メニュー → 'Normal Mode'（スクロールモードへ切替）。
+        // 設定メニュー → 'Select Mode'（選択モードへ切替）。
         await tester.tap(find.byIcon(Icons.settings));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
-        await tester.tap(find.text('Normal Mode'));
+        await tester.tap(find.text('Select Mode'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 300));
 
@@ -420,7 +420,7 @@ void main() {
                 c.contains('--lines 100000'),
           ),
           isTrue,
-          reason: 'Scroll & Select は herdr では pane read 履歴ベースのみ（H7）',
+          reason: 'Select モードは herdr では pane read 履歴ベースのみ（H7）',
         );
 
         // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。

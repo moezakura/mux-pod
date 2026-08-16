@@ -16,6 +16,17 @@ void main() {
       ]);
     });
 
+    test('TERM-ENUM-002 exposes all terminal modes (3-mode split)', () {
+      // 3 モード（normal / select / scrollSend）は排他的（ユーザー要件:
+      // 「Scroll と Select が同時に選べない」）。`scroll` は `select` へ
+      // リネーム済み（D1）。
+      expect(TerminalMode.values, [
+        TerminalMode.normal,
+        TerminalMode.select,
+        TerminalMode.scrollSend,
+      ]);
+    });
+
     test('TERM-SCREEN-002..003 keeps restoration and deep-link inputs', () {
       const screen = TerminalScreen(
         connectionId: 'c',

@@ -33,12 +33,21 @@ class KeyInputEvent {
 }
 
 /// ターミナルの操作モード
+///
+/// 3 モードは排他的（同時に成立しない）: 「Scroll 送信」と「選択」が混在
+/// しないことを enum 値の分離で構造的に担保する（D1）。
 enum TerminalMode {
-  /// 通常モード（キー入力が有効）
+  /// 通常モード（キー入力が有効・ライブ表示）
   normal,
 
-  /// スクロールモード（テキスト選択も可能、キー入力は無効）
-  scroll,
+  /// 選択モード（履歴閲覧＋テキスト選択・tmux copy-mode / SelectionArea・バッファ保持）
+  ///
+  /// 旧 `TerminalMode.scroll` のリネーム（D1）。
+  select,
+
+  /// スクロール送信モード（アプリへ SGR ホイール / PgUp・PgDn / 文字キーを送信・
+  /// ローカルスクロール無効・テキスト選択なし・ライブ表示）
+  scrollSend,
 }
 
 /// ANSIテキスト表示ウィジェット
@@ -89,6 +98,14 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// 2本指スワイプでペイン切り替え時のコールバック
   final void Function(SwipeDirection direction)? onTwoFingerSwipe;
 
+  /// scrollSend モード中のドラッグ累積ティック通知コールバック（M2・D5）。
+  ///
+  /// `ticks > 0` = 上スクロール送信・`ticks < 0` = 下スクロール送信。
+  /// 1 ティック = 行高 × 1.5（`_lineHeight` 基準・±25% ヒステリシス）。
+  /// null なら通知しない。
+  // inventory: TERM-SCROLL-006
+  final void Function(int ticks)? onScrollSendTicks;
+
   /// 各方向にペインが存在するかのマップ（視覚フィードバック用）
   final Map<SwipeDirection, bool>? navigableDirections;
 
@@ -113,6 +130,7 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.onTwoFingerSwipe,
     this.navigableDirections,
     this.onTap,
+    this.onScrollSendTicks,
   });
 
   @override
@@ -170,6 +188,13 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
 
   /// 行の高さ（仮想スクロールで固定高さを使用）
   double _lineHeight = 20.0;
+
+  /// scrollSend ドラッグの端数ティック累積（M2・±25% ヒステリシス用）。
+  /// 1 ティック = `_lineHeight × 1.5`。整数部のみコールバックし、端数は保持する。
+  double _scrollTickFraction = 0;
+
+  /// scrollSend 中のターミナル領域のアクティブポインタ数（M5・2 本指パン抑止用）。
+  int _activePointers = 0;
 
   @override
   void initState() {
@@ -328,10 +353,15 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     }
     if (!wasPanning) return;
 
-    final direction = PaneNavigator.detectSwipeDirection(
-      _twoFingerPanDelta,
-      threshold: _twoFingerSwipeThreshold,
-    );
+    // M5: scrollSend 中は 2 本指スワイプ（ペイン切替）を無効化する。
+    // 送信ドラッグ（1 本指）とのジェスチャー競合を回避するため。ピンチズーム
+    // （上記 wasZooming 分岐）は全モードで維持（L0-a #5）。
+    final direction = widget.mode == TerminalMode.scrollSend
+        ? null
+        : PaneNavigator.detectSwipeDirection(
+            _twoFingerPanDelta,
+            threshold: _twoFingerSwipeThreshold,
+          );
 
     if (direction != null) {
       final canNavigate = widget.navigableDirections?[direction] ?? true;
@@ -655,7 +685,9 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    final isScrollMode = widget.mode == TerminalMode.scroll;
+    // select 専用（4 経路分離・D12）: テキスト選択は選択モードのみ。
+    // scrollSend はここに含まれない（SelectionArea 非配置）。
+    final isSelectMode = widget.mode == TerminalMode.select;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -728,7 +760,10 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         Widget listWidget = ListView.builder(
           controller: _verticalScrollController,
           padding: EdgeInsets.zero, // パディングを明示的にゼロにする
-          physics: const ClampingScrollPhysics(),
+          // scrollSend はローカルスクロールを完全無効化（D5: アプリ送信専用モード）
+          physics: widget.mode == TerminalMode.scrollSend
+              ? const NeverScrollableScrollPhysics()
+              : const ClampingScrollPhysics(),
           itemCount: parsedLines.length,
           // 固定の行高さを使用してスクロール計算を高速化
           itemExtent: _lineHeight,
@@ -877,8 +912,34 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           );
         }
 
-        // ピンチズーム + 2本指スワイプ
-        if (widget.zoomEnabled) {
+        // scrollSend: 1 本指ドラッグ認識子を zoom 認識子より「内側（深い hit-test）」
+        // に置く（B5 実測: 外側に置くと gesture arena の競合で連続 Update が欠落
+        // するため。内側なら ListView 同様に 1 本指ドラッグが先に勝利する）。
+        // onTap は配置しない（タップ認識子がドラッグの連続 Update を欠落させる
+        // ため・B5 実測）。2 本指操作は Listener でポインタ数監視して抑止（M5）。
+        if (widget.mode == TerminalMode.scrollSend) {
+          listWidget = Listener(
+            onPointerDown: (_) => _activePointers++,
+            onPointerUp: (_) => _activePointers--,
+            onPointerCancel: (_) => _activePointers--,
+            child: GestureDetector(
+              key: const ValueKey('terminal-scroll-send-gesture'),
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart: _onScrollSendDragStart,
+              onVerticalDragUpdate: _onScrollSendDragUpdate,
+              onVerticalDragEnd: _onScrollSendDragEnd,
+              child: listWidget,
+            ),
+          );
+        }
+
+        // ピンチズーム + 2本指スワイプ（全モード維持・L0-a #5）
+        // ※ scrollSend 中は zoom 認識子を無効化する（Phase 3 #6 分岐・B5 実測）:
+        //   `_EagerScaleGestureRecognizer` が gesture arena に参加すると 1 本指
+        //   ドラッグの連続 Update が欠落し、送信ティックが不足することを widget
+        //   テストで確認した（競合実測 = 無効化分岐の適用条件・L0-a #5）。
+        //   scrollSend 中のズームはモードを抜けてから行う。
+        if (widget.zoomEnabled && widget.mode != TerminalMode.scrollSend) {
           // RawGestureDetectorで2本指検出時にgesture arenaを強制勝利
           listWidget = RawGestureDetector(
             key: const ValueKey('terminal-two-finger-gesture'),
@@ -904,11 +965,30 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           );
         }
 
-        // スクロールモードの場合はテキスト選択を有効化
-        if (isScrollMode) {
+        // select モードの場合はテキスト選択を有効化（select 専用・D12）
+        if (isSelectMode) {
           return Container(
             color: widget.backgroundColor,
             child: SelectionArea(
+              child: listWidget,
+            ),
+          );
+        }
+
+        // scrollSend モード: アプリへスクロール送信専用（D5）。
+        // - ローカルスクロール無効（NeverScrollableScrollPhysics・上で適用）
+        // - テキスト選択なし（SelectionArea 非配置）
+        // - ホールド+スワイプ無効（longPress ハンドラを配置しない）
+        // - 2 本指スワイプ無効（_onScaleEnd ガード + ポインタ数監視・M5。ピンチは維持）
+        // - Focus 追加（物理キーボード PgUp/PgDn 送信用・現状 normal 分岐のみのため）
+        // - 1 本指ドラッグ → ティック換算 → onScrollSendTicks で TerminalScreen へ
+        if (widget.mode == TerminalMode.scrollSend) {
+          return Container(
+            color: widget.backgroundColor,
+            child: Focus(
+              focusNode: _focusNode,
+              autofocus: true,
+              onKeyEvent: _handleKeyEvent,
               child: listWidget,
             ),
           );
@@ -1235,6 +1315,51 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       _altPressed = false;
       _shiftPressed = false;
     });
+  }
+
+  // === scrollSend ドラッグ処理（D5・M2） ===
+
+  void _onScrollSendDragStart(DragStartDetails details) {
+    _scrollTickFraction = 0;
+  }
+
+  void _onScrollSendDragUpdate(DragUpdateDetails details) {
+    if (_lineHeight <= 0) return;
+    // M5: 2 本指以上の操作は送信ドラッグとして扱わない（2 本指パンによる
+    // 誤送信を防止。ペイン切替は scrollSend 中は無効）。
+    if (_activePointers > 1) return;
+    // 1 ティック = 行高 × 1.5（M2）。上ドラッグ（delta.dy < 0）= 上スクロール
+    // 送信（ticks > 0）。累積ティックは TerminalScreen 側（合流送信）へ通知。
+    final tickHeight = _lineHeight * 1.5;
+    final deltaTicks = -details.delta.dy / tickHeight;
+    final ticks = _emitScrollTicks(deltaTicks);
+    if (ticks != 0) {
+      widget.onScrollSendTicks?.call(ticks);
+    }
+  }
+
+  void _onScrollSendDragEnd(DragEndDetails details) {
+    _scrollTickFraction = 0;
+  }
+
+  /// ティック累積 + ±25% ヒステリシス（ジッタ誤送信防止・M2）。
+  ///
+  /// 方向反転時のみ、新方向の移動が 0.25 ティック未満なら無視し（デッドゾーン）、
+  /// 0.25 ティック以上で反転確定として端数をリセットする。整数部のみ返し、
+  /// 端数は [_scrollTickFraction] に保持する。
+  int _emitScrollTicks(double deltaTicks) {
+    if (deltaTicks == 0) return 0;
+    final sameDirection =
+        _scrollTickFraction == 0 ||
+        _scrollTickFraction.sign == deltaTicks.sign;
+    if (!sameDirection) {
+      if (deltaTicks.abs() < 0.25) return 0;
+      _scrollTickFraction = 0;
+    }
+    _scrollTickFraction += deltaTicks;
+    final whole = _scrollTickFraction.truncate();
+    _scrollTickFraction -= whole.toDouble();
+    return whole;
   }
 
   // === スクロール制御 ===

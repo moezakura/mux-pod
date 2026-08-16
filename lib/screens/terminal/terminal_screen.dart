@@ -21,6 +21,7 @@ import '../../services/backend/domain/herdr_pane_writer.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
 import '../../services/backend/domain/pane_writer.dart';
 import '../../services/backend/domain/tmux_pane_writer.dart';
+import '../../services/backend/domain/wheel_encoder.dart';
 import '../../services/herdr/herdr_adapter.dart';
 import '../../services/herdr/herdr_commands.dart'
     show HerdrCommandException, HerdrTargetNotFoundException;
@@ -464,6 +465,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // スクロールモードのソース（none / manual / tmux）
   ScrollModeSource _scrollModeSource = ScrollModeSource.none;
 
+  // scrollSend 中の copy-mode 検出フラグ（D2・C7）。立っている間は SGR/キー送信
+  // を即ドロップする（R1: 先頭 ESC による copy-mode cancel + 残りゴミ注入の防止）。
+  // クリア条件 = モード遷移時（L3）: `_resetTerminalMode` / `_enterSelectMode` /
+  // `_enterScrollSendMode` / `_exitToNormalMode` で false 化する。
+  bool _isCopyModeDetected = false;
+
+  // --- scrollSend 合流送信（D6・C6） ---
+
+  // 符号付き累積ティック（+ = 上スクロール送信 / - = 下スクロール送信）
+  int _pendingScrollTicks = 0;
+
+  // 100ms 周期の合流フラッシュタイマー（最大 8 ティックを 1 コマンドに連結・D6）
+  Timer? _scrollSendTimer;
+
+  // フラッシュの実行中フラグ（await 中の再入を防ぐ）
+  bool _scrollSendFlushInFlight = false;
+
+  // 最後のポーリングで観測した paneMode（flush 時 paneMode 空確認・H4②）
+  String _lastPolledPaneMode = '';
+
+  // テストフック（C9）: 送信方式の判定をテストから強制する。null なら通常判定
+  // （設定 × `_can(wheelSend)`）を使用する。公開フックは
+  // `overrideScrollSendKindForTesting`（@visibleForTesting）を参照。
+  ScrollSendKind? _overrideScrollSendKindForTesting;
+
   // ズームスケール
   double _zoomScale = 1.0;
 
@@ -558,7 +584,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         (required.imageTransfer == false || caps.imageTransfer) &&
         (required.workspaceCrud == false || caps.workspaceCrud) &&
         (required.tabCrud == false || caps.tabCrud) &&
-        (required.absoluteResize == false || caps.absoluteResize);
+        (required.absoluteResize == false || caps.absoluteResize) &&
+        (required.wheelSend == false || caps.wheelSend);
   }
 
   /// テキスト送信（`send-text`）が可能か。
@@ -848,9 +875,104 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     sshNotifier.onReconnectSuccess = _onReconnectSuccess;
   }
 
+  // inventory: TERM-MODE-RESET-001
+  /// モードを normal へリセットする（再接続・pane 切替時の残留防止・D4/H1）。
+  ///
+  /// `_switchHerdrTarget`（切替コミット）と同型のリセットを接続系の成功/切替
+  /// 経路に共通適用する: ① 初回接続 `_connectAndSetup` ② 再接続
+  /// `_onReconnectSuccess` ③ tmux pane 切替 `_selectPane` ④ herdr 表示切替
+  /// `_switchHerdrTarget`。前回モード残留による無関係プロセスへの SGR 送信を
+  /// 防止する（R5）。
+  ///
+  /// scrollSend 合流タイマーの cancel・保留ティック破棄（M4）は合流送信
+  /// 実装（C6）で本メソッドへ合流する。
+  void _resetTerminalMode() {
+    _discardPendingScrollTicks();
+    setState(() {
+      _terminalMode = TerminalMode.normal;
+      _scrollModeSource = ScrollModeSource.none;
+      _isCopyModeDetected = false;
+    });
+    _bufferedContent = '';
+    _hasBufferedUpdate = false;
+    _bufferedTargetIdentity = null;
+  }
+
+  // inventory: TERM-MODE-UI-001
+  /// scrollSend モードへ入る（3 ListTile 選択・D9）。
+  ///
+  /// **原子性契約（C1）**: `_terminalMode = scrollSend` と `_scrollModeSource =
+  /// none` を同一 setState で設定する。copy-mode 自動検出（L1593 相当）は
+  /// `source == none` のときのみ発火するため、source を manual/tmux のまま
+  /// 残すと scrollSend 中の R1 対策（copy-mode 検出）が不発になる。
+  /// バッファクリア（H5・stale 再適用防止）と合流タイマー cancel（M4）を同時に行う。
+  void _enterScrollSendMode() {
+    _discardPendingScrollTicks();
+    setState(() {
+      _terminalMode = TerminalMode.scrollSend;
+      _scrollModeSource = ScrollModeSource.none; // C1: 同一 setState
+      _isCopyModeDetected = false;
+    });
+    _bufferedContent = '';
+    _hasBufferedUpdate = false;
+    _bufferedTargetIdentity = null;
+  }
+
+  // inventory: TERM-MODE-UI-002
+  /// select モードへ入る（3 ListTile 選択・D9）。
+  ///
+  /// 既存の copy-mode 突入（tmux のみ・`_canCopyMode` ガード）＋履歴ロード
+  /// （旧 L4841-4848 相当）を継承する。herdr は `pane read` 履歴ベース（H7）。
+  /// 入り口でバッファをクリアし stale 適用を防ぐ（H5）。scrollSend 合流
+  /// タイマー cancel（M4）を同時に行う。
+  void _enterSelectMode() {
+    _discardPendingScrollTicks();
+    setState(() {
+      _terminalMode = TerminalMode.select;
+      _scrollModeSource = ScrollModeSource.manual;
+      _isCopyModeDetected = false;
+    });
+    _bufferedContent = '';
+    _hasBufferedUpdate = false;
+    _bufferedTargetIdentity = null;
+    if (_canCopyMode) {
+      // inventory: TERM-COPY-001
+      _enterTmuxCopyMode();
+    }
+    _loadHistoryForScroll();
+  }
+
+  // inventory: TERM-MODE-UI-003
+  /// normal モードへ戻る（3 ListTile 選択・indicator 閉じるボタン共用・H2）。
+  ///
+  /// select 由来なら copy-mode cancel + バッファ適用（旧 L4849-4854 相当）。
+  /// scrollSend 由来なら合流タイマー cancel（M4）と保留破棄のみ。
+  void _exitToNormalMode() {
+    _discardPendingScrollTicks();
+    if (_terminalMode == TerminalMode.select) {
+      if (_canCopyMode) {
+        _cancelTmuxCopyMode();
+      }
+      _applyBufferedUpdate();
+    }
+    setState(() {
+      _terminalMode = TerminalMode.normal;
+      _scrollModeSource = ScrollModeSource.none;
+      _isCopyModeDetected = false;
+    });
+    _bufferedContent = '';
+    _hasBufferedUpdate = false;
+    _bufferedTargetIdentity = null;
+  }
+
   /// 再接続成功時の処理
   Future<void> _onReconnectSuccess() async {
     if (!mounted || _isDisposed) return;
+
+    // モードリセット（再接続後の scrollSend/select 残留防止・D4/C2）。
+    // `_flushInputQueue`（L883 相当）より前に行い、キュー送信が無関係
+    // プロセスへ届く事故を防ぐ。
+    _resetTerminalMode();
 
     // ポーリングフラグをリセット
     _isPolling = false;
@@ -939,6 +1061,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (client == null) {
         throw Exception('SSH client is not available');
       }
+
+      // モードリセット（接続確立時の scrollSend/select 残留防止・D4）。tmux /
+      // herdr どちらの経路でも確実に実行されるよう、herdr 早期 return より前に置く。
+      _resetTerminalMode();
 
       // 3.4. herdr: read-only セッションを設定して終了
       if (isHerdr) {
@@ -1455,8 +1581,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final recommended = AdaptivePollingInterval.calculateInterval(
       _unchangedPolls,
     );
-    // tmux copy-mode 検出中はポーリング間隔の上限を500msに制限
-    final maxInterval = _scrollModeSource == ScrollModeSource.tmux
+    // tmux copy-mode 検出中・scrollSend 中はポーリング間隔の上限を 500ms に制限
+    // （H4①: copy-mode 検出 = R1 対策の遅延を抑える）
+    final maxInterval =
+        (_scrollModeSource == ScrollModeSource.tmux ||
+            _terminalMode == TerminalMode.scrollSend)
         ? 500
         : _maxPollingInterval;
     _currentPollingInterval = recommended.clamp(
@@ -1464,6 +1593,143 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       maxInterval,
     );
   }
+
+  // inventory: TERM-SCROLL-006
+  /// scrollSend ドラッグの累積ティック受信（AnsiTextView → TerminalScreen・M2）。
+  ///
+  /// モードガード後、方向反転設定（L0-a #4・C10）を適用してから
+  /// `_pendingScrollTicks` へ積算し、合流送信タイマーを開始する（D6・C6）。
+  void _onScrollSendTicks(int ticks) {
+    if (_terminalMode != TerminalMode.scrollSend) return;
+    if (_isCopyModeDetected) return; // D2: copy-mode 検出中は送信即ドロップ
+    // C10: 方向反転設定 ON 時はティック符号を反転（ドラッグ上 = 下スクロール送信）
+    final settings = ref.read(settingsProvider);
+    final effective = settings.invertScrollSendDirection ? -ticks : ticks;
+    _pendingScrollTicks += effective;
+    _ensureScrollSendTimer();
+  }
+
+  // inventory: TERM-SCROLL-007
+  /// 合流送信タイマーを生成する（100ms 周期・未生成のときのみ・D6）。
+  void _ensureScrollSendTimer() {
+    if (_scrollSendTimer != null) return;
+    _scrollSendTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => _flushScrollSend(),
+    );
+  }
+
+  /// 合流送信タイマーを cancel する（M4）。保留ティックは破棄しない
+  /// （破棄は [_discardPendingScrollTicks]）。
+  void _cancelScrollSendTimer() {
+    _scrollSendTimer?.cancel();
+    _scrollSendTimer = null;
+  }
+
+  /// 保留ティックと合流タイマーを破棄する（M4・モード切替/再接続/切断時）。
+  void _discardPendingScrollTicks() {
+    _cancelScrollSendTimer();
+    _pendingScrollTicks = 0;
+  }
+
+  // inventory: TERM-SCROLL-010
+  /// 合流送信のフラッシュ（100ms ごと・D6）。
+  ///
+  /// 最大 8 ティックを 1 コマンドに連結して `PaneWriter.sendScroll` で送信する。
+  /// - **flush 時 paneMode 空確認（H4②）**: copy-mode 検出遅延との競合を防ぐ。
+  /// - 切断・writer/paneId 未取得時は**破棄**（キューしない・R6）。
+  /// - `_boostPolling` はフラッシュ成功時のみ呼ぶ（表示更新の高頻度化を抑制・D6）。
+  /// - 失敗（`HerdrCommandException` / `TmuxCommandException`）は最小監視へ
+  ///   記録し（C12）、それ以外は静か無視（`_sendSpecialKey` のパターン踏襲）。
+  Future<void> _flushScrollSend() async {
+    if (_isDisposed) return;
+    if (_pendingScrollTicks == 0 || _scrollSendFlushInFlight) return;
+
+    // H4②: copy-mode 検出（await readPane 後にしか立たない）と flush の競合防止。
+    // 最後に観測した paneMode が非空なら、SGR の先頭 ESC が copy-mode を cancel し
+    // 残りがゴミ注入される事故（R1）を防ぐため、保留ティックを破棄する。
+    if (_isCopyModeDetected || _lastPolledPaneMode.isNotEmpty) {
+      _discardPendingScrollTicks();
+      return;
+    }
+
+    final sshClient = ref.read(sshProvider.notifier).client;
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    // 切断時は破棄（キューしない・R6）。writer/paneId が取れない場合も同様。
+    if (sshClient == null ||
+        !sshClient.isConnected ||
+        writer == null ||
+        paneId == null) {
+      _discardPendingScrollTicks();
+      return;
+    }
+
+    final up = _pendingScrollTicks > 0;
+    final ticks = _pendingScrollTicks.abs().clamp(1, 8);
+    // 超過分（> 8）は次回フラッシュへ保持する
+    _pendingScrollTicks = up
+        ? (_pendingScrollTicks - ticks)
+        : (_pendingScrollTicks + ticks);
+    if (_pendingScrollTicks == 0) _cancelScrollSendTimer();
+
+    _scrollSendFlushInFlight = true;
+    try {
+      await writer.sendScroll(
+        paneId,
+        kind: _resolveScrollSendKind(),
+        up: up,
+        ticks: ticks,
+      );
+      _boostPolling(); // D6: フラッシュ時のみ
+    } on HerdrCommandException catch (e) {
+      // C12: 最小監視（A8 リングバッファ・SDK 送信なし）
+      _recordHerdrSwitchEvent('scrollSend flush error (${e.runtimeType})');
+    } catch (e) {
+      // TmuxCommandException 等の失敗も最小監視へ記録（C12）
+      _recordHerdrSwitchEvent('scrollSend flush error (${e.runtimeType})');
+    } finally {
+      _scrollSendFlushInFlight = false;
+    }
+  }
+
+  // inventory: TERM-SCROLL-011
+  /// 送信方式（`ScrollSendKind`）の決定（D11・C9）。
+  ///
+  /// 設定 `scrollSendInput` が `'wheel'` かつ backend が `wheelSend` 能力を
+  /// 持つ場合のみ `wheel`（SGR 1006）。それ以外（`'key'`・未実証・未知値）は
+  /// `key` へ安全にフォールバックする（wheel 壊れ = ゴミ文字注入の破綻モードを
+  /// 回避）。テストでは [_overrideScrollSendKindForTesting] で強制できる。
+  ScrollSendKind _resolveScrollSendKind() {
+    final override = _overrideScrollSendKindForTesting;
+    if (override != null) return override;
+    final setting = ref.read(settingsProvider).scrollSendInput;
+    if (setting == 'wheel' && _can(const PaneCapabilities(wheelSend: true))) {
+      return ScrollSendKind.wheel;
+    }
+    return ScrollSendKind.key;
+  }
+
+  /// テストフック: 送信方式の判定を強制する（C9・既存 `*ForTesting` パターン）。
+  /// null で通常判定（設定 × `_can(wheelSend)`）に戻す。本番コードからは呼ばない。
+  @visibleForTesting
+  void overrideScrollSendKindForTesting(ScrollSendKind? kind) {
+    _overrideScrollSendKindForTesting = kind;
+  }
+
+  /// テストフック: 現在の `_scrollModeSource` を返す（C1 原子性契約の検証用）。
+  /// 本番コードからは呼ばない。
+  @visibleForTesting
+  ScrollModeSource scrollModeSourceForTesting() => _scrollModeSource;
+
+  /// テストフック: バッファ保有フラグを返す（C1/H5 の検証用）。本番コードからは
+  /// 呼ばない。
+  @visibleForTesting
+  bool hasBufferedUpdateForTesting() => _hasBufferedUpdate;
+
+  /// テストフック: バッファ内容を返す（C1/H5 の検証用）。本番コードからは呼ばない。
+  @visibleForTesting
+  String bufferedContentForTesting() => _bufferedContent;
 
   /// ペイン内容をポーリング取得
   Future<void> _pollPaneContent() async {
@@ -1572,9 +1838,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // コンテンツ差分があれば更新（スロットリング適用）
       final currentView = _viewNotifier.value;
       if (processedOutput != currentView.content) {
-        // 手動スクロールモード中は更新をバッファリングして選択状態を保持
-        // tmux copy-mode中はcapture-paneがスクロール位置の内容を返すためリアルタイム表示
-        if (_terminalMode == TerminalMode.scroll &&
+        // select 専用（4 経路分離・D12）: 手動選択モード中は更新をバッファリングして
+        // 選択状態を保持。scrollSend はここに含まれず `_scheduleUpdate` でライブ表示
+        // （D3）。tmux copy-mode 中は capture-pane がスクロール位置の内容を返すため
+        // リアルタイム表示。
+        if (_terminalMode == TerminalMode.select &&
             _scrollModeSource == ScrollModeSource.manual) {
           _bufferedContent = processedOutput;
           _hasBufferedUpdate = true;
@@ -1589,19 +1857,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (mounted && !_isDisposed) {
         final paneMode = paneModeOutput.trim();
         final isTmuxCopyMode = paneMode.isNotEmpty;
+        // H4②: flush 時 paneMode 空確認のため、最後に観測した paneMode を記録する。
+        _lastPolledPaneMode = paneMode;
 
         if (isTmuxCopyMode && _scrollModeSource == ScrollModeSource.none) {
-          // tmux copy-mode に入った → スクロールモードに自動切替
+          // scrollSend 中（source==none 維持・C1）の copy-mode 検出 → select(tmux)
+          // へ自動遷移 + 送信即ドロップ（D2・L0-a #7）。前提: scrollSend 中は
+          // source==none が原子性 setState で維持されている。
+          final fromScrollSend = _terminalMode == TerminalMode.scrollSend;
           setState(() {
-            _terminalMode = TerminalMode.scroll;
+            if (fromScrollSend) _isCopyModeDetected = true;
+            _terminalMode = TerminalMode.select;
             _scrollModeSource = ScrollModeSource.tmux;
           });
+          if (fromScrollSend) {
+            // 合流バッファクリア（遷移までに積んだティックは送信しない・D2）
+            _discardPendingScrollTicks();
+            // C12: 最小監視（A8 リングバッファ・SDK 送信なし）
+            _recordHerdrSwitchEvent('copy-mode auto transition from scrollSend');
+          }
         } else if (!isTmuxCopyMode &&
             _scrollModeSource == ScrollModeSource.tmux) {
           // tmux copy-mode が終了した → 自動で通常モードに復帰
           setState(() {
             _terminalMode = TerminalMode.normal;
             _scrollModeSource = ScrollModeSource.none;
+            _isCopyModeDetected = false;
           });
           // inventory: TERM-LIFE-019
           _applyBufferedUpdate();
@@ -2160,7 +2441,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // A3改: await 完了後に表示対象を照合。不一致（await 中に切替・再解決・
       // 再接続が発生）なら破棄し、ライブ表示のままにする。
       if (!_isCurrentHerdrTarget(herdrIdentity)) return;
-      if (_terminalMode != TerminalMode.scroll) return;
+      // select 専用（4 経路分離・D12）: await 後のモードガード（隠れ依存の明示化）。
+      // scrollSend 中に完了した場合はライブ表示のままにする。
+      if (_terminalMode != TerminalMode.select) return;
       final content = snapshot.content;
       if (preservePosition) {
         // スクロール上端からの自動ロード: プリペンドされた行数ぶん位置を補正し、
@@ -2308,6 +2591,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 上端でのオーバースクロール（さらに上へ引っ張る操作）を検出して深い履歴を
   /// ロードする。単に上端へ達しただけでは発火せず、明示的に引っ張ったときのみ
   /// 発火する（誤爆を防ぎ、tmux のコピーモード相当の操作感にする）。
+  ///
+  /// select 専用（4 経路分離・D12）: 発火は normal のみで、遷移先は select。
+  /// scrollSend は `NeverScrollableScrollPhysics` によりこの経路自体が発火しない
+  /// （ガードは念のため維持）。
   bool _onTerminalOverscroll(OverscrollNotification n) {
     if (n.metrics.axis == Axis.vertical &&
         n.overscroll < 0 &&
@@ -2319,14 +2606,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     return false;
   }
 
-  /// スクロール上端到達時に深い履歴を自動ロードする。スクロールモードに入って
-  /// ライブ更新をバッファし、履歴表示を保持する。
+  /// スクロール上端到達時に深い履歴を自動ロードする。select モードに入って
+  /// ライブ更新をバッファし、履歴表示を保持する（遷移先 = select・D12）。
   Future<void> _loadDeepHistoryOnScroll() async {
     if (_isLoadingDeepHistory) return;
     _isLoadingDeepHistory = true;
-    if (_terminalMode != TerminalMode.scroll) {
+    if (_terminalMode != TerminalMode.select) {
       setState(() {
-        _terminalMode = TerminalMode.scroll;
+        _terminalMode = TerminalMode.select;
         _scrollModeSource = ScrollModeSource.manual;
       });
     }
@@ -2381,6 +2668,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _pollTimer = null;
     _treeRefreshTimer?.cancel();
     _treeRefreshTimer = null;
+    // scrollSend 合流送信タイマー（M4・R6: 切断時残骸の送信を防ぐ）
+    _scrollSendTimer?.cancel();
+    _scrollSendTimer = null;
     // キーオーバーレイ
     _keyOverlayTimer?.cancel();
     _keyOverlayTimer = null;
@@ -2445,7 +2735,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: _terminalMode == TerminalMode.scroll
+                      // H2: scrollSend 中もモード枠線を表示（normal 以外すべて）
+                      color: _terminalMode != TerminalMode.normal
                           ? DesignColors.warning
                           : Colors.transparent,
                       width: 3,
@@ -2488,9 +2779,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                         .withValues(alpha: 0.9),
                                     // 操作能力（`_can`）に応じてキー入力・スワイプ操作を無効化
                                     // inventory: TERM-INPUT-001
-                                    onKeyInput: _canSendText
-                                        ? _handleKeyInput
-                                        : null,
+                                    // scrollSend 中は専用キーハンドラへルート（H3・C8）
+                                    onKeyInput:
+                                        _terminalMode ==
+                                                TerminalMode.scrollSend
+                                            ? _handleScrollSendKeyInput
+                                            : (_canSendText
+                                                  ? _handleKeyInput
+                                                  : null),
                                     onTap: () {
                                       _scrollToBottomKey.currentState?.show();
                                     },
@@ -2509,6 +2805,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                     onArrowSwipe: _canSendSpecialKey
                                         ? _sendSpecialKeyWithOverlay
                                         : null,
+                                    // inventory: TERM-SCROLL-006
+                                    onScrollSendTicks: _onScrollSendTicks,
                                     // inventory: TERM-NAV-007
                                     onTwoFingerSwipe: _canFocusDirection
                                         ? _handleTwoFingerSwipe
@@ -2668,6 +2966,73 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } else {
       // 通常の文字はリテラル送信
       _sendKeyData(event.data);
+    }
+  }
+
+  // inventory: TERM-INPUT-011
+  /// scrollSend 専用キーハンドラ（H3・C8・(b) 全キー送信・L0-a #6）。
+  ///
+  /// 既存 `_handleKeyInput` とは異なり、**オーバーレイなし**（`_showKeyOverlay`
+  /// を呼ばない）・**キューなし**（`_sendKeyData` を使わない・未接続時は即
+  /// ドロップ）で、`_isCopyModeDetected` チェック付きで送信する。
+  ///
+  /// - PgUp / PgDn（`PPage` / `NPage`）→ `sendScroll(kind: key)` で
+  ///   `\x1b[5~` / `\x1b[6~` を送信（sendText 能力が無い backend でも継続）。
+  /// - それ以外（文字キー・特殊キー）→ sendText 能力ゲート後に
+  ///   `writer.sendText` で送信（(b) 全キー送信・sendText 能力（literal）依存）。
+  void _handleScrollSendKeyInput(KeyInputEvent event) {
+    // D2: copy-mode 検出中は送信即ドロップ（R1 対策）
+    if (_isCopyModeDetected) return;
+    final sshClient = ref.read(sshProvider.notifier).client;
+    // 未接続時は即ドロップ（キューしない・R6）
+    if (sshClient == null || !sshClient.isConnected) return;
+
+    if (event.isSpecialKey && event.tmuxKeyName == 'PPage') {
+      unawaited(_sendScrollKey(up: true));
+    } else if (event.isSpecialKey && event.tmuxKeyName == 'NPage') {
+      unawaited(_sendScrollKey(up: false));
+    } else {
+      // 文字キー・その他の特殊キーは sendText 能力ゲート（(b)・literal 依存）
+      if (!_canSendText) return;
+      unawaited(_sendScrollText(event.data));
+    }
+  }
+
+  /// scrollSend 中の PgUp/PgDn 送信（`sendScroll(kind: key)`・C8）。
+  Future<void> _sendScrollKey({required bool up}) async {
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
+    try {
+      await writer.sendScroll(
+        paneId,
+        kind: ScrollSendKind.key,
+        up: up,
+        ticks: 1,
+      );
+      _boostPolling();
+    } on HerdrCommandException catch (e) {
+      // C12: 最小監視（A8 リングバッファ・SDK 送信なし）
+      _recordHerdrSwitchEvent('scrollSend key send error (${e.runtimeType})');
+    } catch (e) {
+      // TmuxCommandException 等の失敗も最小監視へ記録（C12）
+      _recordHerdrSwitchEvent('scrollSend key send error (${e.runtimeType})');
+    }
+  }
+
+  /// scrollSend 中の文字キー送信（`writer.sendText`・キューなし・C8）。
+  Future<void> _sendScrollText(String data) async {
+    final writer = _paneWriter;
+    final paneId = _targetSource?.currentPaneId;
+    if (writer == null || paneId == null) return;
+    try {
+      await writer.sendText(paneId, data);
+      _boostPolling();
+    } on HerdrCommandException catch (e) {
+      _recordHerdrSwitchEvent('scrollSend text send error (${e.runtimeType})');
+    } catch (e) {
+      // TmuxCommandException 等の失敗も最小監視へ記録（C12）
+      _recordHerdrSwitchEvent('scrollSend text send error (${e.runtimeType})');
     }
   }
 
@@ -2929,15 +3294,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _viewNotifier.value = _viewNotifier.value.copyWith(content: '');
     _hasInitialScrolled = false;
 
-    // 4. スクロールモードとバッファのリセット（切替後の残留防止）
-    setState(() {
-      _terminalMode = TerminalMode.normal;
-      _scrollModeSource = ScrollModeSource.none;
-    });
-    _bufferedContent = '';
-    _hasBufferedUpdate = false;
-    // A3改: バッファの表示対象同一性もクリア（切替後の stale 適用防止）。
-    _bufferedTargetIdentity = null;
+    // 4. スクロールモードとバッファのリセット（切替後の残留防止・H1）。
+    // 共通ヘルパーへ統合（normal + source=none + バッファクリア。scrollSend
+    // 合流タイマー cancel は C6 で本ヘルパーへ合流する）。
+    _resetTerminalMode();
 
     // 5. 表示状態（ブレッドクラム入力）の更新（T11: workspace/tab/pane を反映）
     _herdrDisplayNotifier.value = _HerdrDisplayData(
@@ -3054,6 +3414,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (!_can(const PaneCapabilities(focus: true))) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
+
+    // モードリセット（tmux pane 切替時の scrollSend/select 残留防止・H1）。
+    // 前回モード残留による無関係プロセスへの SGR 送信を防ぐ（R5）。
+    _resetTerminalMode();
 
     final writer = _paneWriter;
     if (writer == null) return;
@@ -3299,17 +3663,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             // ブレッドクラムと右側インジケータ群の間に必ず余白を確保する。
             // これがないとスクロールチップ等がブレッドクラムに密着し、重なって見える。
             const SizedBox(width: 8),
-            // Scroll mode indicator
-            if (_terminalMode == TerminalMode.scroll)
+            // モード indicator（H2）: scrollSend 中も表示し、アイコンでモードを区別。
+            // scrollSend = 送信アイコン / select = unfold_more。閉じるボタンは
+            // normal 復帰（タイマー cancel + バッファクリア + copy-mode cancel を含む）。
+            if (_terminalMode != TerminalMode.normal)
               GestureDetector(
                 onTap: () {
-                  setState(() {
-                    _terminalMode = TerminalMode.normal;
-                    _scrollModeSource = ScrollModeSource.none;
-                  });
                   // inventory: TERM-COPY-002
-                  _cancelTmuxCopyMode();
-                  _applyBufferedUpdate();
+                  _exitToNormalMode();
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
@@ -3328,7 +3689,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.unfold_more,
+                        _terminalMode == TerminalMode.scrollSend
+                            ? Icons.swipe_up
+                            : Icons.unfold_more,
                         size: 12,
                         color: DesignColors.warning,
                       ),
@@ -3361,8 +3724,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               builder: (context, latency, _) =>
                   _buildConnectionIndicator(latency),
             ),
-            // File browser button（スクロール中・read-only は場所を空けるため非表示）
-            if (_terminalMode != TerminalMode.scroll && !data.readOnlyBadge)
+            // File browser button（normal 以外・read-only は場所を空けるため非表示。
+            // H2: scrollSend 中も非表示 = `== normal` のみ表示）
+            if (_terminalMode == TerminalMode.normal && !data.readOnlyBadge)
               IconButton(
                 // inventory: TERM-FILE-001
                 onPressed: _handleFileBrowser,
@@ -4763,6 +5127,40 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     final mutedTextColor = isDark ? Colors.white38 : Colors.black38;
     final inactiveIconColor = isDark ? Colors.white60 : Colors.black45;
 
+    // モード切替（Normal / Scroll Send / Select の 3 択・排他的単一選択・D9）。
+    // Switch は 3 モードを表現できないため廃止（RadioListTile は Flutter
+    // 3.32+ で deprecated のため不使用）。選択中モードは warning 色 + 太字
+    // + check アイコンでハイライトする。
+    Widget modeTile({
+      required IconData icon,
+      required String label,
+      required String subtitle,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      return ListTile(
+        leading: Icon(
+          icon,
+          color: selected ? DesignColors.warning : inactiveIconColor,
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            color: selected ? DesignColors.warning : textColor,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: mutedTextColor, fontSize: 12),
+        ),
+        trailing: selected
+            ? const Icon(Icons.check, size: 18, color: DesignColors.warning)
+            : null,
+        onTap: onTap,
+      );
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: menuBgColor,
@@ -4797,89 +5195,35 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 height: 1,
                 color: isDark ? const Color(0xFF2A2B36) : Colors.grey.shade300,
               ),
-              // モード切り替え（Normal / Scroll & Select）
-              ListTile(
-                leading: Icon(
-                  _terminalMode == TerminalMode.scroll
-                      ? Icons.unfold_more
-                      : Icons.keyboard,
-                  color: _terminalMode == TerminalMode.scroll
-                      ? DesignColors.warning
-                      : inactiveIconColor,
-                ),
-                title: Text(
-                  _terminalMode == TerminalMode.scroll
-                      ? 'Scroll & Select Mode'
-                      : 'Normal Mode',
-                  style: TextStyle(
-                    color: _terminalMode == TerminalMode.scroll
-                        ? DesignColors.warning
-                        : textColor,
-                    fontWeight: _terminalMode == TerminalMode.scroll
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                ),
-                subtitle: Text(
-                  _terminalMode == TerminalMode.scroll
-                      ? 'Tap to return to normal mode'
-                      : 'Tap to enable text selection',
-                  style: TextStyle(color: mutedTextColor, fontSize: 12),
-                ),
-                trailing: Switch(
-                  value: _terminalMode == TerminalMode.scroll,
-                  onChanged: (value) {
-                    final newMode = value
-                        ? TerminalMode.scroll
-                        : TerminalMode.normal;
-                    setState(() {
-                      _terminalMode = newMode;
-                      _scrollModeSource = value
-                          ? ScrollModeSource.manual
-                          : ScrollModeSource.none;
-                    });
-                    if (newMode == TerminalMode.scroll) {
-                      // T15: copy-mode は tmux のみ（herdr には無い・H7）。
-                      // herdr は `pane read` 履歴ベースのスクロールのみ行う。
-                      if (_canCopyMode) {
-                        // inventory: TERM-COPY-001
-                        _enterTmuxCopyMode();
-                      }
-                      _loadHistoryForScroll();
-                    } else {
-                      if (_canCopyMode) {
-                        _cancelTmuxCopyMode();
-                      }
-                      _applyBufferedUpdate();
-                    }
-                    Navigator.pop(context);
-                  },
-                  activeThumbColor: DesignColors.warning,
-                ),
+              // モード切り替え（3 択・排他的単一選択・D9。modeTile は上部で定義）
+              modeTile(
+                icon: Icons.keyboard,
+                label: 'Normal Mode',
+                subtitle: 'Key input & live view',
+                selected: _terminalMode == TerminalMode.normal,
                 onTap: () {
-                  final isScrolling = _terminalMode == TerminalMode.scroll;
-                  final newMode = isScrolling
-                      ? TerminalMode.normal
-                      : TerminalMode.scroll;
-                  setState(() {
-                    _terminalMode = newMode;
-                    _scrollModeSource = isScrolling
-                        ? ScrollModeSource.none
-                        : ScrollModeSource.manual;
-                  });
-                  if (newMode == TerminalMode.scroll) {
-                    // T15: copy-mode は tmux のみ（herdr には無い・H7）。
-                    // herdr は `pane read` 履歴ベースのスクロールのみ行う。
-                    if (_canCopyMode) {
-                      _enterTmuxCopyMode();
-                    }
-                    _loadHistoryForScroll();
-                  } else {
-                    if (_canCopyMode) {
-                      _cancelTmuxCopyMode();
-                    }
-                    _applyBufferedUpdate();
-                  }
+                  _exitToNormalMode();
+                  Navigator.pop(context);
+                },
+              ),
+              modeTile(
+                // inventory: TERM-SCROLL-008
+                icon: Icons.swipe_up,
+                label: 'Scroll Send Mode',
+                subtitle: 'Drag to send scroll to the app',
+                selected: _terminalMode == TerminalMode.scrollSend,
+                onTap: () {
+                  _enterScrollSendMode();
+                  Navigator.pop(context);
+                },
+              ),
+              modeTile(
+                icon: Icons.unfold_more,
+                label: 'Select Mode',
+                subtitle: 'Browse history & select text',
+                selected: _terminalMode == TerminalMode.select,
+                onTap: () {
+                  _enterSelectMode();
                   Navigator.pop(context);
                 },
               ),
