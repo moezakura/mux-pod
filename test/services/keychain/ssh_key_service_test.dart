@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/keychain/ssh_key_service.dart';
 
@@ -37,6 +40,58 @@ void main() {
 
       expect(keyPair1.fingerprint, isNot(equals(keyPair2.fingerprint)));
       expect(keyPair1.privateKeyBytes, isNot(equals(keyPair2.privateKeyBytes)));
+    });
+
+    test('checkint is random, not clock-derived', () async {
+      // OpenSSH秘密鍵形式をデコードしてcheckint(同一PEM内に2回出現)を抽出する
+      (int, int) extractCheckints(String pem) {
+        final b64 = pem
+            .replaceAll('-----BEGIN OPENSSH PRIVATE KEY-----', '')
+            .replaceAll('-----END OPENSSH PRIVATE KEY-----', '')
+            .replaceAll('\n', '')
+            .trim();
+        final bytes = base64Decode(b64);
+        var offset = 0;
+
+        int readUint32() {
+          final v =
+              (bytes[offset] << 24) |
+              (bytes[offset + 1] << 16) |
+              (bytes[offset + 2] << 8) |
+              bytes[offset + 3];
+          offset += 4;
+          return v;
+        }
+
+        Uint8List readString() {
+          final len = readUint32();
+          final s = bytes.sublist(offset, offset + len);
+          offset += len;
+          return s;
+        }
+
+        offset += 'openssh-key-v1'.length + 1; // AUTH_MAGIC + NUL終端
+        readString(); // ciphername
+        readString(); // kdfname
+        readString(); // kdfoptions
+        readUint32(); // number of keys
+        readString(); // public key blob
+        readUint32(); // private section length
+        return (readUint32(), readUint32()); // (checkint1, checkint2)
+      }
+
+      final keyPair1 = await service.generateEd25519();
+      final keyPair2 = await service.generateEd25519();
+
+      final (check1a, check1b) = extractCheckints(keyPair1.privatePem);
+      final (check2a, check2b) = extractCheckints(keyPair2.privatePem);
+
+      // 同一PEM内の2つのcheckintは一致する(整合性チェック用ペア)
+      expect(check1a, equals(check1b));
+      expect(check2a, equals(check2b));
+      // 連続生成でもcheckintは異なる(乱数由来)。
+      // 旧実装は壁時計由来のため同一ミリ秒内の連続生成で同一値になった
+      expect(check1a, isNot(equals(check2a)));
     });
   });
 
