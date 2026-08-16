@@ -15,4 +15,14 @@ class FakeSettingsNotifier extends SettingsNotifier {
   Future<void> setKeepScreenOn(bool value) async {
     state = state.copyWith(keepScreenOn: value);
   }
+
+  @override
+  Future<void> setScrollSendInput(String value) async {
+    state = state.copyWith(scrollSendInput: value);
+  }
+
+  @override
+  Future<void> setInvertScrollSendDirection(bool value) async {
+    state = state.copyWith(invertScrollSendDirection: value);
+  }
 }

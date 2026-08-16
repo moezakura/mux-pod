@@ -233,6 +233,40 @@ class SettingsScreen extends ConsumerWidget {
                     ref.read(settingsProvider.notifier).setInvertPaneNavigation(value);
                   },
                 ),
+                // inventory: SETTINGS-UI-INPUT-001
+                ListTile(
+                  leading: const Icon(Icons.mouse),
+                  title: const Text('Scroll Send Input'),
+                  subtitle: Text(_scrollSendInputLabel(settings.scrollSendInput)),
+                  onTap: () => _showScrollSendInputPicker(context, ref, settings.scrollSendInput),
+                ),
+                // inventory: SETTINGS-UI-INPUT-NOTE-001
+                if (!ref.watch(wheelSendVerifiedProvider))
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 16, color: DesignColors.warning),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'ホイール送信は未検証のため、現在はキー送信にフォールバックします。',
+                            style: TextStyle(color: DesignColors.warning, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // inventory: SETTINGS-UI-INVERT-001
+                SwitchListTile(
+                  secondary: const Icon(Icons.swipe),
+                  title: const Text('Invert Scroll Send Direction'),
+                  subtitle: const Text('Reverse drag direction for scroll sending'),
+                  value: settings.invertScrollSendDirection,
+                  onChanged: (value) {
+                    ref.read(settingsProvider.notifier).setInvertScrollSendDirection(value);
+                  },
+                ),
                 const Divider(),
                 const _SectionHeader(title: 'Appearance'),
                 ListTile(
@@ -539,6 +573,36 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  String _scrollSendInputLabel(String value) {
+    switch (value) {
+      case 'key':
+        return 'Key (Page Up / Page Down)';
+      default:
+        return 'Wheel (mouse scroll)';
+    }
+  }
+
+  // inventory: SETTINGS-UI-INPUT-002
+  Future<void> _showScrollSendInputPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Scroll Send Input'),
+        children: [
+          _buildScrollSendOption(ctx, 'wheel', 'Wheel', 'Send mouse wheel (SGR 1006)', current),
+          _buildScrollSendOption(ctx, 'key', 'Key', 'Send Page Up / Page Down', current),
+        ],
+      ),
+    );
+    if (result != null) {
+      await ref.read(settingsProvider.notifier).setScrollSendInput(result);
+    }
+  }
+
   String _orientationLabel(String value) {
     switch (value) {
       case 'portrait':
@@ -688,6 +752,25 @@ class SettingsScreen extends ConsumerWidget {
           Text(label),
         ],
       ),
+    );
+  }
+
+  /// Scroll Send Input ダイアログの選択肢（選択中をハイライト + チェック表示）。
+  /// RadioListTile は Flutter 3.32+ で deprecated のため新規には使わない（Pattern Map D9 方針）。
+  Widget _buildScrollSendOption(
+    BuildContext context,
+    String value,
+    String label,
+    String description,
+    String currentValue,
+  ) {
+    final selected = value == currentValue;
+    return ListTile(
+      title: Text(label),
+      subtitle: Text(description),
+      selected: selected,
+      trailing: selected ? const Icon(Icons.check) : null,
+      onTap: () => Navigator.pop(context, value),
     );
   }
 }
