@@ -5901,8 +5901,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               // モード切り替え（3 択・排他的単一選択・D9。modeTile は上部で定義）
               modeTile(
                 icon: Icons.keyboard,
-                label: 'Normal Mode',
-                subtitle: 'Key input & live view',
+                label: context.l10n.termNormalMode,
+                subtitle: context.l10n.termNormalModeSubtitle,
                 selected: _terminalMode == TerminalMode.normal,
                 onTap: () {
                   _exitToNormalMode();
@@ -5912,8 +5912,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               modeTile(
                 // inventory: TERM-SCROLL-008
                 icon: Icons.swipe_up,
-                label: 'Scroll Send Mode',
-                subtitle: 'Drag to send scroll to the app',
+                label: context.l10n.termScrollSendMode,
+                subtitle: context.l10n.termScrollSendModeSubtitle,
                 selected: _terminalMode == TerminalMode.scrollSend,
                 onTap: () {
                   _enterScrollSendMode();
@@ -5922,8 +5922,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               ),
               modeTile(
                 icon: Icons.unfold_more,
-                label: 'Select Mode',
-                subtitle: 'Browse history & select text',
+                label: context.l10n.termSelectMode,
+                subtitle: context.l10n.termSelectModeSubtitle,
                 selected: _terminalMode == TerminalMode.select,
                 onTap: () {
                   _enterSelectMode();

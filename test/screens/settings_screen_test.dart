@@ -157,7 +157,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await scrollUntilFound(tester, find.text('Scroll Send Input'));
-      expect(find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'), findsNothing);
+      expect(
+        find.text('Wheel send is unverified; falling back to key send.'),
+        findsNothing,
+      );
     });
 
     // inventory: TEST-SETTINGS-UI-004
@@ -180,7 +183,10 @@ void main() {
       await tester.pumpAndSettle();
 
       await scrollUntilFound(tester, find.text('Scroll Send Input'));
-      expect(find.text('ホイール送信は未検証のため、現在はキー送信にフォールバックします。'), findsOneWidget);
+      expect(
+        find.text('Wheel send is unverified; falling back to key send.'),
+        findsOneWidget,
+      );
     });
 
     // inventory: TEST-SETTINGS-UI-005

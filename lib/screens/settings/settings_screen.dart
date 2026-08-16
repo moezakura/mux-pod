@@ -281,9 +281,9 @@ class SettingsScreen extends ConsumerWidget {
                 // inventory: SETTINGS-UI-INPUT-001
                 ListTile(
                   leading: const Icon(Icons.mouse),
-                  title: const Text('Scroll Send Input'),
+                  title: Text(l10n.settingsScrollSendInput),
                   subtitle: Text(
-                    _scrollSendInputLabel(settings.scrollSendInput),
+                    _scrollSendInputLabel(l10n, settings.scrollSendInput),
                   ),
                   onTap: () => _showScrollSendInputPicker(
                     context,
@@ -293,20 +293,20 @@ class SettingsScreen extends ConsumerWidget {
                 ),
                 // inventory: SETTINGS-UI-INPUT-NOTE-001
                 if (!ref.watch(wheelSendVerifiedProvider))
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline,
                           size: 16,
                           color: DesignColors.warning,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'ホイール送信は未検証のため、現在はキー送信にフォールバックします。',
-                            style: TextStyle(
+                            l10n.settingsScrollSendUnverifiedNote,
+                            style: const TextStyle(
                               color: DesignColors.warning,
                               fontSize: 12,
                             ),
@@ -318,10 +318,8 @@ class SettingsScreen extends ConsumerWidget {
                 // inventory: SETTINGS-UI-INVERT-001
                 SwitchListTile(
                   secondary: const Icon(Icons.swipe),
-                  title: const Text('Invert Scroll Send Direction'),
-                  subtitle: const Text(
-                    'Reverse drag direction for scroll sending',
-                  ),
+                  title: Text(l10n.settingsInvertScrollSendDirection),
+                  subtitle: Text(l10n.settingsInvertScrollSendDirectionDesc),
                   value: settings.invertScrollSendDirection,
                   onChanged: (value) {
                     ref
@@ -714,12 +712,12 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  String _scrollSendInputLabel(String value) {
+  String _scrollSendInputLabel(AppLocalizations l10n, String value) {
     switch (value) {
       case 'key':
-        return 'Key (Page Up / Page Down)';
+        return l10n.settingsScrollSendInputKey;
       default:
-        return 'Wheel (mouse scroll)';
+        return l10n.settingsScrollSendInputWheel;
     }
   }
 
@@ -731,25 +729,28 @@ class SettingsScreen extends ConsumerWidget {
   ) async {
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Scroll Send Input'),
-        children: [
-          _buildScrollSendOption(
-            ctx,
-            'wheel',
-            'Wheel',
-            'Send mouse wheel (SGR 1006)',
-            current,
-          ),
-          _buildScrollSendOption(
-            ctx,
-            'key',
-            'Key',
-            'Send Page Up / Page Down',
-            current,
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final l10n = ctx.l10n;
+        return SimpleDialog(
+          title: Text(l10n.settingsScrollSendInput),
+          children: [
+            _buildScrollSendOption(
+              ctx,
+              'wheel',
+              l10n.settingsScrollSendPickWheel,
+              l10n.settingsScrollSendPickWheelDesc,
+              current,
+            ),
+            _buildScrollSendOption(
+              ctx,
+              'key',
+              l10n.settingsScrollSendPickKey,
+              l10n.settingsScrollSendPickKeyDesc,
+              current,
+            ),
+          ],
+        );
+      },
     );
     if (result != null) {
       await ref.read(settingsProvider.notifier).setScrollSendInput(result);
