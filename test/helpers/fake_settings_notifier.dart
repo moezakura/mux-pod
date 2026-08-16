@@ -27,4 +27,14 @@ class FakeSettingsNotifier extends SettingsNotifier {
   Future<void> setInvertScrollSendDirection(bool value) async {
     state = state.copyWith(invertScrollSendDirection: value);
   }
+
+  @override
+  Future<void> setAutoFitZoomOnScrollSend(bool value) async {
+    state = state.copyWith(autoFitZoomOnScrollSend: value);
+  }
+
+  @override
+  Future<void> setZoomFactor(double value) async {
+    state = state.copyWith(zoomFactor: value);
+  }
 }

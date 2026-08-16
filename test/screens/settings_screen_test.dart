@@ -204,6 +204,41 @@ void main() {
       expect(tile, findsOneWidget);
     });
 
+    // inventory: TEST-SETTINGS-UI-007
+    testWidgets('displays Fit terminal on Scroll Send toggle', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Fit terminal on Scroll Send'));
+      expect(find.text('Fit terminal on Scroll Send'), findsOneWidget);
+
+      final tile = find.ancestor(
+        of: find.text('Fit terminal on Scroll Send'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tile, findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-008
+    testWidgets('fit toggle is interactive', (tester) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むため、このテストのみモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Fit terminal on Scroll Send'));
+      final tile = find.ancestor(
+        of: find.text('Fit terminal on Scroll Send'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    });
+
     // inventory: TEST-SETTINGS-UI-006
     testWidgets('invert toggle is interactive', (tester) async {
       // setter が _saveSetting で SharedPreferences へ書き込むため、このテストのみモックする

@@ -959,6 +959,8 @@
   "settingsScrollSendUnverifiedNote": "ホイール送信は未検証のため、現在はキー送信にフォールバックします。",
   "settingsInvertScrollSendDirection": "スクロール送信方向の反転",
   "settingsInvertScrollSendDirectionDesc": "スクロール送信のドラッグ方向を反転",
+  "settingsAutoFitZoomOnScrollSend": "スクロール送信時に自動で全体表示",
+  "settingsAutoFitZoomOnScrollSendDesc": "スクロール送信モード中はターミナル全体が画面に収まるよう一時的にズームアウトします。モードを抜けると元のズームに戻ります。",
   "settingsMaxRefreshRate": "最大リフレッシュレート",
   "settingsRefreshRateAuto": "自動（最高）",
   "settingsRefreshRateAutoDescription": "利用可能な最大値を使用",

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
+import 'package:flutter_muxpod/screens/terminal/widgets/terminal_zoom.dart';
 import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 import 'package:flutter_muxpod/widgets/key_overlay_widget.dart';
@@ -28,11 +30,28 @@ const _kKeySendSettings = AppSettings(
   scrollSendInput: 'key',
 );
 
+/// scrollSend 自動フィットズーム検証用: ズーム 5.0（最大）から開始。
+const _kFitZoomSettings = AppSettings(
+  keepScreenOn: false,
+  adjustMode: 'none',
+  fontSize: 10.0,
+  zoomFactor: kMaxZoomFactor,
+  autoFitZoomOnScrollSend: true,
+);
+
 dynamic _state(WidgetTester tester) =>
     tester.state(find.byType(TerminalScreen));
 
 TerminalMode _mode(WidgetTester tester) =>
     tester.widget<AnsiTextView>(find.byType(AnsiTextView)).mode;
+
+/// 現在の設定プロバイダー状態の zoomFactor を取得する。
+double _currentZoom(WidgetTester tester) {
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(TerminalScreen)),
+  );
+  return container.read(settingsProvider).zoomFactor;
+}
 
 /// 設定メニュー → モード ListTile をタップしてモードを切り替える。
 Future<void> _enterMode(WidgetTester tester, String modeLabel) async {
@@ -458,6 +477,58 @@ void main() {
         client.sendKeysCommands,
         isEmpty,
         reason: 'モード切替で保留ティックが破棄される（M4）',
+      );
+    });
+
+    // inventory: TEST-SCROLL-FIT-ZOOM-001
+    testWidgets('scrollSend 自動フィットズーム: 突入で縮小・終了で復元', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        settings: _kFitZoomSettings,
+      );
+      expect(_currentZoom(tester), kMaxZoomFactor);
+
+      // scrollSend 突入 → ターミナル全体が画面に収まるズームへ縮小される。
+      await _enterMode(tester, 'Scroll Send Mode');
+      final fitZoom = _currentZoom(tester);
+      expect(
+        fitZoom,
+        lessThan(kMaxZoomFactor),
+        reason: 'ズーム 5.0 ではターミナルがはみ出すため縮小されること',
+      );
+      expect(_mode(tester), TerminalMode.scrollSend);
+
+      // normal へ戻す → 元のズーム倍率へ復元される。
+      await _enterMode(tester, 'Normal Mode');
+      expect(_mode(tester), TerminalMode.normal);
+      expect(
+        _currentZoom(tester),
+        kMaxZoomFactor,
+        reason: 'scrollSend 終了で適用前のズームへ復元されること',
+      );
+    });
+
+    // inventory: TEST-SCROLL-FIT-ZOOM-002
+    testWidgets('autoFitZoomOnScrollSend OFF ではズームを変更しない', (tester) async {
+      const offSettings = AppSettings(
+        keepScreenOn: false,
+        adjustMode: 'none',
+        fontSize: 10.0,
+        zoomFactor: kMaxZoomFactor,
+        autoFitZoomOnScrollSend: false,
+      );
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        settings: offSettings,
+      );
+      expect(_currentZoom(tester), kMaxZoomFactor);
+
+      await _enterMode(tester, 'Scroll Send Mode');
+      expect(_mode(tester), TerminalMode.scrollSend);
+      expect(
+        _currentZoom(tester),
+        kMaxZoomFactor,
+        reason: '設定 OFF では zoomFactor を変更しないこと',
       );
     });
   });

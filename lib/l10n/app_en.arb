@@ -959,6 +959,8 @@
   "settingsScrollSendUnverifiedNote": "Wheel send is unverified; falling back to key send.",
   "settingsInvertScrollSendDirection": "Invert Scroll Send Direction",
   "settingsInvertScrollSendDirectionDesc": "Reverse drag direction for scroll sending",
+  "settingsAutoFitZoomOnScrollSend": "Fit terminal on Scroll Send",
+  "settingsAutoFitZoomOnScrollSendDesc": "Temporarily zoom out so the whole terminal fits on screen while in Scroll Send mode. The previous zoom is restored when leaving the mode.",
   "settingsMaxRefreshRate": "Max Refresh Rate",
   "settingsRefreshRateAuto": "Auto (highest)",
   "settingsRefreshRateAutoDescription": "Use the highest available",

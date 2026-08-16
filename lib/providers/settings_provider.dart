@@ -48,6 +48,10 @@ class AppSettings {
   // inventory: SETTINGS-INVERT-SCROLL-001
   final bool invertScrollSendDirection;
 
+  /// スクロール送信モード中にターミナル全体が画面に収まるようズームを一時縮小
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-001
+  final bool autoFitZoomOnScrollSend;
+
   /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
   final String language;
 
@@ -103,6 +107,8 @@ class AppSettings {
     this.scrollSendInput = 'wheel',
     // inventory: SETTINGS-INVERT-SCROLL-002
     this.invertScrollSendDirection = false,
+    // inventory: SETTINGS-AUTO-FIT-ZOOM-002
+    this.autoFitZoomOnScrollSend = false,
     this.language = 'system',
     this.showKeyOverlay = true,
     this.keyOverlayModifier = true,
@@ -145,6 +151,8 @@ class AppSettings {
     String? scrollSendInput,
     // inventory: SETTINGS-INVERT-SCROLL-003
     bool? invertScrollSendDirection,
+    // inventory: SETTINGS-AUTO-FIT-ZOOM-003
+    bool? autoFitZoomOnScrollSend,
     String? language,
     bool? showKeyOverlay,
     bool? keyOverlayModifier,
@@ -182,6 +190,8 @@ class AppSettings {
       scrollSendInput: scrollSendInput ?? this.scrollSendInput,
       invertScrollSendDirection:
           invertScrollSendDirection ?? this.invertScrollSendDirection,
+      autoFitZoomOnScrollSend:
+          autoFitZoomOnScrollSend ?? this.autoFitZoomOnScrollSend,
       language: language ?? this.language,
       showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
       keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
@@ -225,6 +235,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   // inventory: SETTINGS-INVERT-SCROLL-004
   static const String _invertScrollSendDirectionKey =
       'settings_invert_scroll_send_direction';
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-004
+  static const String _autoFitZoomOnScrollSendKey =
+      'settings_auto_fit_zoom_on_scroll_send';
   static const String _languageKey = 'settings_language';
   static const String _imageRemotePathKey = 'settings_image_remote_path';
   static const String _imageOutputFormatKey = 'settings_image_output_format';
@@ -278,6 +291,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       // inventory: SETTINGS-INVERT-SCROLL-005
       invertScrollSendDirection:
           prefs.getBool(_invertScrollSendDirectionKey) ?? false,
+      // inventory: SETTINGS-AUTO-FIT-ZOOM-005
+      autoFitZoomOnScrollSend:
+          prefs.getBool(_autoFitZoomOnScrollSendKey) ?? false,
       language: prefs.getString(_languageKey) ?? 'system',
       showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
       keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
@@ -501,6 +517,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setInvertScrollSendDirection(bool value) async {
     state = state.copyWith(invertScrollSendDirection: value);
     await _saveSetting(_invertScrollSendDirectionKey, value);
+  }
+
+  /// スクロール送信モード中の自動フィットズームを設定
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-006
+  Future<void> setAutoFitZoomOnScrollSend(bool value) async {
+    state = state.copyWith(autoFitZoomOnScrollSend: value);
+    await _saveSetting(_autoFitZoomOnScrollSendKey, value);
   }
 
   /// 表示言語を設定（'system' / 'ja' / 'en'）

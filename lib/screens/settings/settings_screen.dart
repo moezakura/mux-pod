@@ -327,6 +327,18 @@ class SettingsScreen extends ConsumerWidget {
                         .setInvertScrollSendDirection(value);
                   },
                 ),
+                // inventory: SETTINGS-UI-AUTO-FIT-ZOOM-001
+                SwitchListTile(
+                  secondary: const Icon(Icons.zoom_out_map),
+                  title: Text(l10n.settingsAutoFitZoomOnScrollSend),
+                  subtitle: Text(l10n.settingsAutoFitZoomOnScrollSendDesc),
+                  value: settings.autoFitZoomOnScrollSend,
+                  onChanged: (value) {
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setAutoFitZoomOnScrollSend(value);
+                  },
+                ),
                 const Divider(),
                 _SectionHeader(title: l10n.settingsSectionAppearance),
                 ListTile(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -521,6 +522,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // ズームスケール
   double _zoomScale = 1.0;
 
+  // inventory: TERM-ZOOM-FIT-001
+  /// scrollSend 自動フィットズーム適用前の zoomFactor（復元用）。
+  ///
+  /// null 以外 = scrollSend モード突入時に [autoFitZoomOnScrollSend] で一時ズーム
+  /// を適用済み。モードを抜けたら [_restoreScrollSendZoom] でこの値へ戻す。
+  double? _zoomBeforeScrollSend;
+
   /// 表示中の実効ズーム倍率（永続 zoomFactor × ピンチ中のプレビュー _zoomScale）。
   double get _effectiveZoom =>
       ref.read(settingsProvider).zoomFactor * _zoomScale;
@@ -929,6 +937,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 実装（C6）で本メソッドへ合流する。
   void _resetTerminalMode() {
     _discardPendingScrollTicks();
+    // inventory: TERM-ZOOM-FIT-002
+    _restoreScrollSendZoom();
     setState(() {
       _terminalMode = TerminalMode.normal;
       _scrollModeSource = ScrollModeSource.none;
@@ -947,8 +957,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// `source == none` のときのみ発火するため、source を manual/tmux のまま
   /// 残すと scrollSend 中の R1 対策（copy-mode 検出）が不発になる。
   /// バッファクリア（H5・stale 再適用防止）と合流タイマー cancel（M4）を同時に行う。
+  /// 設定 [autoFitZoomOnScrollSend] が ON ならターミナル全体フィットズームを適用する。
   void _enterScrollSendMode() {
     _discardPendingScrollTicks();
+    // inventory: TERM-ZOOM-FIT-003
+    _applyScrollSendFitZoom();
     setState(() {
       _terminalMode = TerminalMode.scrollSend;
       _scrollModeSource = ScrollModeSource.none; // C1: 同一 setState
@@ -968,6 +981,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// タイマー cancel（M4）を同時に行う。
   void _enterSelectMode() {
     _discardPendingScrollTicks();
+    // inventory: TERM-ZOOM-FIT-004
+    _restoreScrollSendZoom();
     setState(() {
       _terminalMode = TerminalMode.select;
       _scrollModeSource = ScrollModeSource.manual;
@@ -990,6 +1005,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// scrollSend 由来なら合流タイマー cancel（M4）と保留破棄のみ。
   void _exitToNormalMode() {
     _discardPendingScrollTicks();
+    // inventory: TERM-ZOOM-FIT-005
+    _restoreScrollSendZoom();
     if (_terminalMode == TerminalMode.select) {
       if (_canCopyMode) {
         _cancelTmuxCopyMode();
@@ -1006,7 +1023,70 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _bufferedTargetIdentity = null;
   }
 
-  /// 再接続成功時の処理
+  // inventory: TERM-ZOOM-FIT-007
+  /// scrollSend 自動フィットズームを適用する。
+  ///
+  /// 設定 [autoFitZoomOnScrollSend] が ON かつ「現在のズームでターミナルが
+  /// 画面からはみ出している」場合のみ、ターミナル全体（縦横）が収まる最大
+  /// ズームへ一時的に縮小する。適用した zoomFactor を [_zoomBeforeScrollSend]
+  /// に退避し、モード終了時に復元する。
+  void _applyScrollSendFitZoom() {
+    final settings = ref.read(settingsProvider);
+    if (!settings.autoFitZoomOnScrollSend) return;
+    // 既に一時ズーム適用済みなら再適用しない（モード遷移の入れ子対策）。
+    if (_zoomBeforeScrollSend != null) return;
+
+    final display = ref.read(terminalDisplayProvider);
+    final paneWidth = _viewNotifier.value.paneWidth;
+    final paneHeight = _viewNotifier.value.paneHeight;
+    if (display.screenWidth <= 0 || display.screenHeight <= 0) return;
+    if (paneWidth <= 0 || paneHeight <= 0) return;
+
+    // AnsiTextView と同一の baseFontSize を導出する（調整モード分岐・D12 準拠）。
+    final double baseFontSize;
+    if (settings.isAutoFit) {
+      final calc = FontCalculator.calculate(
+        screenWidth: display.screenWidth,
+        paneCharWidth: paneWidth,
+        fontFamily: settings.fontFamily,
+        minFontSize: settings.minFontSize,
+      );
+      baseFontSize = calc.fontSize;
+    } else {
+      baseFontSize = settings.fontSize;
+    }
+
+    final fit = fitTerminalZoomFactor(
+      screenWidth: display.screenWidth,
+      screenHeight: display.screenHeight,
+      paneCharWidth: paneWidth,
+      paneHeight: paneHeight,
+      baseFontSize: baseFontSize,
+      charWidthRatio: FontCalculator.measureCharWidthRatio(
+        settings.fontFamily,
+      ),
+      lineHeightRatio: FontCalculator.lineHeightRatio,
+    );
+
+    final current = settings.zoomFactor;
+    // 現在より大きくならない（フィット目的は縮小のみ・拡大しない）。
+    final target = math.min(current, fit);
+    if ((target - current).abs() < 0.005) return; // 変化なし
+
+    _zoomBeforeScrollSend = current;
+    ref.read(settingsProvider.notifier).setZoomFactor(target);
+  }
+
+  // inventory: TERM-ZOOM-FIT-008
+  /// scrollSend 自動フィットズームを適用前の値へ復元する。
+  ///
+  /// 未適用（[_zoomBeforeScrollSend] == null）なら何もしない。
+  void _restoreScrollSendZoom() {
+    final saved = _zoomBeforeScrollSend;
+    if (saved == null) return;
+    _zoomBeforeScrollSend = null;
+    ref.read(settingsProvider.notifier).setZoomFactor(saved);
+  }
   Future<void> _onReconnectSuccess() async {
     if (!mounted || _isDisposed) return;
 
@@ -1967,6 +2047,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           if (fromScrollSend) {
             // 合流バッファクリア（遷移までに積んだティックは送信しない・D2）
             _discardPendingScrollTicks();
+            // inventory: TERM-ZOOM-FIT-006
+            // scrollSend 自動フィットズームを復元（scrollSend → select 遷移）
+            _restoreScrollSendZoom();
             // C12: 最小監視（A8 リングバッファ・SDK 送信なし）
             _recordHerdrSwitchEvent(
               'copy-mode auto transition from scrollSend',

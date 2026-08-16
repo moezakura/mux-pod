@@ -124,11 +124,36 @@ void main() {
       final updated = base.copyWith(
         scrollSendInput: 'key',
         invertScrollSendDirection: true,
+        autoFitZoomOnScrollSend: true,
       );
       expect(updated.scrollSendInput, 'key');
       expect(updated.invertScrollSendDirection, isTrue);
+      expect(updated.autoFitZoomOnScrollSend, isTrue);
       expect(updated.invertPaneNavigation, isFalse);
       expect(updated.darkMode, isTrue);
+    });
+
+    // inventory: TEST-SETTINGS-PROVIDER-008
+    testWidgets('autoFitZoomOnScrollSend defaults to false', (tester) async {
+      final container = await pumpContainer(tester);
+      expect(container.read(settingsProvider).autoFitZoomOnScrollSend, isFalse);
+    });
+
+    // inventory: TEST-SETTINGS-PROVIDER-009
+    testWidgets('setAutoFitZoomOnScrollSend updates state and persists', (
+      tester,
+    ) async {
+      final container = await pumpContainer(tester);
+
+      await container
+          .read(settingsProvider.notifier)
+          .setAutoFitZoomOnScrollSend(true);
+      await tester.pump();
+
+      expect(container.read(settingsProvider).autoFitZoomOnScrollSend, isTrue);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('settings_auto_fit_zoom_on_scroll_send'), isTrue);
     });
   });
 
