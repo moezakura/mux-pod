@@ -1,0 +1,30 @@
+captured_at_utc=2026-08-10T15:07:05Z
+git_commit=2449c8e1d4d469a263f72e9e4834a7652682114c
+git_branch=feat/scroll-emulation
+git_status_porcelain=
+ M lib/providers/settings_provider.dart
+ M lib/screens/settings/settings_screen.dart
+ M lib/services/backend/domain/herdr_pane_writer.dart
+ M lib/services/backend/domain/pane_writer.dart
+ M lib/services/backend/domain/tmux_pane_writer.dart
+ M test/helpers/fake_settings_notifier.dart
+ M test/screens/settings_screen_test.dart
+ M test/services/backend/domain/herdr_pane_writer_test.dart
+ M test/services/backend/domain/pane_writer_test.dart
+ M test/services/backend/domain/tmux_pane_writer_test.dart
+?? lib/services/backend/domain/wheel_encoder.dart
+?? test/providers/settings_provider_test.dart
+?? test/services/backend/domain/wheel_encoder_test.dart
+?? tool/tmux-sgr-baseline/
+platform=
+Linux jocho 6.18.35-1-lts #1 SMP PREEMPT_DYNAMIC Tue, 09 Jun 2026 11:41:56 +0000 x86_64 GNU/Linux
+tmux_version=
+tmux 3.7b
+herdr_version=
+herdr 0.7.5
+flutter_version=
+Flutter 3.38.6 • channel stable • https://github.com/flutter/flutter.git
+dart_version=
+Dart SDK version: 3.10.7 (stable) (Tue Dec 23 00:01:57 2025 -0800) on "linux_x64"
+captured_at_utc=2026-08-10T15:07:14Z
+output_dir=/home/mox/Projects/mux-pod/worktree/feat/scroll-emulation/tool/tmux-sgr-baseline/results/20260810T150705Z
