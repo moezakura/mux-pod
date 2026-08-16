@@ -1,6 +1,7 @@
 import 'package:flutter_muxpod/services/backend/backend_adapter.dart';
 import 'package:flutter_muxpod/services/backend/domain/herdr_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
+import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,6 +47,8 @@ void main() {
       // 設計上 false（herdr に copy-mode は無い・resize は相対のみ）。
       expect(caps.copyMode, isFalse);
       expect(caps.absoluteResize, isFalse);
+      // SGR 1006 ホイール送信は Phase 0 実測（B2）で PASS → true（D11 ゲート）。
+      expect(caps.wheelSend, isTrue);
     });
 
     test('mapSpecialKey: PaneKeyMap の全キー送信経路を返す（Q-07）', () {
@@ -203,6 +206,32 @@ void main() {
         backend.commands.single,
         contains("herdr pane send-text w1:p1 'a"),
       );
+    });
+
+    test('sendScroll: kind=wheel は SGR を send-text で完全一致送信する', () async {
+      await writer.sendScroll('w1:p1', kind: ScrollSendKind.wheel, up: true, ticks: 1);
+      expect(
+        backend.commands.single,
+        "herdr pane send-text w1:p1 '\x1b[<64;1;1M'",
+      );
+    });
+
+    test('sendScroll: kind=wheel 下スクロールは ESC[<65;1;1M を ticks 個連結', () async {
+      await writer.sendScroll('w1:p1', kind: ScrollSendKind.wheel, up: false, ticks: 8);
+      expect(
+        backend.commands.single,
+        "herdr pane send-text w1:p1 "
+        "'\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M"
+        "\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M'",
+      );
+    });
+
+    test('sendScroll: kind=key は PgUp/PgDn を send-text で完全一致送信する', () async {
+      await writer.sendScroll('w1:p1', kind: ScrollSendKind.key, up: true, ticks: 1);
+      await writer.sendScroll('w1:p1', kind: ScrollSendKind.key, up: false, ticks: 1);
+      expect(backend.commands, hasLength(2));
+      expect(backend.commands[0], "herdr pane send-text w1:p1 '\x1b[5~'");
+      expect(backend.commands[1], "herdr pane send-text w1:p1 '\x1b[6~'");
     });
 
     test('createTab: tab create へ委譲する（Q-05）', () async {

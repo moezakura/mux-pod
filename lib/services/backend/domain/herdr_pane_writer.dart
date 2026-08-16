@@ -20,6 +20,7 @@ library;
 import '../../herdr/herdr_adapter.dart';
 import '../../herdr/herdr_keymap.dart';
 import 'pane_writer.dart';
+import 'wheel_encoder.dart';
 
 // inventory: HERDR-PANE-WRITER-001
 /// herdr の [PaneWriter] 実装。
@@ -38,6 +39,10 @@ class HerdrPaneWriter implements PaneWriter {
   /// `imageTransfer` は T15 で true にフリップした（Q-06）。SFTP アップロード
   /// は `image_transfer_provider.dart` が SSH 直結で行い backend 非依存、
   /// パス注入は `_injectImagePath` → [pasteText]（`send-text`）が担う。
+  ///
+  /// `wheelSend` は Phase 0 実測（B2: `send-text` の SGR / プレーンテキスト
+  /// 素通し）が PASS のため true（`tool/tmux-sgr-baseline/baseline-report.md`・
+  /// D11）。(b) 文字キー送信の sendText 素通しも同一実測で確認済み（L0-a #6）。
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
         sendText: true,
@@ -54,6 +59,7 @@ class HerdrPaneWriter implements PaneWriter {
         workspaceCrud: true,
         tabCrud: true,
         absoluteResize: false,
+        wheelSend: true,
       );
 
   /// tmux キー名を herdr 送信経路へ変換する（Q-07）。
@@ -153,6 +159,26 @@ class HerdrPaneWriter implements PaneWriter {
   @override
   Future<void> pasteText(String paneId, String text) async {
     await _adapter.sendText(paneId, text);
+  }
+
+  // inventory: HERDR-PANE-WRITER-002
+  /// スクロール操作を SGR / エスケープ素通しで送信する。
+  ///
+  /// [WheelEncoder] でエンコードした SGR 1006（kind=wheel）または PgUp/PgDn
+  /// （kind=key）を `pane send-text` で送る。`send-text` はバイナリ素通し
+  /// （G4 実測）のためシーケンスがそのままアプリに届く（B2 実測対象・D7）。
+  /// 失敗時は `HerdrCommandException` を投げる。
+  @override
+  Future<void> sendScroll(
+    String paneId, {
+    required ScrollSendKind kind,
+    required bool up,
+    required int ticks,
+  }) async {
+    final encoded = kind == ScrollSendKind.wheel
+        ? WheelEncoder.encodeSgr(up: up, ticks: ticks)
+        : WheelEncoder.encodePage(up: up, ticks: ticks);
+    await _adapter.sendText(paneId, encoded);
   }
 
   // ===== 未対応 or 未配線（設計判断）=====
