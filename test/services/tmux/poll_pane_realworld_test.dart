@@ -15,12 +15,11 @@ class _FakeExecutor implements TmuxCommandExecutor {
   final String output;
 
   @override
-  Future<CommandResult> execute(CommandRequest request) async =>
-      CommandResult(
-        mergedOutput: output,
-        outputSeparation: CommandOutputSeparation.merged,
-        actualTransport: CommandTransport.persistent,
-      );
+  Future<CommandResult> execute(CommandRequest request) async => CommandResult(
+    mergedOutput: output,
+    outputSeparation: CommandOutputSeparation.merged,
+    actualTransport: CommandTransport.persistent,
+  );
 
   @override
   bool get isConnected => true;

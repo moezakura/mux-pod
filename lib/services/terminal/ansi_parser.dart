@@ -387,8 +387,11 @@ class AnsiParser {
     return TextSpan(
       children: segments
           .map(
-            (segment) =>
-                _segmentToTextSpan(segment, fontSize: fontSize, fontFamily: fontFamily),
+            (segment) => _segmentToTextSpan(
+              segment,
+              fontSize: fontSize,
+              fontFamily: fontFamily,
+            ),
           )
           .toList(),
     );
@@ -556,11 +559,7 @@ class AnsiParser {
     InlineSpan? caret,
   }) {
     if (caret == null) {
-      return lineToTextSpan(
-        line,
-        fontSize: fontSize,
-        fontFamily: fontFamily,
-      );
+      return lineToTextSpan(line, fontSize: fontSize, fontFamily: fontFamily);
     }
 
     final spans = <InlineSpan>[];

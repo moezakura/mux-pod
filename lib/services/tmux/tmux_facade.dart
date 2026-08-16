@@ -25,9 +25,7 @@ final TmuxContract tmuxFacade = TmuxFacade();
 /// pollPane セクション区切りマーカーのパターン。
 /// コマンド埋め込み時はランダムIDだが、パース側はパターン一致で抽出する
 /// （テストfixtureは任意のIDでマーカーを構築できる）。
-final RegExp _pollSeparatorPattern = RegExp(
-  r'\x01###POLL_[0-9a-f]+###\x01',
-);
+final RegExp _pollSeparatorPattern = RegExp(r'\x01###POLL_[0-9a-f]+###\x01');
 
 /// pollPane のテスト・本番共通ヘルパ: 区切りマーカー文字列（バイト列版）。
 /// [id] には16進文字列を渡す。
@@ -395,7 +393,8 @@ class TmuxFacade implements TmuxContract {
     // マーカーは \x01（SOH）で挟み、PersistentShell と同じくシェルのエコーバック
     // （リテラル `\x01` 4文字）と実出力（バイト 0x01）を区別できるようにする。
     final markerId = _generatePollMarkerId();
-    final printfSep = r'\x01###POLL_'
+    final printfSep =
+        r'\x01###POLL_'
         '$markerId'
         r'###\x01';
     final combined =
@@ -426,10 +425,7 @@ class TmuxFacade implements TmuxContract {
       // - コンテンツ: 先頭の printf 由来の \n を1つだけ除去し、末尾の capture 最終行の
       //   改行を1つだけ除去する（split の空要素アーティファクト対策。空行は保持される）
       // - cursor/mode: 各セクション末尾の改行を除去
-      var capture = output.substring(
-        sepMatches[0].end,
-        sepMatches[1].start,
-      );
+      var capture = output.substring(sepMatches[0].end, sepMatches[1].start);
       if (capture.startsWith('\n')) capture = capture.substring(1);
       if (capture.endsWith('\n')) {
         capture = capture.substring(0, capture.length - 1);

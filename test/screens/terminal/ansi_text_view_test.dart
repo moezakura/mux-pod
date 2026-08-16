@@ -244,7 +244,9 @@ void main() {
     (w) => w is ColoredBox && w.color == DesignColors.primary,
   );
 
-  testWidgets('caret is rendered inline inside the RichText (not composited)', (tester) async {
+  testWidgets('caret is rendered inline inside the RichText (not composited)', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildCaretSubject('abc\ndef\nghi', cursorX: 2, cursorY: 1),
     );
@@ -259,7 +261,9 @@ void main() {
     expect(find.byType(Positioned), findsNothing);
   });
 
-  testWidgets('caret sits on the cursor row and within the text extent', (tester) async {
+  testWidgets('caret sits on the cursor row and within the text extent', (
+    tester,
+  ) async {
     // 1行目の2文字目の直後にキャレット（行スパンが xx + caret + def に分割される）
     await tester.pumpWidget(
       buildCaretSubject('xxdef\nabcdefgh\nzz', cursorX: 2, cursorY: 0),
@@ -278,7 +282,9 @@ void main() {
     expect(caretRect.left, closeTo(below.left + charWidth * 2, 1.0));
   });
 
-  testWidgets('caret is a thin vertical bar of fontSize height', (tester) async {
+  testWidgets('caret is a thin vertical bar of fontSize height', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildCaretSubject('abc\ndef\nghi', cursorX: 2, cursorY: 1),
     );
@@ -321,7 +327,9 @@ void main() {
     expect(caretRect.left, closeTo(firstRow.left, 2.0));
   });
 
-  testWidgets('caret beyond line end is padded to the cursor column', (tester) async {
+  testWidgets('caret beyond line end is padded to the cursor column', (
+    tester,
+  ) async {
     // 空行で cursorX=3: 3セル分のパディングの後にキャレット
     await tester.pumpWidget(
       buildCaretSubject('abc\n\nghi', cursorX: 3, cursorY: 1),
@@ -331,7 +339,9 @@ void main() {
     expect(caretFinder, findsOneWidget);
   });
 
-  testWidgets('caret lands after a full-width character (column boundary)', (tester) async {
+  testWidgets('caret lands after a full-width character (column boundary)', (
+    tester,
+  ) async {
     // 「あ」は2カラム幅: cursorX=2 は「あ」の直後の文字境界
     await tester.pumpWidget(
       buildCaretSubject('あb\nxx\nzz', cursorX: 2, cursorY: 0),
@@ -345,7 +355,10 @@ void main() {
     final painter = TextPainter(
       text: TextSpan(
         text: 'あ',
-        style: TerminalFontStyles.getTextStyle('JetBrains Mono', fontSize: 14.0),
+        style: TerminalFontStyles.getTextStyle(
+          'JetBrains Mono',
+          fontSize: 14.0,
+        ),
       ),
       textDirection: TextDirection.ltr,
       textScaler: TextScaler.noScaling,
