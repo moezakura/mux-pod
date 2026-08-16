@@ -182,24 +182,21 @@ class _KeyImportScreenState extends ConsumerState<KeyImportScreen> {
 
   Future<void> _pickFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.any,
-        allowMultiple: false,
-        withData: true,
-      );
+      final file = await FilePicker.pickFile(type: FileType.any);
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-
+      if (file != null) {
         // ファイル内容を読み取る
         String content;
-        if (file.bytes != null) {
-          content = String.fromCharCodes(file.bytes!);
-        } else {
-          // ファイルパスから読み取る（デスクトップ向け）
-          setState(() {
-            _pemValidationError = context.l10n.keyMgmtCouldNotReadFile;
-          });
+        try {
+          final bytes = await file.readAsBytes();
+          content = String.fromCharCodes(bytes);
+        } catch (_) {
+          // 読み取りに失敗した
+          if (mounted) {
+            setState(() {
+              _pemValidationError = context.l10n.keyMgmtCouldNotReadFile;
+            });
+          }
           return;
         }
 
