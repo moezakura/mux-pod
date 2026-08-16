@@ -69,5 +69,7 @@
 	<string>画像をリモートサーバーに転送するためにフォトライブラリを使用します</string>
 	<key>NSCameraUsageDescription</key>
 	<string>撮影した画像をリモートサーバーに転送するためにカメラを使用します</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
