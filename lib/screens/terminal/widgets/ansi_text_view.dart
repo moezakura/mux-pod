@@ -772,34 +772,19 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               cursorLineIndex = widget.cursorY;
             }
 
-            // 現在の行がカーソル位置と一致する場合、Stackでカーソルを重ねる
+            // カーソル行: キャレットをStack+Positionedで「合成」せず、
+            // テキストレイアウト内の正確な位置に直接挿入する（Issue #70 根本対応）。
+            // キャレットはゼロ幅インライン要素として文字境界に置かれ、
+            // テキストエンジンが決定する描画位置にそのまま乗る。
             if (index == cursorLineIndex &&
                 widget.mode == TerminalMode.normal &&
                 settings.showTerminalCursor) {
-              // TextPainter.getOffsetForCaretを使用して、レンダリングエンジンが計算した正確なカーソル位置を取得
-              double cursorLeft;
-              double charWidth;
-
-              // 行全体のテキストとスタイルを使用してTextPainterを作成
-              final textSpanFull = _parser.lineToTextSpan(
-                line,
-                fontSize: fontSize,
-                fontFamily: settings.fontFamily,
-              );
-
-              final painter = TextPainter(
-                text: textSpanFull,
-                textDirection: TextDirection.ltr,
-                textScaler: TextScaler.noScaling,
-              )..layout();
-
               // 行のプレーンテキストを取得
               final lineText = line.segments.map((s) => s.text).join();
-              final lineTextLength = lineText.length;
 
               // 全角文字を考慮してカラム位置を文字オフセットに変換
               // tmuxのcursor_xはカラム位置（全角=2）だが、
-              // TextPositionは文字オフセット（全角=1）を期待する
+              // テキスト内位置は文字オフセット（全角=1）で扱う
               final lineDisplayWidth = FontCalculator.getTextDisplayWidth(
                 lineText,
               );
@@ -808,63 +793,30 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
                 widget.cursorX,
               );
 
-              if (widget.cursorX <= lineDisplayWidth) {
-                // カーソルが行内にある場合、getOffsetForCaretで位置を取得
-                final offset = painter.getOffsetForCaret(
-                  TextPosition(offset: charOffset),
-                  Rect.zero,
-                );
-                cursorLeft = offset.dx;
+              // キャレットが行テキスト終端より先にある場合（空行や行末以降）の埋めセル数
+              final padColumns = widget.cursorX > lineDisplayWidth
+                  ? widget.cursorX - lineDisplayWidth
+                  : 0;
 
-                // カーソル幅も現在の文字の位置から取得（次の文字までの幅）
-                // 行末の場合は標準幅を使用
-                if (charOffset < lineTextLength) {
-                  final nextOffset = painter.getOffsetForCaret(
-                    TextPosition(offset: charOffset + 1),
-                    Rect.zero,
+              lineWidget = ValueListenableBuilder<bool>(
+                valueListenable: _caretVisible,
+                builder: (context, visible, _) {
+                  return Text.rich(
+                    _parser.lineToTextSpanWithCaret(
+                      line,
+                      fontSize: fontSize,
+                      fontFamily: settings.fontFamily,
+                      caretCharOffset: charOffset,
+                      padColumns: padColumns,
+                      caret: visible ? _buildCaretSpan(fontSize) : null,
+                    ),
+                    style: baseTextStyle,
+                    textScaler: TextScaler.noScaling,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
                   );
-                  charWidth = nextOffset.dx - offset.dx;
-                } else {
-                  charWidth = FontCalculator.measureCharWidth(
-                    settings.fontFamily,
-                    fontSize,
-                  );
-                }
-              } else {
-                // カーソルが行末より先にある場合（空行や行末以降のスペース）
-                // 行末の位置を取得し、超過分を加算
-                cursorLeft = painter.width;
-                charWidth = FontCalculator.measureCharWidth(
-                  settings.fontFamily,
-                  fontSize,
-                );
-                cursorLeft += (widget.cursorX - lineDisplayWidth) * charWidth;
-              }
-
-              lineWidget = Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  lineWidget,
-                  ValueListenableBuilder<bool>(
-                    valueListenable: _caretVisible,
-                    builder: (context, visible, child) {
-                      if (!visible) {
-                        return const SizedBox.shrink();
-                      }
-                      // キャレットの高さを文字サイズに合わせる（行間を含めない）
-                      final caretHeight = fontSize;
-                      // 行内で垂直方向に中央寄せ
-                      final caretTop = (_lineHeight - caretHeight) / 2;
-                      return Positioned(
-                        left: cursorLeft,
-                        top: caretTop,
-                        width: 2,
-                        height: caretHeight,
-                        child: Container(color: DesignColors.primary),
-                      );
-                    },
-                  ),
-                ],
+                },
               );
             }
 
@@ -953,6 +905,31 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
           ),
         );
       },
+    );
+  }
+
+  /// キャレット（細い縦バー）のインライン要素を構築する。
+  ///
+  /// ゼロ幅のプレースホルダ（[WidgetSpan]）としてテキスト内の正確な文字境界に
+  /// 挿入され、[OverflowBox] で次の文字に重ねて描画する。テキスト幅を一切
+  /// 変えないため、以降の文字の描画位置はターミナル格子のまま保たれる。
+  WidgetSpan _buildCaretSpan(double fontSize) {
+    return WidgetSpan(
+      alignment: PlaceholderAlignment.middle,
+      child: SizedBox(
+        width: 0,
+        height: 0,
+        child: OverflowBox(
+          maxWidth: 2,
+          maxHeight: fontSize,
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: 2,
+            height: fontSize,
+            child: const ColoredBox(color: DesignColors.primary),
+          ),
+        ),
+      ),
     );
   }
 
