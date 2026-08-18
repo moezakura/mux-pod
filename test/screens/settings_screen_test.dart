@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/l10n/app_localizations.dart';
+import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Widget _buildApp() {
   return const ProviderScope(
@@ -16,11 +18,17 @@ Widget _buildApp() {
 
 /// Scrolls until [finder] is visible in the first Scrollable of the tree.
 ///
-/// ステップを小さく（50px）して、1ドラッグでタイル（約72px）を
-/// 飛び越えてオフステージ領域に落ちることを防ぐ。
+/// 探索前にスクロール位置を先頭へ戻すことで、直前の `scrollUntilVisible` が
+/// 最後に呼ぶ `Scrollable.ensureVisible` による位置ずれ（探索対象が画面上方へ
+/// 通り過ぎてレイジービルドから外れる）に依存しない検証にする。
 Future<void> scrollUntilFound(WidgetTester tester, Finder finder) async {
   final scrollable = find.byType(Scrollable).first;
-  await tester.scrollUntilVisible(finder, 50, scrollable: scrollable);
+  final position = tester.state<ScrollableState>(scrollable).position;
+  if (position.pixels > 0) {
+    position.jumpTo(0);
+    await tester.pump();
+  }
+  await tester.scrollUntilVisible(finder, 200, scrollable: scrollable);
 }
 
 void main() {
@@ -107,6 +115,148 @@ void main() {
 
       await scrollUntilFound(tester, find.text('Bracketed Paste'));
       expect(find.text('Bracketed Paste'), findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-001
+    testWidgets('displays Scroll Send Input setting', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Scroll Send Input'));
+      expect(find.text('Scroll Send Input'), findsOneWidget);
+      expect(find.text('Wheel (mouse scroll)'), findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-002
+    testWidgets('Scroll Send Input picker selects Key', (tester) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むため、このテストのみモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Scroll Send Input'));
+      await tester.tap(find.text('Scroll Send Input'));
+      await tester.pumpAndSettle();
+
+      // SimpleDialog 内の選択肢（RadioListTile は不使用・ListTile 方式）
+      expect(find.text('Wheel'), findsOneWidget);
+      expect(find.text('Key'), findsOneWidget);
+
+      await tester.tap(find.text('Key'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Key (Page Up / Page Down)'), findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-003
+    testWidgets('hides fallback note by default (wheel verified)', (
+      tester,
+    ) async {
+      // wheelSendVerifiedProvider はデフォルト true（Phase 0 実測 B1/B2 PASS 済み）
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Scroll Send Input'));
+      expect(
+        find.text('Wheel send is unverified; falling back to key send.'),
+        findsNothing,
+      );
+    });
+
+    // inventory: TEST-SETTINGS-UI-004
+    testWidgets('displays fallback note when wheel is unverified', (
+      tester,
+    ) async {
+      // riverpod 3.x では Override 型は公開 export されないため、
+      // テスト側で ProviderScope を直接構築して override する。
+      // l10n 化に伴い delegates/supportedLocales も必要（_buildApp と同構成）。
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [wheelSendVerifiedProvider.overrideWith((ref) => false)],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Scroll Send Input'));
+      expect(
+        find.text('Wheel send is unverified; falling back to key send.'),
+        findsOneWidget,
+      );
+    });
+
+    // inventory: TEST-SETTINGS-UI-005
+    testWidgets('displays Invert Scroll Send Direction toggle', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Invert Scroll Send Direction'));
+      expect(find.text('Invert Scroll Send Direction'), findsOneWidget);
+
+      final tile = find.ancestor(
+        of: find.text('Invert Scroll Send Direction'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tile, findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-007
+    testWidgets('displays Fit terminal on Scroll Send toggle', (tester) async {
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Fit terminal on Scroll Send'));
+      expect(find.text('Fit terminal on Scroll Send'), findsOneWidget);
+
+      final tile = find.ancestor(
+        of: find.text('Fit terminal on Scroll Send'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tile, findsOneWidget);
+    });
+
+    // inventory: TEST-SETTINGS-UI-008
+    testWidgets('fit toggle is interactive', (tester) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むため、このテストのみモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Fit terminal on Scroll Send'));
+      final tile = find.ancestor(
+        of: find.text('Fit terminal on Scroll Send'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    });
+
+    // inventory: TEST-SETTINGS-UI-006
+    testWidgets('invert toggle is interactive', (tester) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むため、このテストのみモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Invert Scroll Send Direction'));
+      final tile = find.ancestor(
+        of: find.text('Invert Scroll Send Direction'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
     });
 
     testWidgets('displays Language setting and opens the picker', (

@@ -1,4 +1,5 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
+import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -49,6 +50,8 @@ void main() {
       expect(caps.workspaceCrud, isFalse);
       expect(caps.tabCrud, isFalse);
       expect(caps.absoluteResize, isFalse);
+      // スクロール送信の wheel は Phase 0 実証（D11）まで false（15 項目目）。
+      expect(caps.wheelSend, isFalse);
     });
 
     test('can enable individual capabilities', () {
@@ -56,10 +59,12 @@ void main() {
         sendText: true,
         focus: true,
         absoluteResize: true,
+        wheelSend: true,
       );
       expect(caps.sendText, isTrue);
       expect(caps.focus, isTrue);
       expect(caps.absoluteResize, isTrue);
+      expect(caps.wheelSend, isTrue);
       expect(caps.split, isFalse);
       expect(caps.resize, isFalse);
     });
@@ -117,8 +122,14 @@ void main() {
       await writer.focusWorkspace('w2');
       await writer.pasteText('w1:p1', 'line1\nline2');
       await writer.imageTransfer('/tmp/a.png');
+      await writer.sendScroll(
+        'w1:p1',
+        kind: ScrollSendKind.wheel,
+        up: true,
+        ticks: 1,
+      );
 
-      expect(writer.calls, hasLength(19));
+      expect(writer.calls, hasLength(20));
     });
   });
 }
@@ -248,6 +259,16 @@ class _FakePaneWriter implements PaneWriter {
   @override
   Future<void> pasteText(String paneId, String text) async {
     calls.add('pasteText');
+  }
+
+  @override
+  Future<void> sendScroll(
+    String paneId, {
+    required ScrollSendKind kind,
+    required bool up,
+    required int ticks,
+  }) async {
+    calls.add('sendScroll');
   }
 
   @override

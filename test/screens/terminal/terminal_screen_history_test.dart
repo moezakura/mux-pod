@@ -70,7 +70,7 @@ void main() {
           isTrue,
         );
         final terminal = tester.widget<AnsiTextView>(find.byType(AnsiTextView));
-        expect(terminal.mode, TerminalMode.scroll);
+        expect(terminal.mode, TerminalMode.select);
         expect(terminal.text, contains('deep-0'));
         expect(terminal.text, contains('deep-159'));
       },
@@ -101,8 +101,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
 
-      // Switch from Normal Mode to Scroll & Select Mode.
-      await tester.tap(find.text('Normal Mode'));
+      // Switch from Normal Mode to Select Mode.
+      await tester.tap(find.text('Select Mode'));
       await tester.pumpAndSettle();
 
       expect(
@@ -124,13 +124,15 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Normal Mode'));
+      await tester.tap(find.text('Select Mode'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.settings));
       await tester.pumpAndSettle();
-      expect(find.text('Scroll & Select Mode'), findsOneWidget);
-      await tester.tap(find.text('Scroll & Select Mode'));
+      // 3 ListTile UI: 'Select Mode' が選択モードとして表示される。
+      expect(find.text('Select Mode'), findsOneWidget);
+      // select から normal へ戻す（copy-mode cancel を検証）。
+      await tester.tap(find.text('Normal Mode'));
       await tester.pumpAndSettle();
 
       expect(
@@ -161,7 +163,7 @@ void main() {
 
         await tester.tap(find.byIcon(Icons.settings));
         await tester.pumpAndSettle();
-        expect(find.text('Scroll & Select Mode'), findsOneWidget);
+        expect(find.text('Select Mode'), findsOneWidget);
         await tester.tapAt(const Offset(20, 100));
         await tester.pumpAndSettle();
 
@@ -178,7 +180,12 @@ void main() {
         await tester.pump();
         await tester.tap(find.byIcon(Icons.settings));
         await tester.pumpAndSettle();
+        // 3 ListTile UI では 'Normal Mode' は常時表示のため、モード状態で検証する。
         expect(find.text('Normal Mode'), findsOneWidget);
+        expect(
+          tester.widget<AnsiTextView>(find.byType(AnsiTextView)).mode,
+          TerminalMode.normal,
+        );
         container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
@@ -195,7 +202,7 @@ void main() {
         await tester.tap(find.byIcon(Icons.settings));
         await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Normal Mode'));
+        await tester.tap(find.text('Select Mode'));
         await tester.pumpAndSettle();
 
         expect(

@@ -85,4 +85,86 @@ void main() {
       );
     });
   });
+
+  group('fitTerminalZoomFactor', () {
+    const charWidthRatio = 0.5;
+    const lineHeightRatio = 1.2;
+
+    test('returns 1.0 when width is the limiting axis', () {
+      // 80 cols × 0.5 = 40px/char at fontSize 1 → base 14 needs width
+      // screenWidth=560 → width fit fontSize = 560/(80*0.5)=14 → zoom 1.0
+      expect(
+        fitTerminalZoomFactor(
+          screenWidth: 560,
+          screenHeight: 2000,
+          paneCharWidth: 80,
+          paneHeight: 24,
+          baseFontSize: 14,
+          charWidthRatio: charWidthRatio,
+          lineHeightRatio: lineHeightRatio,
+        ),
+        1.0,
+      );
+    });
+
+    test('zooms out when height is the limiting axis', () {
+      // Height fit fontSize = 400/(24*1.2)=13.89; width fit = 14.
+      // So height drives: 13.89/14 ≈ 0.992.
+      final fit = fitTerminalZoomFactor(
+        screenWidth: 560,
+        screenHeight: 400,
+        paneCharWidth: 80,
+        paneHeight: 24,
+        baseFontSize: 14,
+        charWidthRatio: charWidthRatio,
+        lineHeightRatio: lineHeightRatio,
+      );
+      expect(fit, closeTo(13.8889 / 14.0, 0.001));
+    });
+
+    test('width drives the factor when width overflows', () {
+      // Width fit fontSize = 300/(80*0.5)=7.5; height fit = 2000/(24*1.2)=69.4.
+      // So width drives: 7.5/14 ≈ 0.536.
+      final fit = fitTerminalZoomFactor(
+        screenWidth: 300,
+        screenHeight: 2000,
+        paneCharWidth: 80,
+        paneHeight: 24,
+        baseFontSize: 14,
+        charWidthRatio: charWidthRatio,
+        lineHeightRatio: lineHeightRatio,
+      );
+      expect(fit, closeTo(7.5 / 14.0, 0.001));
+    });
+
+    test('clamps to the minimum zoom factor', () {
+      expect(
+        fitTerminalZoomFactor(
+          screenWidth: 100,
+          screenHeight: 100,
+          paneCharWidth: 200,
+          paneHeight: 200,
+          baseFontSize: 14,
+          charWidthRatio: charWidthRatio,
+          lineHeightRatio: lineHeightRatio,
+        ),
+        kMinZoomFactor,
+      );
+    });
+
+    test('returns 1.0 for degenerate geometry (no-op)', () {
+      expect(
+        fitTerminalZoomFactor(
+          screenWidth: 0,
+          screenHeight: 0,
+          paneCharWidth: 80,
+          paneHeight: 24,
+          baseFontSize: 14,
+          charWidthRatio: charWidthRatio,
+          lineHeightRatio: lineHeightRatio,
+        ),
+        1.0,
+      );
+    });
+  });
 }

@@ -278,6 +278,67 @@ class SettingsScreen extends ConsumerWidget {
                         .setInvertPaneNavigation(value);
                   },
                 ),
+                // inventory: SETTINGS-UI-INPUT-001
+                ListTile(
+                  leading: const Icon(Icons.mouse),
+                  title: Text(l10n.settingsScrollSendInput),
+                  subtitle: Text(
+                    _scrollSendInputLabel(l10n, settings.scrollSendInput),
+                  ),
+                  onTap: () => _showScrollSendInputPicker(
+                    context,
+                    ref,
+                    settings.scrollSendInput,
+                  ),
+                ),
+                // inventory: SETTINGS-UI-INPUT-NOTE-001
+                if (!ref.watch(wheelSendVerifiedProvider))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: DesignColors.warning,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            l10n.settingsScrollSendUnverifiedNote,
+                            style: const TextStyle(
+                              color: DesignColors.warning,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // inventory: SETTINGS-UI-INVERT-001
+                SwitchListTile(
+                  secondary: const Icon(Icons.swipe),
+                  title: Text(l10n.settingsInvertScrollSendDirection),
+                  subtitle: Text(l10n.settingsInvertScrollSendDirectionDesc),
+                  value: settings.invertScrollSendDirection,
+                  onChanged: (value) {
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setInvertScrollSendDirection(value);
+                  },
+                ),
+                // inventory: SETTINGS-UI-AUTO-FIT-ZOOM-001
+                SwitchListTile(
+                  secondary: const Icon(Icons.zoom_out_map),
+                  title: Text(l10n.settingsAutoFitZoomOnScrollSend),
+                  subtitle: Text(l10n.settingsAutoFitZoomOnScrollSendDesc),
+                  value: settings.autoFitZoomOnScrollSend,
+                  onChanged: (value) {
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setAutoFitZoomOnScrollSend(value);
+                  },
+                ),
                 const Divider(),
                 _SectionHeader(title: l10n.settingsSectionAppearance),
                 ListTile(
@@ -663,6 +724,51 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  String _scrollSendInputLabel(AppLocalizations l10n, String value) {
+    switch (value) {
+      case 'key':
+        return l10n.settingsScrollSendInputKey;
+      default:
+        return l10n.settingsScrollSendInputWheel;
+    }
+  }
+
+  // inventory: SETTINGS-UI-INPUT-002
+  Future<void> _showScrollSendInputPicker(
+    BuildContext context,
+    WidgetRef ref,
+    String current,
+  ) async {
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final l10n = ctx.l10n;
+        return SimpleDialog(
+          title: Text(l10n.settingsScrollSendInput),
+          children: [
+            _buildScrollSendOption(
+              ctx,
+              'wheel',
+              l10n.settingsScrollSendPickWheel,
+              l10n.settingsScrollSendPickWheelDesc,
+              current,
+            ),
+            _buildScrollSendOption(
+              ctx,
+              'key',
+              l10n.settingsScrollSendPickKey,
+              l10n.settingsScrollSendPickKeyDesc,
+              current,
+            ),
+          ],
+        );
+      },
+    );
+    if (result != null) {
+      await ref.read(settingsProvider.notifier).setScrollSendInput(result);
+    }
+  }
+
   String _orientationLabel(AppLocalizations l10n, String value) {
     switch (value) {
       case 'portrait':
@@ -898,6 +1004,25 @@ class SettingsScreen extends ConsumerWidget {
           Text(label),
         ],
       ),
+    );
+  }
+
+  /// Scroll Send Input ダイアログの選択肢（選択中をハイライト + チェック表示）。
+  /// RadioListTile は Flutter 3.32+ で deprecated のため新規には使わない（Pattern Map D9 方針）。
+  Widget _buildScrollSendOption(
+    BuildContext context,
+    String value,
+    String label,
+    String description,
+    String currentValue,
+  ) {
+    final selected = value == currentValue;
+    return ListTile(
+      title: Text(label),
+      subtitle: Text(description),
+      selected: selected,
+      trailing: selected ? const Icon(Icons.check) : null,
+      onTap: () => Navigator.pop(context, value),
     );
   }
 }

@@ -6,6 +6,8 @@
 /// 分岐を排除する（R3: stale tmuxProvider への誤送信の構造的対策）。
 library;
 
+import 'wheel_encoder.dart';
+
 /// 非対応操作を表す例外。
 ///
 /// バックエンドが持たない操作（例: herdr の絶対値 resize・copy-mode）を
@@ -158,6 +160,15 @@ class PaneCapabilities {
   /// herdr は相対分数のみのため false（Q-04）。
   final bool absoluteResize;
 
+  // inventory: PANE-WRITER-000
+  /// SGR 1006 ホイール送信（[PaneWriter.sendScroll] の kind=wheel）が
+  /// **実証済み**か。
+  ///
+  /// Phase 0（`tool/tmux-sgr-baseline/`）で SGR 素通し（B1 / B2）が確認できた
+  /// backend のみ true にフリップする（D11 ゲート）。初期値は false で、
+  /// 実測前は設定値に関わらず kind=key（PgUp/PgDn）にフォールバックする。
+  final bool wheelSend;
+
   const PaneCapabilities({
     this.sendText = false,
     this.sendKeys = false,
@@ -173,6 +184,7 @@ class PaneCapabilities {
     this.workspaceCrud = false,
     this.tabCrud = false,
     this.absoluteResize = false,
+    this.wheelSend = false,
   });
 }
 
@@ -268,6 +280,25 @@ abstract interface class PaneWriter {
 
   /// [paneId] へ複数行テキストを貼り付ける（Q-06）。
   Future<void> pasteText(String paneId, String text);
+
+  // inventory: PANE-WRITER-001
+  /// [paneId] へスクロール操作を送信する（スクロール送信モード専用）。
+  ///
+  /// [kind] が [ScrollSendKind.wheel] なら [WheelEncoder.encodeSgr]、キー
+  /// （PgUp/PgDn）なら [WheelEncoder.encodePage] でエンコードし、[ticks] 個分
+  /// を **1 コマンド**に連結して送信する（合流送信・最大 8 ティック・D6）。
+  ///
+  /// 送信は SGR / エスケープシーケンスをリテラル素通しする（tmux:
+  /// `send-keys -l` / herdr: `send-text`）。SGR 素通しが未実証の間は
+  /// [PaneCapabilities.wheelSend] が false のため、UI は kind=key へ
+  /// フォールバックする（D11）。失敗時は実装の例外（`TmuxCommandException` /
+  /// `HerdrCommandException`）を投げる。
+  Future<void> sendScroll(
+    String paneId, {
+    required ScrollSendKind kind,
+    required bool up,
+    required int ticks,
+  });
 
   /// [path] の画像を転送する（Q-06）。
   Future<void> imageTransfer(String path);

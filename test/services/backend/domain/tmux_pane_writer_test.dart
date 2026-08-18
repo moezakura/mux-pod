@@ -1,5 +1,6 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/tmux_pane_writer.dart';
+import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
 import 'package:flutter_muxpod/services/command/command_request.dart';
 import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart'
@@ -32,6 +33,8 @@ void main() {
       expect(caps.workspaceCrud, isTrue);
       expect(caps.tabCrud, isTrue);
       expect(caps.absoluteResize, isTrue);
+      // SGR 1006 ホイール送信は Phase 0 実測（B1）で PASS → true（D11 ゲート）。
+      expect(caps.wheelSend, isTrue);
     });
 
     test('mapSpecialKey: tmux は同一キー名の send-keys 経路を返す', () {
@@ -101,6 +104,65 @@ void main() {
 
       expect(facade.pasteCalls.single.$1, '%0');
       expect(facade.pasteCalls.single.$2, 'a\nb');
+    });
+
+    test('sendScroll: kind=wheel は SGR を literal:true で委譲する', () async {
+      final facade = _FakeTmuxContract();
+      final writer = TmuxPaneWriter(facade, _FakeExecutor());
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.wheel,
+        up: true,
+        ticks: 1,
+      );
+
+      expect(facade.sendKeysNoWaitCalls, hasLength(1));
+      final call = facade.sendKeysNoWaitCalls.single;
+      expect(call.$1, '%0');
+      expect(call.$2, '\x1b[<64;1;1M');
+      expect(call.$3, isTrue, reason: 'SGR はリテラル素通し（send-keys -l）');
+    });
+
+    test('sendScroll: kind=wheel 下スクロールは ESC[<65;1;1M を ticks 個連結', () async {
+      final facade = _FakeTmuxContract();
+      final writer = TmuxPaneWriter(facade, _FakeExecutor());
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.wheel,
+        up: false,
+        ticks: 8,
+      );
+
+      final call = facade.sendKeysNoWaitCalls.single;
+      expect(
+        call.$2,
+        '\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M'
+        '\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M\x1b[<65;1;1M',
+      );
+      expect(call.$3, isTrue);
+    });
+
+    test('sendScroll: kind=key は PgUp/PgDn を literal:true で委譲する', () async {
+      final facade = _FakeTmuxContract();
+      final writer = TmuxPaneWriter(facade, _FakeExecutor());
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.key,
+        up: true,
+        ticks: 1,
+      );
+      await writer.sendScroll(
+        '%0',
+        kind: ScrollSendKind.key,
+        up: false,
+        ticks: 1,
+      );
+
+      expect(facade.sendKeysNoWaitCalls, hasLength(2));
+      expect(facade.sendKeysNoWaitCalls[0].$2, '\x1b[5~');
+      expect(facade.sendKeysNoWaitCalls[1].$2, '\x1b[6~');
+      expect(facade.sendKeysNoWaitCalls[0].$3, isTrue);
+      expect(facade.sendKeysNoWaitCalls[1].$3, isTrue);
     });
 
     test('resizePaneAbsolute: tmux 固有の絶対値 resize を委譲する', () async {

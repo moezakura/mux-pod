@@ -17,6 +17,7 @@ import '../../tmux/tmux_command_builder.dart' show SplitDirection;
 import '../../tmux/tmux_command_executor.dart';
 import '../../tmux/tmux_contract.dart';
 import 'pane_writer.dart';
+import 'wheel_encoder.dart';
 
 // inventory: TMUX-PANE-WRITER-001
 /// tmux の [PaneWriter] 実装。
@@ -31,6 +32,9 @@ class TmuxPaneWriter implements PaneWriter {
 
   /// tmux は全操作能力を持つ。UI はこの能力（`_can` 判定）に従って操作を
   /// 有効化する。
+  ///
+  /// `wheelSend` は Phase 0 実測（B1: `send-keys -l` の SGR 素通し）が PASS
+  /// のため true（`tool/tmux-sgr-baseline/baseline-report.md`・D11）。
   @override
   PaneCapabilities get capabilities => const PaneCapabilities(
     sendText: true,
@@ -47,6 +51,7 @@ class TmuxPaneWriter implements PaneWriter {
     workspaceCrud: true,
     tabCrud: true,
     absoluteResize: true,
+    wheelSend: true,
   );
 
   /// tmux は全キーを send-keys で送信できるため、同一キー名の send-keys 経路
@@ -108,6 +113,27 @@ class TmuxPaneWriter implements PaneWriter {
   @override
   Future<void> pasteText(String paneId, String text) =>
       _facade.pasteText(_executor, target: paneId, text: text);
+
+  // inventory: TMUX-PANE-WRITER-002
+  /// スクロール操作を SGR / エスケープ素通しで送信する。
+  ///
+  /// [WheelEncoder] でエンコードした SGR 1006（kind=wheel）または PgUp/PgDn
+  /// （kind=key）を `send-keys -l`（literal: true）で送る。既存 [sendText]
+  /// （L62 の `sendKeysNoWait` literal 経路）と同型で、tmux がキー名解釈を
+  /// 行わずバイト列がそのままアプリへ届く（D7）。失敗時は
+  /// `TmuxCommandException`（`SshConnectionError` サブクラス）を投げる。
+  @override
+  Future<void> sendScroll(
+    String paneId, {
+    required ScrollSendKind kind,
+    required bool up,
+    required int ticks,
+  }) {
+    final encoded = kind == ScrollSendKind.wheel
+        ? WheelEncoder.encodeSgr(up: up, ticks: ticks)
+        : WheelEncoder.encodePage(up: up, ticks: ticks);
+    return _facade.sendKeysNoWait(_executor, paneId, encoded, literal: true);
+  }
 
   // ===== tmux 固有（[PaneWriter] interface では表現できない操作）=====
 

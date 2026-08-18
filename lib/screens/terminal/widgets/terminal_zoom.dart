@@ -49,3 +49,42 @@ double zoomedFontSize({
   required double minFontSize,
   double maxFontSize = kMaxTerminalFontSize,
 }) => (baseFontSize * zoomFactor).clamp(minFontSize, maxFontSize).toDouble();
+
+/// Maximum zoom multiplier (relative to [baseFontSize]) that keeps the whole
+/// terminal pane (both width and height) within the available screen.
+///
+/// Both axes are considered: the font size must satisfy
+/// `paneCharWidth * charWidthRatio * fontSize <= screenWidth` (width) and
+/// `paneHeight * lineHeightRatio * fontSize <= screenHeight` (height), so the
+/// limiting axis (smaller of the two) drives the result.
+///
+/// Returns 1.0 when the geometry is degenerate (zero / non-positive inputs),
+/// i.e. "no information to fit against". Callers that take
+/// `min(current, fit)` then behave as a no-op.
+double fitTerminalZoomFactor({
+  required double screenWidth,
+  required double screenHeight,
+  required int paneCharWidth,
+  required int paneHeight,
+  required double baseFontSize,
+  required double charWidthRatio,
+  required double lineHeightRatio,
+}) {
+  if (screenWidth <= 0 ||
+      screenHeight <= 0 ||
+      paneCharWidth <= 0 ||
+      paneHeight <= 0 ||
+      baseFontSize <= 0 ||
+      charWidthRatio <= 0 ||
+      lineHeightRatio <= 0) {
+    return 1.0;
+  }
+  final widthFitFontSize = screenWidth / (paneCharWidth * charWidthRatio);
+  final heightFitFontSize = screenHeight / (paneHeight * lineHeightRatio);
+  final fitFontSize = widthFitFontSize < heightFitFontSize
+      ? widthFitFontSize
+      : heightFitFontSize;
+  return (fitFontSize / baseFontSize)
+      .clamp(kMinZoomFactor, kMaxZoomFactor)
+      .toDouble();
+}

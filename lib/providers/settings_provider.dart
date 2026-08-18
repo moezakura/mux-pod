@@ -40,6 +40,18 @@ class AppSettings {
   /// ペインナビゲーション方向の反転
   final bool invertPaneNavigation;
 
+  /// スクロール送信の送信方式: 'wheel'（マウスホイール SGR 1006）/ 'key'（PgUp/PgDn）
+  // inventory: SETTINGS-SCROLL-SEND-001
+  final String scrollSendInput;
+
+  /// スクロール送信方向の反転（ON でドラッグ上 = 下スクロール送信）
+  // inventory: SETTINGS-INVERT-SCROLL-001
+  final bool invertScrollSendDirection;
+
+  /// スクロール送信モード中にターミナル全体が画面に収まるようズームを一時縮小
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-001
+  final bool autoFitZoomOnScrollSend;
+
   /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
   final String language;
 
@@ -91,6 +103,12 @@ class AppSettings {
     this.directInputEnabled = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
+    // inventory: SETTINGS-SCROLL-SEND-002
+    this.scrollSendInput = 'wheel',
+    // inventory: SETTINGS-INVERT-SCROLL-002
+    this.invertScrollSendDirection = false,
+    // inventory: SETTINGS-AUTO-FIT-ZOOM-002
+    this.autoFitZoomOnScrollSend = false,
     this.language = 'system',
     this.showKeyOverlay = true,
     this.keyOverlayModifier = true,
@@ -129,6 +147,12 @@ class AppSettings {
     bool? directInputEnabled,
     bool? showTerminalCursor,
     bool? invertPaneNavigation,
+    // inventory: SETTINGS-SCROLL-SEND-003
+    String? scrollSendInput,
+    // inventory: SETTINGS-INVERT-SCROLL-003
+    bool? invertScrollSendDirection,
+    // inventory: SETTINGS-AUTO-FIT-ZOOM-003
+    bool? autoFitZoomOnScrollSend,
     String? language,
     bool? showKeyOverlay,
     bool? keyOverlayModifier,
@@ -163,6 +187,11 @@ class AppSettings {
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
+      scrollSendInput: scrollSendInput ?? this.scrollSendInput,
+      invertScrollSendDirection:
+          invertScrollSendDirection ?? this.invertScrollSendDirection,
+      autoFitZoomOnScrollSend:
+          autoFitZoomOnScrollSend ?? this.autoFitZoomOnScrollSend,
       language: language ?? this.language,
       showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
       keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
@@ -201,6 +230,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
+  // inventory: SETTINGS-SCROLL-SEND-004
+  static const String _scrollSendInputKey = 'settings_scroll_send_input';
+  // inventory: SETTINGS-INVERT-SCROLL-004
+  static const String _invertScrollSendDirectionKey =
+      'settings_invert_scroll_send_direction';
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-004
+  static const String _autoFitZoomOnScrollSendKey =
+      'settings_auto_fit_zoom_on_scroll_send';
   static const String _languageKey = 'settings_language';
   static const String _imageRemotePathKey = 'settings_image_remote_path';
   static const String _imageOutputFormatKey = 'settings_image_output_format';
@@ -249,6 +286,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
+      // inventory: SETTINGS-SCROLL-SEND-005
+      scrollSendInput: prefs.getString(_scrollSendInputKey) ?? 'wheel',
+      // inventory: SETTINGS-INVERT-SCROLL-005
+      invertScrollSendDirection:
+          prefs.getBool(_invertScrollSendDirectionKey) ?? false,
+      // inventory: SETTINGS-AUTO-FIT-ZOOM-005
+      autoFitZoomOnScrollSend:
+          prefs.getBool(_autoFitZoomOnScrollSendKey) ?? false,
       language: prefs.getString(_languageKey) ?? 'system',
       showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
       keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
@@ -460,6 +505,27 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _saveSetting(_invertPaneNavKey, value);
   }
 
+  /// スクロール送信の送信方式を設定（'wheel' / 'key'）
+  // inventory: SETTINGS-SCROLL-SEND-006
+  Future<void> setScrollSendInput(String value) async {
+    state = state.copyWith(scrollSendInput: value);
+    await _saveSetting(_scrollSendInputKey, value);
+  }
+
+  /// スクロール送信方向の反転を設定
+  // inventory: SETTINGS-INVERT-SCROLL-006
+  Future<void> setInvertScrollSendDirection(bool value) async {
+    state = state.copyWith(invertScrollSendDirection: value);
+    await _saveSetting(_invertScrollSendDirectionKey, value);
+  }
+
+  /// スクロール送信モード中の自動フィットズームを設定
+  // inventory: SETTINGS-AUTO-FIT-ZOOM-006
+  Future<void> setAutoFitZoomOnScrollSend(bool value) async {
+    state = state.copyWith(autoFitZoomOnScrollSend: value);
+    await _saveSetting(_autoFitZoomOnScrollSendKey, value);
+  }
+
   /// 表示言語を設定（'system' / 'ja' / 'en'）
   Future<void> setLanguage(String value) async {
     state = state.copyWith(language: value);
@@ -559,3 +625,13 @@ final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(() {
 final darkModeProvider = Provider<bool>((ref) {
   return ref.watch(settingsProvider).darkMode;
 });
+
+/// ホイール送信（SGR 1006）が実証済みかどうか。
+///
+/// Phase 0 実測（tool/tmux-sgr-baseline/ の B1/B2 PASS・tmux 3.7b / herdr 0.7.5）により
+/// tmux / herdr 両 backend で SGR 素通しが検証済みのため true。
+/// 将来 `PaneCapabilities.wheelSend`（lib/services/backend/domain/pane_writer.dart）が
+/// false に戻る場合は、この値も同時に false へ戻すこと。
+/// 設定画面はこの値で未検証フォールバック注記を出し分ける。
+// inventory: SETTINGS-SCROLL-SEND-007
+final wheelSendVerifiedProvider = Provider<bool>((ref) => true);
