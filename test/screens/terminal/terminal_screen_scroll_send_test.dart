@@ -174,14 +174,16 @@ void main() {
         },
       );
 
-      ScrollPosition scrollPosition(WidgetTester tester) =>
-          tester.state<ScrollableState>(find.descendant(
-            of: find.byType(AnsiTextView),
-            matching: find.byWidgetPredicate(
-              (w) =>
-                  w is Scrollable && w.axisDirection == AxisDirection.down,
+      ScrollPosition scrollPosition(WidgetTester tester) => tester
+          .state<ScrollableState>(
+            find.descendant(
+              of: find.byType(AnsiTextView),
+              matching: find.byWidgetPredicate(
+                (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+              ),
             ),
-          )).position;
+          )
+          .position;
 
       final initial = scrollPosition(tester);
       expect(

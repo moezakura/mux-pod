@@ -1066,9 +1066,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       paneCharWidth: paneWidth,
       paneHeight: paneHeight,
       baseFontSize: baseFontSize,
-      charWidthRatio: FontCalculator.measureCharWidthRatio(
-        settings.fontFamily,
-      ),
+      charWidthRatio: FontCalculator.measureCharWidthRatio(settings.fontFamily),
       lineHeightRatio: FontCalculator.lineHeightRatio,
     );
 
@@ -1091,6 +1089,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _zoomBeforeScrollSend = null;
     ref.read(settingsProvider.notifier).setZoomFactor(saved);
   }
+
   Future<void> _onReconnectSuccess() async {
     if (!mounted || _isDisposed) return;
 
