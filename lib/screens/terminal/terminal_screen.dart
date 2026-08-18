@@ -7328,7 +7328,7 @@ class _SplitDownIconPainter extends CustomPainter {
       color != oldDelegate.color;
 }
 
-/// 入力ダイアログのコンテンツ（複数行対応、Shift+Enterで改行）
+/// 入力ダイアログのコンテンツ（Enter=改行、Ctrl/Cmd+Enter=送信）
 class _InputDialogContent extends StatefulWidget {
   // inventory: LEGACY-0088
   final String initialValue;
@@ -7391,22 +7391,36 @@ class _InputDialogContentState extends State<_InputDialogContent> {
     super.dispose();
   }
 
-  /// キーイベントをハンドル（Shift+Enterで改行、Enterで送信）
+  /// キーイベントをハンドル（Enter=改行、Ctrl/Cmd+Enter=送信）。
+  ///
+  /// HW キーボードでは Enter を改行として挿入し、Ctrl/Cmd+Enter でのみ送信する。
+  /// IME 変換中（composing）は plain Enter を IME に譲り（ignored）、
+  /// Ctrl/Cmd+Enter は消費のみ行う（送信・改行ともしない・制御文字混入防止）。
+  /// 送信は KeyDown イベントのみで、リピート（長押し）による再送信は行わない。
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter) {
+    final isEnterKey =
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter;
+    if ((event is KeyDownEvent || event is KeyRepeatEvent) && isEnterKey) {
       if (_isImeActive) {
+        // IME 変換中: Ctrl/Cmd+Enter は消費のみ・plain Enter は IME に譲る
+        if (HardwareKeyboard.instance.isControlPressed ||
+            HardwareKeyboard.instance.isMetaPressed) {
+          return KeyEventResult.handled;
+        }
         return KeyEventResult.ignored;
       }
-      final isShiftPressed = HardwareKeyboard.instance.isShiftPressed;
-      if (isShiftPressed) {
-        // Shift+Enter: 改行を挿入
-        _insertNewline();
-        return KeyEventResult.handled;
-      } else {
-        // Enterのみ: 送信
-        _handleSend();
+      if (HardwareKeyboard.instance.isControlPressed ||
+          HardwareKeyboard.instance.isMetaPressed) {
+        // Ctrl/Cmd+Enter: 送信（KeyDown のみ・リピートは再送信しない）
+        if (event is KeyDownEvent) {
+          _handleSend();
+        }
         return KeyEventResult.handled;
       }
+      // Enter: 改行を挿入（KeyDown/KeyRepeat とも・長押しで連続改行）
+      _insertNewline();
+      return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
@@ -7469,7 +7483,7 @@ class _InputDialogContentState extends State<_InputDialogContent> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  context.l10n.termShiftEnterNewline,
+                  context.l10n.termCtrlCmdEnterSend,
                   style: GoogleFonts.jetBrainsMono(
                     fontSize: 10,
                     color: isDark
@@ -7492,7 +7506,8 @@ class _InputDialogContentState extends State<_InputDialogContent> {
               maxLines: null, // 無制限にして内部スクロール
               minLines: 1,
               keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline, // ペースト時の複数行対応
+              textInputAction: TextInputAction
+                  .newline, // ソフトキーボードの Enter を改行アクションにする（送信アクションは発生させない）
               style: GoogleFonts.jetBrainsMono(color: colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: context.l10n.termCommandHint,
