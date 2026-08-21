@@ -80,11 +80,11 @@ class CustomKeyButton {
 class CustomKeyRows {
   CustomKeyRows._();
 
-  /// Верхний ряд только под пользовательские кнопки (по умолчанию пуст).
-  static const List<String> standardRow0 = <String>[];
-
   /// Bucket id for the "Unused" shelf.
   static const int shelfRow = -1;
+
+  /// 縦方向のスペースは有限なので、トークン行はこの本数までとする。
+  static const int maxRows = 6;
 
   static const List<String> standardRow1 = [
     'esc',
@@ -115,6 +115,13 @@ class CustomKeyRows {
     'num2',
     'num3',
     'num4',
+  ];
+
+  /// 既定レイアウト（上から下）: 空のカスタム行、修飾キー行、ナビゲーション行。
+  static const List<List<String>> defaultRows = [
+    <String>[],
+    standardRow1,
+    standardRow2,
   ];
 
   /// Every standard token that can be placed, in canonical shelf order.

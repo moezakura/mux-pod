@@ -28,7 +28,11 @@ void main() {
               directInputEnabled: directInputEnabled,
               onDirectInputToggle: () {},
               onImagePickRequested: onImagePickRequested,
-              row0Tokens: row0Tokens,
+              rows: [
+                row0Tokens,
+                CustomKeyRows.standardRow1,
+                CustomKeyRows.standardRow2,
+              ],
             ),
           ),
         ),
@@ -62,7 +66,11 @@ void main() {
               onDirectInputToggle: () {},
               directInputEnabled: directInput,
               hapticFeedback: false,
-              row0Tokens: row0Tokens,
+              rows: [
+                row0Tokens,
+                CustomKeyRows.standardRow1,
+                CustomKeyRows.standardRow2,
+              ],
             ),
           ),
         ),
@@ -89,6 +97,7 @@ void main() {
     List<String> row0Tokens = const <String>[],
     List<String>? row1Tokens,
     List<String>? row2Tokens,
+    List<List<String>>? rows,
     void Function(CustomKeyButton)? onCustomButtonEdit,
     VoidCallback? onManageButtons,
     void Function(String)? onKeyPressed,
@@ -112,9 +121,13 @@ void main() {
               directInputEnabled: directInput,
               hapticFeedback: false,
               customButtons: customButtons,
-              row0Tokens: row0Tokens,
-              row1Tokens: row1Tokens ?? CustomKeyRows.standardRow1,
-              row2Tokens: row2Tokens ?? CustomKeyRows.standardRow2,
+              rows:
+                  rows ??
+                  [
+                    row0Tokens,
+                    row1Tokens ?? CustomKeyRows.standardRow1,
+                    row2Tokens ?? CustomKeyRows.standardRow2,
+                  ],
               onCustomButtonEdit: onCustomButtonEdit,
               onManageButtons: onManageButtons,
             ),
@@ -349,7 +362,11 @@ void main() {
       },
     );
 
-    testWidgets('row-2 custom buttons render at 36px height', (tester) async {
+    // Rows are interchangeable, so custom buttons are one height everywhere
+    // (32); only the fixed nav glyph buttons keep their own 36x36 box.
+    testWidgets('custom buttons render at 32px height in any row', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         customHarness(
           customButtons: [ck('ck_1_a', 'A')],
@@ -362,7 +379,7 @@ void main() {
         (w) => w is CustomKeyButtonWidget && w.button.id == 'ck_1_a',
       );
       expect(finder, findsOneWidget);
-      expect(tester.getSize(finder).height, 36);
+      expect(tester.getSize(finder).height, 32);
     });
 
     testWidgets(
@@ -778,6 +795,85 @@ void main() {
 
       // The new leading button is revealed instead of the row's tail.
       expect(controller.offset, 0);
+    });
+  });
+
+  group('SpecialKeysBar dynamic rows', () {
+    // Defends the rows contract: a user-created fourth row renders below the
+    // third and its buttons work.
+    testWidgets('a fourth row renders at the bottom and its token sends', (
+      tester,
+    ) async {
+      final sent = <String>[];
+      final a = ck('ck_9_z', 'Z');
+      await tester.pumpWidget(
+        customHarness(
+          customButtons: [a],
+          rows: [
+            const <String>[],
+            CustomKeyRows.standardRow1,
+            CustomKeyRows.standardRow2,
+            [ckToken(a.id)],
+          ],
+          onKeyPressed: sent.add,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Z'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Z')).dy,
+        greaterThan(tester.getTopLeft(find.text('PgUp')).dy),
+      );
+
+      await tester.tap(find.text('Z'));
+      await tester.pump();
+      expect(sent, ['x']);
+    });
+
+    // Defends reachability: with no rows at all the editor entry point stays.
+    testWidgets('an empty layout still shows exactly one pencil', (
+      tester,
+    ) async {
+      var managed = 0;
+      await tester.pumpWidget(
+        customHarness(
+          rows: const <List<String>>[],
+          onManageButtons: () => managed++,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.text('ESC'), findsNothing);
+      expect(find.text('PgUp'), findsNothing);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined));
+      await tester.pump();
+      expect(managed, 1);
+    });
+    // Defends that the legacy fast paths are keyed on row CONTENT, not on row
+    // index: a default nav row keeps its stretched Input button at index 1,
+    // where the nav row never used to be. (It cannot be tested at index 0
+    // because the first rendering row hosts the pencil, which the legacy nav
+    // layout has no slot for.)
+    testWidgets('a default nav row keeps the legacy layout at any index', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        customHarness(
+          rows: [CustomKeyRows.standardRow1, CustomKeyRows.standardRow2],
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Cmd'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('ESC')).dy,
+        lessThan(tester.getTopLeft(find.text('PgUp')).dy),
+      );
+      // Both rows are on legacy paths, so no row needs a horizontal scroller.
+      expect(horizontalScroller(), findsNothing);
     });
   });
 }

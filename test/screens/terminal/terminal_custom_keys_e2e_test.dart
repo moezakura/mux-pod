@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_muxpod/providers/custom_keys_provider.dart';
+import 'package:flutter_muxpod/services/custom_keys/custom_key_button.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/widgets/special_keys_bar.dart';
@@ -24,7 +25,11 @@ void main() {
         ],
       },
     ]),
-    'custom_key_row1_v1': jsonEncode(['ck:0001_dead']),
+    'custom_key_rows_v1': jsonEncode([
+      <String>[],
+      ['ck:0001_dead'],
+      CustomKeyRows.standardRow2,
+    ]),
   };
 
   // 標準 row1 + 多数のカスタムボタンで行を溢れさせ、末尾への自動スクロールを
@@ -56,7 +61,7 @@ void main() {
     }
     return {
       'custom_key_buttons_v1': jsonEncode(buttons),
-      'custom_key_row1_v1': jsonEncode(row1),
+      'custom_key_rows_v1': jsonEncode([<String>[], row1, <String>[]]),
     };
   }
 
@@ -107,8 +112,8 @@ void main() {
       final state = container.read(customKeysProvider);
       final added = state.buttons.firstWhere((b) => b.label == 'Fresh Button');
       final token = 'ck:${added.id.substring(3)}';
-      expect(state.row0, contains(token));
-      expect(state.row0.first, token);
+      expect(state.rows[0], contains(token));
+      expect(state.rows[0].first, token);
       expect(find.widgetWithText(ListTile, 'Fresh Button'), findsOneWidget);
       // Contract: the added button lands as a draggable chip in the Layout —
       // Custom Row strip (Key('chip-$row-$token')), not the removed `+` ActionChip.
@@ -189,9 +194,9 @@ void main() {
 
       final state = container.read(customKeysProvider);
       expect(state.buttons, isEmpty);
-      expect(state.row0.contains('ck:0001_dead'), isFalse);
-      expect(state.row1.contains('ck:0001_dead'), isFalse);
-      expect(state.row2.contains('ck:0001_dead'), isFalse);
+      expect(state.rows[0].contains('ck:0001_dead'), isFalse);
+      expect(state.rows[1].contains('ck:0001_dead'), isFalse);
+      expect(state.rows[2].contains('ck:0001_dead'), isFalse);
     });
 
     testWidgets('editor dialog input text is visible (onSurface) and present', (
@@ -248,7 +253,11 @@ void main() {
             },
           ]),
           'custom_key_row0_v1': jsonEncode(<String>[]),
-          'custom_key_row1_v1': jsonEncode(['ck:0001_dead']),
+          'custom_key_rows_v1': jsonEncode([
+            <String>[],
+            ['ck:0001_dead'],
+            CustomKeyRows.standardRow2,
+          ]),
           'custom_key_row2_v1': jsonEncode(<String>[]),
         });
 

@@ -17,8 +17,8 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     final s = container.read(customKeysProvider);
     expect(s.buttons, isEmpty);
-    expect(s.row1, CustomKeyRows.standardRow1);
-    expect(s.row2, CustomKeyRows.standardRow2);
+    expect(s.rows[1], CustomKeyRows.standardRow1);
+    expect(s.rows[2], CustomKeyRows.standardRow2);
   });
 
   test('add/update/delete persist', () async {
@@ -65,7 +65,7 @@ void main() {
 
     notifier.deleteButton(b.id);
     final s = container.read(customKeysProvider);
-    expect(s.row1, CustomKeyRows.standardRow1);
+    expect(s.rows[1], CustomKeyRows.standardRow1);
   });
 
   test('setRowTokens drops unknown and duplicate tokens', () async {
@@ -79,20 +79,20 @@ void main() {
     ]);
     final ck = 'ck:${b.id.substring(3)}';
     notifier.setRowTokens(2, ['bogus', 'pgup', ck, ck, 'left']);
-    expect(container.read(customKeysProvider).row2, ['pgup', ck, 'left']);
+    expect(container.read(customKeysProvider).rows[2], ['pgup', ck, 'left']);
   });
 
   test('corrupt stored JSON falls back to defaults', () async {
     SharedPreferences.setMockInitialValues({
       CustomKeysNotifier.buttonsKey: 'not json',
-      CustomKeysNotifier.row1Key: 'also not json',
+      CustomKeysNotifier.legacyRow1Key: 'also not json',
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
     await Future<void>.delayed(Duration.zero);
     final s = container.read(customKeysProvider);
     expect(s.buttons, isEmpty);
-    expect(s.row1, CustomKeyRows.standardRow1);
+    expect(s.rows[1], CustomKeyRows.standardRow1);
   });
 
   test('load skips invalid button entries and keeps valid ones', () async {
@@ -128,7 +128,7 @@ void main() {
     addTearDown(container.dispose);
     container.read(customKeysProvider); // trigger build + async _load
     await Future<void>.delayed(Duration.zero);
-    expect(container.read(customKeysProvider).row0, isEmpty);
+    expect(container.read(customKeysProvider).rows[0], isEmpty);
   });
 
   test('legacy layout migrates custom tokens into the custom row', () async {
@@ -149,8 +149,8 @@ void main() {
           ],
         },
       ]),
-      CustomKeysNotifier.row1Key: jsonEncode(['esc', 'ck:1_a', 'tab']),
-      CustomKeysNotifier.row2Key: jsonEncode(['left', 'ck:2_b']),
+      CustomKeysNotifier.legacyRow1Key: jsonEncode(['esc', 'ck:1_a', 'tab']),
+      CustomKeysNotifier.legacyRow2Key: jsonEncode(['left', 'ck:2_b']),
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -158,9 +158,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final state = container.read(customKeysProvider);
-    expect(state.row0, ['ck:1_a', 'ck:2_b']);
-    expect(state.row1, ['esc', 'tab']);
-    expect(state.row2, ['left', ...CustomKeyRows.directInputExtras]);
+    expect(state.rows[0], ['ck:1_a', 'ck:2_b']);
+    expect(state.rows[1], ['esc', 'tab']);
+    expect(state.rows[2], ['left', ...CustomKeyRows.directInputExtras]);
   });
 
   test('an existing custom row is left alone on load', () async {
@@ -174,8 +174,8 @@ void main() {
           ],
         },
       ]),
-      CustomKeysNotifier.row0Key: jsonEncode(<String>[]),
-      CustomKeysNotifier.row1Key: jsonEncode(['esc', 'ck:1_a']),
+      CustomKeysNotifier.legacyRow0Key: jsonEncode(<String>[]),
+      CustomKeysNotifier.legacyRow1Key: jsonEncode(['esc', 'ck:1_a']),
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -183,8 +183,8 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final state = container.read(customKeysProvider);
-    expect(state.row0, isEmpty);
-    expect(state.row1, ['esc', 'ck:1_a']);
+    expect(state.rows[0], isEmpty);
+    expect(state.rows[1], ['esc', 'ck:1_a']);
   });
 
   test('setRowTokens row0 persists and survives recreation', () async {
@@ -200,21 +200,21 @@ void main() {
     final ck = 'ck:${b.id.substring(3)}';
 
     notifier.setRowTokens(0, [ck]);
-    expect(container.read(customKeysProvider).row0, [ck]);
+    expect(container.read(customKeysProvider).rows[0], [ck]);
 
     // Persistence is async; give _persist a chance to flush.
     await Future<void>.delayed(Duration.zero);
     final prefs = await SharedPreferences.getInstance();
-    expect(jsonDecode(prefs.getString(CustomKeysNotifier.row0Key)!), [ck]);
+    expect(jsonDecode(prefs.getString(CustomKeysNotifier.rowsKey)!)[0], [ck]);
 
     final container2 = ProviderContainer();
     addTearDown(container2.dispose);
     container2.read(customKeysProvider); // trigger build + async _load
     await Future<void>.delayed(Duration.zero);
     final s = container2.read(customKeysProvider);
-    expect(s.row0, [ck]);
-    expect(s.row1, CustomKeyRows.standardRow1);
-    expect(s.row2, CustomKeyRows.standardRow2);
+    expect(s.rows[0], [ck]);
+    expect(s.rows[1], CustomKeyRows.standardRow1);
+    expect(s.rows[2], CustomKeyRows.standardRow2);
   });
 
   test('button only in row0 is not reported unplaced', () async {
@@ -245,7 +245,7 @@ void main() {
     notifier.setRowTokens(0, ['ck:${b.id.substring(3)}']);
 
     notifier.deleteButton(b.id);
-    expect(container.read(customKeysProvider).row0, isEmpty);
+    expect(container.read(customKeysProvider).rows[0], isEmpty);
   });
 
   test('unknown tokens in stored row0 JSON are dropped', () async {
@@ -262,12 +262,12 @@ void main() {
 
     notifier.setRowTokens(0, ['bogus', ck, ck]);
 
-    expect(container.read(customKeysProvider).row0, [ck]);
+    expect(container.read(customKeysProvider).rows[0], [ck]);
 
-    // The sanitised row is what gets persisted under row0Key.
+    // The sanitised row is what gets persisted inside the rows key.
     await Future<void>.delayed(Duration.zero);
     final prefs = await SharedPreferences.getInstance();
-    expect(jsonDecode(prefs.getString(CustomKeysNotifier.row0Key)!), [ck]);
+    expect(jsonDecode(prefs.getString(CustomKeysNotifier.rowsKey)!)[0], [ck]);
   });
 
   test(
@@ -322,9 +322,9 @@ void main() {
     notifier.placeToken('esc', toRow: 0, toIndex: 0);
 
     final s = container.read(customKeysProvider);
-    expect(s.row0, ['esc']);
-    expect(s.row1.contains('esc'), isFalse);
-    expect(s.row1.first, 'tab');
+    expect(s.rows[0], ['esc']);
+    expect(s.rows[1].contains('esc'), isFalse);
+    expect(s.rows[1].first, 'tab');
   });
 
   test(
@@ -340,7 +340,7 @@ void main() {
       // row1 default: [esc, tab, ctrl, alt, shift, enter, senter, slash, dash]
       notifier.placeToken('esc', toRow: 1, toIndex: 2);
 
-      expect(container.read(customKeysProvider).row1, [
+      expect(container.read(customKeysProvider).rows[1], [
         'tab',
         'esc',
         'ctrl',
@@ -367,7 +367,7 @@ void main() {
       notifier.placeToken('esc', toRow: CustomKeyRows.shelfRow, toIndex: 0);
 
       final s = container.read(customKeysProvider);
-      expect(s.row1.contains('esc'), isFalse);
+      expect(s.rows[1].contains('esc'), isFalse);
       expect(s.unusedTokens(), contains('esc'));
     },
   );
@@ -385,9 +385,9 @@ void main() {
     notifier.placeToken('ck:missing', toRow: 1, toIndex: 0);
 
     final s = container.read(customKeysProvider);
-    expect(s.row0, before.row0);
-    expect(s.row1, before.row1);
-    expect(s.row2, before.row2);
+    expect(s.rows[0], before.rows[0]);
+    expect(s.rows[1], before.rows[1]);
+    expect(s.rows[2], before.rows[2]);
   });
 
   test('placeToken state survives provider recreation', () async {
@@ -405,20 +405,20 @@ void main() {
     container2.read(customKeysProvider);
     await Future<void>.delayed(Duration.zero);
     final s = container2.read(customKeysProvider);
-    expect(s.row0, ['esc']);
-    expect(s.row1.contains('esc'), isFalse);
+    expect(s.rows[0], ['esc']);
+    expect(s.rows[1].contains('esc'), isFalse);
   });
 
   test('customized row2 without num tokens gains num1..num4 once', () async {
     SharedPreferences.setMockInitialValues({
-      CustomKeysNotifier.row2Key: jsonEncode(['left']),
+      CustomKeysNotifier.legacyRow2Key: jsonEncode(['left']),
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(customKeysProvider);
     await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(customKeysProvider).row2, [
+    expect(container.read(customKeysProvider).rows[2], [
       'left',
       ...CustomKeyRows.directInputExtras,
     ]);
@@ -427,7 +427,7 @@ void main() {
     addTearDown(container2.dispose);
     container2.read(customKeysProvider);
     await Future<void>.delayed(Duration.zero);
-    expect(container2.read(customKeysProvider).row2, [
+    expect(container2.read(customKeysProvider).rows[2], [
       'left',
       ...CustomKeyRows.directInputExtras,
     ]);
@@ -440,7 +440,10 @@ void main() {
     container.read(customKeysProvider);
     await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(customKeysProvider).row2, CustomKeyRows.standardRow2);
+    expect(
+      container.read(customKeysProvider).rows[2],
+      CustomKeyRows.standardRow2,
+    );
   });
 
   // _persist() writes every row key on every load, so "key present" never means
@@ -448,17 +451,174 @@ void main() {
   // the bar loses its legacy layout for everyone who never edited a row.
   test('persisted default row2 is not touched by the num migration', () async {
     SharedPreferences.setMockInitialValues({
-      CustomKeysNotifier.row2Key: jsonEncode(CustomKeyRows.standardRow2),
+      CustomKeysNotifier.legacyRow2Key: jsonEncode(CustomKeyRows.standardRow2),
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
     container.read(customKeysProvider);
     await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(customKeysProvider).row2, CustomKeyRows.standardRow2);
+    expect(
+      container.read(customKeysProvider).rows[2],
+      CustomKeyRows.standardRow2,
+    );
     expect(
       container.read(customKeysProvider).unusedTokens(),
       CustomKeyRows.directInputExtras,
     );
+  });
+
+  // addRow appends an empty row at the bottom and persists it.
+  test('addRow appends an empty bottom row and persists', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    container.read(customKeysProvider.notifier).addRow();
+    expect(container.read(customKeysProvider).rows.length, 4);
+    expect(container.read(customKeysProvider).rows.last, isEmpty);
+
+    await Future<void>.delayed(Duration.zero);
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      (jsonDecode(prefs.getString(CustomKeysNotifier.rowsKey)!) as List).length,
+      4,
+    );
+  });
+
+  // The bar has finite height: addRow stops at CustomKeyRows.maxRows.
+  test('addRow is a no-op at maxRows', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+    final notifier = container.read(customKeysProvider.notifier);
+
+    for (var i = 0; i < CustomKeyRows.maxRows + 2; i++) {
+      notifier.addRow();
+    }
+    expect(
+      container.read(customKeysProvider).rows.length,
+      CustomKeyRows.maxRows,
+    );
+  });
+
+  // removeRow must not destroy buttons: its tokens fall back to the shelf.
+  test('removeRow drops the row and its tokens become unused', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+    final notifier = container.read(customKeysProvider.notifier);
+    final b = notifier.addButton('X', [
+      CustomKeyStep(type: CustomKeyStepType.text, value: 'x'),
+    ]);
+    final ck = 'ck:${b.id.substring(3)}';
+    notifier.setRowTokens(0, [ck, 'esc']);
+
+    notifier.removeRow(0);
+
+    final s = container.read(customKeysProvider);
+    expect(s.rows.length, 2);
+    expect(s.rows.first, CustomKeyRows.standardRow1);
+    expect(s.buttons.single.id, b.id);
+    expect(s.unusedTokens(), contains(ck));
+  });
+
+  // Deleting every row is allowed; the bar falls back to a pencil-only strip.
+  test('removeRow can empty the layout entirely', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+    final notifier = container.read(customKeysProvider.notifier);
+
+    notifier.removeRow(2);
+    notifier.removeRow(1);
+    notifier.removeRow(0);
+
+    expect(container.read(customKeysProvider).rows, isEmpty);
+    expect(
+      container.read(customKeysProvider).unusedTokens(),
+      CustomKeyRows.allLayoutTokens,
+    );
+  });
+
+  // A token can be dropped into a row that did not exist a moment ago.
+  test('placeToken lands in a freshly added row', () async {
+    SharedPreferences.setMockInitialValues({});
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+    final notifier = container.read(customKeysProvider.notifier);
+
+    notifier.addRow();
+    notifier.placeToken('esc', toRow: 3, toIndex: 0);
+
+    final s = container.read(customKeysProvider);
+    expect(s.rows[3], ['esc']);
+    expect(s.rows[1].contains('esc'), isFalse);
+  });
+
+  // Hand-edited or future data must not grow the bar past the cap.
+  test('stored rows beyond maxRows are truncated on load', () async {
+    SharedPreferences.setMockInitialValues({
+      CustomKeysNotifier.rowsKey: jsonEncode([
+        for (var i = 0; i < CustomKeyRows.maxRows + 2; i++) <String>['esc'],
+      ]),
+    });
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      container.read(customKeysProvider).rows.length,
+      CustomKeyRows.maxRows,
+    );
+  });
+
+  // The three legacy row keys collapse into the new single key exactly once.
+  test('legacy row keys migrate into the rows key and are removed', () async {
+    SharedPreferences.setMockInitialValues({
+      CustomKeysNotifier.legacyRow0Key: jsonEncode(<String>[]),
+      CustomKeysNotifier.legacyRow1Key: jsonEncode(['esc', 'tab']),
+      CustomKeysNotifier.legacyRow2Key: jsonEncode(CustomKeyRows.standardRow2),
+    });
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(customKeysProvider).rows, [
+      <String>[],
+      ['esc', 'tab'],
+      CustomKeyRows.standardRow2,
+    ]);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(CustomKeysNotifier.rowsKey), isNotNull);
+    expect(prefs.getString(CustomKeysNotifier.legacyRow0Key), isNull);
+    expect(prefs.getString(CustomKeysNotifier.legacyRow1Key), isNull);
+    expect(prefs.getString(CustomKeysNotifier.legacyRow2Key), isNull);
+  });
+
+  // A corrupt layout must not brick the bar.
+  test('corrupt rows value falls back to the default layout', () async {
+    SharedPreferences.setMockInitialValues({
+      CustomKeysNotifier.rowsKey: 'not json at all',
+    });
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(customKeysProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(container.read(customKeysProvider).rows, CustomKeyRows.defaultRows);
   });
 }

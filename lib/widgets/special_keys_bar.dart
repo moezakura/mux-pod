@@ -34,14 +34,8 @@ class SpecialKeysBar extends StatefulWidget {
   /// カスタムキーボタン（ユーザー定義ボタン）
   final List<CustomKeyButton> customButtons;
 
-  /// 行0（専用カスタムキー行）のトークン列
-  final List<String> row0Tokens;
-
-  /// 行1（修飾キー行）のトークン列
-  final List<String> row1Tokens;
-
-  /// 行2（ナビゲーション行）のトークン列
-  final List<String> row2Tokens;
+  /// バーの行レイアウト（上から下）。各行は保持するトークン列。
+  final List<List<String>> rows;
 
   /// カスタムボタン編集リクエスト（長押し）
   final void Function(CustomKeyButton)? onCustomButtonEdit;
@@ -53,15 +47,13 @@ class SpecialKeysBar extends StatefulWidget {
     super.key,
     required this.onKeyPressed,
     required this.onSpecialKeyPressed,
+    required this.rows,
     this.onInputTap,
     this.hapticFeedback = true,
     this.directInputEnabled = false,
     this.onDirectInputToggle,
     this.onImagePickRequested,
     this.customButtons = const [],
-    required this.row0Tokens,
-    this.row1Tokens = CustomKeyRows.standardRow1,
-    this.row2Tokens = CustomKeyRows.standardRow2,
     this.onCustomButtonEdit,
     this.onManageButtons,
   });
@@ -81,10 +73,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// 入力欄にテキストを残したまま追加分のみ送信するために保持する
   String _sentText = '';
 
-  /// 行0・行1・行2の水平スクロール制御（新規ボタン追加時に末尾へ自動スクロール）
-  final ScrollController _row0ScrollController = ScrollController();
-  final ScrollController _row1ScrollController = ScrollController();
-  final ScrollController _row2ScrollController = ScrollController();
+  /// 行ごとの水平スクロール制御（新規ボタン追加時にその位置へ自動スクロール）。
+  /// 行数は可変なので、行数の変化に合わせて作成・破棄する。
+  final List<ScrollController> _rowScrollControllers = [];
 
   /// 現在IME変換中かどうか
   bool _isComposing = false;
@@ -110,6 +101,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   @override
   void initState() {
     super.initState();
+    _syncRowControllers(widget.rows.length);
     if (widget.directInputEnabled) {
       _directInputController.value = TextEditingValue(
         text: _sentinel,
@@ -130,24 +122,28 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       _isResettingController = false;
       _sentText = '';
     }
-    // 新規ボタンが追加されたら、その位置（先頭/末尾）まで自動スクロールする
-    if (widget.row0Tokens.length > oldWidget.row0Tokens.length) {
-      _scheduleScrollToNewToken(
-        _row0ScrollController,
-        atStart: _grewAtStart(oldWidget.row0Tokens, widget.row0Tokens),
-      );
+    _syncRowControllers(widget.rows.length);
+    // 新規トークンが追加された行を、その位置（先頭/末尾）まで自動スクロールする
+    final shared = widget.rows.length < oldWidget.rows.length
+        ? widget.rows.length
+        : oldWidget.rows.length;
+    for (var row = 0; row < shared; row++) {
+      if (widget.rows[row].length > oldWidget.rows[row].length) {
+        _scheduleScrollToNewToken(
+          _rowScrollControllers[row],
+          atStart: _grewAtStart(oldWidget.rows[row], widget.rows[row]),
+        );
+      }
     }
-    if (widget.row1Tokens.length > oldWidget.row1Tokens.length) {
-      _scheduleScrollToNewToken(
-        _row1ScrollController,
-        atStart: _grewAtStart(oldWidget.row1Tokens, widget.row1Tokens),
-      );
+  }
+
+  /// スクロール制御の本数を行数に合わせる（余った分は破棄する）。
+  void _syncRowControllers(int rowCount) {
+    while (_rowScrollControllers.length < rowCount) {
+      _rowScrollControllers.add(ScrollController());
     }
-    if (widget.row2Tokens.length > oldWidget.row2Tokens.length) {
-      _scheduleScrollToNewToken(
-        _row2ScrollController,
-        atStart: _grewAtStart(oldWidget.row2Tokens, widget.row2Tokens),
-      );
+    while (_rowScrollControllers.length > rowCount) {
+      _rowScrollControllers.removeLast().dispose();
     }
   }
 
@@ -180,9 +176,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     _directInputController.removeListener(_onDirectInputChanged);
     _directInputController.dispose();
     _directInputFocusNode.dispose();
-    _row0ScrollController.dispose();
-    _row1ScrollController.dispose();
-    _row2ScrollController.dispose();
+    for (final controller in _rowScrollControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -527,18 +523,13 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     final colorScheme = Theme.of(context).colorScheme;
 
     // Rows render exactly the tokens they hold, subject to mode skips.
-    final row0Tokens = _visibleTokens(widget.row0Tokens);
-    final row1Tokens = _visibleTokens(widget.row1Tokens);
-    final row2Tokens = _visibleTokens(widget.row2Tokens);
+    final visibleRows = [for (final row in widget.rows) _visibleTokens(row)];
 
-    // The manage (pencil) button is pinned to the end of row 0, the custom
-    // row: that is where the user's own buttons live. Row 0 is empty by
-    // default, so when it renders nothing the pencil falls back to the first
-    // row that does render (row 1, else row 2) and the editor entry point
-    // never disappears while the bar is visible.
-    final bool row0HostsPencil = row0Tokens.isNotEmpty;
-    final bool row1HostsPencil = !row0HostsPencil && row1Tokens.isNotEmpty;
-    final bool row2HostsPencil = !row0HostsPencil && !row1HostsPencil;
+    // The manage (pencil) button is pinned to the end of the first row that
+    // renders anything — the top row is the custom row, so it lands next to
+    // the user's own buttons. When no row renders (every row empty, or no rows
+    // at all) a pencil-only strip keeps the editor reachable.
+    final pencilHost = visibleRows.indexWhere((row) => row.isNotEmpty);
 
     return Container(
       decoration: BoxDecoration(
@@ -552,9 +543,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildRow0(row0Tokens, hostsPencil: row0HostsPencil),
-            _buildRow1(row1Tokens, hostsPencil: row1HostsPencil),
-            _buildRow2(row2Tokens, hostsPencil: row2HostsPencil),
+            for (var row = 0; row < visibleRows.length; row++)
+              _buildRow(row, visibleRows[row], hostsPencil: row == pencilHost),
+            if (pencilHost < 0) _buildPencilOnlyRow(),
             if (widget.directInputEnabled) _buildDirectInputRow(),
             const SizedBox(height: 4),
           ],
@@ -563,44 +554,31 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  /// 行0（専用カスタムキー行）：保持するトークンを順に描画する。
-  Widget _buildRow0(List<String> tokens, {required bool hostsPencil}) {
-    return _buildGenericTokenRow(
-      tokens: tokens,
-      height: 32,
-      scrollController: _row0ScrollController,
-      showManageButton: hostsPencil,
-    );
-  }
-
-  /// 行1（修飾キー行）。既定レイアウトは従来の固定描画を維持し、
-  /// それ以外は汎用の水平スクロール行で描画する。
-  Widget _buildRow1(List<String> tokens, {required bool hostsPencil}) {
-    if (listEquals(widget.row1Tokens, CustomKeyRows.standardRow1)) {
+  /// 1行を描画する。既定と完全一致する行だけ従来の固定描画を使い、それ以外は
+  /// 汎用の水平スクロール行で描く（判定は行の内容だけで、行番号には依らない）。
+  Widget _buildRow(int row, List<String> tokens, {required bool hostsPencil}) {
+    final stored = widget.rows[row];
+    if (listEquals(stored, CustomKeyRows.standardRow1)) {
       return _buildLegacyModifierKeysRow(withManageButton: hostsPencil);
     }
-    return _buildGenericTokenRow(
-      tokens: tokens,
-      height: 32,
-      scrollController: _row1ScrollController,
-      showManageButton: hostsPencil,
-    );
-  }
-
-  /// 行2（ナビゲーション行）。既定レイアウトは従来の固定描画を維持し、
-  /// それ以外（鉛筆ボタンの受け皿になる場合も含む）は汎用行で描画する。
-  Widget _buildRow2(List<String> tokens, {required bool hostsPencil}) {
-    if (listEquals(widget.row2Tokens, CustomKeyRows.standardRow2) &&
-        !hostsPencil) {
+    if (listEquals(stored, CustomKeyRows.standardRow2) && !hostsPencil) {
       return _buildLegacyArrowKeysRow();
     }
     return _buildGenericTokenRow(
       tokens: tokens,
-      height: 36,
-      scrollController: _row2ScrollController,
+      height: 32,
+      scrollController: _rowScrollControllers[row],
       showManageButton: hostsPencil,
     );
   }
+
+  /// トークンを描く行が1つも無いときの受け皿（鉛筆ボタンのみ）。
+  Widget _buildPencilOnlyRow() => _buildGenericTokenRow(
+    tokens: const <String>[],
+    height: 32,
+    scrollController: null,
+    showManageButton: true,
+  );
 
   /// 行1の従来レイアウト（ESC…dash、必要なら鉛筆ボタン）。既定レイアウト専用。
   Widget _buildLegacyModifierKeysRow({required bool withManageButton}) {
@@ -672,7 +650,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   Widget _buildGenericTokenRow({
     required List<String> tokens,
     required double height,
-    required ScrollController scrollController,
+    ScrollController? scrollController,
     required bool showManageButton,
   }) {
     if (tokens.isEmpty && !showManageButton) {

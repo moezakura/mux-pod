@@ -3138,9 +3138,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       // inventory: TERM-FILE-002
                       onImagePickRequested: _handleImageTransfer,
                       customButtons: customKeys.buttons,
-                      row0Tokens: customKeys.row0,
-                      row1Tokens: customKeys.row1,
-                      row2Tokens: customKeys.row2,
+                      rows: customKeys.rows,
                       onCustomButtonEdit: _editCustomButton,
                       onManageButtons: _openCustomKeysScreen,
                     );

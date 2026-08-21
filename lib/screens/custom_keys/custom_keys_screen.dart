@@ -47,12 +47,29 @@ class CustomKeysScreen extends ConsumerWidget {
               onTap: () => _editButton(context, ref, button),
             ),
           const Divider(),
-          const _SectionHeader('Layout — Custom Row'),
-          _buildRowStrip(context, ref, state, 0, state.row0),
-          const _SectionHeader('Layout — Row 1'),
-          _buildRowStrip(context, ref, state, 1, state.row1),
-          const _SectionHeader('Layout — Row 2'),
-          _buildRowStrip(context, ref, state, 2, state.row2),
+          for (var row = 0; row < state.rows.length; row++) ...[
+            _RowHeader(
+              title: 'Layout — Row ${row + 1}',
+              onDelete: () =>
+                  ref.read(customKeysProvider.notifier).removeRow(row),
+              deleteKey: Key('row-$row-delete'),
+            ),
+            _buildRowStrip(context, ref, state, row, state.rows[row]),
+          ],
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('add-row'),
+                onPressed: state.rows.length >= CustomKeyRows.maxRows
+                    ? null
+                    : () => ref.read(customKeysProvider.notifier).addRow(),
+                icon: const Icon(Icons.playlist_add),
+                label: const Text('+ Add row'),
+              ),
+            ),
+          ),
           const _SectionHeader('Unused'),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
@@ -383,6 +400,38 @@ class _SectionHeader extends StatelessWidget {
           color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
         ),
       ),
+    );
+  }
+}
+
+/// Section header for one layout row: the label plus a delete affordance.
+class _RowHeader extends StatelessWidget {
+  const _RowHeader({
+    required this.title,
+    required this.onDelete,
+    required this.deleteKey,
+  });
+
+  final String title;
+  final VoidCallback onDelete;
+  final Key deleteKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _SectionHeader(title)),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: IconButton(
+            key: deleteKey,
+            icon: const Icon(Icons.delete_outline),
+            iconSize: 20,
+            tooltip: 'Delete row',
+            onPressed: onDelete,
+          ),
+        ),
+      ],
     );
   }
 }

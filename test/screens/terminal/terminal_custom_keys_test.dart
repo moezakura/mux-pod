@@ -23,7 +23,11 @@ void main() {
         ],
       },
     ]),
-    'custom_key_row1_v1': jsonEncode(['ck:0001_dead']),
+    'custom_key_rows_v1': jsonEncode([
+      <String>[],
+      ['ck:0001_dead'],
+      CustomKeyRows.standardRow2,
+    ]),
   };
 
   // pumpTerminalScreen resets SharedPreferences to empty before pumping, so
@@ -81,9 +85,9 @@ void main() {
 
       final state = container.read(customKeysProvider);
       expect(state.buttons, isEmpty);
-      expect(state.row0.contains('ck:0001_dead'), isFalse);
-      expect(state.row1.contains('ck:0001_dead'), isFalse);
-      expect(state.row2.contains('ck:0001_dead'), isFalse);
+      expect(state.rows[0].contains('ck:0001_dead'), isFalse);
+      expect(state.rows[1].contains('ck:0001_dead'), isFalse);
+      expect(state.rows[2].contains('ck:0001_dead'), isFalse);
     });
     testWidgets('standard token seeded into row0 renders in the terminal bar', (
       tester,
@@ -91,9 +95,11 @@ void main() {
       // Defends Bar contract: rows are authoritative end to end — a standard
       // token may live in any row ('esc', normally row 1, is placed in row 0).
       final prefs = <String, Object>{
-        'custom_key_row0_v1': jsonEncode(['esc']),
-        'custom_key_row1_v1': jsonEncode(<String>[]),
-        'custom_key_row2_v1': jsonEncode(<String>[]),
+        'custom_key_rows_v1': jsonEncode([
+          ['esc'],
+          <String>[],
+          <String>[],
+        ]),
       };
       await TerminalTestScaffold.pumpTerminalScreen(tester);
       await seedAndReload(tester, prefs);
@@ -113,9 +119,11 @@ void main() {
         // Defends Bar contract: an empty rendered row renders nothing, and the
         // manage (pencil) button pins to the first row that renders (row 2 here).
         final prefs = <String, Object>{
-          'custom_key_row0_v1': jsonEncode(<String>[]),
-          'custom_key_row1_v1': jsonEncode(<String>[]),
-          'custom_key_row2_v1': jsonEncode(CustomKeyRows.standardRow2),
+          'custom_key_rows_v1': jsonEncode([
+            <String>[],
+            <String>[],
+            CustomKeyRows.standardRow2,
+          ]),
         };
         await TerminalTestScaffold.pumpTerminalScreen(tester);
         await seedAndReload(tester, prefs);
@@ -152,5 +160,59 @@ void main() {
         );
       },
     );
+
+    testWidgets('a fourth user-created row renders and sends in the terminal', (
+      tester,
+    ) async {
+      // Defends the dynamic-rows contract end to end: a layout the user built
+      // with "+ Add row" reaches the bar, and its button sends its steps.
+      final prefs = <String, Object>{
+        'custom_key_buttons_v1': jsonEncode([
+          {
+            'id': 'ck_0042_row4',
+            'label': 'Row4',
+            'steps': [
+              {'type': 'text', 'value': 'from_row_four'},
+            ],
+          },
+        ]),
+        'custom_key_rows_v1': jsonEncode([
+          <String>[],
+          CustomKeyRows.standardRow1,
+          CustomKeyRows.standardRow2,
+          ['ck:0042_row4'],
+        ]),
+      };
+      final client = await TerminalTestScaffold.pumpTerminalScreen(tester);
+      await seedAndReload(tester, prefs);
+
+      final button = find.descendant(
+        of: find.byType(SpecialKeysBar),
+        matching: find.text('Row4'),
+      );
+      expect(button, findsOneWidget);
+      // Below the navigation row, i.e. it really is a fourth row.
+      expect(
+        tester.getTopLeft(button).dy,
+        greaterThan(
+          tester
+              .getTopLeft(
+                find.descendant(
+                  of: find.byType(SpecialKeysBar),
+                  matching: find.text('PgUp'),
+                ),
+              )
+              .dy,
+        ),
+      );
+
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+
+      final sent = client.sendKeysCommands
+          .where((c) => c.contains('from_row_four'))
+          .toList();
+      expect(sent.length, 1);
+    });
   });
 }

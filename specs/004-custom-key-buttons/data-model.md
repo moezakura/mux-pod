@@ -88,10 +88,17 @@ skipped at render time (`input` in direct mode; `num1..num4` in normal mode).
 ### Default rows
 
 ```dart
-row0 = <String>[]  // dedicated custom row, top of the bar
-row1 = ['esc','tab','ctrl','alt','shift','enter','senter','slash','dash']
-row2 = ['pgup','pgdn','left','up','down','right','image','di_toggle','input']
+CustomKeyRows.defaultRows = [
+  <String>[],                                                       // custom row, top
+  ['esc','tab','ctrl','alt','shift','enter','senter','slash','dash'],
+  ['pgup','pgdn','left','up','down','right','image','di_toggle','input'],
+];
+CustomKeyRows.maxRows = 6;  // the bar's vertical budget
 ```
+
+The row count is dynamic: rows can be added and removed, so nothing may key
+behaviour off a row index. The two legacy layouts are recognised by CONTENT
+(`listEquals` against the modifier / navigation defaults).
 
 `num1..num4` belong to no default row: they are unplaced (Unused) until the
 user drags them in, and they only render while direct input is on.
@@ -110,10 +117,9 @@ user drags them in, and they only render while direct input is on.
 | key | content |
 |---|---|
 | `custom_key_buttons_v1` | JSON array of button objects |
-| `custom_key_row0_v1` | JSON array of tokens (custom row) |
-| `custom_key_row1_v1` | JSON array of tokens |
-| `custom_key_row2_v1` | JSON array of tokens |
+| `custom_key_rows_v1` | JSON array of arrays: the whole layout, top to bottom |
 | `custom_keys_shelf_v1` | bool marker: the num-token migration already ran |
+| `custom_key_row0_v1`, `custom_key_row1_v1`, `custom_key_row2_v1` | legacy, read once on migration and then deleted |
 
 Absent key → default (empty buttons, default rows). Corrupt value: wholly
 unparseable / non-array → default; partially invalid array → drop only the
@@ -123,26 +129,30 @@ the rest).
 The Unused shelf has no key of its own — it is derived from the rows, so the
 stored layout can never disagree with what the shelf shows.
 
-`_persist()` writes every row key on every load. Therefore the presence of a
+Older builds persisted every row key on every load, so the presence of a legacy
 row key says nothing about whether the user ever customized that row; the
 num-token migration compares the row against its default (`listEquals`) instead.
 
-### One-time migrations (on load)
+A stored layout longer than `maxRows` is truncated on load, and a corrupt value
+falls back to `defaultRows`.
 
-1. No `custom_key_row0_v1`: custom tokens found in row 1 / row 2 are hoisted
+### One-time migration (on load, when `custom_key_rows_v1` is absent)
+
+1. Read the three legacy keys (missing or corrupt → that row's default).
+2. No `custom_key_row0_v1`: custom tokens found in row 1 / row 2 are hoisted
    into row 0 (layouts written before the dedicated custom row existed).
-2. `custom_keys_shelf_v1` unset, row 2 differs from its default, and row 2 has
+3. `custom_keys_shelf_v1` unset, row 2 differs from its default, and row 2 has
    no `num1..num4`: append them once. Older builds injected the numbers at
    render time; making them real tokens keeps them draggable.
+4. Write `[row0, row1, row2]` under `custom_key_rows_v1` and delete the three
+   legacy keys.
 
 ## State (provider)
 
 ```dart
 class CustomKeysState {
   final List<CustomKeyButton> buttons;
-  final List<String> row0;
-  final List<String> row1;
-  final List<String> row2;
+  final List<List<String>> rows;   // top to bottom, 0..CustomKeyRows.maxRows
   // helpers:
   CustomKeyButton? buttonById(String id);
   List<CustomKeyButton> unplacedButtons();  // library minus every row
@@ -156,7 +166,9 @@ Provider API (`CustomKeysNotifier extends Notifier<CustomKeysState>`):
 CustomKeyButton addButton(String label, List<CustomKeyStep> steps);
 void updateButton(String id, {required String label, required List<CustomKeyStep> steps});
 void deleteButton(String id);            // removes ck: tokens from every row
-void setRowTokens(int row, List<String> tokens); // row: 0|1|2; validated before save
+void setRowTokens(int row, List<String> tokens); // row index; validated before save
+void addRow();            // appends an empty bottom row; no-op at maxRows
+void removeRow(int row);  // drops the row; its tokens return to the shelf
 void placeToken(String token, {required int toRow, required int toIndex});
 // toRow == CustomKeyRows.shelfRow parks the token outside the bar; the index is
 // read against the target row *before* the move, so a same-row drag to a higher

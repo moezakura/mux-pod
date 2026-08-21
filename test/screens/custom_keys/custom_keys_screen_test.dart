@@ -68,9 +68,9 @@ void main() {
 
       expect(find.text('Custom Buttons'), findsOneWidget);
       expect(find.text('Buttons'), findsOneWidget);
-      expect(find.text('Layout — Custom Row'), findsOneWidget);
       expect(find.text('Layout — Row 1'), findsOneWidget);
       expect(find.text('Layout — Row 2'), findsOneWidget);
+      expect(find.text('Layout — Row 3'), findsOneWidget);
       expect(find.text('Unused'), findsOneWidget);
       expect(
         find.text('Drag buttons here to hide them from the bar.'),
@@ -100,7 +100,7 @@ void main() {
       addTearDown(container.dispose);
       await pumpScreen(tester, container);
 
-      expect(find.text('Layout — Custom Row'), findsOneWidget);
+      expect(find.text('Layout — Row 1'), findsOneWidget);
 
       await addButton(tester, 'Top Chip', 't');
       final token = tokenOf(container, 'Top Chip');
@@ -119,7 +119,7 @@ void main() {
       final token = tokenOf(container, 'My Button');
       final s = container.read(customKeysProvider);
       expect(s.buttons.single.label, 'My Button');
-      expect(s.row0, contains(token));
+      expect(s.rows[0], contains(token));
       expect(s.unplacedButtons(), isEmpty);
 
       // Appears in the library list and in the row 0 chip.
@@ -141,8 +141,8 @@ void main() {
       final first = tokenOf(container, 'First');
       final second = tokenOf(container, 'Second');
       final s = container.read(customKeysProvider);
-      expect(s.row0.first, second);
-      expect(s.row0[1], first);
+      expect(s.rows[0].first, second);
+      expect(s.rows[0][1], first);
       expect(s.unplacedButtons(), isEmpty);
     });
 
@@ -194,7 +194,7 @@ void main() {
       await addButton(tester, 'Doomed', 'x');
       // '+ Add button' auto-places it on the custom (top) row.
       final token = tokenOf(container, 'Doomed');
-      expect(container.read(customKeysProvider).row0, contains(token));
+      expect(container.read(customKeysProvider).rows[0], contains(token));
 
       final id = container.read(customKeysProvider).buttons.single.id;
       await tester.tap(find.byKey(Key('delete-$id')));
@@ -202,10 +202,7 @@ void main() {
 
       expect(find.text('Doomed'), findsNothing);
       expect(container.read(customKeysProvider).buttons, isEmpty);
-      expect(
-        container.read(customKeysProvider).row0,
-        CustomKeyRows.standardRow0,
-      );
+      expect(container.read(customKeysProvider).rows[0], <String>[]);
     });
 
     testWidgets('standard token drags from row 1 to row 0 index 0', (
@@ -224,9 +221,9 @@ void main() {
       );
 
       final s = container.read(customKeysProvider);
-      expect(s.row0.first, 'esc');
-      expect(s.row1, isNot(contains('esc')));
-      expect(s.row1.first, 'tab');
+      expect(s.rows[0].first, 'esc');
+      expect(s.rows[1], isNot(contains('esc')));
+      expect(s.rows[1].first, 'tab');
     });
 
     testWidgets('custom chip drags from row 0 to row 2 trailing slot', (
@@ -248,9 +245,9 @@ void main() {
       );
 
       final s = container.read(customKeysProvider);
-      expect(s.row0, CustomKeyRows.standardRow0);
-      expect(s.row2.last, token);
-      expect(s.row2.length, 10);
+      expect(s.rows[0], <String>[]);
+      expect(s.rows[2].last, token);
+      expect(s.rows[2].length, 10);
     });
 
     testWidgets('within-row drag to a later slot reorders', (tester) async {
@@ -266,7 +263,7 @@ void main() {
       final b = tokenOf(container, 'B');
       final c = tokenOf(container, 'C');
       var s = container.read(customKeysProvider);
-      expect(s.row0, [c, b, a]);
+      expect(s.rows[0], [c, b, a]);
 
       // Drag C (the leading chip) to the trailing slot (index 3).
       await dragChip(
@@ -276,7 +273,7 @@ void main() {
       );
 
       s = container.read(customKeysProvider);
-      expect(s.row0, [b, a, c]);
+      expect(s.rows[0], [b, a, c]);
     });
 
     testWidgets('chip drags onto shelf and becomes unused', (tester) async {
@@ -293,7 +290,7 @@ void main() {
       );
 
       final s = container.read(customKeysProvider);
-      expect(s.row1, isNot(contains('esc')));
+      expect(s.rows[1], isNot(contains('esc')));
       expect(s.unusedTokens(), contains('esc'));
       expect(find.byKey(const Key('chip-shelf-esc')), findsOneWidget);
     });
@@ -312,7 +309,7 @@ void main() {
       );
 
       final s = container.read(customKeysProvider);
-      expect(s.row0.first, 'num1');
+      expect(s.rows[0].first, 'num1');
       expect(s.unusedTokens(), isNot(contains('num1')));
     });
 
@@ -376,7 +373,7 @@ void main() {
       final s = container.read(customKeysProvider);
       expect(s.buttons.single.label, 'Keep');
       expect(s.buttons.single.steps.single.value, 'same');
-      expect(s.row0, contains(token));
+      expect(s.rows[0], contains(token));
       expect(find.text('Keep'), findsNWidgets(2));
     });
 
@@ -390,7 +387,7 @@ void main() {
 
       await addButton(tester, 'Gone', 'g');
       final token = tokenOf(container, 'Gone');
-      expect(container.read(customKeysProvider).row0, contains(token));
+      expect(container.read(customKeysProvider).rows[0], contains(token));
 
       // Open the editor from the library list tile.
       await tester.tap(find.widgetWithText(ListTile, 'Gone'));
@@ -410,10 +407,116 @@ void main() {
 
       final s = container.read(customKeysProvider);
       expect(s.buttons, isEmpty);
-      expect(s.row0, CustomKeyRows.standardRow0);
-      expect(s.row1, CustomKeyRows.standardRow1);
-      expect(s.row2, CustomKeyRows.standardRow2);
+      expect(s.rows[0], <String>[]);
+      expect(s.rows[1], CustomKeyRows.standardRow1);
+      expect(s.rows[2], CustomKeyRows.standardRow2);
       expect(find.text('Gone'), findsNothing);
+    });
+
+    // Defends the add-row contract: a new empty strip appears at the bottom and
+    // accepts a dropped token.
+    testWidgets('+ Add row appends a strip that accepts a chip', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      await tester.tap(find.byKey(const Key('add-row')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Layout — Row 4'), findsOneWidget);
+      expect(container.read(customKeysProvider).rows.length, 4);
+
+      await dragChip(
+        tester,
+        find.byKey(const Key('chip-1-esc')),
+        find.byKey(const Key('slot-3-0')),
+      );
+
+      expect(container.read(customKeysProvider).rows[3], ['esc']);
+      expect(
+        container.read(customKeysProvider).rows[1].contains('esc'),
+        isFalse,
+      );
+    });
+
+    // Defends the cap: the bar has finite height, so the affordance goes dead.
+    testWidgets('the add-row tile is disabled at maxRows', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      for (
+        var i = container.read(customKeysProvider).rows.length;
+        i < CustomKeyRows.maxRows;
+        i++
+      ) {
+        await tester.tap(find.byKey(const Key('add-row')));
+        await tester.pumpAndSettle();
+      }
+
+      expect(
+        container.read(customKeysProvider).rows.length,
+        CustomKeyRows.maxRows,
+      );
+      // At maxRows the tile can sit below the fold; scroll it in before reading.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('add-row')),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final button = tester.widget<TextButton>(
+        find.byKey(const Key('add-row')),
+      );
+      expect(button.onPressed, isNull);
+    });
+
+    // Defends the delete-row contract: the strip goes, the chips come back as
+    // unused, and the remaining headers renumber.
+    testWidgets('deleting a row frees its chips and renumbers headers', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      // Row 2 (index 1) is the modifier row.
+      await tester.tap(find.byKey(const Key('row-1-delete')));
+      await tester.pumpAndSettle();
+
+      expect(container.read(customKeysProvider).rows.length, 2);
+      expect(find.text('Layout — Row 3'), findsNothing);
+      expect(
+        container.read(customKeysProvider).unusedTokens(),
+        containsAll(CustomKeyRows.standardRow1),
+      );
+      // The freed chip is reachable on the shelf.
+      expect(find.byKey(const Key('chip-shelf-esc')), findsOneWidget);
+    });
+
+    // Defends the empty-layout edge: every row can be deleted and a row can be
+    // created again from scratch.
+    testWidgets('all rows can be deleted and one added back', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      for (var i = 0; i < 3; i++) {
+        await tester.tap(find.byKey(const Key('row-0-delete')));
+        await tester.pumpAndSettle();
+      }
+      expect(container.read(customKeysProvider).rows, isEmpty);
+      expect(find.text('Layout — Row 1'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('add-row')));
+      await tester.pumpAndSettle();
+      expect(container.read(customKeysProvider).rows, [<String>[]]);
+      expect(find.text('Layout — Row 1'), findsOneWidget);
     });
   });
 }

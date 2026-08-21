@@ -20,9 +20,10 @@ steps: literal text, special key (tmux key name), or pause.
 
 ## Decisions (from design Q&A)
 
-1. **Placement**: three rows are laid out by the user. Row 0 is a dedicated
-   custom row at the top, empty by default; row 1 is the modifier row and row 2
-   the navigation row, both starting from their historical defaults. Any token
+1. **Placement**: the bar is an ordered list of rows the user builds. The
+   default layout is three rows — an empty custom row on top, then the modifier
+   row and the navigation row at their historical contents. Rows can be added
+   ("+ Add row", up to `CustomKeyRows.maxRows` = 6) and deleted. Any token
    (standard or custom) may be placed in any row at any index, and tokens the
    user does not want are parked on an "Unused" shelf that is derived from the
    rows, not stored.
@@ -125,11 +126,11 @@ TerminalScreen ──> SpecialKeysBar ──> CustomKeyButtonWidget (render+exec
   `DesignColors.secondary` (amber) border/text — distinct from the cyan
   `primary` used by ENTER. Labels render on one line with `TextOverflow.ellipsis`.
 - **Pencil button**: fixed icon button (`Icons.edit_outlined`) pinned outside
-  the scroller at the end of row 0, next to the user's own buttons. Row 0 is
-  empty by default, and an empty row renders nothing, so the pencil then falls
-  back to row 1 (its historical place) and, if that is empty too, to row 2 —
-  the entry point never disappears while the bar is visible, and it is never
-  rendered twice. Tap → `onManageButtons()` (opens the full editor).
+  the scroller at the end of the FIRST row that renders anything — the top row
+  is the custom row, so it sits next to the user's own buttons. When no row
+  renders (every row empty, or no rows at all) the bar draws a pencil-only
+  strip, so the entry point never disappears and is never rendered twice.
+  Tap → `onManageButtons()` (opens the full editor).
 - **Auto-scroll**: when a row grows, it scrolls to reveal the new token — to the
   start when the token was prepended, to the end when appended.
 
@@ -155,8 +156,11 @@ TerminalScreen ──> SpecialKeysBar ──> CustomKeyButtonWidget (render+exec
     `"/models" + Enter`), tap → edit dialog, delete via trailing button,
     header "+ Add button" → add dialog, and the new button is placed at the head
     of the custom row so it is visible immediately.
-  - Sections "Layout — Custom Row" / "Layout — Row 1" / "Layout — Row 2" and
-    "Unused": each is a strip of chips. Every chip (standard or custom) is
+  - Sections "Layout — Row N" (1-based from the top, one per row) and "Unused":
+    each is a strip of chips. Each row header carries a delete button, and a
+    "+ Add row" tile after the last strip appends an empty row (disabled at
+    `CustomKeyRows.maxRows`). Deleting a row does not delete its buttons: its
+    tokens simply return to the shelf. Every chip (standard or custom) is
     long-press draggable; per-index drop slots between chips place the token at
     that exact index, and dropping on a strip's free area appends. Dragging a
     chip onto "Unused" removes it from the bar. Strips wrap onto multiple lines
