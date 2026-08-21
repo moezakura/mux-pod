@@ -72,6 +72,10 @@ import 'package:image_picker/image_picker.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
 import 'widgets/terminal_zoom.dart';
+import '../../providers/custom_keys_provider.dart';
+import '../../services/custom_keys/custom_key_button.dart';
+import '../../widgets/dialogs/custom_key_button_editor_dialog.dart';
+import '../custom_keys/custom_keys_screen.dart';
 
 // inventory: TERM-ENUM-001
 /// スクロールモードのソース
@@ -3115,18 +3119,32 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               if (!_canSendSpecialKey)
                 _ReadOnlyBanner(isDark: isDark)
               else
-                SpecialKeysBar(
-                  // inventory: TERM-INPUT-006
-                  onKeyPressed: _sendKeyWithOverlay,
-                  onSpecialKeyPressed: _sendSpecialKeyWithOverlay,
-                  // inventory: TERM-INPUT-009
-                  onInputTap: _showInputDialog,
-                  directInputEnabled: _directInputEnabled,
-                  onDirectInputToggle: () {
-                    ref.read(settingsProvider.notifier).toggleDirectInput();
+                // customKeysProvider はこの Consumer 内でだけ watch する:
+                // 親 build() を再実行させると BottomSheet が閉じてしまう
+                // （このクラス冒頭のコメントと BUG-3 の回帰テスト参照）。
+                Consumer(
+                  builder: (context, ref, _) {
+                    final customKeys = ref.watch(customKeysProvider);
+                    return SpecialKeysBar(
+                      // inventory: TERM-INPUT-006
+                      onKeyPressed: _sendKeyWithOverlay,
+                      onSpecialKeyPressed: _sendSpecialKeyWithOverlay,
+                      // inventory: TERM-INPUT-009
+                      onInputTap: _showInputDialog,
+                      directInputEnabled: _directInputEnabled,
+                      onDirectInputToggle: () {
+                        ref.read(settingsProvider.notifier).toggleDirectInput();
+                      },
+                      // inventory: TERM-FILE-002
+                      onImagePickRequested: _handleImageTransfer,
+                      customButtons: customKeys.buttons,
+                      row0Tokens: customKeys.row0,
+                      row1Tokens: customKeys.row1,
+                      row2Tokens: customKeys.row2,
+                      onCustomButtonEdit: _editCustomButton,
+                      onManageButtons: _openCustomKeysScreen,
+                    );
                   },
-                  // inventory: TERM-FILE-002
-                  onImagePickRequested: _handleImageTransfer,
                 ),
             ],
           ),
@@ -3143,6 +3161,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         ],
       ),
     );
+  }
+
+  /// カスタムキーボタンの編集ダイアログを開き、保存時にプロバイダへ反映する。
+  void _editCustomButton(CustomKeyButton button) async {
+    final result = await showDialog<(String, List<CustomKeyStep>)>(
+      context: context,
+      builder: (_) => CustomKeyButtonEditorDialog(
+        initialLabel: button.label,
+        initialSteps: button.steps,
+        onDelete: () =>
+            ref.read(customKeysProvider.notifier).deleteButton(button.id),
+      ),
+    );
+    if (result != null && mounted) {
+      ref
+          .read(customKeysProvider.notifier)
+          .updateButton(button.id, label: result.$1, steps: result.$2);
+    }
+  }
+
+  /// カスタムボタン管理画面を開く。
+  void _openCustomKeysScreen() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const CustomKeysScreen()));
   }
 
   // --- キーオーバーレイ ラッパー ---
