@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/settings_provider.dart';
+import '../../services/keychain/secure_storage.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
@@ -15,6 +16,7 @@ import '../../widgets/dialogs/min_font_size_dialog.dart';
 import '../../widgets/dialogs/theme_dialog.dart';
 import '../../services/version_info.dart';
 import 'licenses_screen.dart';
+import '../custom_keys/custom_keys_screen.dart';
 
 /// 設定画面
 class SettingsScreen extends ConsumerWidget {
@@ -223,6 +225,27 @@ class SettingsScreen extends ConsumerWidget {
                     },
                   ),
                 ],
+                const Divider(),
+                // TODO(i18n): localize once arb keys exist for these entries.
+                const _SectionHeader(title: 'Buttons'),
+                ListTile(
+                  leading: const Icon(Icons.apps),
+                  title: const Text('Custom Buttons'),
+                  subtitle: const Text(
+                    'Add buttons and action sequences to the key bar',
+                  ),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CustomKeysScreen()),
+                  ),
+                ),
+                const Divider(),
+                const _SectionHeader(title: 'Security'),
+                ListTile(
+                  leading: const Icon(Icons.key_off),
+                  title: const Text('Clear SSH Host Keys'),
+                  subtitle: const Text('Reset saved server fingerprints'),
+                  onTap: () => _confirmClearHostKeys(context),
+                ),
                 const Divider(),
                 _SectionHeader(title: l10n.settingsSectionBehavior),
                 SwitchListTile(
@@ -522,6 +545,52 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// SSHホスト鍵フィンガープリントを全て消去する（確認付き）。
+  ///
+  /// サーバーのホスト鍵が変わった / 保存状態が壊れた場合の復旧手段。
+  /// アプリデータ全体を消すより軽く、次回接続でホスト鍵を再受諾できる。
+  Future<void> _confirmClearHostKeys(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Clear SSH host keys?'),
+        content: const Text(
+          'This removes all saved server host-key fingerprints. The next '
+          'connection silently trusts and re-saves whatever host key each '
+          'server presents, so only do this on a network you trust.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    // 削除は mounted チェックより前に走らせる: 画面が閉じても、確認済みの
+    // 意図は実行する。mounted は SnackBar の表示だけを守る。
+    String message;
+    try {
+      final removed = await SecureStorageService()
+          .deleteAllHostKeyFingerprints();
+      message = removed == 0
+          ? 'No saved host keys to clear'
+          : 'Cleared $removed saved host key${removed == 1 ? '' : 's'}';
+    } catch (e) {
+      message = 'Could not clear host keys: ${e.runtimeType}';
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _showTextInputDialog(

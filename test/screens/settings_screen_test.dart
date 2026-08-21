@@ -5,6 +5,7 @@ import 'package:flutter_muxpod/l10n/app_localizations.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/settings/settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 
 Widget _buildApp() {
   return const ProviderScope(
@@ -182,7 +183,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await scrollUntilFound(tester, find.text('Scroll Send Input'));
+      // Scroll to the note itself: asserting on a sibling below the tile makes
+      // the test depend on where the section lands in the list.
+      await scrollUntilFound(
+        tester,
+        find.text('Wheel send is unverified; falling back to key send.'),
+      );
       expect(
         find.text('Wheel send is unverified; falling back to key send.'),
         findsOneWidget,
@@ -281,6 +287,71 @@ void main() {
       expect(find.text('System'), findsOneWidget);
       expect(find.text('日本語'), findsOneWidget);
       expect(find.text('English'), findsOneWidget);
+    });
+
+    testWidgets(
+      'Clear SSH Host Keys clears stored fingerprints after confirm',
+      (tester) async {
+        SecureStorageService.setTestValues({
+          'hostkey_192.168.1.3_22_ssh-ed25519': 'aa:bb:cc',
+          'password_conn1': 'secret',
+        });
+        addTearDown(() => SecureStorageService.setTestValues(null));
+
+        await tester.pumpWidget(_buildApp());
+        await tester.pumpAndSettle();
+
+        await scrollUntilFound(tester, find.text('Clear SSH Host Keys'));
+        await tester.ensureVisible(find.text('Clear SSH Host Keys'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear SSH Host Keys'));
+        await tester.pumpAndSettle();
+
+        // 確認ダイアログ
+        expect(find.text('Clear SSH host keys?'), findsOneWidget);
+
+        await tester.tap(find.text('Clear'));
+        await tester.pumpAndSettle();
+
+        final service = SecureStorageService();
+        expect(
+          await service.getHostKeyFingerprint('192.168.1.3', 22, 'ssh-ed25519'),
+          isNull,
+        );
+        // 認証情報は残る
+        expect(await service.getPassword('conn1'), 'secret');
+        expect(find.text('Cleared 1 saved host key'), findsOneWidget);
+      },
+    );
+
+    testWidgets('Clear SSH Host Keys cancel keeps fingerprints', (
+      tester,
+    ) async {
+      SecureStorageService.setTestValues({
+        'hostkey_192.168.1.3_22_ssh-ed25519': 'aa:bb:cc',
+      });
+      addTearDown(() => SecureStorageService.setTestValues(null));
+
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Clear SSH Host Keys'));
+      await tester.ensureVisible(find.text('Clear SSH Host Keys'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear SSH Host Keys'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(
+        await SecureStorageService().getHostKeyFingerprint(
+          '192.168.1.3',
+          22,
+          'ssh-ed25519',
+        ),
+        'aa:bb:cc',
+      );
     });
   });
 }
