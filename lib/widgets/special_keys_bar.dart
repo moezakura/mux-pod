@@ -531,13 +531,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     final row1Tokens = _visibleTokens(widget.row1Tokens);
     final row2Tokens = _visibleTokens(widget.row2Tokens);
 
-    // The manage (pencil) button is pinned to the end of row 1 while that
-    // row renders; when row 1 renders nothing it moves to the first row that
-    // does render (row 0, else row 2) so the editor entry point never
-    // disappears while the bar is visible.
-    final bool row1HostsPencil = row1Tokens.isNotEmpty;
-    final bool row0HostsPencil = !row1HostsPencil && row0Tokens.isNotEmpty;
-    final bool row2HostsPencil = !row1HostsPencil && !row0HostsPencil;
+    // The manage (pencil) button is pinned to the end of row 0, the custom
+    // row: that is where the user's own buttons live. Row 0 is empty by
+    // default, so when it renders nothing the pencil falls back to the first
+    // row that does render (row 1, else row 2) and the editor entry point
+    // never disappears while the bar is visible.
+    final bool row0HostsPencil = row0Tokens.isNotEmpty;
+    final bool row1HostsPencil = !row0HostsPencil && row1Tokens.isNotEmpty;
+    final bool row2HostsPencil = !row0HostsPencil && !row1HostsPencil;
 
     return Container(
       decoration: BoxDecoration(
@@ -576,7 +577,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// それ以外は汎用の水平スクロール行で描画する。
   Widget _buildRow1(List<String> tokens, {required bool hostsPencil}) {
     if (listEquals(widget.row1Tokens, CustomKeyRows.standardRow1)) {
-      return _buildLegacyModifierKeysRow();
+      return _buildLegacyModifierKeysRow(withManageButton: hostsPencil);
     }
     return _buildGenericTokenRow(
       tokens: tokens,
@@ -601,8 +602,8 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  /// 行1の従来レイアウト（ESC…dash + 鉛筆ボタン）。既定レイアウト専用。
-  Widget _buildLegacyModifierKeysRow() {
+  /// 行1の従来レイアウト（ESC…dash、必要なら鉛筆ボタン）。既定レイアウト専用。
+  Widget _buildLegacyModifierKeysRow({required bool withManageButton}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -624,7 +625,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           _buildShiftEnterKeyButton(),
           _buildLiteralKeyButton('/', '/'),
           _buildLiteralKeyButton('-', '-'),
-          _buildManageButton(),
+          if (withManageButton) _buildManageButton(),
         ],
       ),
     );

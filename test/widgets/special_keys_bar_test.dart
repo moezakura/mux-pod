@@ -267,7 +267,7 @@ void main() {
     });
 
     testWidgets(
-      'pencil button is present, in row 1, and fires onManageButtons',
+      'pencil hosts on row 1 while the custom row is empty and fires onManageButtons',
       (tester) async {
         var managed = 0;
         await tester.pumpWidget(
@@ -298,6 +298,34 @@ void main() {
         expect(managed, 1);
       },
     );
+
+    testWidgets('pencil moves to the custom row once that row has tokens', (
+      tester,
+    ) async {
+      final a = ck('ck_1_a', 'A');
+      await tester.pumpWidget(
+        customHarness(customButtons: [a], row0Tokens: [ckToken(a.id)]),
+      );
+      await tester.pump();
+
+      final pencil = find.byIcon(Icons.edit_outlined);
+      // Exactly one: the legacy row-1 layout must drop its own pencil instead
+      // of rendering a second one.
+      expect(pencil, findsOneWidget);
+
+      // Same row as the custom button, above the untouched modifier row.
+      expect(
+        tester.getTopLeft(pencil).dy,
+        closeTo(tester.getTopLeft(find.text('A')).dy, 6),
+      );
+      expect(
+        tester.getTopLeft(pencil).dy,
+        lessThan(tester.getTopLeft(find.text('ESC')).dy),
+      );
+      // Row 1 keeps its default stretched layout.
+      expect(find.text('ESC'), findsOneWidget);
+      expect(find.text('-'), findsOneWidget);
+    });
 
     testWidgets(
       'customized direct-input row renders only the tokens it holds',

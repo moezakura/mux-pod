@@ -125,9 +125,11 @@ TerminalScreen ──> SpecialKeysBar ──> CustomKeyButtonWidget (render+exec
   `DesignColors.secondary` (amber) border/text — distinct from the cyan
   `primary` used by ENTER. Labels render on one line with `TextOverflow.ellipsis`.
 - **Pencil button**: fixed icon button (`Icons.edit_outlined`) pinned outside
-  the scroller at the end of row 1; if row 1 is empty it moves to the first
-  non-empty row, so the entry point never disappears while the bar is visible.
-  Tap → `onManageButtons()` (opens the full editor).
+  the scroller at the end of row 0, next to the user's own buttons. Row 0 is
+  empty by default, and an empty row renders nothing, so the pencil then falls
+  back to row 1 (its historical place) and, if that is empty too, to row 2 —
+  the entry point never disappears while the bar is visible, and it is never
+  rendered twice. Tap → `onManageButtons()` (opens the full editor).
 - **Auto-scroll**: when a row grows, it scrolls to reveal the new token — to the
   start when the token was prepended, to the end when appended.
 
