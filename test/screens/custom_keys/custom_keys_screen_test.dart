@@ -88,10 +88,11 @@ void main() {
       expect(find.byKey(const Key('chip-shelf-num1')), findsOneWidget);
       expect(find.text('1'), findsOneWidget);
 
-      // The per-row '+' pickers are gone; dragging replaces them.
-      expect(find.byKey(const Key('row-0-add')), findsNothing);
-      expect(find.byKey(const Key('row-1-add')), findsNothing);
-      expect(find.byKey(const Key('row-2-add')), findsNothing);
+      // Each row header offers "new button in this row" and "delete row".
+      expect(find.byKey(const Key('row-0-add')), findsOneWidget);
+      expect(find.byKey(const Key('row-2-delete')), findsOneWidget);
+      // An empty row says why it is invisible in the bar.
+      expect(find.text('Empty — hidden in the bar'), findsOneWidget);
     });
 
     testWidgets('custom row section renders its chips', (tester) async {
@@ -326,11 +327,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('label-field')), findsOneWidget);
-      // The old move sheet and per-row '+' picker are gone.
+      // The old move sheet and insert picker are gone; dragging replaces them.
       expect(find.text('Move Left'), findsNothing);
       expect(find.text('Move Right'), findsNothing);
       expect(find.text('Move to Row 1'), findsNothing);
-      expect(find.byKey(const Key('row-1-add')), findsNothing);
     });
 
     testWidgets('persists across provider recreation', (tester) async {
@@ -517,6 +517,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(customKeysProvider).rows, [<String>[]]);
       expect(find.text('Layout — Row 1'), findsOneWidget);
+    });
+
+    // The reported bug: a button created while looking at row N must land in
+    // row N, not in the top row (an empty new row renders nothing in the bar,
+    // so the button looked lost).
+    testWidgets('the row header + creates the button in that row', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      await tester.tap(find.byKey(const Key('add-row')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('row-3-add')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('label-field')), 'InRow4');
+      await tester.enterText(find.byKey(const Key('step-value-0')), 'x');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      final s = container.read(customKeysProvider);
+      final token = tokenOf(container, 'InRow4');
+      expect(s.rows[3], [token]);
+      expect(s.rows[0], isEmpty);
+      expect(s.unplacedButtons(), isEmpty);
+    });
+
+    // The global add keeps its fast path: head of the topmost row.
+    testWidgets('+ Add button still lands at the head of the top row', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await pumpScreen(tester, container);
+
+      await addButton(tester, 'TopOne', 'a');
+      await addButton(tester, 'TopTwo', 'b');
+
+      final s = container.read(customKeysProvider);
+      expect(s.rows[0], [
+        tokenOf(container, 'TopTwo'),
+        tokenOf(container, 'TopOne'),
+      ]);
     });
   });
 }

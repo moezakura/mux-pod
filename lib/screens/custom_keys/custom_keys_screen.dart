@@ -50,8 +50,10 @@ class CustomKeysScreen extends ConsumerWidget {
           for (var row = 0; row < state.rows.length; row++) ...[
             _RowHeader(
               title: 'Layout — Row ${row + 1}',
+              onAdd: () => _addButton(context, ref, row: row, toIndex: null),
               onDelete: () =>
                   ref.read(customKeysProvider.notifier).removeRow(row),
+              addKey: Key('row-$row-add'),
               deleteKey: Key('row-$row-delete'),
             ),
             _buildRowStrip(context, ref, state, row, state.rows[row]),
@@ -148,7 +150,24 @@ class CustomKeysScreen extends ConsumerWidget {
           child: Wrap(
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: children,
+            children: [
+              ...children,
+              // An empty row renders nothing in the bar; say so, otherwise the
+              // row looks broken rather than unused.
+              if (tokens.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    'Empty — hidden in the bar',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? DesignColors.textMuted
+                          : DesignColors.textMutedLight,
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },
@@ -311,7 +330,16 @@ class CustomKeysScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _addButton(BuildContext context, WidgetRef ref) async {
+  /// Creates a button and places it in [row].
+  ///
+  /// [toIndex] null appends, 0 prepends. When [row] is out of range (the layout
+  /// has no rows yet) a row is created first, so the button is never invisible.
+  Future<void> _addButton(
+    BuildContext context,
+    WidgetRef ref, {
+    int row = 0,
+    int? toIndex = 0,
+  }) async {
     final result = await _openEditor(
       context,
       initialLabel: '',
@@ -320,14 +348,15 @@ class CustomKeysScreen extends ConsumerWidget {
       ],
     );
     if (result == null) return;
-    final button = ref
-        .read(customKeysProvider.notifier)
-        .addButton(result.$1, result.$2);
-    // New buttons land first on the dedicated custom row (row 0): it is the
-    // topmost row and the leading slot needs no scrolling to reach.
-    ref
-        .read(customKeysProvider.notifier)
-        .placeToken('ck:${button.id.substring(3)}', toRow: 0, toIndex: 0);
+    final notifier = ref.read(customKeysProvider.notifier);
+    if (ref.read(customKeysProvider).rows.isEmpty) notifier.addRow();
+    final target = row < ref.read(customKeysProvider).rows.length ? row : 0;
+    final button = notifier.addButton(result.$1, result.$2);
+    notifier.placeToken(
+      'ck:${button.id.substring(3)}',
+      toRow: target,
+      toIndex: toIndex ?? ref.read(customKeysProvider).rows[target].length,
+    );
   }
 
   Future<void> _editButton(
@@ -408,12 +437,16 @@ class _SectionHeader extends StatelessWidget {
 class _RowHeader extends StatelessWidget {
   const _RowHeader({
     required this.title,
+    required this.onAdd,
     required this.onDelete,
+    required this.addKey,
     required this.deleteKey,
   });
 
   final String title;
+  final VoidCallback onAdd;
   final VoidCallback onDelete;
+  final Key addKey;
   final Key deleteKey;
 
   @override
@@ -421,6 +454,13 @@ class _RowHeader extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: _SectionHeader(title)),
+        IconButton(
+          key: addKey,
+          icon: const Icon(Icons.add),
+          iconSize: 20,
+          tooltip: 'New button in this row',
+          onPressed: onAdd,
+        ),
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: IconButton(

@@ -155,12 +155,15 @@ TerminalScreen ──> SpecialKeysBar ──> CustomKeyButtonWidget (render+exec
   - Section "Buttons": list of custom buttons (label + step summary, e.g.
     `"/models" + Enter`), tap → edit dialog, delete via trailing button,
     header "+ Add button" → add dialog, and the new button is placed at the head
-    of the custom row so it is visible immediately.
+    of the topmost row so it is visible immediately. To fill another row, use
+    that row's own "+" (or drag the chip there).
   - Sections "Layout — Row N" (1-based from the top, one per row) and "Unused":
-    each is a strip of chips. Each row header carries a delete button, and a
-    "+ Add row" tile after the last strip appends an empty row (disabled at
-    `CustomKeyRows.maxRows`). Deleting a row does not delete its buttons: its
-    tokens simply return to the shelf. Every chip (standard or custom) is
+    each is a strip of chips. Each row header carries "+" (create a button at
+    the END of THAT row) and a delete button; a "+ Add row" tile after the last
+    strip appends an empty row (disabled at `CustomKeyRows.maxRows`). Deleting a
+    row does not delete its buttons: its tokens simply return to the shelf.
+    A row holding no tokens shows "Empty — hidden in the bar", because an empty
+    row renders nothing in the bar and would otherwise look broken. Every chip (standard or custom) is
     long-press draggable; per-index drop slots between chips place the token at
     that exact index, and dropping on a strip's free area appends. Dragging a
     chip onto "Unused" removes it from the bar. Strips wrap onto multiple lines
