@@ -154,7 +154,13 @@ class SecureStorageService {
     if (_testValues != null) {
       return Map.of(_testValues!);
     }
-    return await _storage.readAll();
+    // resetOnError の既定は true で、Android の readAll() は 1 件でも復号
+    // 不能なエントリがあると secure storage 全体を消してから再試行する
+    // （パスワード・秘密鍵・接続設定まで飛ぶ）。列挙でその挙動は許容でき
+    // ないため、ここだけ明示的に無効化して例外として受け取る。
+    return await _storage.readAll(
+      aOptions: const AndroidOptions(resetOnError: false),
+    );
   }
 
   // ===== ホスト鍵検証 =====
@@ -166,7 +172,9 @@ class SecureStorageService {
     String type,
     String fingerprint,
   ) async {
-    await _writeValue(_hostKeyKey(host, port, type), fingerprint);
+    final key = _hostKeyKey(host, port, type);
+    await _writeValue(key, fingerprint);
+    await _rememberHostKey(key);
   }
 
   /// ホスト鍵フィンガープリントを取得
@@ -184,10 +192,71 @@ class SecureStorageService {
     int port,
     String type,
   ) async {
-    await _deleteValue(_hostKeyKey(host, port, type));
+    final key = _hostKeyKey(host, port, type);
+    await _deleteValue(key);
+    await _forgetHostKey(key);
   }
 
+  /// 保存済みのホスト鍵フィンガープリントを全て削除し、削除件数を返す。
+  ///
+  /// サーバーのホスト鍵が変わった / 保存状態が壊れた場合に、アプリデータ
+  /// 全体を消さず、次回接続でホスト鍵を再受諾できるようにする。
+  ///
+  /// 索引に載っているキーは個別削除する。個別削除は復号を伴わないので、
+  /// fingerprint の保存値が壊れていても成功する（この機能の本来の用途）。
+  /// 索引を持たない旧バージョンが書いた分は列挙で拾うが、列挙は復号を伴う
+  /// ため失敗し得る。失敗しても索引側の削除は続行する。
+  Future<int> deleteAllHostKeyFingerprints() async {
+    final keys = <String>{};
+    try {
+      keys.addAll(await _hostKeyIndex());
+    } on PlatformException catch (e) {
+      debugPrint('hostkey index unreadable: ${e.code}');
+    }
+    try {
+      keys.addAll(await getKeysWithPrefix(_hostKeyPrefix));
+    } on PlatformException catch (e) {
+      debugPrint('hostkey enumeration failed: ${e.code}');
+    }
+    keys.remove(_hostKeyIndexKey);
+    for (final key in keys) {
+      await _deleteValue(key);
+    }
+    await _deleteValue(_hostKeyIndexKey);
+    return keys.length;
+  }
+
+  // ===== ホスト鍵の索引 =====
+  //
+  // 「どのキーを書いたか」だけを 1 エントリにまとめて保持する。fingerprint
+  // 本体とは別エントリなので、本体が復号不能になっても索引から鍵名を取り出
+  // して個別削除できる。索引キー自身も hostkey_ プレフィックスに属するため、
+  // 全消去時に一緒に消える。
+
+  Future<Set<String>> _hostKeyIndex() async {
+    final raw = await _readValue(_hostKeyIndexKey);
+    if (raw == null || raw.isEmpty) return <String>{};
+    return raw.split('\n').where((k) => k.isNotEmpty).toSet();
+  }
+
+  Future<void> _rememberHostKey(String key) async {
+    final index = await _hostKeyIndex();
+    if (!index.add(key)) return;
+    await _writeValue(_hostKeyIndexKey, index.join('\n'));
+  }
+
+  Future<void> _forgetHostKey(String key) async {
+    final index = await _hostKeyIndex();
+    if (!index.remove(key)) return;
+    await _writeValue(_hostKeyIndexKey, index.join('\n'));
+  }
+
+  static const String _hostKeyPrefix = 'hostkey_';
+
+  /// 書き込んだホスト鍵キーの索引（鍵名のみ、値は含まない）。
+  static const String _hostKeyIndexKey = '${_hostKeyPrefix}index';
+
   String _hostKeyKey(String host, int port, String type) {
-    return 'hostkey_${host}_${port}_$type';
+    return '$_hostKeyPrefix${host}_${port}_$type';
   }
 }

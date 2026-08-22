@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/design_colors.dart';
+import '../services/custom_keys/custom_key_button.dart';
+import 'custom_key_button_widget.dart';
 import '../l10n/l10n_ext.dart';
 
 /// 特殊キーバー（HTMLデザイン仕様準拠）
@@ -28,15 +31,31 @@ class SpecialKeysBar extends StatefulWidget {
   /// 画像転送ボタンが押された時のコールバック
   final VoidCallback? onImagePickRequested;
 
+  /// カスタムキーボタン（ユーザー定義ボタン）
+  final List<CustomKeyButton> customButtons;
+
+  /// バーの行レイアウト（上から下）。各行は保持するトークン列。
+  final List<List<String>> rows;
+
+  /// カスタムボタン編集リクエスト（長押し）
+  final void Function(CustomKeyButton)? onCustomButtonEdit;
+
+  /// ボタン管理画面を開くリクエスト（鉛筆ボタン）
+  final VoidCallback? onManageButtons;
+
   const SpecialKeysBar({
     super.key,
     required this.onKeyPressed,
     required this.onSpecialKeyPressed,
+    required this.rows,
     this.onInputTap,
     this.hapticFeedback = true,
     this.directInputEnabled = false,
     this.onDirectInputToggle,
     this.onImagePickRequested,
+    this.customButtons = const [],
+    this.onCustomButtonEdit,
+    this.onManageButtons,
   });
 
   @override
@@ -49,6 +68,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   bool _shiftPressed = false;
   final TextEditingController _directInputController = TextEditingController();
   final FocusNode _directInputFocusNode = FocusNode();
+
+  /// DirectInput: 端末へ送信済みの可視テキスト（デルタ送信用）
+  /// 入力欄にテキストを残したまま追加分のみ送信するために保持する
+  String _sentText = '';
+
+  /// 行ごとの水平スクロール制御（新規ボタン追加時にその位置へ自動スクロール）。
+  /// 行数は可変なので、行数の変化に合わせて作成・破棄する。
+  final List<ScrollController> _rowScrollControllers = [];
 
   /// 現在IME変換中かどうか
   bool _isComposing = false;
@@ -74,6 +101,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   @override
   void initState() {
     super.initState();
+    _syncRowControllers(widget.rows.length);
     if (widget.directInputEnabled) {
       _directInputController.value = TextEditingValue(
         text: _sentinel,
@@ -92,7 +120,55 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       _isResettingController = true;
       _directInputController.clear();
       _isResettingController = false;
+      _sentText = '';
     }
+    _syncRowControllers(widget.rows.length);
+    // 新規トークンが追加された行を、その位置（先頭/末尾）まで自動スクロールする
+    final shared = widget.rows.length < oldWidget.rows.length
+        ? widget.rows.length
+        : oldWidget.rows.length;
+    for (var row = 0; row < shared; row++) {
+      if (widget.rows[row].length > oldWidget.rows[row].length) {
+        _scheduleScrollToNewToken(
+          _rowScrollControllers[row],
+          atStart: _grewAtStart(oldWidget.rows[row], widget.rows[row]),
+        );
+      }
+    }
+  }
+
+  /// スクロール制御の本数を行数に合わせる（余った分は破棄する）。
+  void _syncRowControllers(int rowCount) {
+    while (_rowScrollControllers.length < rowCount) {
+      _rowScrollControllers.add(ScrollController());
+    }
+    while (_rowScrollControllers.length > rowCount) {
+      _rowScrollControllers.removeLast().dispose();
+    }
+  }
+
+  /// 追加されたトークンが行の先頭かどうか（先頭挿入なら true）
+  static bool _grewAtStart(List<String> before, List<String> after) {
+    if (before.isEmpty) return false;
+    return after.first != before.first;
+  }
+
+  /// 行の水平スクロールを新規ボタンの位置まで移動する
+  void _scheduleScrollToNewToken(
+    ScrollController controller, {
+    required bool atStart,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !controller.hasClients) return;
+      final position = controller.position;
+      if (position.maxScrollExtent > 0) {
+        controller.animateTo(
+          atStart ? 0 : position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -100,6 +176,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     _directInputController.removeListener(_onDirectInputChanged);
     _directInputController.dispose();
     _directInputFocusNode.dispose();
+    for (final controller in _rowScrollControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -152,7 +231,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       return;
     }
 
-    // Sentinelが削除された = Backspaceが押された（iOS/iPadOS対応）
+    // Sentinelが削除された = 全テキスト削除（iOS/iPadOS対応のBackspace検出）
     if (text.isEmpty) {
       _lastComposingText = null;
       _sendDirectBackspace();
@@ -163,31 +242,44 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     // Sentinelを除去して実際の入力テキストを取得
     final actualText = text.replaceAll(_sentinel, '');
 
-    // 実際のテキストがあれば送信
-    if (actualText.isNotEmpty) {
-      // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-      if (_isRecentKeyEventHandled()) {
-        _lastComposingText = null;
-        _resetToSentinel();
-        return;
-      }
-
-      // iOS重複検出: 確定テキストがcomposingテキストより長く、
-      // composingテキストで始まる場合、iOSの重複挿入とみなしcomposingテキストを使用
-      String textToSend = actualText;
-      if (_lastComposingText != null &&
-          actualText.length > _lastComposingText!.length &&
-          actualText.startsWith(_lastComposingText!)) {
-        textToSend = _lastComposingText!;
-      }
+    // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
+    if (_isRecentKeyEventHandled()) {
       _lastComposingText = null;
+      // キーイベント側で送信済みなので、欄のテキストは残したまま送信済みとして記録
+      _sentText = actualText;
+      return;
+    }
 
+    // 変化なし（IMEノイズ）なら何もしない
+    if (actualText == _sentText) return;
+    _lastComposingText = null;
+
+    // デルタ送信: 送信済みテキストとの共通接頭辞を除いた差分のみを送信する。
+    // 入力欄にテキストを残して可視化しつつ、追加分は逐次送信、
+    // 削除分はBSpaceを送信する。
+    var common = 0;
+    final minLen = _sentText.length < actualText.length
+        ? _sentText.length
+        : actualText.length;
+    while (common < minLen && _sentText[common] == actualText[common]) {
+      common++;
+    }
+    final removed = _sentText.length - common;
+    final appended = actualText.substring(common);
+
+    if (removed > 0) {
+      for (var r = 0; r < removed; r++) {
+        _sendDirectBackspace();
+      }
+    }
+
+    if (appended.isNotEmpty) {
       // Send modifier+key when CTRL/ALT is active (non-composing path)
       // This handles IMEs that commit without composing (e.g. Gboard English)
       // tmux format: C-c (Ctrl+C), M-a (Alt+A), C-M-x (Ctrl+Alt+X)
       if ((_ctrlPressed || _altPressed) &&
-          textToSend.length == 1 &&
-          RegExp(r'^[A-Za-z]$').hasMatch(textToSend)) {
+          appended.length == 1 &&
+          RegExp(r'^[A-Za-z]$').hasMatch(appended)) {
         if (widget.hapticFeedback) {
           HapticFeedback.lightImpact();
         }
@@ -201,14 +293,24 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           setState(() => _altPressed = false);
         }
         final prefix = modifiers.join('-');
-        widget.onSpecialKeyPressed('$prefix-${textToSend.toLowerCase()}');
-      } else {
-        widget.onKeyPressed(textToSend);
+        widget.onSpecialKeyPressed('$prefix-${appended.toLowerCase()}');
+
+        // 修飾キーとして消費した文字を入力欄から除去し、可視テキストと整合させる
+        final kept = actualText.substring(0, common);
+        _isResettingController = true;
+        _directInputController.value = TextEditingValue(
+          text: _sentinel + kept,
+          selection: TextSelection.collapsed(offset: kept.length + 1),
+        );
+        _isResettingController = false;
+        _sentText = kept;
+        return;
       }
 
-      // 送信後にsentinelにリセット
-      _resetToSentinel();
+      widget.onKeyPressed(appended);
     }
+
+    _sentText = actualText;
   }
 
   /// DirectInput: ソフトウェアキーボードのEnter（送信）で呼ばれる
@@ -237,6 +339,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   /// iOSプラットフォームがIME確定時に送る遅延テキスト更新を吸収する。
   /// PostFrameCallbackでcontrollerが上書きされていれば再度sentinelにリセットする。
   void _resetToSentinel() {
+    _sentText = '';
     _isResettingController = true;
     _directInputController.value = TextEditingValue(
       text: _sentinel,
@@ -418,6 +521,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
+
+    // Rows render exactly the tokens they hold, subject to mode skips.
+    final visibleRows = [for (final row in widget.rows) _visibleTokens(row)];
+
+    // The manage (pencil) button is pinned to the end of the first row that
+    // renders anything — the top row is the custom row, so it lands next to
+    // the user's own buttons. When no row renders (every row empty, or no rows
+    // at all) a pencil-only strip keeps the editor reachable.
+    final pencilHost = visibleRows.indexWhere((row) => row.isNotEmpty);
+
     return Container(
       decoration: BoxDecoration(
         color: isDark
@@ -430,8 +543,9 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildModifierKeysRow(),
-            _buildArrowKeysRow(),
+            for (var row = 0; row < visibleRows.length; row++)
+              _buildRow(row, visibleRows[row], hostsPencil: row == pencilHost),
+            if (pencilHost < 0) _buildPencilOnlyRow(),
             if (widget.directInputEnabled) _buildDirectInputRow(),
             const SizedBox(height: 4),
           ],
@@ -440,8 +554,34 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     );
   }
 
-  /// 上部の修飾キー行（ESC, TAB, CTRL, ALT, SHIFT, ENTER, S-RET, /, -）
-  Widget _buildModifierKeysRow() {
+  /// 1行を描画する。既定と完全一致する行だけ従来の固定描画を使い、それ以外は
+  /// 汎用の水平スクロール行で描く（判定は行の内容だけで、行番号には依らない）。
+  Widget _buildRow(int row, List<String> tokens, {required bool hostsPencil}) {
+    final stored = widget.rows[row];
+    if (listEquals(stored, CustomKeyRows.standardRow1)) {
+      return _buildLegacyModifierKeysRow(withManageButton: hostsPencil);
+    }
+    if (listEquals(stored, CustomKeyRows.standardRow2) && !hostsPencil) {
+      return _buildLegacyArrowKeysRow();
+    }
+    return _buildGenericTokenRow(
+      tokens: tokens,
+      height: 32,
+      scrollController: _rowScrollControllers[row],
+      showManageButton: hostsPencil,
+    );
+  }
+
+  /// トークンを描く行が1つも無いときの受け皿（鉛筆ボタンのみ）。
+  Widget _buildPencilOnlyRow() => _buildGenericTokenRow(
+    tokens: const <String>[],
+    height: 32,
+    scrollController: null,
+    showManageButton: true,
+  );
+
+  /// 行1の従来レイアウト（ESC…dash、必要なら鉛筆ボタン）。既定レイアウト専用。
+  Widget _buildLegacyModifierKeysRow({required bool withManageButton}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -463,117 +603,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           _buildShiftEnterKeyButton(),
           _buildLiteralKeyButton('/', '/'),
           _buildLiteralKeyButton('-', '-'),
+          if (withManageButton) _buildManageButton(),
         ],
       ),
     );
   }
 
-  /// Shift+Enterキーボタン（Claude CodeのAcceptEdits等用）
-  Widget _buildShiftEnterKeyButton() {
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-        },
-        onTap: () => _sendSpecialKey('S-Enter'),
-        child: Container(
-          height: 32,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: DesignColors.secondary.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: DesignColors.secondary.withValues(alpha: 0.5),
-                width: 2,
-              ),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              'S-RET',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: DesignColors.secondary,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// ENTERキーボタン（単体でEnterを送信）
-  Widget _buildEnterKeyButton() {
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-        },
-        onTap: () => _sendSpecialKey('Enter'),
-        child: Container(
-          height: 32,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: DesignColors.primary.withValues(alpha: 0.3),
-            borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: DesignColors.primary.withValues(alpha: 0.5),
-                width: 2,
-              ),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
-          ),
-          child: Center(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.keyboard_return,
-                    size: 12,
-                    color: DesignColors.primary,
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    'RET',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: DesignColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 下部の矢印キー + Inputボタン行
-  Widget _buildArrowKeysRow() {
+  /// 行2の従来レイアウト（ナビゲーション + 数字/Input）。既定レイアウト専用。
+  Widget _buildLegacyArrowKeysRow() {
     if (widget.directInputEnabled) {
       return SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -604,6 +641,286 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           const SizedBox(width: 4),
           Expanded(child: _buildInputButton()),
         ],
+      ),
+    );
+  }
+
+  /// 汎用の水平スクロール行：保持トークンを順に描画し、必要なら
+  /// 鉛筆ボタンをスクロールの外に固定する。
+  Widget _buildGenericTokenRow({
+    required List<String> tokens,
+    required double height,
+    ScrollController? scrollController,
+    required bool showManageButton,
+  }) {
+    if (tokens.isEmpty && !showManageButton) {
+      return const SizedBox.shrink();
+    }
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+      child: Row(
+        children: [
+          if (tokens.isNotEmpty)
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollController,
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final token in tokens) ...[
+                      _buildToken(token, height: height),
+                      const SizedBox(width: 2),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            const Spacer(),
+          if (showManageButton) _buildManageButton(),
+        ],
+      ),
+    );
+  }
+
+  /// モード依存のスキップを適用した可視トークン列。
+  List<String> _visibleTokens(List<String> tokens) =>
+      tokens.where(_shouldRenderToken).toList();
+
+  /// 標準トークン・カスタムトークンを問わず単一トークンを描画する。
+  /// [height] はカスタムボタンの高さ（行0/行1=32、行2=36）。
+  Widget _buildToken(String token, {required double height}) {
+    switch (token) {
+      case 'esc':
+        return _buildSpecialKeyButton('ESC', 'Escape', width: 40);
+      case 'tab':
+        return _buildSpecialKeyButton('TAB', 'Tab', width: 40);
+      case 'ctrl':
+        return _buildModifierButton('CTRL', _ctrlPressed, () {
+          setState(() => _ctrlPressed = !_ctrlPressed);
+        }, width: 44);
+      case 'alt':
+        return _buildModifierButton('ALT', _altPressed, () {
+          setState(() => _altPressed = !_altPressed);
+        }, width: 44);
+      case 'shift':
+        return _buildModifierButton('SHIFT', _shiftPressed, () {
+          setState(() => _shiftPressed = !_shiftPressed);
+        }, width: 48);
+      case 'enter':
+        return _buildEnterKeyButton(width: 56);
+      case 'senter':
+        return _buildShiftEnterKeyButton(width: 56);
+      case 'slash':
+        return _buildLiteralKeyButton('/', '/', width: 32);
+      case 'dash':
+        return _buildLiteralKeyButton('-', '-', width: 32);
+      case 'pgup':
+        return _buildNavigationKeyButton('PgUp', 'PPage');
+      case 'pgdn':
+        return _buildNavigationKeyButton('PgDn', 'NPage');
+      case 'left':
+        return _buildArrowButton(Icons.arrow_left, 'Left');
+      case 'up':
+        return _buildArrowButton(Icons.arrow_drop_up, 'Up');
+      case 'down':
+        return _buildArrowButton(Icons.arrow_drop_down, 'Down');
+      case 'right':
+        return _buildArrowButton(Icons.arrow_right, 'Right');
+      case 'image':
+        return _buildImageTransferButton();
+      case 'di_toggle':
+        return _buildDirectInputToggle();
+      case 'input':
+        return SizedBox(width: 64, child: _buildInputButton());
+      case 'num1':
+        return _buildNumberKeyButton('1');
+      case 'num2':
+        return _buildNumberKeyButton('2');
+      case 'num3':
+        return _buildNumberKeyButton('3');
+      case 'num4':
+        return _buildNumberKeyButton('4');
+      default:
+        final button = _buttonForToken(token);
+        if (button == null) return const SizedBox.shrink();
+        return SizedBox(
+          width: _labelWidth(button.label),
+          child: _buildCustomKeyButton(button, height: height),
+        );
+    }
+  }
+
+  /// モード依存のトークンスキップ（input / num1..num4 / image）
+  bool _shouldRenderToken(String token) {
+    if (token == 'input') return !widget.directInputEnabled;
+    if (CustomKeyRows.directInputExtras.contains(token)) {
+      return widget.directInputEnabled;
+    }
+    if (token == 'image') return widget.onImagePickRequested != null;
+    return true;
+  }
+
+  /// カスタムボタンのトークン解決（`ck:<id-suffix>` → CustomKeyButton）
+  CustomKeyButton? _buttonForToken(String token) {
+    if (!CustomKeyRows.isCustomToken(token)) return null;
+    final id = 'ck_${token.substring(3)}';
+    for (final b in widget.customButtons) {
+      if (b.id == id) return b;
+    }
+    return null;
+  }
+
+  /// ラベル長に応じたカスタムボタン幅（44〜96px）
+  double _labelWidth(String label) =>
+      (label.length * 7.0 + 14.0).clamp(44.0, 96.0).toDouble();
+
+  /// カスタムボタン：タップ時にソフトウェア修飾子をリセットしてから送信
+  Widget _buildCustomKeyButton(CustomKeyButton button, {double height = 32}) {
+    return CustomKeyButtonWidget(
+      button: button,
+      height: height,
+      onKeyPressed: (key) {
+        _resetSoftwareModifiers();
+        widget.onKeyPressed(key);
+      },
+      onSpecialKeyPressed: (key) {
+        _resetSoftwareModifiers();
+        widget.onSpecialKeyPressed(key);
+      },
+      onEdit: (b) => widget.onCustomButtonEdit?.call(b),
+      hapticFeedback: widget.hapticFeedback,
+    );
+  }
+
+  /// Shift+Enterキーボタン（Claude CodeのAcceptEdits等用）
+  Widget _buildShiftEnterKeyButton({double? width}) {
+    final button = GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: () => _sendSpecialKey('S-Enter'),
+      child: Container(
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: DesignColors.secondary.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(4),
+          border: Border(
+            bottom: BorderSide(
+              color: DesignColors.secondary.withValues(alpha: 0.5),
+              width: 2,
+            ),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            'S-RET',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              color: DesignColors.secondary,
+            ),
+          ),
+        ),
+      ),
+    );
+    return width == null
+        ? Expanded(child: button)
+        : SizedBox(width: width, child: button);
+  }
+
+  /// ENTERキーボタン（単体でEnterを送信）
+  Widget _buildEnterKeyButton({double? width}) {
+    final button = GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: () => _sendSpecialKey('Enter'),
+      child: Container(
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: DesignColors.primary.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(4),
+          border: Border(
+            bottom: BorderSide(
+              color: DesignColors.primary.withValues(alpha: 0.5),
+              width: 2,
+            ),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.keyboard_return,
+                  size: 12,
+                  color: DesignColors.primary,
+                ),
+                const SizedBox(width: 2),
+                Text(
+                  'RET',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: DesignColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return width == null
+        ? Expanded(child: button)
+        : SizedBox(width: width, child: button);
+  }
+
+  /// ボタン管理画面を開く鉛筆ボタン（32×32、行1末尾・スクロール外に固定）
+  Widget _buildManageButton() {
+    return GestureDetector(
+      onTap: () {
+        if (widget.hapticFeedback) {
+          HapticFeedback.selectionClick();
+        }
+        widget.onManageButtons?.call();
+      },
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: DesignColors.keyBackground,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: const Center(
+          child: Icon(Icons.edit_outlined, size: 18, color: Colors.white70),
+        ),
       ),
     );
   }
@@ -762,157 +1079,161 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
   }
 
   /// 特殊キーボタン（tmux形式で送信）
-  Widget _buildSpecialKeyButton(String label, String tmuxKey) {
+  Widget _buildSpecialKeyButton(String label, String tmuxKey, {double? width}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-        },
-        onTap: () => _sendSpecialKey(tmuxKey),
-        child: Container(
-          height: 32,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: isDark
-                ? DesignColors.keyBackground
-                : DesignColors.keyBackgroundLight,
-            borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: isDark ? Colors.black : Colors.grey.shade400,
-                width: 2,
-              ),
+    final button = GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: () => _sendSpecialKey(tmuxKey),
+      child: Container(
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
+          borderRadius: BorderRadius.circular(4),
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.black : Colors.grey.shade400,
+              width: 2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface.withValues(alpha: 0.9),
-              ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface.withValues(alpha: 0.9),
             ),
           ),
         ),
       ),
     );
+    return width == null
+        ? Expanded(child: button)
+        : SizedBox(width: width, child: button);
   }
 
   /// リテラルキーボタン（そのまま文字として送信）
-  Widget _buildLiteralKeyButton(String label, String key) {
+  Widget _buildLiteralKeyButton(String label, String key, {double? width}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-        },
-        onTap: () => _sendLiteralKey(key),
-        child: Container(
-          height: 32,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: isDark
-                ? DesignColors.keyBackground
-                : DesignColors.keyBackgroundLight,
-            borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: isDark ? Colors.black : Colors.grey.shade400,
-                width: 2,
-              ),
+    final button = GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: () => _sendLiteralKey(key),
+      child: Container(
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isDark
+              ? DesignColors.keyBackground
+              : DesignColors.keyBackgroundLight,
+          borderRadius: BorderRadius.circular(4),
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.black : Colors.grey.shade400,
+              width: 2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface.withValues(alpha: 0.9),
-              ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface.withValues(alpha: 0.9),
             ),
           ),
         ),
       ),
     );
+    return width == null
+        ? Expanded(child: button)
+        : SizedBox(width: width, child: button);
   }
 
   Widget _buildModifierButton(
     String label,
     bool isPressed,
-    VoidCallback onPressed,
-  ) {
+    VoidCallback onPressed, {
+    double? width,
+  }) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-        },
-        onTap: onPressed,
-        child: Container(
-          height: 32,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: BoxDecoration(
-            color: isPressed
-                ? colorScheme.primary
-                : (isDark
-                      ? DesignColors.keyBackground
-                      : DesignColors.keyBackgroundLight),
-            borderRadius: BorderRadius.circular(4),
-            border: Border(
-              bottom: BorderSide(
-                color: isPressed
-                    ? colorScheme.primary
-                    : (isDark ? Colors.black : Colors.grey.shade400),
-                width: 2,
-              ),
+    final button = GestureDetector(
+      onTapDown: (_) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+      },
+      onTap: onPressed,
+      child: Container(
+        height: 32,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isPressed
+              ? colorScheme.primary
+              : (isDark
+                    ? DesignColors.keyBackground
+                    : DesignColors.keyBackgroundLight),
+          borderRadius: BorderRadius.circular(4),
+          border: Border(
+            bottom: BorderSide(
+              color: isPressed
+                  ? colorScheme.primary
+                  : (isDark ? Colors.black : Colors.grey.shade400),
+              width: 2,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
           ),
-          child: Center(
-            child: Text(
-              label,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: isPressed ? colorScheme.onPrimary : colorScheme.primary,
-              ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
+              blurRadius: 2,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: isPressed ? colorScheme.onPrimary : colorScheme.primary,
             ),
           ),
         ),
       ),
     );
+    return width == null
+        ? Expanded(child: button)
+        : SizedBox(width: width, child: button);
   }
 
   Widget _buildArrowButton(IconData icon, String tmuxKey) {
