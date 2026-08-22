@@ -529,7 +529,11 @@ class AnsiParser {
       fg = bg;
       bg = temp;
     }
-    return (foreground: fg, background: bg, paintBackground: style.inverse || bg != defaultBackground);
+    return (
+      foreground: fg,
+      background: bg,
+      paintBackground: style.inverse || bg != defaultBackground,
+    );
   }
 
   /// 行全体の有効背景色（行末まで延長・空行背景用）を返す。

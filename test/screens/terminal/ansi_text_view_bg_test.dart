@@ -51,9 +51,7 @@ void main() {
   int countColoredBoxes(WidgetTester tester, Color color) {
     return tester
         .widgetList<ColoredBox>(
-          find.byWidgetPredicate(
-            (w) => w is ColoredBox && w.color == color,
-          ),
+          find.byWidgetPredicate((w) => w is ColoredBox && w.color == color),
         )
         .length;
   }
@@ -62,20 +60,14 @@ void main() {
     await tester.pumpWidget(buildSubject('\x1b[42mgreen text\x1b[0m'));
     await tester.pumpAndSettle();
 
-    expect(
-      countColoredBoxes(tester, greenBackground),
-      greaterThanOrEqualTo(1),
-    );
+    expect(countColoredBoxes(tester, greenBackground), greaterThanOrEqualTo(1));
   });
 
   testWidgets('SGRのみの空行にも背景レイヤーが描画される', (tester) async {
     await tester.pumpWidget(buildSubject('before\n\x1b[42m\nafter'));
     await tester.pumpAndSettle();
 
-    expect(
-      countColoredBoxes(tester, greenBackground),
-      greaterThanOrEqualTo(1),
-    );
+    expect(countColoredBoxes(tester, greenBackground), greaterThanOrEqualTo(1));
   });
 
   testWidgets('デフォルト背景の行には追加の背景レイヤーが無い', (tester) async {
