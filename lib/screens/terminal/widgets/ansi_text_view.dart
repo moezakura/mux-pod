@@ -855,6 +855,29 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               );
             }
 
+            // 行背景レイヤー（C-001）: 背景色付き行は行末まで、空行は行全体を
+            // 塗る。テキストは実データのまま、背景を下層レイヤーで描画する。
+            // 背景 Container は IgnorePointer で包み、タップ・選択を奪わない。
+            final Color? lineBackground = _parser.effectiveLineBackgroundColor(
+              line,
+            );
+            if (lineBackground != null) {
+              lineWidget = Stack(
+                children: [
+                  // 幅 terminalWidth の背景（非 positioned 子として Stack を
+                  // pane 幅に固定し、テキスト幅より右側も塗る）。
+                  IgnorePointer(
+                    child: SizedBox(
+                      width: terminalWidth,
+                      height: _lineHeight,
+                      child: ColoredBox(color: lineBackground),
+                    ),
+                  ),
+                  lineWidget,
+                ],
+              );
+            }
+
             // 固定幅コンテナ（水平スクロール用）
             if (needsHorizontalScroll) {
               lineWidget = SizedBox(width: terminalWidth, child: lineWidget);

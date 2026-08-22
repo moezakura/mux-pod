@@ -404,15 +404,11 @@ class AnsiParser {
     required String fontFamily,
   }) {
     final style = segment.style;
-    var fg = style.foreground ?? defaultForeground;
-    var bg = style.background ?? defaultBackground;
-
-    // 反転
-    if (style.inverse) {
-      final temp = fg;
-      fg = bg;
-      bg = temp;
-    }
+    final (:foreground, :background, :paintBackground) = resolvePaintColors(
+      style,
+    );
+    var fg = foreground;
+    final bg = background;
 
     // 薄暗い
     if (style.dim) {
@@ -431,7 +427,7 @@ class AnsiParser {
         fontFamily,
         fontSize: fontSize,
         color: fg,
-        backgroundColor: (style.inverse || bg != defaultBackground) ? bg : null,
+        backgroundColor: paintBackground ? bg : null,
         fontWeight: style.bold ? FontWeight.bold : FontWeight.normal,
         fontStyle: style.italic ? FontStyle.italic : FontStyle.normal,
         decoration: TextDecoration.combine([
@@ -517,6 +513,42 @@ class AnsiParser {
     }
 
     return (segments: segments, endStyle: currentStyle);
+  }
+
+  /// セグメント/行スタイルから描画用の前景色・背景色と「背景を描くか」を決定する。
+  ///
+  /// inverse 時は前背景を入れ替え、`inverse || 背景≠default` のときのみ背景を
+  /// 描画する。[_segmentToTextSpan]（セグメント描画）と
+  /// [effectiveLineBackgroundColor]（行背景レイヤー）の単一ソース（R3）。
+  ({Color foreground, Color background, bool paintBackground})
+  resolvePaintColors(AnsiStyle style) {
+    var fg = style.foreground ?? defaultForeground;
+    var bg = style.background ?? defaultBackground;
+    if (style.inverse) {
+      final temp = fg;
+      fg = bg;
+      bg = temp;
+    }
+    return (
+      foreground: fg,
+      background: bg,
+      paintBackground: style.inverse || bg != defaultBackground,
+    );
+  }
+
+  /// 行全体の有効背景色（行末まで延長・空行背景用）を返す。
+  ///
+  /// 行末の空白セルは最終セグメントと同じスタイルを持つため、最終セグメント
+  /// （空行は [ParsedLine.endStyle]）から inverse 適用後の有効背景色を導出する。
+  /// デフォルト背景と等しい場合は null（背景レイヤー不要）を返す。
+  Color? effectiveLineBackgroundColor(ParsedLine line) {
+    final style = line.segments.isEmpty
+        ? line.endStyle
+        : line.segments.last.style;
+    final (:foreground, :background, :paintBackground) = resolvePaintColors(
+      style,
+    );
+    return paintBackground ? background : null;
   }
 
   /// ParsedLineをTextSpanに変換

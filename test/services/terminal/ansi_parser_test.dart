@@ -174,5 +174,46 @@ void main() {
       // Swapped: BG should be 0xFFD4D4D4
       expect(cursorSpan.style!.backgroundColor, const Color(0xFFD4D4D4));
     });
+
+    group('effectiveLineBackgroundColor', () {
+      test('returns null for plain line (default background)', () {
+        final lines = parser.parseLines('plain text');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+
+      test('returns segment background for colored line', () {
+        // 青背景 44 = standardColors[4] = 0xFF2472C8
+        final lines = parser.parseLines('\x1b[44mCOLORED-TEXT\x1b[49m');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF2472C8),
+        );
+      });
+
+      test('returns endStyle background for empty line with SGR only', () {
+        // 緑背景 42 のみでテキスト無しの空行
+        final lines = parser.parseLines('\x1b[42m');
+        expect(lines[0].segments, isEmpty);
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF0DBC79),
+        );
+      });
+
+      test('returns inverse-swapped foreground for inverse line', () {
+        // 反転時は有効背景 = 元の前景（デフォルト前景）
+        final lines = parser.parseLines('\x1b[7mreversed');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFFD4D4D4), // defaultForeground
+        );
+      });
+
+      test('uses last segment style for trailing style', () {
+        // 前半は赤背景、後半はリセット済み → 有効背景は default → null
+        final lines = parser.parseLines('\x1b[41mRED\x1b[49m tail');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+    });
   });
 }
