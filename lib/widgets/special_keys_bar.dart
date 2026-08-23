@@ -28,6 +28,17 @@ class SpecialKeysBar extends StatefulWidget {
   /// DirectInputモードのトグルコールバック
   final VoidCallback? onDirectInputToggle;
 
+  /// CJK Mode: IME確定ごとに全文送信して入力欄をクリアする
+  /// 旧来（v0.7.0-pre4）のDirectInput挙動を使うか。
+  /// iOSのCJK系IMEで発生する多重送信回避用（設定画面はiOSのみ表示）。
+  final bool cjkMode;
+
+  /// DirectInput: Enter送信後もソフトウェアキーボードを開いたままにするか。
+  /// フレームワーク既定では TextInputAction.send 受信時に unfocus されるため、
+  /// 送信後に同期 requestFocus() で unfocus をキャンセルして実現する
+  /// （ソフトキーボード経路のみ）。
+  final bool keepKeyboardOnEnter;
+
   /// 画像転送ボタンが押された時のコールバック
   final VoidCallback? onImagePickRequested;
 
@@ -52,6 +63,8 @@ class SpecialKeysBar extends StatefulWidget {
     this.hapticFeedback = true,
     this.directInputEnabled = false,
     this.onDirectInputToggle,
+    this.cjkMode = false,
+    this.keepKeyboardOnEnter = false,
     this.onImagePickRequested,
     this.customButtons = const [],
     this.onCustomButtonEdit,
@@ -121,6 +134,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
       _directInputController.clear();
       _isResettingController = false;
       _sentText = '';
+    }
+    // CJKモード切替時は入力欄をリセットし、旧モードのdelta状態を残さない
+    if (widget.cjkMode != oldWidget.cjkMode && widget.directInputEnabled) {
+      _resetToSentinel();
     }
     _syncRowControllers(widget.rows.length);
     // 新規トークンが追加された行を、その位置（先頭/末尾）まで自動スクロールする
@@ -242,6 +259,58 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     // Sentinelを除去して実際の入力テキストを取得
     final actualText = text.replaceAll(_sentinel, '');
 
+    // CJK Mode（v0.7.0-pre4挙動）: 確定テキストを全文送信してからsentinelへ
+    // リセットする。入力欄にテキストを残さないためiOSの自動補正（".."→"‥"
+    // 等）が働かず、IME確定時の重複挿入もcomposingテキストとの比較で除去される。
+    if (widget.cjkMode) {
+      if (actualText.isEmpty) return;
+
+      // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
+      if (_isRecentKeyEventHandled()) {
+        _lastComposingText = null;
+        _resetToSentinel();
+        return;
+      }
+
+      // iOS重複検出: 確定テキストがcomposingテキストより長く、
+      // composingテキストで始まる場合、iOSの重複挿入とみなしcomposingテキストを使用
+      String textToSend = actualText;
+      if (_lastComposingText != null &&
+          actualText.length > _lastComposingText!.length &&
+          actualText.startsWith(_lastComposingText!)) {
+        textToSend = _lastComposingText!;
+      }
+      _lastComposingText = null;
+
+      // Send modifier+key when CTRL/ALT is active (non-composing path)
+      // This handles IMEs that commit without composing (e.g. Gboard English)
+      // tmux format: C-c (Ctrl+C), M-a (Alt+A), C-M-x (Ctrl+Alt+X)
+      if ((_ctrlPressed || _altPressed) &&
+          textToSend.length == 1 &&
+          RegExp(r'^[A-Za-z]$').hasMatch(textToSend)) {
+        if (widget.hapticFeedback) {
+          HapticFeedback.lightImpact();
+        }
+        final List<String> modifiers = [];
+        if (_ctrlPressed) {
+          modifiers.add('C');
+          setState(() => _ctrlPressed = false);
+        }
+        if (_altPressed) {
+          modifiers.add('M');
+          setState(() => _altPressed = false);
+        }
+        final prefix = modifiers.join('-');
+        widget.onSpecialKeyPressed('$prefix-${textToSend.toLowerCase()}');
+      } else {
+        widget.onKeyPressed(textToSend);
+      }
+
+      // 送信後にsentinelにリセット
+      _resetToSentinel();
+      return;
+    }
+
     // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
     if (_isRecentKeyEventHandled()) {
       _lastComposingText = null;
@@ -323,6 +392,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     }
     widget.onSpecialKeyPressed('Enter');
     _resetToSentinel();
+
+    // 「Enterでキーボードを閉じない」設定:
+    // unfocus() はマイクロタスク適用（focus_manager._markNextFocus）のため、
+    // onSubmitted 内の同期 requestFocus() で実質キャンセルでき、フィールドは
+    // フォーカスを一切失わない。フレームワークはこのパターンを明示サポート
+    // （editable_text.dart L3899-3906: onSubmitted内でフォーカスを戻した場合は
+    // _restartConnectionIfNeeded が接続を張り直してキーボードを開いたままリセット）。
+    if (widget.keepKeyboardOnEnter) {
+      _directInputFocusNode.requestFocus();
+    }
   }
 
   /// DirectInput: Backspaceキー送信
@@ -1052,6 +1131,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                 focusNode: _directInputFocusNode,
                 autofocus: true,
                 textInputAction: TextInputAction.send,
+                // ターミナルへのパススルー入力のため、OSによるテキスト書き換えを
+                // 無効化する（iOS自動補正の ".."→"‥" 置換、Smart Dashes /
+                // Smart Quotes、スペルチェックによる確定も防止）。
+                // ※ enableSuggestions: false は設定しないこと:
+                //   Androidエンジン（TextInputPlugin.inputTypeFromTextInputType）が
+                //   inputType に TYPE_TEXT_VARIATION_VISIBLE_PASSWORD を付加し、
+                //   IME変換（日本語入力）が不可能になるため。
+                autocorrect: false,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
                 onSubmitted: _onDirectInputSubmitted,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 14,

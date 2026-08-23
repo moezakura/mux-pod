@@ -247,4 +247,107 @@ void main() {
       expect(container.read(settingsProvider).language, 'ja');
     });
   });
+
+  group('SettingsNotifier cjkMode 永続化', () {
+    test('未保存時はデフォルト false になる', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+
+      expect(container.read(settingsProvider).cjkMode, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('settings_cjk_mode'), isFalse);
+    });
+
+    test('setCjkMode で state が更新され SharedPreferences に保存される', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+      await container.read(settingsProvider.notifier).setCjkMode(true);
+
+      expect(container.read(settingsProvider).cjkMode, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('settings_cjk_mode'), isTrue);
+    });
+
+    test('保存した cjkMode は新規コンテナ（再起動相当）の再読込で復元される', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(settingsProvider.notifier).reload();
+      await container.read(settingsProvider.notifier).setCjkMode(true);
+
+      final restarted = ProviderContainer();
+      addTearDown(restarted.dispose);
+      await restarted.read(settingsProvider.notifier).reload();
+
+      expect(restarted.read(settingsProvider).cjkMode, isTrue);
+    });
+
+    test('copyWith は cjkMode を指定しない場合他の設定のみ変更する', () {
+      const base = AppSettings(cjkMode: true);
+      final updated = base.copyWith(keepScreenOn: false);
+      expect(updated.cjkMode, isTrue);
+      expect(updated.keepScreenOn, isFalse);
+
+      final toggled = base.copyWith(cjkMode: false);
+      expect(toggled.cjkMode, isFalse);
+    });
+  });
+
+  group('SettingsNotifier keepKeyboardOnEnter 永続化', () {
+    test('未保存時はデフォルト false になる', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+
+      expect(container.read(settingsProvider).keepKeyboardOnEnter, isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('settings_keep_keyboard_on_enter'), isFalse);
+    });
+
+    test(
+      'setKeepKeyboardOnEnter で state が更新され SharedPreferences に保存される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setKeepKeyboardOnEnter(true);
+
+        expect(container.read(settingsProvider).keepKeyboardOnEnter, isTrue);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
+      },
+    );
+
+    test('保存した keepKeyboardOnEnter は新規コンテナ（再起動相当）の再読込で復元される', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(settingsProvider.notifier).reload();
+      await container
+          .read(settingsProvider.notifier)
+          .setKeepKeyboardOnEnter(true);
+
+      final restarted = ProviderContainer();
+      addTearDown(restarted.dispose);
+      await restarted.read(settingsProvider.notifier).reload();
+
+      expect(restarted.read(settingsProvider).keepKeyboardOnEnter, isTrue);
+    });
+
+    test('copyWith は keepKeyboardOnEnter を指定しない場合他の設定のみ変更する', () {
+      const base = AppSettings(keepKeyboardOnEnter: true);
+      final updated = base.copyWith(keepScreenOn: false);
+      expect(updated.keepKeyboardOnEnter, isTrue);
+      expect(updated.keepScreenOn, isFalse);
+
+      final toggled = base.copyWith(keepKeyboardOnEnter: false);
+      expect(toggled.keepKeyboardOnEnter, isFalse);
+    });
+  });
 }

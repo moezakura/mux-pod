@@ -34,6 +34,14 @@ class AppSettings {
   /// DirectInputモード（入力した文字を即座にターミナルに送信）
   final bool directInputEnabled;
 
+  /// CJK Mode: IME確定ごとに全文送信して入力欄をクリアする旧来
+  /// （v0.7.0-pre4）のDirectInput挙動を使うか。
+  /// iOSのCJK系IMEで発生する多重送信回避用（設定UIはiOSのみ表示）。
+  final bool cjkMode;
+
+  /// DirectInput: Enter送信後もソフトウェアキーボードを開いたままにするか。
+  final bool keepKeyboardOnEnter;
+
   /// ターミナルカーソルの表示設定
   final bool showTerminalCursor;
 
@@ -101,6 +109,8 @@ class AppSettings {
     this.zoomFactor = 1.0,
     this.adjustMode = 'autoFit',
     this.directInputEnabled = false,
+    this.cjkMode = false,
+    this.keepKeyboardOnEnter = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
     // inventory: SETTINGS-SCROLL-SEND-002
@@ -145,6 +155,8 @@ class AppSettings {
     double? zoomFactor,
     String? adjustMode,
     bool? directInputEnabled,
+    bool? cjkMode,
+    bool? keepKeyboardOnEnter,
     bool? showTerminalCursor,
     bool? invertPaneNavigation,
     // inventory: SETTINGS-SCROLL-SEND-003
@@ -185,6 +197,8 @@ class AppSettings {
       zoomFactor: zoomFactor ?? this.zoomFactor,
       adjustMode: adjustMode ?? this.adjustMode,
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
+      cjkMode: cjkMode ?? this.cjkMode,
+      keepKeyboardOnEnter: keepKeyboardOnEnter ?? this.keepKeyboardOnEnter,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
       scrollSendInput: scrollSendInput ?? this.scrollSendInput,
@@ -228,6 +242,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _zoomFactorKey = 'settings_zoom_factor';
   static const String _adjustModeKey = 'settings_adjust_mode';
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
+  static const String _cjkModeKey = 'settings_cjk_mode';
+  static const String _keepKeyboardOnEnterKey =
+      'settings_keep_keyboard_on_enter';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
   // inventory: SETTINGS-SCROLL-SEND-004
@@ -284,6 +301,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       zoomFactor: prefs.getDouble(_zoomFactorKey) ?? 1.0,
       adjustMode: prefs.getString(_adjustModeKey) ?? 'autoFit',
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
+      cjkMode: prefs.getBool(_cjkModeKey) ?? false,
+      keepKeyboardOnEnter: prefs.getBool(_keepKeyboardOnEnterKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
       // inventory: SETTINGS-SCROLL-SEND-005
@@ -491,6 +510,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
   /// DirectInputモードをトグル
   Future<void> toggleDirectInput() async {
     await setDirectInputEnabled(!state.directInputEnabled);
+  }
+
+  /// CJK Mode（IME確定ごとに送信してクリアする旧来のDirectInput挙動）を設定
+  Future<void> setCjkMode(bool value) async {
+    state = state.copyWith(cjkMode: value);
+    await _saveSetting(_cjkModeKey, value);
+  }
+
+  /// Enter送信後もソフトウェアキーボードを開いたままにする
+  Future<void> setKeepKeyboardOnEnter(bool value) async {
+    state = state.copyWith(keepKeyboardOnEnter: value);
+    await _saveSetting(_keepKeyboardOnEnterKey, value);
   }
 
   /// ターミナルカーソル表示設定を設定
