@@ -308,23 +308,24 @@ void main() {
       expect(prefs.containsKey('settings_keep_keyboard_on_enter'), isFalse);
     });
 
-    test('setKeepKeyboardOnEnter で state が更新され SharedPreferences に保存される',
-        () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'setKeepKeyboardOnEnter で state が更新され SharedPreferences に保存される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await container.read(settingsProvider.notifier).reload();
-      await container
-          .read(settingsProvider.notifier)
-          .setKeepKeyboardOnEnter(true);
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setKeepKeyboardOnEnter(true);
 
-      expect(container.read(settingsProvider).keepKeyboardOnEnter, isTrue);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
-    });
+        expect(container.read(settingsProvider).keepKeyboardOnEnter, isTrue);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
+      },
+    );
 
-    test('保存した keepKeyboardOnEnter は新規コンテナ（再起動相当）の再読込で復元される',
-        () async {
+    test('保存した keepKeyboardOnEnter は新規コンテナ（再起動相当）の再読込で復元される', () async {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       await container.read(settingsProvider.notifier).reload();

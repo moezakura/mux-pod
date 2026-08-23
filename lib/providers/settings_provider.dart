@@ -243,7 +243,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _adjustModeKey = 'settings_adjust_mode';
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _cjkModeKey = 'settings_cjk_mode';
-  static const String _keepKeyboardOnEnterKey = 'settings_keep_keyboard_on_enter';
+  static const String _keepKeyboardOnEnterKey =
+      'settings_keep_keyboard_on_enter';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
   // inventory: SETTINGS-SCROLL-SEND-004

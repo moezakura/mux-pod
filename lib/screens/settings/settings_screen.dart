@@ -320,7 +320,9 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(l10n.settingsKeepKeyboardOnEnterDescription),
                   value: settings.keepKeyboardOnEnter,
                   onChanged: (value) {
-                    ref.read(settingsProvider.notifier).setKeepKeyboardOnEnter(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setKeepKeyboardOnEnter(value);
                   },
                 ),
                 // inventory: SETTINGS-UI-INPUT-001
