@@ -301,6 +301,18 @@ class SettingsScreen extends ConsumerWidget {
                         .setInvertPaneNavigation(value);
                   },
                 ),
+                // CJK Mode: iOSのCJK系IMEでDirectInputが多重送信される場合の
+                // 回避手段として旧来（v0.7.0-pre4）の確定送信挙動へ戻す（iOSのみ表示）
+                if (Theme.of(context).platform == TargetPlatform.iOS)
+                  SwitchListTile(
+                    secondary: const Icon(Icons.translate),
+                    title: Text(l10n.settingsCjkMode),
+                    subtitle: Text(l10n.settingsCjkModeDescription),
+                    value: settings.cjkMode,
+                    onChanged: (value) {
+                      ref.read(settingsProvider.notifier).setCjkMode(value);
+                    },
+                  ),
                 // inventory: SETTINGS-UI-INPUT-001
                 ListTile(
                   leading: const Icon(Icons.mouse),

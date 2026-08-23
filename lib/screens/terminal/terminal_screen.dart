@@ -3125,6 +3125,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 Consumer(
                   builder: (context, ref, _) {
                     final customKeys = ref.watch(customKeysProvider);
+                    // cjkMode のみ select 監視: 親 build を再実行させず
+                    // SpecialKeysBar サブツリーだけ再構築する
+                    final cjkMode = ref.watch(
+                      settingsProvider.select((s) => s.cjkMode),
+                    );
                     return SpecialKeysBar(
                       // inventory: TERM-INPUT-006
                       onKeyPressed: _sendKeyWithOverlay,
@@ -3132,6 +3137,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       // inventory: TERM-INPUT-009
                       onInputTap: _showInputDialog,
                       directInputEnabled: _directInputEnabled,
+                      cjkMode: cjkMode,
                       onDirectInputToggle: () {
                         ref.read(settingsProvider.notifier).toggleDirectInput();
                       },

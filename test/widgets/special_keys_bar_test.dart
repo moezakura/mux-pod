@@ -92,6 +92,7 @@ void main() {
 
   Widget customHarness({
     bool directInput = false,
+    bool cjkMode = false,
     double width = 720,
     List<CustomKeyButton> customButtons = const [],
     List<String> row0Tokens = const <String>[],
@@ -119,6 +120,7 @@ void main() {
               onImagePickRequested: onImagePickRequested,
               onDirectInputToggle: () {},
               directInputEnabled: directInput,
+              cjkMode: cjkMode,
               hapticFeedback: false,
               customButtons: customButtons,
               rows:
@@ -689,6 +691,90 @@ void main() {
       // TYPE_TEXT_VARIATION_VISIBLE_PASSWORD を付加し、IME変換（日本語入力）が
       // 不可能になるため（autocorrect=false と併用しない）。
       expect(field.enableSuggestions, isTrue);
+    });
+  });
+
+  group('SpecialKeysBar CJK mode (v0.7.0-pre4 behavior)', () {
+    Finder directInputField() => find.byType(TextField);
+
+    String visibleText(WidgetTester tester) {
+      final field = tester.widget<TextField>(directInputField());
+      return field.controller!.text.replaceAll('\u200B', '');
+    }
+
+    testWidgets('committed text is sent in full and the field clears', (
+      tester,
+    ) async {
+      final keys = <String>[];
+      await tester.pumpWidget(
+        customHarness(directInput: true, cjkMode: true, onKeyPressed: keys.add),
+      );
+      await tester.pump();
+
+      await tester.enterText(directInputField(), 'こんにちは');
+      await tester.pump();
+
+      // pre4挙動: 確定テキストを全文送信し、入力欄はsentinelへクリアされる
+      expect(keys, ['こんにちは']);
+      expect(visibleText(tester), isEmpty);
+
+      // 追加入力も毎回全文送信される（テキストは欄に残らない）
+      await tester.enterText(directInputField(), 'abc');
+      await tester.pump();
+      expect(keys, ['こんにちは', 'abc']);
+      expect(visibleText(tester), isEmpty);
+    });
+
+    testWidgets('iOS duplicate insertion is trimmed to composing text', (
+      tester,
+    ) async {
+      final keys = <String>[];
+      await tester.pumpWidget(
+        customHarness(directInput: true, cjkMode: true, onKeyPressed: keys.add),
+      );
+      await tester.pump();
+
+      // IME変換中（composing範囲付き）の更新: 送信しない
+      final field = tester.widget<TextField>(directInputField());
+      final controller = field.controller!;
+      controller.value = const TextEditingValue(
+        text: '\u200Bこんにちは',
+        composing: TextRange(start: 1, end: 6),
+      );
+      await tester.pump();
+      expect(keys, isEmpty);
+
+      // iOSの自動確定バグ: composingテキストの重複挿入として確定される
+      controller.value = const TextEditingValue(
+        text: '\u200Bこんにちはこんにちは',
+        selection: TextSelection.collapsed(offset: 11),
+      );
+      await tester.pump();
+
+      // 重複分は除去され、composingテキストのみ一度だけ送信される
+      expect(keys, ['こんにちは']);
+    });
+
+    testWidgets('toggling CJK mode resets the field to sentinel', (
+      tester,
+    ) async {
+      final keys = <String>[];
+      await tester.pumpWidget(
+        customHarness(directInput: true, onKeyPressed: keys.add),
+      );
+      await tester.pump();
+
+      // 通常モード（delta送信）でテキストを残す
+      await tester.enterText(directInputField(), 'ls');
+      await tester.pump();
+      expect(visibleText(tester), 'ls');
+
+      // CJKモードへ切替: 残ったテキストはクリアされる
+      await tester.pumpWidget(
+        customHarness(directInput: true, cjkMode: true, onKeyPressed: keys.add),
+      );
+      await tester.pump();
+      expect(visibleText(tester), isEmpty);
     });
   });
 
