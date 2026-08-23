@@ -1052,6 +1052,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
                 focusNode: _directInputFocusNode,
                 autofocus: true,
                 textInputAction: TextInputAction.send,
+                // ターミナルへのパススルー入力のため、OSによるテキスト書き換えを
+                // 無効化する（iOS自動補正の ".."→"‥" 置換、Smart Dashes /
+                // Smart Quotes、スペルチェックによる確定も防止）。
+                // ※ enableSuggestions: false は設定しないこと:
+                //   Androidエンジン（TextInputPlugin.inputTypeFromTextInputType）が
+                //   inputType に TYPE_TEXT_VARIATION_VISIBLE_PASSWORD を付加し、
+                //   IME変換（日本語入力）が不可能になるため。
+                autocorrect: false,
+                smartDashesType: SmartDashesType.disabled,
+                smartQuotesType: SmartQuotesType.disabled,
                 onSubmitted: _onDirectInputSubmitted,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 14,

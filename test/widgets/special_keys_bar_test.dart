@@ -670,6 +670,26 @@ void main() {
       expect(specials, contains('Enter'));
       expect(visibleText(tester), isEmpty);
     });
+
+    testWidgets('field disables autocorrect and smart punctuation', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        customHarness(directInput: true, onKeyPressed: (_) {}),
+      );
+      await tester.pump();
+
+      // パススルー入力欄のため、OSによるテキスト書き換え（".."→"‥" 等）を
+      // 許可しない（Issue: iOS自動補正による入力破壊）。
+      final field = tester.widget<TextField>(directInputField());
+      expect(field.autocorrect, isFalse);
+      expect(field.smartDashesType, SmartDashesType.disabled);
+      expect(field.smartQuotesType, SmartQuotesType.disabled);
+      // enableSuggestions は無効化しない: Androidエンジンが inputType へ
+      // TYPE_TEXT_VARIATION_VISIBLE_PASSWORD を付加し、IME変換（日本語入力）が
+      // 不可能になるため（autocorrect=false と併用しない）。
+      expect(field.enableSuggestions, isTrue);
+    });
   });
 
   group('SpecialKeysBar row auto-scroll', () {
