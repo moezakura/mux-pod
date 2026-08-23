@@ -313,6 +313,16 @@ class SettingsScreen extends ConsumerWidget {
                       ref.read(settingsProvider.notifier).setCjkMode(value);
                     },
                   ),
+                // DirectInput: Enter送信後もソフトウェアキーボードを開いたままにする
+                SwitchListTile(
+                  secondary: const Icon(Icons.keyboard),
+                  title: Text(l10n.settingsKeepKeyboardOnEnter),
+                  subtitle: Text(l10n.settingsKeepKeyboardOnEnterDescription),
+                  value: settings.keepKeyboardOnEnter,
+                  onChanged: (value) {
+                    ref.read(settingsProvider.notifier).setKeepKeyboardOnEnter(value);
+                  },
+                ),
                 // inventory: SETTINGS-UI-INPUT-001
                 ListTile(
                   leading: const Icon(Icons.mouse),

@@ -93,6 +93,7 @@ void main() {
   Widget customHarness({
     bool directInput = false,
     bool cjkMode = false,
+    bool keepKeyboardOnEnter = false,
     double width = 720,
     List<CustomKeyButton> customButtons = const [],
     List<String> row0Tokens = const <String>[],
@@ -121,6 +122,7 @@ void main() {
               onDirectInputToggle: () {},
               directInputEnabled: directInput,
               cjkMode: cjkMode,
+              keepKeyboardOnEnter: keepKeyboardOnEnter,
               hapticFeedback: false,
               customButtons: customButtons,
               rows:
@@ -673,6 +675,56 @@ void main() {
       expect(visibleText(tester), isEmpty);
     });
 
+    testWidgets('keepKeyboardOnEnter keeps focus after submit', (tester) async {
+      final specials = <String>[];
+      await tester.pumpWidget(
+        customHarness(
+          directInput: true,
+          keepKeyboardOnEnter: true,
+          onSpecialKeyPressed: specials.add,
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(directInputField(), 'models');
+      await tester.pump();
+
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      // 同期 requestFocus() で unfocus をキャンセルする（フレームワークの
+      // 明示サポート経路: editable_text._restartConnectionIfNeeded）。
+      // pump 1回でマイクロタスクまで消化し、settle で post-frame の
+      // sentinel 再リセットも完了させる。
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(specials, contains('Enter'));
+      expect(visibleText(tester), isEmpty);
+      // 送信後もフィールドはフォーカスを失わない（キーボード維持）
+      expect(
+        tester.widget<TextField>(directInputField()).focusNode!.hasFocus,
+        isTrue,
+      );
+    });
+
+    testWidgets('default (off) unfocuses after submit (regression guard)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(customHarness(directInput: true));
+      await tester.pump();
+
+      await tester.enterText(directInputField(), 'models');
+      await tester.pump();
+
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+
+      // 設定OFF（デフォルト）: 既存挙動どおりフォーカスは外れる
+      expect(
+        tester.widget<TextField>(directInputField()).focusNode!.hasFocus,
+        isFalse,
+      );
+    });
+
     testWidgets('field disables autocorrect and smart punctuation', (
       tester,
     ) async {
@@ -775,6 +827,41 @@ void main() {
       );
       await tester.pump();
       expect(visibleText(tester), isEmpty);
+    });
+
+    testWidgets('CJK mode + keepKeyboardOnEnter keeps focus after submit', (
+      tester,
+    ) async {
+      final keys = <String>[];
+      final specials = <String>[];
+      await tester.pumpWidget(
+        customHarness(
+          directInput: true,
+          cjkMode: true,
+          keepKeyboardOnEnter: true,
+          onKeyPressed: keys.add,
+          onSpecialKeyPressed: specials.add,
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(directInputField(), 'models');
+      await tester.pump();
+      // CJKモード: 入力確定で全文送信済み・欄はクリア済み
+      expect(keys, ['models']);
+      expect(visibleText(tester), isEmpty);
+
+      await tester.testTextInput.receiveAction(TextInputAction.send);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      // 'Enter' が1回だけ送信され、フィールドはクリア・フォーカス維持
+      expect(specials.where((k) => k == 'Enter').length, 1);
+      expect(visibleText(tester), isEmpty);
+      expect(
+        tester.widget<TextField>(directInputField()).focusNode!.hasFocus,
+        isTrue,
+      );
     });
   });
 

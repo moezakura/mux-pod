@@ -241,6 +241,12 @@ void main() {
       );
       expect(tester.widget<SwitchListTile>(tile).value, isFalse);
 
+      // タップ中心が画面内に収まるよう完全に画面内へスクロール
+      // （上流のBehaviorセクションにタイルが追加されると下段が押し下げられ、
+      //   scrollUntilFound 後のタイル中心が画面外になり得るため）
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+
       await tester.tap(tile);
       await tester.pumpAndSettle();
 
@@ -326,6 +332,62 @@ void main() {
       expect(tester.widget<SwitchListTile>(tile).value, isTrue);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('settings_cjk_mode'), isTrue);
+    });
+
+    testWidgets('Keep Keyboard on Enter toggle is shown and interactive (Android)',
+        (tester) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むためモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp());
+      await tester.pumpAndSettle();
+
+      // 全プラットフォーム表示（ソフトキーボードはiOS/Android双方にある問題）
+      await scrollUntilFound(tester, find.text('Keep Keyboard Open on Enter'));
+      final tile = find.ancestor(
+        of: find.text('Keep Keyboard Open on Enter'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tile, findsOneWidget);
+      // デフォルトは OFF
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+      // タップ中心が画面内に収まるよう完全に画面内へスクロール
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
+    });
+
+    testWidgets('Keep Keyboard on Enter toggle is shown and interactive (iOS)', (
+      tester,
+    ) async {
+      // setter が _saveSetting で SharedPreferences へ書き込むためモックする
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(_buildApp(platform: TargetPlatform.iOS));
+      await tester.pumpAndSettle();
+
+      await scrollUntilFound(tester, find.text('Keep Keyboard Open on Enter'));
+      final tile = find.ancestor(
+        of: find.text('Keep Keyboard Open on Enter'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tile, findsOneWidget);
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+      await tester.ensureVisible(tile);
+      await tester.pumpAndSettle();
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
     });
 
     testWidgets(

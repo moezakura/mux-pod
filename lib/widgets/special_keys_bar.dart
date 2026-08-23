@@ -33,6 +33,12 @@ class SpecialKeysBar extends StatefulWidget {
   /// iOSのCJK系IMEで発生する多重送信回避用（設定画面はiOSのみ表示）。
   final bool cjkMode;
 
+  /// DirectInput: Enter送信後もソフトウェアキーボードを開いたままにするか。
+  /// フレームワーク既定では TextInputAction.send 受信時に unfocus されるため、
+  /// 送信後に同期 requestFocus() で unfocus をキャンセルして実現する
+  /// （ソフトキーボード経路のみ）。
+  final bool keepKeyboardOnEnter;
+
   /// 画像転送ボタンが押された時のコールバック
   final VoidCallback? onImagePickRequested;
 
@@ -58,6 +64,7 @@ class SpecialKeysBar extends StatefulWidget {
     this.directInputEnabled = false,
     this.onDirectInputToggle,
     this.cjkMode = false,
+    this.keepKeyboardOnEnter = false,
     this.onImagePickRequested,
     this.customButtons = const [],
     this.onCustomButtonEdit,
@@ -385,6 +392,16 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     }
     widget.onSpecialKeyPressed('Enter');
     _resetToSentinel();
+
+    // 「Enterでキーボードを閉じない」設定:
+    // unfocus() はマイクロタスク適用（focus_manager._markNextFocus）のため、
+    // onSubmitted 内の同期 requestFocus() で実質キャンセルでき、フィールドは
+    // フォーカスを一切失わない。フレームワークはこのパターンを明示サポート
+    // （editable_text.dart L3899-3906: onSubmitted内でフォーカスを戻した場合は
+    // _restartConnectionIfNeeded が接続を張り直してキーボードを開いたままリセット）。
+    if (widget.keepKeyboardOnEnter) {
+      _directInputFocusNode.requestFocus();
+    }
   }
 
   /// DirectInput: Backspaceキー送信

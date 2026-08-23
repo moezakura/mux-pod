@@ -39,6 +39,9 @@ class AppSettings {
   /// iOSのCJK系IMEで発生する多重送信回避用（設定UIはiOSのみ表示）。
   final bool cjkMode;
 
+  /// DirectInput: Enter送信後もソフトウェアキーボードを開いたままにするか。
+  final bool keepKeyboardOnEnter;
+
   /// ターミナルカーソルの表示設定
   final bool showTerminalCursor;
 
@@ -107,6 +110,7 @@ class AppSettings {
     this.adjustMode = 'autoFit',
     this.directInputEnabled = false,
     this.cjkMode = false,
+    this.keepKeyboardOnEnter = false,
     this.showTerminalCursor = true,
     this.invertPaneNavigation = false,
     // inventory: SETTINGS-SCROLL-SEND-002
@@ -152,6 +156,7 @@ class AppSettings {
     String? adjustMode,
     bool? directInputEnabled,
     bool? cjkMode,
+    bool? keepKeyboardOnEnter,
     bool? showTerminalCursor,
     bool? invertPaneNavigation,
     // inventory: SETTINGS-SCROLL-SEND-003
@@ -193,6 +198,7 @@ class AppSettings {
       adjustMode: adjustMode ?? this.adjustMode,
       directInputEnabled: directInputEnabled ?? this.directInputEnabled,
       cjkMode: cjkMode ?? this.cjkMode,
+      keepKeyboardOnEnter: keepKeyboardOnEnter ?? this.keepKeyboardOnEnter,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
       scrollSendInput: scrollSendInput ?? this.scrollSendInput,
@@ -237,6 +243,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _adjustModeKey = 'settings_adjust_mode';
   static const String _directInputEnabledKey = 'settings_direct_input_enabled';
   static const String _cjkModeKey = 'settings_cjk_mode';
+  static const String _keepKeyboardOnEnterKey = 'settings_keep_keyboard_on_enter';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
   // inventory: SETTINGS-SCROLL-SEND-004
@@ -294,6 +301,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       adjustMode: prefs.getString(_adjustModeKey) ?? 'autoFit',
       directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
       cjkMode: prefs.getBool(_cjkModeKey) ?? false,
+      keepKeyboardOnEnter: prefs.getBool(_keepKeyboardOnEnterKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
       // inventory: SETTINGS-SCROLL-SEND-005
@@ -507,6 +515,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setCjkMode(bool value) async {
     state = state.copyWith(cjkMode: value);
     await _saveSetting(_cjkModeKey, value);
+  }
+
+  /// Enter送信後もソフトウェアキーボードを開いたままにする
+  Future<void> setKeepKeyboardOnEnter(bool value) async {
+    state = state.copyWith(keepKeyboardOnEnter: value);
+    await _saveSetting(_keepKeyboardOnEnterKey, value);
   }
 
   /// ターミナルカーソル表示設定を設定
