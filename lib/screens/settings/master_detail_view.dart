@@ -3,13 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n_ext.dart';
 import 'categories/settings_category_body.dart';
-import 'categories/settings_category_list.dart';
-import 'search/settings_search_item.dart';
+import 'search/settings_search_content_switcher.dart';
+import 'widgets/settings_search_field.dart';
 import 'search/settings_search_provider.dart';
-import 'search/settings_search_results_view.dart';
 import 'settings_category.dart';
 import 'widgets/settings_app_bar_title.dart';
-import 'widgets/settings_search_field.dart';
 
 /// タブレット（>=600dp）のマスター / ディテール2ペイン。
 ///
@@ -37,7 +35,7 @@ class SettingsMasterDetailView extends ConsumerWidget {
               children: [
                 const SettingsSearchField(),
                 Expanded(
-                  child: _SearchContentSwitcher(
+                  child: SettingsSearchContentSwitcher(
                     onResultTap: (context, item) {
                       // タブレット: カテゴリ選択 + クエリ clear（§4.4）
                       ref
@@ -45,6 +43,9 @@ class SettingsMasterDetailView extends ConsumerWidget {
                           .select(item.category);
                       ref.read(settingsSearchProvider.notifier).clear();
                     },
+                    onCategorySelected: (category) => ref
+                        .read(settingsCategoryProvider.notifier)
+                        .select(category),
                   ),
                 ),
               ],
@@ -62,26 +63,6 @@ class SettingsMasterDetailView extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// クエリ非空時は検索結果ビュー、空時はカテゴリ一覧を表示する切り替え。
-class _SearchContentSwitcher extends ConsumerWidget {
-  final void Function(BuildContext context, SettingsSearchItem item)
-  onResultTap;
-
-  const _SearchContentSwitcher({required this.onResultTap});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final query = ref.watch(settingsSearchProvider).trim();
-    if (query.isNotEmpty) {
-      return SettingsSearchResultsView(onResultTap: onResultTap);
-    }
-    return SettingsCategoryList(
-      onCategorySelected: (category) =>
-          ref.read(settingsCategoryProvider.notifier).select(category),
     );
   }
 }
