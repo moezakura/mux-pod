@@ -1,66 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../l10n/l10n_ext.dart';
-import 'sections/about_section.dart';
-import 'sections/behavior_section.dart';
-import 'sections/connection_section.dart';
-import 'sections/display_section.dart';
+import 'category_list_view.dart';
+import 'master_detail_view.dart';
+import 'settings_breakpoints.dart';
 
-/// 設定画面
+/// 設定画面（エントリ・横幅で分岐）。
 ///
-/// P1-C2 時点では従来の単一スクロール表示を維持する
-/// （エントリ分岐・一覧・2ペインは P1-C3 で導入・M-8）。
+/// LayoutBuilder で幅判定し、<600dp はスマホ一覧（push 2階層）、
+/// >=600dp はタブレット2ペイン。[SettingsBreakpoints.masterDetail] が分岐の単一ソース。
+/// クラス名は不変（home_screen.dart:56 / terminal_screen.dart から参照）。
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          _buildAppBar(context),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                const DisplaySection(),
-                const Divider(),
-                const BehaviorSection(),
-                const Divider(),
-                const ConnectionSection(),
-                const Divider(),
-                const AboutSection(),
-              ]),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAppBar(BuildContext context) {
-    final l10n = context.l10n;
-    final colorScheme = Theme.of(context).colorScheme;
-    return SliverAppBar(
-      floating: true,
-      pinned: true,
-      expandedHeight: 100,
-      backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
-      surfaceTintColor: Colors.transparent,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
-        title: Text(
-          l10n.settingsTitle,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
-            letterSpacing: -0.5,
-          ),
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= SettingsBreakpoints.masterDetail) {
+          return const SettingsMasterDetailView();
+        }
+        return const SettingsCategoryListView();
+      },
     );
   }
 }
