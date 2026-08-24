@@ -14,7 +14,7 @@ import 'settings_search_item.dart';
 
 /// 検索インデックス。
 ///
-/// 全37項目（Display 13 / Behavior 11 / Connection 10 / About 3）の descriptor と、
+/// 全36項目（Display 10 / Behavior 13 / Connection 10 / About 3）の descriptor と、
 /// **en と ja の両ロケール**の [AppLocalizations] を固定的に保持する（M-2）。
 /// `language` 値（'system'/'ja'/'en'）によらず、エン・ジャのラベル集合を
 /// 常時並置するため、言語横断検索（en 表示中の「フォント」、ja 表示中の
@@ -27,7 +27,7 @@ class SettingsSearchIndex {
     required this.other,
   });
 
-  /// 全37項目の descriptor（カテゴリ順 = [SettingsCategory] enum 順に連結）。
+  /// 全36項目の descriptor（カテゴリ順 = [SettingsCategory] enum 順に連結）。
   final List<SettingsSearchItem> items;
 
   /// 現在ロケールの [AppLocalizations]（'system' は端末ロケールで解決）。
@@ -93,7 +93,7 @@ class SettingsSearchHit {
 
 /// フィルタ済み検索結果 Provider。
 ///
-/// `query.trim().toLowerCase()` の contains で37項目を線形スキャンする（O(n)）。
+/// `query.trim().toLowerCase()` の contains で36項目を線形スキャンする（O(n)）。
 /// ヘイストックは title / description / カテゴリ名 / グループ名 / 値ラベルの
 /// en・ja 両解決。ランキング:
 /// ①現在ロケールヒット優先 → ②カテゴリ順（enum 順）→ ③カテゴリ内 order。
