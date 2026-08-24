@@ -76,8 +76,8 @@ Generate **Ed25519** (recommended) or **RSA** (2048/3072/4096-bit) keys on-devic
 
 Settings are organized into four purpose-based categories:
 
-- **Display** — appearance, terminal rendering, and key overlay
-- **Behavior** — interaction and haptics
+- **Display** — appearance, terminal rendering, and screen controls
+- **Behavior** — key overlay, input, scroll send, and pane navigation
 - **Connection & Transfer** — SSH connections and image transfer
 - **About** — app information and licenses
 
