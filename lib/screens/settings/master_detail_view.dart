@@ -22,6 +22,7 @@ class SettingsMasterDetailView extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: SettingsAppBarTitle(text: l10n.settingsTitle)),
       body: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
             width: 280,
