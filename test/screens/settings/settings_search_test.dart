@@ -13,6 +13,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter_muxpod/screens/settings/widgets/settings_section_header.dart';
+
 import 'test_helpers.dart';
 
 void main() {
@@ -132,6 +134,38 @@ void main() {
       expect(find.text('Adjust Mode'), findsOneWidget);
       expect(find.text('Auto Fit'), findsOneWidget);
       expect(find.text('Display'), findsWidgets); // 左ペイン一覧復帰
+    });
+  });
+
+  group('Settings search semantics (P3-C10)', () {
+    testWidgets('search result category headings expose isHeader', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await buildSettingsApp(tester);
+      await typeQuery(tester, 'font');
+
+      // 検索結果のカテゴリグループ見出し（Display）がヘッダーとして公開される
+      final heading = find.descendant(
+        of: find.byType(SettingsSectionHeader),
+        matching: find.text('Display'),
+      );
+      expect(tester.getSemantics(heading).flagsCollection.isHeader, isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('category body heading exposes isHeader', (tester) async {
+      final handle = tester.ensureSemantics();
+      await buildSettingsApp(tester);
+      await openCategory(tester, 'Display');
+
+      // カテゴリ詳細の先頭カテゴリ名ヘッダ（Display）
+      final heading = find.descendant(
+        of: find.byType(SettingsSectionHeader),
+        matching: find.text('Display'),
+      );
+      expect(tester.getSemantics(heading).flagsCollection.isHeader, isTrue);
+      handle.dispose();
     });
   });
 }
