@@ -1,12 +1,9 @@
-// ignore_for_file: deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers/settings_provider.dart';
-import '../../services/keychain/secure_storage.dart';
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
@@ -17,6 +14,18 @@ import '../../widgets/dialogs/theme_dialog.dart';
 import '../../services/version_info.dart';
 import 'licenses_screen.dart';
 import '../custom_keys/custom_keys_screen.dart';
+import 'pickers/adjust_mode_picker.dart';
+import 'pickers/clear_host_keys_confirmation.dart';
+import 'pickers/language_picker.dart';
+import 'pickers/orientation_picker.dart';
+import 'pickers/output_format_picker.dart';
+import 'pickers/overlay_position_picker.dart';
+import 'pickers/refresh_rate_picker.dart';
+import 'pickers/resize_preset_picker.dart';
+import 'pickers/scroll_send_input_picker.dart';
+import 'pickers/slider_dialog.dart';
+import 'pickers/text_input_dialog.dart';
+import 'widgets/settings_section_header.dart';
 
 /// 設定画面
 class SettingsScreen extends ConsumerWidget {
@@ -35,7 +44,7 @@ class SettingsScreen extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _SectionHeader(title: l10n.settingsSectionTerminal),
+                SettingsSectionHeader(title: l10n.settingsSectionTerminal),
                 SwitchListTile(
                   secondary: const Icon(Icons.abc),
                   title: Text(l10n.settingsShowCursor),
@@ -52,7 +61,7 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(l10n.settingsAdjustMode),
                   subtitle: Text(_adjustModeLabel(l10n, settings.adjustMode)),
                   onTap: () =>
-                      _showAdjustModePicker(context, ref, settings.adjustMode),
+                      showAdjustModePicker(context, ref, settings.adjustMode),
                 ),
                 ListTile(
                   leading: const Icon(Icons.text_fields),
@@ -125,7 +134,7 @@ class SettingsScreen extends ConsumerWidget {
                       : null,
                 ),
                 const Divider(),
-                _SectionHeader(title: l10n.settingsSectionKeyOverlay),
+                SettingsSectionHeader(title: l10n.settingsSectionKeyOverlay),
                 SwitchListTile(
                   secondary: const Icon(Icons.visibility),
                   title: Text(l10n.settingsKeyOverlay),
@@ -190,44 +199,16 @@ class SettingsScreen extends ConsumerWidget {
                       'belowHeader' => l10n.settingsOverlayPositionBelowHeader,
                       _ => l10n.settingsOverlayPositionAboveKeyboard,
                     }),
-                    onTap: () async {
-                      final result = await showDialog<String>(
-                        context: context,
-                        builder: (context) => SimpleDialog(
-                          title: Text(l10n.settingsOverlayPosition),
-                          children: [
-                            _buildPositionOption(
-                              context,
-                              'aboveKeyboard',
-                              l10n.settingsOverlayPositionAboveKeyboard,
-                              settings.keyOverlayPosition,
-                            ),
-                            _buildPositionOption(
-                              context,
-                              'center',
-                              l10n.settingsOverlayPositionCenter,
-                              settings.keyOverlayPosition,
-                            ),
-                            _buildPositionOption(
-                              context,
-                              'belowHeader',
-                              l10n.settingsOverlayPositionBelowHeader,
-                              settings.keyOverlayPosition,
-                            ),
-                          ],
-                        ),
-                      );
-                      if (result != null) {
-                        ref
-                            .read(settingsProvider.notifier)
-                            .setKeyOverlayPosition(result);
-                      }
-                    },
+                    onTap: () => showOverlayPositionPicker(
+                      context,
+                      ref,
+                      settings.keyOverlayPosition,
+                    ),
                   ),
                 ],
                 const Divider(),
                 // TODO(i18n): localize once arb keys exist for these entries.
-                const _SectionHeader(title: 'Buttons'),
+                const SettingsSectionHeader(title: 'Buttons'),
                 ListTile(
                   leading: const Icon(Icons.apps),
                   title: const Text('Custom Buttons'),
@@ -239,15 +220,15 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 const Divider(),
-                const _SectionHeader(title: 'Security'),
+                const SettingsSectionHeader(title: 'Security'),
                 ListTile(
                   leading: const Icon(Icons.key_off),
                   title: const Text('Clear SSH Host Keys'),
                   subtitle: const Text('Reset saved server fingerprints'),
-                  onTap: () => _confirmClearHostKeys(context),
+                  onTap: () => confirmClearHostKeys(context),
                 ),
                 const Divider(),
-                _SectionHeader(title: l10n.settingsSectionBehavior),
+                SettingsSectionHeader(title: l10n.settingsSectionBehavior),
                 SwitchListTile(
                   secondary: const Icon(Icons.vibration),
                   title: Text(l10n.settingsHapticFeedback),
@@ -274,7 +255,7 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(
                     _orientationLabel(l10n, settings.screenOrientation),
                   ),
-                  onTap: () => _showOrientationPicker(
+                  onTap: () => showOrientationPicker(
                     context,
                     ref,
                     settings.screenOrientation,
@@ -284,7 +265,7 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.speed),
                   title: Text(l10n.settingsMaxRefreshRate),
                   subtitle: Text(_refreshRateLabel(l10n, settings.refreshRate)),
-                  onTap: () => _showRefreshRatePicker(
+                  onTap: () => showRefreshRatePicker(
                     context,
                     ref,
                     settings.refreshRate,
@@ -332,7 +313,7 @@ class SettingsScreen extends ConsumerWidget {
                   subtitle: Text(
                     _scrollSendInputLabel(l10n, settings.scrollSendInput),
                   ),
-                  onTap: () => _showScrollSendInputPicker(
+                  onTap: () => showScrollSendInputPicker(
                     context,
                     ref,
                     settings.scrollSendInput,
@@ -387,7 +368,7 @@ class SettingsScreen extends ConsumerWidget {
                   },
                 ),
                 const Divider(),
-                _SectionHeader(title: l10n.settingsSectionAppearance),
+                SettingsSectionHeader(title: l10n.settingsSectionAppearance),
                 ListTile(
                   leading: const Icon(Icons.dark_mode),
                   title: Text(l10n.settingsTheme),
@@ -410,15 +391,17 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text(context.l10n.settingsLanguage),
                   subtitle: Text(_languageLabel(context, settings.language)),
                   onTap: () =>
-                      _showLanguagePicker(context, ref, settings.language),
+                      showLanguagePicker(context, ref, settings.language),
                 ),
                 const Divider(),
-                _SectionHeader(title: l10n.settingsSectionImageTransfer),
+                SettingsSectionHeader(
+                  title: l10n.settingsSectionImageTransfer,
+                ),
                 ListTile(
                   leading: const Icon(Icons.folder),
                   title: Text(l10n.settingsRemotePath),
                   subtitle: Text(settings.imageRemotePath),
-                  onTap: () => _showTextInputDialog(
+                  onTap: () => showTextInputDialog(
                     context,
                     ref,
                     title: l10n.settingsRemotePath,
@@ -432,7 +415,7 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.image),
                   title: Text(l10n.settingsOutputFormat),
                   subtitle: Text(settings.imageOutputFormat),
-                  onTap: () => _showFormatPicker(
+                  onTap: () => showOutputFormatPicker(
                     context,
                     ref,
                     settings.imageOutputFormat,
@@ -443,7 +426,7 @@ class SettingsScreen extends ConsumerWidget {
                     leading: const Icon(Icons.high_quality),
                     title: Text(l10n.settingsJpegQuality),
                     subtitle: Text('${settings.imageJpegQuality}%'),
-                    onTap: () => _showSliderDialog(
+                    onTap: () => showSliderDialog(
                       context,
                       ref,
                       title: l10n.settingsJpegQuality,
@@ -459,7 +442,7 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.photo_size_select_large),
                   title: Text(l10n.settingsResize),
                   subtitle: Text(settings.imageResizePreset.toUpperCase()),
-                  onTap: () => _showResizePresetPicker(
+                  onTap: () => showResizePresetPicker(
                     context,
                     ref,
                     settings.imageResizePreset,
@@ -470,7 +453,7 @@ class SettingsScreen extends ConsumerWidget {
                     leading: const SizedBox(width: 24),
                     title: Text(l10n.settingsMaxWidth),
                     subtitle: Text('${settings.imageMaxWidth}px'),
-                    onTap: () => _showNumberInputDialog(
+                    onTap: () => showNumberInputDialog(
                       context,
                       ref,
                       title: l10n.settingsMaxWidth,
@@ -484,7 +467,7 @@ class SettingsScreen extends ConsumerWidget {
                     leading: const SizedBox(width: 24),
                     title: Text(l10n.settingsMaxHeight),
                     subtitle: Text('${settings.imageMaxHeight}px'),
-                    onTap: () => _showNumberInputDialog(
+                    onTap: () => showNumberInputDialog(
                       context,
                       ref,
                       title: l10n.settingsMaxHeight,
@@ -499,7 +482,7 @@ class SettingsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.text_format),
                   title: Text(l10n.settingsPathFormat),
                   subtitle: Text(settings.imagePathFormat),
-                  onTap: () => _showTextInputDialog(
+                  onTap: () => showTextInputDialog(
                     context,
                     ref,
                     title: l10n.settingsPathFormat,
@@ -528,7 +511,7 @@ class SettingsScreen extends ConsumerWidget {
                       .setImageBracketedPaste(v),
                 ),
                 const Divider(),
-                _SectionHeader(title: l10n.settingsSectionAbout),
+                SettingsSectionHeader(title: l10n.settingsSectionAbout),
                 ListTile(
                   leading: const Icon(Icons.info),
                   title: Text(l10n.settingsVersion),
@@ -571,196 +554,6 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  /// SSHホスト鍵フィンガープリントを全て消去する（確認付き）。
-  ///
-  /// サーバーのホスト鍵が変わった / 保存状態が壊れた場合の復旧手段。
-  /// アプリデータ全体を消すより軽く、次回接続でホスト鍵を再受諾できる。
-  Future<void> _confirmClearHostKeys(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Clear SSH host keys?'),
-        content: const Text(
-          'This removes all saved server host-key fingerprints. The next '
-          'connection silently trusts and re-saves whatever host key each '
-          'server presents, so only do this on a network you trust.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    // 削除は mounted チェックより前に走らせる: 画面が閉じても、確認済みの
-    // 意図は実行する。mounted は SnackBar の表示だけを守る。
-    String message;
-    try {
-      final removed = await SecureStorageService()
-          .deleteAllHostKeyFingerprints();
-      message = removed == 0
-          ? 'No saved host keys to clear'
-          : 'Cleared $removed saved host key${removed == 1 ? '' : 's'}';
-    } catch (e) {
-      message = 'Could not clear host keys: ${e.runtimeType}';
-    }
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  void _showTextInputDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required String title,
-    required String currentValue,
-    String? hint,
-    required void Function(String) onSave,
-  }) {
-    final l10n = context.l10n;
-    final controller = TextEditingController(text: currentValue);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: hint,
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              onSave(controller.text.trim());
-              Navigator.pop(ctx);
-            },
-            child: Text(l10n.commonSave),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNumberInputDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required String title,
-    required int currentValue,
-    required void Function(int) onSave,
-  }) {
-    final l10n = context.l10n;
-    final controller = TextEditingController(text: currentValue.toString());
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              final v = int.tryParse(controller.text.trim());
-              if (v != null) onSave(v);
-              Navigator.pop(ctx);
-            },
-            child: Text(l10n.commonSave),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSliderDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required String title,
-    required double value,
-    required double min,
-    required double max,
-    required void Function(double) onSave,
-  }) {
-    final l10n = context.l10n;
-    var current = value;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Slider(
-                value: current,
-                min: min,
-                max: max,
-                onChanged: (v) => setState(() => current = v),
-              ),
-              Text('${current.round()}'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () {
-                onSave(current);
-                Navigator.pop(ctx);
-              },
-              child: Text(l10n.commonSave),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showFormatPicker(BuildContext context, WidgetRef ref, String current) {
-    final l10n = context.l10n;
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(l10n.settingsOutputFormat),
-        children: [
-          for (final format in ['original', 'png', 'jpeg'])
-            RadioListTile<String>(
-              title: Text(format.toUpperCase()),
-              value: format,
-              groupValue: current,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(settingsProvider.notifier).setImageOutputFormat(v);
-                }
-                Navigator.pop(ctx);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
   String _adjustModeLabel(AppLocalizations l10n, String mode) {
     switch (mode) {
       case 'autoFit':
@@ -772,93 +565,12 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  void _showAdjustModePicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) {
-    final l10n = context.l10n;
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(l10n.settingsAdjustMode),
-        children: [
-          for (final entry in [
-            (
-              'none',
-              l10n.settingsAdjustModeNone,
-              l10n.settingsAdjustModeNoneDescription,
-            ),
-            (
-              'autoFit',
-              l10n.settingsAdjustModeAutoFit,
-              l10n.settingsAdjustModeAutoFitDescription,
-            ),
-            (
-              'autoResize',
-              l10n.settingsAdjustModeAutoResize,
-              l10n.settingsAdjustModeAutoResizeDescription,
-            ),
-          ])
-            RadioListTile<String>(
-              title: Text(entry.$2),
-              subtitle: Text(entry.$3),
-              value: entry.$1,
-              groupValue: current,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(settingsProvider.notifier).setAdjustMode(v);
-                }
-                Navigator.pop(ctx);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
   String _scrollSendInputLabel(AppLocalizations l10n, String value) {
     switch (value) {
       case 'key':
         return l10n.settingsScrollSendInputKey;
       default:
         return l10n.settingsScrollSendInputWheel;
-    }
-  }
-
-  // inventory: SETTINGS-UI-INPUT-002
-  Future<void> _showScrollSendInputPicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final l10n = ctx.l10n;
-        return SimpleDialog(
-          title: Text(l10n.settingsScrollSendInput),
-          children: [
-            _buildScrollSendOption(
-              ctx,
-              'wheel',
-              l10n.settingsScrollSendPickWheel,
-              l10n.settingsScrollSendPickWheelDesc,
-              current,
-            ),
-            _buildScrollSendOption(
-              ctx,
-              'key',
-              l10n.settingsScrollSendPickKey,
-              l10n.settingsScrollSendPickKeyDesc,
-              current,
-            ),
-          ],
-        );
-      },
-    );
-    if (result != null) {
-      await ref.read(settingsProvider.notifier).setScrollSendInput(result);
     }
   }
 
@@ -887,87 +599,6 @@ class SettingsScreen extends ConsumerWidget {
     }
   }
 
-  /// 言語設定ピッカー: System / 日本語 / English の3択
-  void _showLanguagePicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        final l10n = ctx.l10n;
-        return SimpleDialog(
-          title: Text(l10n.settingsLanguage),
-          children: [
-            for (final entry in [
-              ('system', l10n.languageSystem, l10n.languageSystemDescription),
-              ('ja', l10n.languageJapanese, null),
-              ('en', l10n.languageEnglish, null),
-            ])
-              RadioListTile<String>(
-                title: Text(entry.$2),
-                subtitle: entry.$3 != null ? Text(entry.$3!) : null,
-                value: entry.$1,
-                groupValue: current,
-                onChanged: (v) {
-                  if (v != null) {
-                    ref.read(settingsProvider.notifier).setLanguage(v);
-                  }
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showOrientationPicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) {
-    final l10n = context.l10n;
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(l10n.settingsScreenOrientation),
-        children: [
-          for (final entry in [
-            (
-              'auto',
-              l10n.settingsOrientationAuto,
-              l10n.settingsOrientationAutoDescription,
-            ),
-            (
-              'portrait',
-              l10n.settingsOrientationPortrait,
-              l10n.settingsOrientationPortraitDescription,
-            ),
-            (
-              'landscape',
-              l10n.settingsOrientationLandscape,
-              l10n.settingsOrientationLandscapeDescription,
-            ),
-          ])
-            RadioListTile<String>(
-              title: Text(entry.$2),
-              subtitle: Text(entry.$3),
-              value: entry.$1,
-              groupValue: current,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(settingsProvider.notifier).setScreenOrientation(v);
-                }
-                Navigator.pop(ctx);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
   String _refreshRateLabel(AppLocalizations l10n, String value) {
     switch (value) {
       case '120':
@@ -979,78 +610,6 @@ class SettingsScreen extends ConsumerWidget {
       default:
         return l10n.settingsRefreshRateAuto;
     }
-  }
-
-  void _showRefreshRatePicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) {
-    final l10n = context.l10n;
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(l10n.settingsMaxRefreshRate),
-        children: [
-          for (final entry in [
-            (
-              'auto',
-              l10n.settingsRefreshRateAuto,
-              l10n.settingsRefreshRateAutoDescription,
-            ),
-            ('120', '120 Hz', l10n.settingsRefreshRateCap(120)),
-            ('90', '90 Hz', l10n.settingsRefreshRateCap(90)),
-            ('60', '60 Hz', l10n.settingsRefreshRateCap(60)),
-          ])
-            RadioListTile<String>(
-              title: Text(entry.$2),
-              subtitle: Text(entry.$3),
-              value: entry.$1,
-              groupValue: current,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(settingsProvider.notifier).setRefreshRate(v);
-                }
-                Navigator.pop(ctx);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showResizePresetPicker(
-    BuildContext context,
-    WidgetRef ref,
-    String current,
-  ) {
-    final l10n = context.l10n;
-    showDialog(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(l10n.settingsResizePreset),
-        children: [
-          for (final entry in [
-            ('original', l10n.settingsResizePresetOriginal),
-            ('small', l10n.settingsResizePresetSmall(480)),
-            ('medium', l10n.settingsResizePresetMedium(1080)),
-            ('large', l10n.settingsResizePresetLarge(1920)),
-            ('custom', l10n.settingsResizePresetCustom),
-          ])
-            RadioListTile<String>(
-              title: Text(entry.$2),
-              value: entry.$1,
-              groupValue: current,
-              onChanged: (v) {
-                if (v != null) {
-                  ref.read(settingsProvider.notifier).setImageResizePreset(v);
-                }
-                Navigator.pop(ctx);
-              },
-            ),
-        ],
-      ),
-    );
   }
 
   Widget _buildAppBar(BuildContext context) {
@@ -1072,71 +631,6 @@ class SettingsScreen extends ConsumerWidget {
             color: colorScheme.onSurface,
             letterSpacing: -0.5,
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPositionOption(
-    BuildContext context,
-    String value,
-    String label,
-    String currentValue,
-  ) {
-    return SimpleDialogOption(
-      onPressed: () => Navigator.pop(context, value),
-      child: Row(
-        children: [
-          Icon(
-            value == currentValue
-                ? Icons.radio_button_checked
-                : Icons.radio_button_unchecked,
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Text(label),
-        ],
-      ),
-    );
-  }
-
-  /// Scroll Send Input ダイアログの選択肢（選択中をハイライト + チェック表示）。
-  /// RadioListTile は Flutter 3.32+ で deprecated のため新規には使わない（Pattern Map D9 方針）。
-  Widget _buildScrollSendOption(
-    BuildContext context,
-    String value,
-    String label,
-    String description,
-    String currentValue,
-  ) {
-    final selected = value == currentValue;
-    return ListTile(
-      title: Text(label),
-      subtitle: Text(description),
-      selected: selected,
-      trailing: selected ? const Icon(Icons.check) : null,
-      onTap: () => Navigator.pop(context, value),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Text(
-        title.toUpperCase(),
-        style: GoogleFonts.spaceGrotesk(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
-          letterSpacing: 1.5,
         ),
       ),
     );
