@@ -24,6 +24,10 @@ Widget _buildApp({TargetPlatform? platform}) {
 /// 探索前にスクロール位置を先頭へ戻すことで、直前の `scrollUntilVisible` が
 /// 最後に呼ぶ `Scrollable.ensureVisible` による位置ずれ（探索対象が画面上方へ
 /// 通り過ぎてレイジービルドから外れる）に依存しない検証にする。
+///
+/// P1-C2 のセクション再編（表示順変更）後は、スリバーのレイジービルドにより
+/// ターゲットが「ビルドされただけで画面外」の状態で停止しうるため、
+/// 最後に `Scrollable.ensureVisible` で画面内へ完全に収めてから返す。
 Future<void> scrollUntilFound(WidgetTester tester, Finder finder) async {
   final scrollable = find.byType(Scrollable).first;
   final position = tester.state<ScrollableState>(scrollable).position;
@@ -32,6 +36,12 @@ Future<void> scrollUntilFound(WidgetTester tester, Finder finder) async {
     await tester.pump();
   }
   await tester.scrollUntilVisible(finder, 200, scrollable: scrollable);
+  await Scrollable.ensureVisible(
+    finder.evaluate().single,
+    alignment: 0.5,
+    duration: Duration.zero,
+  );
+  await tester.pump();
 }
 
 void main() {
