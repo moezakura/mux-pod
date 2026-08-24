@@ -932,8 +932,6 @@
   "settingsOverlayPositionCenter": "ターミナル中央",
   "settingsOverlayPositionBelowHeader": "ヘッダー下",
   "settingsOverlayPositionAboveKeyboard": "キーボード上",
-  "settingsHapticFeedback": "バイブレーション",
-  "settingsHapticFeedbackDescription": "キー押下時に振動",
   "settingsKeepScreenOn": "画面をスリープさせない",
   "settingsKeepScreenOnDescription": "画面がスリープするのを防ぐ",
   "settingsScreenOrientation": "画面の向き",

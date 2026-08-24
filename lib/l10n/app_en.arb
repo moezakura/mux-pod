@@ -932,8 +932,6 @@
   "settingsOverlayPositionCenter": "Center of Terminal",
   "settingsOverlayPositionBelowHeader": "Below Header",
   "settingsOverlayPositionAboveKeyboard": "Above Keyboard",
-  "settingsHapticFeedback": "Haptic Feedback",
-  "settingsHapticFeedbackDescription": "Vibrate on key press",
   "settingsKeepScreenOn": "Keep Screen On",
   "settingsKeepScreenOnDescription": "Prevent screen from sleeping",
   "settingsScreenOrientation": "Screen Orientation",
