@@ -34,18 +34,22 @@ class SettingsMasterDetailView extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SettingsSearchField(),
+                // 左ペインは固定高さ（Expanded）のため、検索結果が多ヒットでも
+                // overflow しないようスクロール可能にする（#T-1）。
                 Expanded(
-                  child: SettingsSearchContentSwitcher(
-                    onResultTap: (context, item) {
-                      // タブレット: カテゴリ選択 + クエリ clear（§4.4）
-                      ref
+                  child: SingleChildScrollView(
+                    child: SettingsSearchContentSwitcher(
+                      onResultTap: (context, item) {
+                        // タブレット: カテゴリ選択 + クエリ clear（§4.4）
+                        ref
+                            .read(settingsCategoryProvider.notifier)
+                            .select(item.category);
+                        ref.read(settingsSearchProvider.notifier).clear();
+                      },
+                      onCategorySelected: (category) => ref
                           .read(settingsCategoryProvider.notifier)
-                          .select(item.category);
-                      ref.read(settingsSearchProvider.notifier).clear();
-                    },
-                    onCategorySelected: (category) => ref
-                        .read(settingsCategoryProvider.notifier)
-                        .select(category),
+                          .select(category),
+                    ),
                   ),
                 ),
               ],

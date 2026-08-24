@@ -137,6 +137,32 @@ void main() {
     });
   });
 
+  group('Settings search tablet overflow (T-1 回帰)', () {
+    testWidgets('broad query does not overflow the tablet left pane', (
+      tester,
+    ) async {
+      final overflowErrors = <FlutterErrorDetails>[];
+      final originalOnError = FlutterError.onError;
+      // RenderFlex overflow を捕捉する方式（#T-1 回帰）
+      FlutterError.onError = (details) {
+        if (details.toString().contains('A RenderFlex overflowed')) {
+          overflowErrors.add(details);
+        } else {
+          originalOnError?.call(details);
+        }
+      };
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      await buildSettingsApp(tester, size: const Size(1280, 800));
+      // 30 以上のヒットを生む広域 1 文字クエリ（'e' は title/desc 全体に頻出）
+      await typeQuery(tester, 'e');
+      await tester.pumpAndSettle();
+
+      // 左ペインがスクロール可能なため overflow していない
+      expect(overflowErrors, isEmpty);
+    });
+  });
+
   group('Settings search semantics (P3-C10)', () {
     testWidgets('search result category headings expose isHeader', (
       tester,
