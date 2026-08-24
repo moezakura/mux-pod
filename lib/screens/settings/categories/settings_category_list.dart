@@ -20,7 +20,11 @@ class SettingsCategoryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return ListView(
+    // 4カテゴリのみのため Column で列挙する。スマホ一覧は CustomScrollView が
+    // スクロールを担い、タブレット左ペインでは固有高さで収まる
+    // （ListView を SliverList 内にネストすると unbounded になるため）。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final category in SettingsCategory.values)
           ListTile(
