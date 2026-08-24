@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../settings_category.dart';
 
 /// カテゴリ ListTile 一覧。
@@ -18,31 +19,17 @@ class SettingsCategoryList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return ListView(
       children: [
         for (final category in SettingsCategory.values)
           ListTile(
-            leading: Icon(_categoryIcon(category)),
-            title: Text(_categoryTitle(category)),
+            leading: Icon(category.icon),
+            title: Text(category.labelKey(l10n)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => onCategorySelected(category),
           ),
       ],
     );
   }
-
-  // 一時英語直書き（P1-C3・M-3）: C4 で labelKey / icon に差し替える（FIN-2）。
-  String _categoryTitle(SettingsCategory category) => switch (category) {
-    SettingsCategory.display => 'Display',
-    SettingsCategory.behavior => 'Behavior',
-    SettingsCategory.connection => 'Connection & Transfer',
-    SettingsCategory.about => 'About',
-  };
-
-  IconData _categoryIcon(SettingsCategory category) => switch (category) {
-    SettingsCategory.display => Icons.palette_outlined,
-    SettingsCategory.behavior => Icons.touch_app_outlined,
-    SettingsCategory.connection => Icons.sync_alt,
-    SettingsCategory.about => Icons.info_outline,
-  };
 }

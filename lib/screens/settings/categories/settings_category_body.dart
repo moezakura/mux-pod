@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../l10n/l10n_ext.dart';
 import '../sections/about_section.dart';
 import '../sections/behavior_section.dart';
 import '../sections/connection_section.dart';
@@ -19,11 +20,12 @@ class SettingsCategoryBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     return ListView(
       key: const Key('settingsScrollArea'),
       padding: const EdgeInsets.only(bottom: 100),
       children: [
-        SettingsSectionHeader(title: _categoryTitle(category)),
+        SettingsSectionHeader(title: category.labelKey(l10n)),
         switch (category) {
           SettingsCategory.display => const DisplaySection(),
           SettingsCategory.behavior => const BehaviorSection(),
@@ -33,12 +35,4 @@ class SettingsCategoryBody extends ConsumerWidget {
       ],
     );
   }
-
-  // 一時英語直書き（P1-C3・M-3）: C4 で labelKey に差し替える（FIN-2）。
-  String _categoryTitle(SettingsCategory category) => switch (category) {
-    SettingsCategory.display => 'Display',
-    SettingsCategory.behavior => 'Behavior',
-    SettingsCategory.connection => 'Connection & Transfer',
-    SettingsCategory.about => 'About',
-  };
 }

@@ -27,13 +27,10 @@ class BehaviorSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // TODO(i18n): localize once arb keys exist for these entries.
         ListTile(
           leading: const Icon(Icons.apps),
-          title: const Text('Custom Buttons'),
-          subtitle: const Text(
-            'Add buttons and action sequences to the key bar',
-          ),
+          title: Text(l10n.settingsCustomButtons),
+          subtitle: Text(l10n.settingsCustomButtonsDescription),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const CustomKeysScreen()),
           ),

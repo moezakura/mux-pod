@@ -11,9 +11,6 @@ import '../pickers/text_input_dialog.dart';
 import '../widgets/settings_section_header.dart';
 
 /// Connection（接続と転送）カテゴリ: 画像転送グループ + Clear SSH Host Keys（フラット）。
-///
-/// グループ見出しは一時的に旧 `settingsSectionImageTransfer` キーを参照する
-/// （新 `settingsGroupImageTransfer` キーは P1-C4 で追加されるため・M-3）。
 class ConnectionSection extends ConsumerWidget {
   const ConnectionSection({super.key});
 
@@ -25,7 +22,7 @@ class ConnectionSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SettingsSectionHeader(title: l10n.settingsSectionImageTransfer),
+        SettingsSectionHeader(title: l10n.settingsGroupImageTransfer),
         ListTile(
           leading: const Icon(Icons.folder),
           title: Text(l10n.settingsRemotePath),
@@ -140,11 +137,10 @@ class ConnectionSection extends ConsumerWidget {
               .setImageBracketedPaste(v),
         ),
         const Divider(),
-        // TODO(i18n): localize once arb keys exist for these entries.
         ListTile(
           leading: const Icon(Icons.key_off),
-          title: const Text('Clear SSH Host Keys'),
-          subtitle: const Text('Reset saved server fingerprints'),
+          title: Text(l10n.settingsClearHostKeys),
+          subtitle: Text(l10n.settingsClearHostKeysDescription),
           onTap: () => confirmClearHostKeys(context),
         ),
       ],

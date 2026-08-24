@@ -5,7 +5,8 @@ import '../../../theme/design_colors.dart';
 
 /// 設定画面のセクション（グループ）見出し。
 ///
-/// P1-C4 で toUpperCase 廃止 + Semantics(header: true) が追加される（F-2）。
+/// toUpperCase 廃止 + Semantics(header: true)（F-2・D6）。
+/// 大文字化は ja では意味がなく、セマンティクス上も見出しとして公開する。
 class SettingsSectionHeader extends StatelessWidget {
   final String title;
 
@@ -16,13 +17,18 @@ class SettingsSectionHeader extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Text(
-        title.toUpperCase(),
-        style: GoogleFonts.spaceGrotesk(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
-          letterSpacing: 1.5,
+      child: Semantics(
+        header: true,
+        child: Text(
+          title,
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: isDark
+                ? DesignColors.textMuted
+                : DesignColors.textMutedLight,
+            letterSpacing: 1.5,
+          ),
         ),
       ),
     );

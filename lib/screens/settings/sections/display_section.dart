@@ -14,9 +14,6 @@ import '../pickers/overlay_position_picker.dart';
 import '../widgets/settings_section_header.dart';
 
 /// Display（表示）カテゴリ: 外観 / ターミナル表示 / キーオーバーレイ の3グループ。
-///
-/// グループ見出しは一時的に旧 `settingsSection*` キーを参照する
-/// （新 `settingsGroup*` キーは P1-C4 で追加されるため・M-3）。
 class DisplaySection extends ConsumerWidget {
   const DisplaySection({super.key});
 
@@ -28,7 +25,7 @@ class DisplaySection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SettingsSectionHeader(title: l10n.settingsSectionAppearance),
+        SettingsSectionHeader(title: l10n.settingsGroupAppearance),
         ListTile(
           leading: const Icon(Icons.dark_mode),
           title: Text(l10n.settingsTheme),
@@ -53,7 +50,7 @@ class DisplaySection extends ConsumerWidget {
           onTap: () => showLanguagePicker(context, ref, settings.language),
         ),
         const Divider(),
-        SettingsSectionHeader(title: l10n.settingsSectionTerminal),
+        SettingsSectionHeader(title: l10n.settingsGroupTerminal),
         SwitchListTile(
           secondary: const Icon(Icons.abc),
           title: Text(l10n.settingsShowCursor),
@@ -131,7 +128,7 @@ class DisplaySection extends ConsumerWidget {
               : null,
         ),
         const Divider(),
-        SettingsSectionHeader(title: l10n.settingsSectionKeyOverlay),
+        SettingsSectionHeader(title: l10n.settingsGroupKeyOverlay),
         SwitchListTile(
           secondary: const Icon(Icons.visibility),
           title: Text(l10n.settingsKeyOverlay),

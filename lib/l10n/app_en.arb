@@ -1426,5 +1426,28 @@
         "type": "String"
       }
     }
-  }
+  },
+  "settingsCategoryDisplay": "Display",
+  "settingsCategoryBehavior": "Behavior",
+  "settingsCategoryConnection": "Connection & Transfer",
+  "settingsCategoryAbout": "About",
+  "settingsGroupAppearance": "Appearance",
+  "settingsGroupTerminal": "Terminal",
+  "settingsGroupKeyOverlay": "Key Overlay",
+  "settingsGroupImageTransfer": "Image Transfer",
+  "settingsCustomButtons": "Custom Buttons",
+  "settingsCustomButtonsDescription": "Add buttons and action sequences to the key bar",
+  "settingsClearHostKeys": "Clear SSH Host Keys",
+  "settingsClearHostKeysDescription": "Reset saved server fingerprints",
+  "settingsClearHostKeysDialogTitle": "Clear SSH host keys?",
+  "settingsClearHostKeysDialogBody": "This removes all saved server host-key fingerprints. The next connection silently trusts and re-saves whatever host key each server presents, so only do this on a network you trust.",
+  "settingsClearHostKeysConfirmAction": "Clear",
+  "settingsClearHostKeysCancelAction": "Cancel",
+  "settingsClearHostKeysDone": "SSH host keys cleared",
+  "settingsSearch": "Search",
+  "settingsSearchHint": "Search settings…",
+  "settingsClearSearch": "Clear search",
+  "settingsSearchResults": "Search results",
+  "settingsNoResults": "No matching settings",
+  "settingsNoResultsHint": "Try a different search term"
 }

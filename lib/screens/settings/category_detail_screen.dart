@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/l10n_ext.dart';
 import 'categories/settings_category_body.dart';
 import 'settings_category.dart';
 import 'widgets/settings_app_bar_title.dart';
@@ -16,17 +17,10 @@ class SettingsCategoryDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Scaffold(
-      appBar: AppBar(title: SettingsAppBarTitle(text: _title(context))),
+      appBar: AppBar(title: SettingsAppBarTitle(text: category.labelKey(l10n))),
       body: SettingsCategoryBody(category: category),
     );
   }
-
-  // 一時英語直書き（P1-C3・M-3）: C4 で labelKey に差し替える（FIN-2）。
-  String _title(BuildContext context) => switch (category) {
-    SettingsCategory.display => 'Display',
-    SettingsCategory.behavior => 'Behavior',
-    SettingsCategory.connection => 'Connection & Transfer',
-    SettingsCategory.about => 'About',
-  };
 }
