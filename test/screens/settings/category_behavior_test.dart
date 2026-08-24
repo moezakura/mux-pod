@@ -285,5 +285,69 @@ void main() {
         expect(prefs.getBool('settings_keep_keyboard_on_enter'), isTrue);
       },
     );
+
+    // R-T1: キーオーバーレイ ゲート回帰（Display → Behavior 移動後のブロック不壊をロック）
+    // inventory: TEST-SETTINGS-V2-RT1
+    testWidgets('Key Overlay gate hides child items when OFF (R-T1)', (
+      tester,
+    ) async {
+      await buildSettingsApp(tester);
+      await openCategory(tester, 'Behavior');
+
+      // 既定 ON → ゲート下 5 項目が表示される
+      await scrollUntilFound(tester, find.text('Overlay Position'));
+      expect(find.text('Modifier Keys'), findsOneWidget);
+      expect(find.text('Overlay Position'), findsOneWidget);
+
+      // OFF にトグル（見出しと同名のため SwitchListTile で特定）
+      final koSwitch = find.widgetWithText(SwitchListTile, 'Key Overlay');
+      await tester.ensureVisible(koSwitch);
+      await tester.pumpAndSettle();
+      await tester.tap(koSwitch);
+      await tester.pumpAndSettle();
+
+      // 陽性アンカー（入力グループの Custom Buttons）までスクロールした上で
+      // ゲート下 5 項目が非表示であることを確認（lazy ビルドの偽陰性回避）
+      await scrollUntilFound(tester, find.text('Custom Buttons'));
+      expect(find.text('Modifier Keys'), findsNothing);
+      expect(find.text('Special Keys'), findsNothing);
+      expect(find.text('Arrow Keys'), findsNothing);
+      expect(find.text('Shortcut Keys'), findsNothing);
+      expect(find.text('Overlay Position'), findsNothing);
+
+      // 再び ON → 表示に戻る
+      await scrollUntilFound(
+        tester,
+        find.widgetWithText(SwitchListTile, 'Key Overlay'),
+      );
+      await tester.tap(find.widgetWithText(SwitchListTile, 'Key Overlay'));
+      await tester.pumpAndSettle();
+      await scrollUntilFound(tester, find.text('Overlay Position'));
+      expect(find.text('Overlay Position'), findsOneWidget);
+    });
+
+    // R-T4: Behavior グループ相対順回帰（build 順 ↔ descriptor の二重管理ロック）
+    // inventory: TEST-SETTINGS-V2-RT4
+    testWidgets('Behavior group headers are in relative order (R-T4)', (
+      tester,
+    ) async {
+      // 全項目が収まる高さでスクロール不要にする
+      await buildSettingsApp(tester, size: const Size(390, 2000));
+      await openCategory(tester, 'Behavior');
+
+      final dyKeyOverlay = tester.getTopLeft(find.text('Key Overlay').first).dy;
+      final dyInput = tester.getTopLeft(find.text('Input')).dy;
+      final dyScrollSend = tester.getTopLeft(find.text('Scroll Send')).dy;
+      final dyInvert = tester
+          .getTopLeft(find.text('Invert Pane Navigation'))
+          .dy;
+
+      expect(dyKeyOverlay, lessThan(dyInput));
+      expect(dyInput, lessThan(dyScrollSend));
+      // フラットのペイン反転が最後
+      expect(dyScrollSend, lessThan(dyInvert));
+      expect(find.text('Custom Buttons'), findsOneWidget);
+      expect(find.text('Invert Pane Navigation'), findsOneWidget);
+    });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_muxpod/screens/settings/widgets/settings_section_header.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -93,6 +94,47 @@ void main() {
       expect(find.text('Auto (highest)'), findsWidgets);
       expect(find.text('120 Hz'), findsOneWidget);
       expect(find.byType(RadioListTile<String>), findsNWidgets(4));
+    });
+
+    // R-T2: Display「画面」グループの存在 + 相対順回帰
+    // inventory: TEST-SETTINGS-V2-RT2
+    testWidgets('Screen group exists after Appearance/Terminal (R-T2)', (
+      tester,
+    ) async {
+      // 全項目が収まる高さでスクロール不要にする
+      await buildSettingsApp(tester, size: const Size(390, 1600));
+      await openCategory(tester, 'Display');
+
+      expect(find.text('Appearance'), findsOneWidget);
+      expect(find.text('Terminal'), findsOneWidget);
+      expect(find.text('Screen'), findsOneWidget);
+
+      final dyAppearance = tester.getTopLeft(find.text('Appearance')).dy;
+      final dyTerminal = tester.getTopLeft(find.text('Terminal')).dy;
+      final dyScreen = tester.getTopLeft(find.text('Screen')).dy;
+      expect(dyAppearance, lessThan(dyTerminal));
+      expect(dyTerminal, lessThan(dyScreen));
+
+      expect(find.text('Keep Screen On'), findsOneWidget);
+      expect(find.text('Screen Orientation'), findsOneWidget);
+      expect(find.text('Max Refresh Rate'), findsOneWidget);
+    });
+
+    // R-T3: 新グループ見出しが Semantics isHeader (SettingsSectionHeader) で描画される
+    // inventory: TEST-SETTINGS-V2-RT3
+    testWidgets('Screen group header is a semantics header (R-T3)', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await buildSettingsApp(tester, size: const Size(390, 1600));
+      await openCategory(tester, 'Display');
+
+      final heading = find.descendant(
+        of: find.byType(SettingsSectionHeader),
+        matching: find.text('Screen'),
+      );
+      expect(tester.getSemantics(heading).flagsCollection.isHeader, isTrue);
+      handle.dispose();
     });
   });
 }
