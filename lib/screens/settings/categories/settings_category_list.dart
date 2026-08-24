@@ -12,10 +12,7 @@ import '../settings_category.dart';
 class SettingsCategoryList extends StatelessWidget {
   final ValueChanged<SettingsCategory> onCategorySelected;
 
-  const SettingsCategoryList({
-    super.key,
-    required this.onCategorySelected,
-  });
+  const SettingsCategoryList({super.key, required this.onCategorySelected});
 
   @override
   Widget build(BuildContext context) {

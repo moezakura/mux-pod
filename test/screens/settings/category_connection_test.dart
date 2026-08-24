@@ -29,37 +29,38 @@ void main() {
       expect(find.text('Bracketed Paste'), findsOneWidget);
     });
 
-    testWidgets('Clear SSH Host Keys clears stored fingerprints after confirm', (
-      tester,
-    ) async {
-      SecureStorageService.setTestValues({
-        'hostkey_192.168.1.3_22_ssh-ed25519': 'aa:bb:cc',
-        'password_conn1': 'secret',
-      });
-      addTearDown(() => SecureStorageService.setTestValues(null));
+    testWidgets(
+      'Clear SSH Host Keys clears stored fingerprints after confirm',
+      (tester) async {
+        SecureStorageService.setTestValues({
+          'hostkey_192.168.1.3_22_ssh-ed25519': 'aa:bb:cc',
+          'password_conn1': 'secret',
+        });
+        addTearDown(() => SecureStorageService.setTestValues(null));
 
-      await buildSettingsApp(tester);
-      await openCategory(tester, 'Connection & Transfer');
+        await buildSettingsApp(tester);
+        await openCategory(tester, 'Connection & Transfer');
 
-      await scrollUntilFound(tester, find.text('Clear SSH Host Keys'));
-      await tester.tap(find.text('Clear SSH Host Keys'));
-      await tester.pumpAndSettle();
+        await scrollUntilFound(tester, find.text('Clear SSH Host Keys'));
+        await tester.tap(find.text('Clear SSH Host Keys'));
+        await tester.pumpAndSettle();
 
-      // 確認ダイアログ
-      expect(find.text('Clear SSH host keys?'), findsOneWidget);
+        // 確認ダイアログ
+        expect(find.text('Clear SSH host keys?'), findsOneWidget);
 
-      await tester.tap(find.text('Clear'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear'));
+        await tester.pumpAndSettle();
 
-      final service = SecureStorageService();
-      expect(
-        await service.getHostKeyFingerprint('192.168.1.3', 22, 'ssh-ed25519'),
-        isNull,
-      );
-      // 認証情報は残る
-      expect(await service.getPassword('conn1'), 'secret');
-      expect(find.text('SSH host keys cleared'), findsOneWidget);
-    });
+        final service = SecureStorageService();
+        expect(
+          await service.getHostKeyFingerprint('192.168.1.3', 22, 'ssh-ed25519'),
+          isNull,
+        );
+        // 認証情報は残る
+        expect(await service.getPassword('conn1'), 'secret');
+        expect(find.text('SSH host keys cleared'), findsOneWidget);
+      },
+    );
 
     testWidgets('Clear SSH Host Keys cancel keeps fingerprints', (
       tester,

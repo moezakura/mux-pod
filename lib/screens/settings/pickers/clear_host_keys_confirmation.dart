@@ -39,7 +39,5 @@ Future<void> confirmClearHostKeys(BuildContext context) async {
     message = 'Could not clear host keys: ${e.runtimeType}';
   }
   if (!context.mounted) return;
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }

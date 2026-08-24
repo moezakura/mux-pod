@@ -13,9 +13,7 @@ void main() {
     Future<void> buildTablet(WidgetTester tester) =>
         buildSettingsApp(tester, size: const Size(1280, 800));
 
-    testWidgets('shows master list and initial Display detail', (
-      tester,
-    ) async {
+    testWidgets('shows master list and initial Display detail', (tester) async {
       await buildTablet(tester);
 
       // 左ペイン4カテゴリ + 右ペイン初期 Display（ヘッダ）
@@ -50,8 +48,9 @@ void main() {
       await buildTablet(tester);
 
       // 初期 Display を下へスクロール
-      final position =
-          tester.state<ScrollableState>(settingsScrollable).position;
+      final position = tester
+          .state<ScrollableState>(settingsScrollable)
+          .position;
       await tester.drag(settingsScrollable, const Offset(0, -300));
       await tester.pump();
       final displayOffset = position.pixels;
@@ -67,8 +66,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Adjust Mode'), findsOneWidget);
 
-      final restored =
-          tester.state<ScrollableState>(settingsScrollable).position;
+      final restored = tester
+          .state<ScrollableState>(settingsScrollable)
+          .position;
       expect(restored.pixels, displayOffset);
     });
 
@@ -83,7 +83,10 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(SettingsMasterDetailView)),
       );
-      expect(container.read(settingsCategoryProvider), SettingsCategory.behavior);
+      expect(
+        container.read(settingsCategoryProvider),
+        SettingsCategory.behavior,
+      );
 
       // 言語切替（settingsProvider 更新 → sections が再ビルドされる）
       await container.read(settingsProvider.notifier).setLanguage('ja');

@@ -125,16 +125,11 @@ void main() {
     });
 
     // inventory: TEST-SETTINGS-UI-005
-    testWidgets('displays Invert Scroll Send Direction toggle', (
-      tester,
-    ) async {
+    testWidgets('displays Invert Scroll Send Direction toggle', (tester) async {
       await buildSettingsApp(tester);
       await openCategory(tester, 'Behavior');
 
-      await scrollUntilFound(
-        tester,
-        find.text('Invert Scroll Send Direction'),
-      );
+      await scrollUntilFound(tester, find.text('Invert Scroll Send Direction'));
       expect(find.text('Invert Scroll Send Direction'), findsOneWidget);
 
       final tile = find.ancestor(
@@ -188,10 +183,7 @@ void main() {
       await buildSettingsApp(tester);
       await openCategory(tester, 'Behavior');
 
-      await scrollUntilFound(
-        tester,
-        find.text('Invert Scroll Send Direction'),
-      );
+      await scrollUntilFound(tester, find.text('Invert Scroll Send Direction'));
       final tile = find.ancestor(
         of: find.text('Invert Scroll Send Direction'),
         matching: find.byType(SwitchListTile),
