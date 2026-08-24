@@ -74,7 +74,16 @@ Generate **Ed25519** (recommended) or **RSA** (2048/3072/4096-bit) keys on-devic
 
 ### ⚙️ Settings
 
-Customize terminal appearance (fonts, colors), behavior (haptic feedback, keep screen on), and connection settings.
+Settings are organized into four purpose-based categories:
+
+- **Display** — appearance, terminal rendering, and key overlay
+- **Behavior** — interaction and haptics
+- **Connection & Transfer** — SSH connections and image transfer
+- **About** — app information and licenses
+
+**Search settings** (top of the screen) filters every item across all categories in both English and Japanese, so you can jump straight to a setting by name.
+
+The layout is responsive: on phones a category opens as a full-screen detail, while on wider screens (tablets / landscape) the category list and detail sit side-by-side in a two-pane master-detail view.
 
 ---
 
