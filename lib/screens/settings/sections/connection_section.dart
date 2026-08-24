@@ -8,6 +8,8 @@ import '../pickers/output_format_picker.dart';
 import '../pickers/resize_preset_picker.dart';
 import '../pickers/slider_dialog.dart';
 import '../pickers/text_input_dialog.dart';
+import '../search/settings_search_item.dart';
+import '../settings_category.dart';
 import '../widgets/settings_section_header.dart';
 
 /// Connection（接続と転送）カテゴリ: 画像転送グループ + Clear SSH Host Keys（フラット）。
@@ -32,20 +34,16 @@ class ConnectionSection extends ConsumerWidget {
             ref,
             title: l10n.settingsRemotePath,
             currentValue: settings.imageRemotePath,
-            onSave: (v) => ref
-                .read(settingsProvider.notifier)
-                .setImageRemotePath(v),
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setImageRemotePath(v),
           ),
         ),
         ListTile(
           leading: const Icon(Icons.image),
           title: Text(l10n.settingsOutputFormat),
           subtitle: Text(settings.imageOutputFormat),
-          onTap: () => showOutputFormatPicker(
-            context,
-            ref,
-            settings.imageOutputFormat,
-          ),
+          onTap: () =>
+              showOutputFormatPicker(context, ref, settings.imageOutputFormat),
         ),
         if (settings.imageOutputFormat == 'jpeg')
           ListTile(
@@ -68,11 +66,8 @@ class ConnectionSection extends ConsumerWidget {
           leading: const Icon(Icons.photo_size_select_large),
           title: Text(l10n.settingsResize),
           subtitle: Text(settings.imageResizePreset.toUpperCase()),
-          onTap: () => showResizePresetPicker(
-            context,
-            ref,
-            settings.imageResizePreset,
-          ),
+          onTap: () =>
+              showResizePresetPicker(context, ref, settings.imageResizePreset),
         ),
         if (settings.imageResizePreset == 'custom') ...[
           ListTile(
@@ -84,9 +79,8 @@ class ConnectionSection extends ConsumerWidget {
               ref,
               title: l10n.settingsMaxWidth,
               currentValue: settings.imageMaxWidth,
-              onSave: (v) => ref
-                  .read(settingsProvider.notifier)
-                  .setImageMaxWidth(v),
+              onSave: (v) =>
+                  ref.read(settingsProvider.notifier).setImageMaxWidth(v),
             ),
           ),
           ListTile(
@@ -98,9 +92,8 @@ class ConnectionSection extends ConsumerWidget {
               ref,
               title: l10n.settingsMaxHeight,
               currentValue: settings.imageMaxHeight,
-              onSave: (v) => ref
-                  .read(settingsProvider.notifier)
-                  .setImageMaxHeight(v),
+              onSave: (v) =>
+                  ref.read(settingsProvider.notifier).setImageMaxHeight(v),
             ),
           ),
         ],
@@ -114,9 +107,8 @@ class ConnectionSection extends ConsumerWidget {
             title: l10n.settingsPathFormat,
             currentValue: settings.imagePathFormat,
             hint: l10n.settingsPathFormatHint('{path}'),
-            onSave: (v) => ref
-                .read(settingsProvider.notifier)
-                .setImagePathFormat(v),
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setImagePathFormat(v),
           ),
         ),
         SwitchListTile(
@@ -132,9 +124,8 @@ class ConnectionSection extends ConsumerWidget {
           title: Text(l10n.settingsBracketedPaste),
           subtitle: Text(l10n.settingsBracketedPasteDescription),
           value: settings.imageBracketedPaste,
-          onChanged: (v) => ref
-              .read(settingsProvider.notifier)
-              .setImageBracketedPaste(v),
+          onChanged: (v) =>
+              ref.read(settingsProvider.notifier).setImageBracketedPaste(v),
         ),
         const Divider(),
         ListTile(
@@ -147,3 +138,103 @@ class ConnectionSection extends ConsumerWidget {
     );
   }
 }
+
+/// Connection セクションの検索 descriptor（全10項目）。
+///
+/// 画像転送9項目はグループ「画像転送」（Image Transfer）に属し、
+/// Clear SSH Host Keys はフラット（1項目グループの階層過剰回避・A2）。
+/// JPEG Quality / Resize はゲート項目ではなく、ピッカー値は静的選択肢のみ。
+final List<SettingsSearchItem> connectionSearchDescriptors = [
+  // --- 画像転送（Image Transfer） ---
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 0,
+    id: 'imageRemotePath',
+    title: (l10n) => l10n.settingsRemotePath,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.folder,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 1,
+    id: 'imageOutputFormat',
+    title: (l10n) => l10n.settingsOutputFormat,
+    valueLabels: [(_) => 'ORIGINAL', (_) => 'PNG', (_) => 'JPEG'],
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.image,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 2,
+    id: 'imageJpegQuality',
+    title: (l10n) => l10n.settingsJpegQuality,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.high_quality,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 3,
+    id: 'imageResize',
+    title: (l10n) => l10n.settingsResize,
+    valueLabels: [
+      (l10n) => l10n.settingsResizePresetOriginal,
+      (l10n) => l10n.settingsResizePresetSmall(480),
+      (l10n) => l10n.settingsResizePresetMedium(1080),
+      (l10n) => l10n.settingsResizePresetLarge(1920),
+      (l10n) => l10n.settingsResizePresetCustom,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.photo_size_select_large,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 4,
+    id: 'imageMaxWidth',
+    title: (l10n) => l10n.settingsMaxWidth,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.open_in_full,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 5,
+    id: 'imageMaxHeight',
+    title: (l10n) => l10n.settingsMaxHeight,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.open_in_full,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 6,
+    id: 'imagePathFormat',
+    title: (l10n) => l10n.settingsPathFormat,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.text_format,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 7,
+    id: 'imageAutoEnter',
+    title: (l10n) => l10n.settingsAutoEnter,
+    description: (l10n) => l10n.settingsAutoEnterDescription,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.keyboard_return,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 8,
+    id: 'imageBracketedPaste',
+    title: (l10n) => l10n.settingsBracketedPaste,
+    description: (l10n) => l10n.settingsBracketedPasteDescription,
+    groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
+    icon: Icons.paste,
+  ),
+  // --- フラット（1項目グループ回避・A2） ---
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 9,
+    id: 'clearHostKeys',
+    title: (l10n) => l10n.settingsClearHostKeys,
+    description: (l10n) => l10n.settingsClearHostKeysDescription,
+    icon: Icons.key_off,
+  ),
+];

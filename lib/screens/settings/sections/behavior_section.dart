@@ -9,6 +9,8 @@ import '../../custom_keys/custom_keys_screen.dart';
 import '../pickers/orientation_picker.dart';
 import '../pickers/refresh_rate_picker.dart';
 import '../pickers/scroll_send_input_picker.dart';
+import '../search/settings_search_item.dart';
+import '../settings_category.dart';
 
 /// Behavior（操作）カテゴリ（フラット・グループ見出しなし）。
 ///
@@ -31,9 +33,9 @@ class BehaviorSection extends ConsumerWidget {
           leading: const Icon(Icons.apps),
           title: Text(l10n.settingsCustomButtons),
           subtitle: Text(l10n.settingsCustomButtonsDescription),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CustomKeysScreen()),
-          ),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const CustomKeysScreen())),
         ),
         SwitchListTile(
           secondary: const Icon(Icons.vibration),
@@ -57,11 +59,8 @@ class BehaviorSection extends ConsumerWidget {
           leading: const Icon(Icons.screen_rotation),
           title: Text(l10n.settingsScreenOrientation),
           subtitle: Text(_orientationLabel(l10n, settings.screenOrientation)),
-          onTap: () => showOrientationPicker(
-            context,
-            ref,
-            settings.screenOrientation,
-          ),
+          onTap: () =>
+              showOrientationPicker(context, ref, settings.screenOrientation),
         ),
         ListTile(
           leading: const Icon(Icons.speed),
@@ -106,11 +105,8 @@ class BehaviorSection extends ConsumerWidget {
           leading: const Icon(Icons.mouse),
           title: Text(l10n.settingsScrollSendInput),
           subtitle: Text(_scrollSendInputLabel(l10n, settings.scrollSendInput)),
-          onTap: () => showScrollSendInputPicker(
-            context,
-            ref,
-            settings.scrollSendInput,
-          ),
+          onTap: () =>
+              showScrollSendInputPicker(context, ref, settings.scrollSendInput),
         ),
         // inventory: SETTINGS-UI-INPUT-NOTE-001
         if (!ref.watch(wheelSendVerifiedProvider))
@@ -197,3 +193,111 @@ class BehaviorSection extends ConsumerWidget {
     }
   }
 }
+
+/// Behavior セクションの検索 descriptor（全11項目・フラット）。
+///
+/// フラットのため groupLabel は null（検索結果 subtitle は所属カテゴリ名表示）。
+/// CJK Mode は iOS 限定表示だが、設定として有効な項目のため検索対象に含める（DR-10 と同趣旨）。
+/// Haptic Feedback（enableVibration）は既知: ハプティクス未反映（A3 注記）。
+final List<SettingsSearchItem> behaviorSearchDescriptors = [
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 0,
+    id: 'customButtons',
+    title: (l10n) => l10n.settingsCustomButtons,
+    description: (l10n) => l10n.settingsCustomButtonsDescription,
+    icon: Icons.apps,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 1,
+    id: 'hapticFeedback',
+    title: (l10n) => l10n.settingsHapticFeedback,
+    description: (l10n) => l10n.settingsHapticFeedbackDescription,
+    icon: Icons.vibration,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 2,
+    id: 'keepScreenOn',
+    title: (l10n) => l10n.settingsKeepScreenOn,
+    description: (l10n) => l10n.settingsKeepScreenOnDescription,
+    icon: Icons.brightness_high,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 3,
+    id: 'screenOrientation',
+    title: (l10n) => l10n.settingsScreenOrientation,
+    valueLabels: [
+      (l10n) => l10n.settingsOrientationPortrait,
+      (l10n) => l10n.settingsOrientationLandscape,
+      (l10n) => l10n.settingsOrientationAuto,
+    ],
+    icon: Icons.screen_rotation,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 4,
+    id: 'maxRefreshRate',
+    title: (l10n) => l10n.settingsMaxRefreshRate,
+    valueLabels: [
+      (l10n) => l10n.settingsRefreshRateAuto,
+      (_) => '120 Hz',
+      (_) => '90 Hz',
+      (_) => '60 Hz',
+    ],
+    icon: Icons.speed,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 5,
+    id: 'invertPaneNavigation',
+    title: (l10n) => l10n.settingsInvertPaneNavigation,
+    description: (l10n) => l10n.settingsInvertPaneNavigationDescription,
+    icon: Icons.swipe,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 6,
+    id: 'cjkMode',
+    title: (l10n) => l10n.settingsCjkMode,
+    description: (l10n) => l10n.settingsCjkModeDescription,
+    icon: Icons.translate,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 7,
+    id: 'keepKeyboardOnEnter',
+    title: (l10n) => l10n.settingsKeepKeyboardOnEnter,
+    description: (l10n) => l10n.settingsKeepKeyboardOnEnterDescription,
+    icon: Icons.keyboard,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 8,
+    id: 'scrollSendInput',
+    title: (l10n) => l10n.settingsScrollSendInput,
+    valueLabels: [
+      (l10n) => l10n.settingsScrollSendInputWheel,
+      (l10n) => l10n.settingsScrollSendInputKey,
+    ],
+    icon: Icons.mouse,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 9,
+    id: 'invertScrollSendDirection',
+    title: (l10n) => l10n.settingsInvertScrollSendDirection,
+    description: (l10n) => l10n.settingsInvertScrollSendDirectionDesc,
+    icon: Icons.swipe,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.behavior,
+    orderInCategory: 10,
+    id: 'autoFitZoomOnScrollSend',
+    title: (l10n) => l10n.settingsAutoFitZoomOnScrollSend,
+    description: (l10n) => l10n.settingsAutoFitZoomOnScrollSendDesc,
+    icon: Icons.zoom_out_map,
+  ),
+];

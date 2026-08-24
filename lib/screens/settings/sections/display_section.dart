@@ -11,6 +11,8 @@ import '../../../widgets/dialogs/theme_dialog.dart';
 import '../pickers/adjust_mode_picker.dart';
 import '../pickers/language_picker.dart';
 import '../pickers/overlay_position_picker.dart';
+import '../search/settings_search_item.dart';
+import '../settings_category.dart';
 import '../widgets/settings_section_header.dart';
 
 /// Display（表示）カテゴリ: 外観 / ターミナル表示 / キーオーバーレイ の3グループ。
@@ -29,14 +31,11 @@ class DisplaySection extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.dark_mode),
           title: Text(l10n.settingsTheme),
-          subtitle: Text(
-            settings.darkMode ? l10n.themeDark : l10n.themeLight,
-          ),
+          subtitle: Text(settings.darkMode ? l10n.themeDark : l10n.themeLight),
           onTap: () async {
             final isDark = await showDialog<bool>(
               context: context,
-              builder: (context) =>
-                  ThemeDialog(isDarkMode: settings.darkMode),
+              builder: (context) => ThemeDialog(isDarkMode: settings.darkMode),
             );
             if (isDark != null) {
               ref.read(settingsProvider.notifier).setDarkMode(isDark);
@@ -45,8 +44,8 @@ class DisplaySection extends ConsumerWidget {
         ),
         ListTile(
           leading: const Icon(Icons.language),
-          title: Text(context.l10n.settingsLanguage),
-          subtitle: Text(_languageLabel(context, settings.language)),
+          title: Text(l10n.settingsLanguage),
+          subtitle: Text(_languageLabel(l10n, settings.language)),
           onTap: () => showLanguagePicker(context, ref, settings.language),
         ),
         const Divider(),
@@ -205,9 +204,8 @@ class DisplaySection extends ConsumerWidget {
     }
   }
 
-  /// 言語設定の現在値ラベル
-  String _languageLabel(BuildContext context, String value) {
-    final l10n = context.l10n;
+  /// 言語設定の現在値ラベル（A4 規約: AppLocalizations 引数で BuildContext 非依存に統一・DR-11）
+  String _languageLabel(AppLocalizations l10n, String value) {
     switch (value) {
       case 'ja':
         return l10n.languageJapanese;
@@ -219,3 +217,139 @@ class DisplaySection extends ConsumerWidget {
     }
   }
 }
+
+/// Display セクションの検索 descriptor（全13項目・3グループ、P2-C6 で並置）。
+///
+/// 値ラベルは静的選択肢（en/ja 両解決）を descriptor に列挙する。
+/// 現在値（subtitle）は動的のためヘイストックに含めない（DR-11・critic H2）。
+final List<SettingsSearchItem> displaySearchDescriptors = [
+  // --- 外観（Appearance） ---
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 0,
+    id: 'theme',
+    title: (l10n) => l10n.settingsTheme,
+    valueLabels: [(l10n) => l10n.themeDark, (l10n) => l10n.themeLight],
+    groupLabel: (l10n) => l10n.settingsGroupAppearance,
+    icon: Icons.dark_mode,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 1,
+    id: 'language',
+    title: (l10n) => l10n.settingsLanguage,
+    valueLabels: [
+      (l10n) => l10n.languageSystemDescription,
+      (l10n) => l10n.languageJapanese,
+      (l10n) => l10n.languageEnglish,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupAppearance,
+    icon: Icons.language,
+  ),
+  // --- ターミナル表示（Terminal） ---
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 2,
+    id: 'showCursor',
+    title: (l10n) => l10n.settingsShowCursor,
+    description: (l10n) => l10n.settingsShowCursorDescription,
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.abc,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 3,
+    id: 'adjustMode',
+    title: (l10n) => l10n.settingsAdjustMode,
+    valueLabels: [
+      (l10n) => l10n.settingsAdjustModeAutoFit,
+      (l10n) => l10n.settingsAdjustModeAutoResize,
+      (l10n) => l10n.settingsAdjustModeNone,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.tune,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 4,
+    id: 'fontSize',
+    title: (l10n) => l10n.settingsFontSize,
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.text_fields,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 5,
+    id: 'fontFamily',
+    title: (l10n) => l10n.settingsFontFamily,
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.font_download,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 6,
+    id: 'minFontSize',
+    title: (l10n) => l10n.settingsMinimumFontSize,
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.format_size,
+  ),
+  // --- キーオーバーレイ（Key Overlay） ---
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 7,
+    id: 'keyOverlay',
+    title: (l10n) => l10n.settingsKeyOverlay,
+    description: (l10n) => l10n.settingsKeyOverlayDescription,
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.visibility,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 8,
+    id: 'modifierKeys',
+    title: (l10n) => l10n.settingsModifierKeys,
+    description: (l10n) => l10n.settingsModifierKeysDescription,
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.keyboard,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 9,
+    id: 'specialKeys',
+    title: (l10n) => l10n.settingsSpecialKeys,
+    description: (l10n) => l10n.settingsSpecialKeysDescription,
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.space_bar,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 10,
+    id: 'arrowKeys',
+    title: (l10n) => l10n.settingsArrowKeys,
+    description: (l10n) => l10n.settingsArrowKeysDescription,
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.arrow_upward,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 11,
+    id: 'shortcutKeys',
+    title: (l10n) => l10n.settingsShortcutKeys,
+    description: (l10n) => l10n.settingsShortcutKeysDescription,
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.shortcut,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 12,
+    id: 'overlayPosition',
+    title: (l10n) => l10n.settingsOverlayPosition,
+    valueLabels: [
+      (l10n) => l10n.settingsOverlayPositionAboveKeyboard,
+      (l10n) => l10n.settingsOverlayPositionCenter,
+      (l10n) => l10n.settingsOverlayPositionBelowHeader,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
+    icon: Icons.place,
+  ),
+];

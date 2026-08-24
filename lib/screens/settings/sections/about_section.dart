@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../l10n/l10n_ext.dart';
 import '../../../services/version_info.dart';
 import '../licenses_screen.dart';
+import '../search/settings_search_item.dart';
+import '../settings_category.dart';
 
 /// About（このアプリについて）カテゴリ（フラット・グループ見出しなし）。
 class AboutSection extends ConsumerWidget {
@@ -48,3 +50,32 @@ class AboutSection extends ConsumerWidget {
     );
   }
 }
+
+/// About セクションの検索 descriptor（全3項目・フラット）。
+///
+/// フラットのため groupLabel は null。バージョン番号は動的值のため
+/// ヘイストックには含めない（現在値は subtitle が担う・DR-11）。
+final List<SettingsSearchItem> aboutSearchDescriptors = [
+  SettingsSearchItem(
+    category: SettingsCategory.about,
+    orderInCategory: 0,
+    id: 'version',
+    title: (l10n) => l10n.settingsVersion,
+    icon: Icons.info,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.about,
+    orderInCategory: 1,
+    id: 'sourceCode',
+    title: (l10n) => l10n.settingsSourceCode,
+    icon: Icons.code,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.about,
+    orderInCategory: 2,
+    id: 'licenses',
+    title: (l10n) => l10n.settingsLicenses,
+    description: (l10n) => l10n.settingsLicensesDescription,
+    icon: Icons.description,
+  ),
+];
