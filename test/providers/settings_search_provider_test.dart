@@ -118,19 +118,19 @@ void main() {
       final systemIndex = container.read(settingsSearchIndexProvider);
       expect(
         systemIndex.items.length,
-        37,
-      ); // Display13+Behavior11+Connection10+About3
+        36,
+      ); // Display10+Behavior13+Connection10+About3
       expect(systemIndex.current, isNotNull);
       expect(systemIndex.other, isNotNull);
 
       await setLanguage('ja');
       final jaIndex = container.read(settingsSearchIndexProvider);
-      expect(jaIndex.items.length, 37);
+      expect(jaIndex.items.length, 36);
       expect(jaIndex.other, isNotNull); // en 側も並置
 
       await setLanguage('en');
       final enIndex = container.read(settingsSearchIndexProvider);
-      expect(enIndex.items.length, 37);
+      expect(enIndex.items.length, 36);
       expect(enIndex.other, isNotNull); // ja 側も並置
     });
   });
@@ -152,9 +152,9 @@ void main() {
     test('カテゴリ名マッチ: "Behavior" で Behavior カテゴリ全項目がヒット', () async {
       await setQuery('behavior');
       final ids = hitIds();
-      expect(ids.length, 11); // Behavior はフラット11項目
+      expect(ids.length, 13); // Behavior は3グループ+フラット1の13項目
       expect(ids, contains('customButtons'));
-      expect(ids, contains('maxRefreshRate'));
+      expect(ids, contains('invertPaneNavigation'));
     });
 
     test('値ラベル: "auto fit" で adjustMode がヒット', () async {
@@ -252,11 +252,11 @@ void main() {
     });
   });
 
-  group('検索対象の完全性（全37項目）', () {
-    test('37項目すべてが descriptor に存在しカテゴリと order が一意', () {
+  group('検索対象の完全性（全36項目）', () {
+    test('36項目すべてが descriptor に存在しカテゴリと order が一意', () {
       final index = container.read(settingsSearchIndexProvider);
       final ids = index.items.map((e) => e.id).toList();
-      expect(ids.toSet().length, 37);
+      expect(ids.toSet().length, 36);
       // カテゴリ内 order が一意（0..n-1 の重複なし）
       for (final category in SettingsCategory.values) {
         final perCategory =
@@ -267,13 +267,13 @@ void main() {
       }
       expect(
         index.items.where((e) => e.category == SettingsCategory.display).length,
-        13,
+        10,
       );
       expect(
         index.items
             .where((e) => e.category == SettingsCategory.behavior)
             .length,
-        11,
+        13,
       );
       expect(
         index.items

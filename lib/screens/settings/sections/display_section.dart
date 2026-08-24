@@ -10,12 +10,13 @@ import '../../../widgets/dialogs/min_font_size_dialog.dart';
 import '../../../widgets/dialogs/theme_dialog.dart';
 import '../pickers/adjust_mode_picker.dart';
 import '../pickers/language_picker.dart';
-import '../pickers/overlay_position_picker.dart';
+import '../pickers/orientation_picker.dart';
+import '../pickers/refresh_rate_picker.dart';
 import '../search/settings_search_item.dart';
 import '../settings_category.dart';
 import '../widgets/settings_section_header.dart';
 
-/// Display（表示）カテゴリ: 外観 / ターミナル表示 / キーオーバーレイ の3グループ。
+/// Display（表示）カテゴリ: 外観 / ターミナル表示 / 画面 の3グループ。
 class DisplaySection extends ConsumerWidget {
   const DisplaySection({super.key});
 
@@ -127,68 +128,30 @@ class DisplaySection extends ConsumerWidget {
               : null,
         ),
         const Divider(),
-        SettingsSectionHeader(title: l10n.settingsGroupKeyOverlay),
+        SettingsSectionHeader(title: l10n.settingsGroupScreen),
         SwitchListTile(
-          secondary: const Icon(Icons.visibility),
-          title: Text(l10n.settingsKeyOverlay),
-          subtitle: Text(l10n.settingsKeyOverlayDescription),
-          value: settings.showKeyOverlay,
+          secondary: const Icon(Icons.brightness_high),
+          title: Text(l10n.settingsKeepScreenOn),
+          subtitle: Text(l10n.settingsKeepScreenOnDescription),
+          value: settings.keepScreenOn,
           onChanged: (value) {
-            ref.read(settingsProvider.notifier).setShowKeyOverlay(value);
+            ref.read(settingsProvider.notifier).setKeepScreenOn(value);
           },
         ),
-        if (settings.showKeyOverlay) ...[
-          SwitchListTile(
-            secondary: const Icon(Icons.keyboard),
-            title: Text(l10n.settingsModifierKeys),
-            subtitle: Text(l10n.settingsModifierKeysDescription),
-            value: settings.keyOverlayModifier,
-            onChanged: (value) {
-              ref.read(settingsProvider.notifier).setKeyOverlayModifier(value);
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.space_bar),
-            title: Text(l10n.settingsSpecialKeys),
-            subtitle: Text(l10n.settingsSpecialKeysDescription),
-            value: settings.keyOverlaySpecial,
-            onChanged: (value) {
-              ref.read(settingsProvider.notifier).setKeyOverlaySpecial(value);
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.arrow_upward),
-            title: Text(l10n.settingsArrowKeys),
-            subtitle: Text(l10n.settingsArrowKeysDescription),
-            value: settings.keyOverlayArrow,
-            onChanged: (value) {
-              ref.read(settingsProvider.notifier).setKeyOverlayArrow(value);
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.shortcut),
-            title: Text(l10n.settingsShortcutKeys),
-            subtitle: Text(l10n.settingsShortcutKeysDescription),
-            value: settings.keyOverlayShortcut,
-            onChanged: (value) {
-              ref.read(settingsProvider.notifier).setKeyOverlayShortcut(value);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.place),
-            title: Text(l10n.settingsOverlayPosition),
-            subtitle: Text(switch (settings.keyOverlayPosition) {
-              'center' => l10n.settingsOverlayPositionCenter,
-              'belowHeader' => l10n.settingsOverlayPositionBelowHeader,
-              _ => l10n.settingsOverlayPositionAboveKeyboard,
-            }),
-            onTap: () => showOverlayPositionPicker(
-              context,
-              ref,
-              settings.keyOverlayPosition,
-            ),
-          ),
-        ],
+        ListTile(
+          leading: const Icon(Icons.screen_rotation),
+          title: Text(l10n.settingsScreenOrientation),
+          subtitle: Text(_orientationLabel(l10n, settings.screenOrientation)),
+          onTap: () =>
+              showOrientationPicker(context, ref, settings.screenOrientation),
+        ),
+        ListTile(
+          leading: const Icon(Icons.speed),
+          title: Text(l10n.settingsMaxRefreshRate),
+          subtitle: Text(_refreshRateLabel(l10n, settings.refreshRate)),
+          onTap: () =>
+              showRefreshRatePicker(context, ref, settings.refreshRate),
+        ),
       ],
     );
   }
@@ -216,9 +179,33 @@ class DisplaySection extends ConsumerWidget {
         return l10n.languageSystemDescription;
     }
   }
+
+  String _orientationLabel(AppLocalizations l10n, String value) {
+    switch (value) {
+      case 'portrait':
+        return l10n.settingsOrientationPortrait;
+      case 'landscape':
+        return l10n.settingsOrientationLandscape;
+      default:
+        return l10n.settingsOrientationAuto;
+    }
+  }
+
+  String _refreshRateLabel(AppLocalizations l10n, String value) {
+    switch (value) {
+      case '120':
+        return '120 Hz';
+      case '90':
+        return '90 Hz';
+      case '60':
+        return '60 Hz';
+      default:
+        return l10n.settingsRefreshRateAuto;
+    }
+  }
 }
 
-/// Display セクションの検索 descriptor（全13項目・3グループ、P2-C6 で並置）。
+/// Display セクションの検索 descriptor（全10項目・3グループ）。
 ///
 /// 値ラベルは静的選択肢（en/ja 両解決）を descriptor に列挙する。
 /// 現在値（subtitle）は動的のためヘイストックに含めない（DR-11・critic H2）。
@@ -293,63 +280,41 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
     groupLabel: (l10n) => l10n.settingsGroupTerminal,
     icon: Icons.format_size,
   ),
-  // --- キーオーバーレイ（Key Overlay） ---
+  // --- 画面（Screen） ---
   SettingsSearchItem(
     category: SettingsCategory.display,
     orderInCategory: 7,
-    id: 'keyOverlay',
-    title: (l10n) => l10n.settingsKeyOverlay,
-    description: (l10n) => l10n.settingsKeyOverlayDescription,
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.visibility,
+    id: 'keepScreenOn',
+    title: (l10n) => l10n.settingsKeepScreenOn,
+    description: (l10n) => l10n.settingsKeepScreenOnDescription,
+    groupLabel: (l10n) => l10n.settingsGroupScreen,
+    icon: Icons.brightness_high,
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
     orderInCategory: 8,
-    id: 'modifierKeys',
-    title: (l10n) => l10n.settingsModifierKeys,
-    description: (l10n) => l10n.settingsModifierKeysDescription,
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.keyboard,
+    id: 'screenOrientation',
+    title: (l10n) => l10n.settingsScreenOrientation,
+    valueLabels: [
+      (l10n) => l10n.settingsOrientationPortrait,
+      (l10n) => l10n.settingsOrientationLandscape,
+      (l10n) => l10n.settingsOrientationAuto,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupScreen,
+    icon: Icons.screen_rotation,
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
     orderInCategory: 9,
-    id: 'specialKeys',
-    title: (l10n) => l10n.settingsSpecialKeys,
-    description: (l10n) => l10n.settingsSpecialKeysDescription,
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.space_bar,
-  ),
-  SettingsSearchItem(
-    category: SettingsCategory.display,
-    orderInCategory: 10,
-    id: 'arrowKeys',
-    title: (l10n) => l10n.settingsArrowKeys,
-    description: (l10n) => l10n.settingsArrowKeysDescription,
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.arrow_upward,
-  ),
-  SettingsSearchItem(
-    category: SettingsCategory.display,
-    orderInCategory: 11,
-    id: 'shortcutKeys',
-    title: (l10n) => l10n.settingsShortcutKeys,
-    description: (l10n) => l10n.settingsShortcutKeysDescription,
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.shortcut,
-  ),
-  SettingsSearchItem(
-    category: SettingsCategory.display,
-    orderInCategory: 12,
-    id: 'overlayPosition',
-    title: (l10n) => l10n.settingsOverlayPosition,
+    id: 'maxRefreshRate',
+    title: (l10n) => l10n.settingsMaxRefreshRate,
     valueLabels: [
-      (l10n) => l10n.settingsOverlayPositionAboveKeyboard,
-      (l10n) => l10n.settingsOverlayPositionCenter,
-      (l10n) => l10n.settingsOverlayPositionBelowHeader,
+      (l10n) => l10n.settingsRefreshRateAuto,
+      (_) => '120 Hz',
+      (_) => '90 Hz',
+      (_) => '60 Hz',
     ],
-    groupLabel: (l10n) => l10n.settingsGroupKeyOverlay,
-    icon: Icons.place,
+    groupLabel: (l10n) => l10n.settingsGroupScreen,
+    icon: Icons.speed,
   ),
 ];

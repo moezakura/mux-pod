@@ -10,39 +10,31 @@ import 'test_helpers.dart';
 
 void main() {
   group('Behavior category', () {
-    testWidgets('displays Haptic Feedback toggle', (tester) async {
+    testWidgets('displays Key Overlay toggle', (tester) async {
       await buildSettingsApp(tester);
       await openCategory(tester, 'Behavior');
 
-      await scrollUntilFound(tester, find.text('Haptic Feedback'));
-      expect(find.text('Haptic Feedback'), findsOneWidget);
-    });
-
-    testWidgets('displays Keep Screen On toggle', (tester) async {
-      await buildSettingsApp(tester);
-      await openCategory(tester, 'Behavior');
-
-      await scrollUntilFound(tester, find.text('Keep Screen On'));
-      expect(find.text('Keep Screen On'), findsOneWidget);
+      // 見出し（Key Overlay）+ トグル（Key Overlay）の 2 つが存在する。
+      // スクロール対象は一意な 'Modifier Keys'（ゲート内第 1 項目）を使う。
+      await scrollUntilFound(tester, find.text('Modifier Keys'));
+      expect(find.text('Key Overlay'), findsWidgets);
+      expect(find.text('Modifier Keys'), findsOneWidget);
     });
 
     testWidgets('behavior toggles are interactive', (tester) async {
+      SharedPreferences.setMockInitialValues({});
       await buildSettingsApp(tester);
       await openCategory(tester, 'Behavior');
 
-      await scrollUntilFound(tester, find.text('Haptic Feedback'));
-      final hapticSwitch = find.ancestor(
-        of: find.text('Haptic Feedback'),
+      // Behavior は3グループ+フラット1に再編され、既定 ON のキーオーバーレイ
+      // ゲート下の 'Modifier Keys' がトグル操作可能であることを確認する。
+      await scrollUntilFound(tester, find.text('Modifier Keys'));
+      final tile = find.ancestor(
+        of: find.text('Modifier Keys'),
         matching: find.byType(SwitchListTile),
       );
-      expect(hapticSwitch, findsOneWidget);
-
-      await scrollUntilFound(tester, find.text('Keep Screen On'));
-      final keepScreenSwitch = find.ancestor(
-        of: find.text('Keep Screen On'),
-        matching: find.byType(SwitchListTile),
-      );
-      expect(keepScreenSwitch, findsOneWidget);
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue); // 既定 ON
+      expect(tile, findsOneWidget);
     });
 
     // inventory: TEST-SETTINGS-UI-001

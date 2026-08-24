@@ -36,7 +36,8 @@ void main() {
 
       // 右ペインが Behavior へ切替（左タイル + 右ヘッダ）
       expect(find.text('Behavior'), findsWidgets);
-      expect(find.text('Haptic Feedback'), findsOneWidget);
+      await scrollUntilFound(tester, find.text('Custom Buttons'));
+      expect(find.text('Custom Buttons'), findsOneWidget);
 
       // push は発生しないため戻るボタンが出ない
       expect(find.byType(BackButton), findsNothing);
@@ -59,7 +60,8 @@ void main() {
       // Behavior へ切替 → 右ペインが切替わる（IndexedStack の表示子が変わる）
       await tester.tap(find.text('Behavior'));
       await tester.pumpAndSettle();
-      expect(find.text('Haptic Feedback'), findsOneWidget);
+      await scrollUntilFound(tester, find.text('Custom Buttons'));
+      expect(find.text('Custom Buttons'), findsOneWidget);
 
       // Display へ戻る → スクロール位置が保持されている
       await tester.tap(find.text('Display'));
