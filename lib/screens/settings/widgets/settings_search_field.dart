@@ -33,6 +33,12 @@ class _SettingsSearchFieldState extends ConsumerState<SettingsSearchField> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: ref.read(settingsSearchProvider));
+    // suffix クリアボタン（controller.text 依存）をタイプ入力と同期する。
+    _controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    setState(() {});
   }
 
   @override
@@ -47,6 +53,7 @@ class _SettingsSearchFieldState extends ConsumerState<SettingsSearchField> {
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
