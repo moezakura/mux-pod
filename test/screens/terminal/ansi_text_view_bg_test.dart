@@ -29,6 +29,10 @@ void main() {
 
   // ANSI 緑背景 (42) = standardColors[2]
   const greenBackground = Color(0xFF0DBC79);
+  // ANSI 赤背景 (41) = standardColors[1]
+  const redBackground = Color(0xFFCD3131);
+  // ANSI 青背景 (44) = standardColors[4]
+  const blueBackground = Color(0xFF2472C8);
   // デフォルト背景
   const defaultBackground = Color(0xFF1E1E1E);
 
@@ -56,8 +60,27 @@ void main() {
         .length;
   }
 
+  /// RichText の InlineSpan からテキストを持つ TextSpan を再帰的に収集する。
+  /// （opaque 化したセグメントの backgroundColor を検証するために使用）
+  List<TextSpan> collectTextSpans(InlineSpan span) {
+    if (span is! TextSpan) return const [];
+    return [
+      if (span.text != null) span,
+      ...span.children?.expand(collectTextSpans) ?? const [],
+    ];
+  }
+
+  /// ウィジェットツリー内の全 RichText からテキストを持つ TextSpan を収集する。
+  List<TextSpan> collectAllTextSpans(WidgetTester tester) {
+    return tester
+        .widgetList<RichText>(find.byType(RichText))
+        .expand((rt) => collectTextSpans(rt.text))
+        .toList();
+  }
+
   testWidgets('背景色付き行に背景レイヤーが描画される', (tester) async {
-    await tester.pumpWidget(buildSubject('\x1b[42mgreen text\x1b[0m'));
+    // W1: 末尾リセットが無い（endStyle=green）ため行レイヤーが維持される
+    await tester.pumpWidget(buildSubject('\x1b[42mgreen text'));
     await tester.pumpAndSettle();
 
     expect(countColoredBoxes(tester, greenBackground), greaterThanOrEqualTo(1));
@@ -91,6 +114,7 @@ void main() {
 
   testWidgets('背景レイヤーはIgnorePointerで包まれタップを奪わない', (tester) async {
     var tapped = false;
+    // W8: 末尾リセットが無い（endStyle=green）ため行レイヤーが維持される
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -102,7 +126,7 @@ void main() {
         child: MaterialApp(
           home: Scaffold(
             body: AnsiTextView(
-              text: '\x1b[42mgreen\x1b[0m',
+              text: '\x1b[42mgreen',
               paneWidth: 80,
               paneHeight: 24,
               onTap: () => tapped = true,
@@ -134,5 +158,68 @@ void main() {
     await tester.tap(find.byType(AnsiTextView));
     await tester.pump();
     expect(tapped, isTrue);
+  });
+
+  testWidgets('S4型: 末尾リセット行には背景レイヤーが無い', (tester) async {
+    // W2: 単色＋末尾リセット → endStyle=default。余白は default（ユーザー承認仕様）
+    await tester.pumpWidget(buildSubject('\x1b[42mgreen text\x1b[0m'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, greenBackground), 0);
+  });
+
+  testWidgets('S3型: 複数色＋末尾リセットはレイヤー無し・セル単位は span が担当', (tester) async {
+    // W3: レイヤー無し、RED/GREEN は各セグメント span の backgroundColor で描画
+    await tester.pumpWidget(buildSubject('\x1b[41mRED\x1b[42mGREEN\x1b[49m'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, redBackground), 0);
+    expect(countColoredBoxes(tester, greenBackground), 0);
+
+    final spans = collectAllTextSpans(tester);
+    final red = spans.firstWhere((s) => s.text == 'RED');
+    expect(red.style!.backgroundColor, redBackground);
+    final green = spans.firstWhere((s) => s.text == 'GREEN');
+    expect(green.style!.backgroundColor, greenBackground);
+  });
+
+  testWidgets('S1型: 途中リセット＋先頭デフォルト区間には背景レイヤーが無い', (tester) async {
+    // W4: PREFIX \x1b[44mBLUE\x1b[49m → endStyle=default → 余白は default
+    await tester.pumpWidget(buildSubject('PREFIX \x1b[44mBLUE\x1b[49m'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, blueBackground), 0);
+  });
+
+  testWidgets('HYP-4型: 途中デフォルト区間は opaque で default に塗られる', (tester) async {
+    // W5: plain \x1b[44m tail → endStyle=blue のレイヤー有り。"plain " span が opaque default
+    await tester.pumpWidget(buildSubject('plain \x1b[44m tail'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, blueBackground), greaterThanOrEqualTo(1));
+
+    final spans = collectAllTextSpans(tester);
+    final plain = spans.firstWhere((s) => s.text == 'plain ');
+    expect(plain.style!.backgroundColor, defaultBackground);
+  });
+
+  testWidgets('R10型: 末尾色SGRのみの行も途中 span は opaque で default', (tester) async {
+    // W6: 'text \x1b[44m' → endStyle=blue のレイヤー有り。"text " span は opaque default
+    await tester.pumpWidget(buildSubject('text \x1b[44m'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, blueBackground), greaterThanOrEqualTo(1));
+
+    final spans = collectAllTextSpans(tester);
+    final text = spans.firstWhere((s) => s.text == 'text ');
+    expect(text.style!.backgroundColor, defaultBackground);
+  });
+
+  testWidgets('EV-LOG-006型: 実色スペース行には背景レイヤーが残る', (tester) async {
+    // W7: 実スペース100個の行（PR#98 の行末色埋め機能維持の回帰防止）
+    await tester.pumpWidget(buildSubject('\x1b[42mtext${' ' * 100}\x1b[0m'));
+    await tester.pumpAndSettle();
+
+    expect(countColoredBoxes(tester, greenBackground), greaterThanOrEqualTo(1));
   });
 }

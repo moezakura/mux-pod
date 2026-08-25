@@ -181,13 +181,12 @@ void main() {
         expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
       });
 
-      test('returns segment background for colored line', () {
+      test('returns null when line ends with reset (trailing default)', () {
         // 青背景 44 = standardColors[4] = 0xFF2472C8
+        // 末尾リセット（tmux 合成 \x1b[49m）により endStyle=default のため、
+        // テキストのみ span 描画され、余白は default（S4 型・ユーザー承認仕様）
         final lines = parser.parseLines('\x1b[44mCOLORED-TEXT\x1b[49m');
-        expect(
-          parser.effectiveLineBackgroundColor(lines[0]),
-          const Color(0xFF2472C8),
-        );
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
       });
 
       test('returns endStyle background for empty line with SGR only', () {
@@ -209,10 +208,109 @@ void main() {
         );
       });
 
-      test('uses last segment style for trailing style', () {
-        // 前半は赤背景、後半はリセット済み → 有効背景は default → null
-        final lines = parser.parseLines('\x1b[41mRED\x1b[49m tail');
+      test(
+        'returns null for trailing default text after color (endStyle semantics)',
+        () {
+          // 前半は赤背景、後半はリセット済み → 有効背景は default → null
+          // （旧実装前提の「最終セグメント基準」から endStyle 基準へ意味を明確化）
+          final lines = parser.parseLines('\x1b[41mRED\x1b[49m tail');
+          expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+        },
+      );
+
+      // ==== C-001: endStyle 基準 + ハイブリッド例外（fix-plan §4.1 / regression §4.1） ====
+
+      test('S1型: 途中で色開始＋末尾リセットは null（余白は default）', () {
+        // PREFIX-DEFAULT \x1b[44m BLUE-TAIL\x1b[49m
+        // 最終セグメント " BLUE-TAIL" は末尾非空白 → endStyle=default → null
+        final lines = parser.parseLines(
+          'PREFIX-DEFAULT \x1b[44m BLUE-TAIL\x1b[49m',
+        );
         expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+
+      test('S3型: 複数色＋末尾リセットは null（セル単位は span 描画が担当）', () {
+        final lines = parser.parseLines('\x1b[41mRED\x1b[42mGREEN\x1b[49m');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+
+      test('S4型: 単色＋末尾リセットは null（ユーザー承認仕様: 余白 default）', () {
+        final lines = parser.parseLines('\x1b[42mALL-GREEN\x1b[49m');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+
+      test('endStyle 色残り（末尾リセット無し）は行末まで色を塗る', () {
+        // P4: 末尾リセット無し → endStyle=blue → 全幅レイヤー blue
+        final lines = parser.parseLines('\x1b[44mFULL-COLOR');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF2472C8),
+        );
+      });
+
+      test('HYP-4型: 途中デフォルト + 末尾リセット無しは endStyle=色', () {
+        // P5: 途中 "plain " は opaque span で default に塗られる
+        final lines = parser.parseLines('plain \x1b[44m tail');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF2472C8),
+        );
+      });
+
+      test('R10型: 末尾で色SGRのみ・後続テキスト無しは endStyle=色', () {
+        // P6: 'text \x1b[44m' → endStyle=blue。「text 」span は opaque で default のまま
+        final lines = parser.parseLines('text \x1b[44m');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF2472C8),
+        );
+      });
+
+      test('inverse＋リセットは null（余白の偽塗りが解消）', () {
+        // P7: \x1b[7mrev\x1b[27m → endStyle=default → null
+        final lines = parser.parseLines('\x1b[7mrev\x1b[27m');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+
+      test('EV-LOG-006型: 実色スペース行（背景付き末尾空白）は最後のセグメント色', () {
+        // P8: \x1b[44mCOLORED-TEXT + 実スペース100 + \x1b[49m → 全幅レイヤー blue
+        // （PR#98 の行末色埋め機能維持。実機では span 末尾空白の背景が描画されない）
+        final lines = parser.parseLines(
+          '\x1b[44mCOLORED-TEXT${' ' * 100}\x1b[49m',
+        );
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFF2472C8),
+        );
+      });
+
+      test('例外ガード: 色付き+末尾1実スペース+リセットは最後のセグメント色', () {
+        // P9: PR#98 互換ロックイン（旧実装と同一条件の部分集合）
+        final lines = parser.parseLines('\x1b[41mRED \x1b[49m');
+        expect(
+          parser.effectiveLineBackgroundColor(lines[0]),
+          const Color(0xFFCD3131),
+        );
+      });
+
+      test('例外不発: 末尾デフォルトスペースでは例外が誤発動しない', () {
+        // P10: 最後のセグメント " " はデフォルト背景 → 例外なし → endStyle=default → null
+        final lines = parser.parseLines('\x1b[42mA \x1b[49m ');
+        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+      });
+    });
+
+    group('toTextSpan opaque background', () {
+      test('default 背景セグメントも opaque で backgroundColor が設定される', () {
+        // opaque 化: 無色セグメントは旧挙動（null）から defaultBackground の不透明塗りに
+        final lines = parser.parseLines('plain');
+        final span = parser.lineToTextSpan(
+          lines[0],
+          fontSize: 14,
+          fontFamily: 'HackGen Console',
+        );
+        final child = span.children![0] as TextSpan;
+        expect(child.style!.backgroundColor, const Color(0xFF1E1E1E));
       });
     });
   });
