@@ -10,7 +10,8 @@ import '../search/settings_search_provider.dart';
 ///
 /// - autofocus: **無効**（画面表示時にキーボードを自動表示しない）
 /// - クエリは [settingsSearchProvider] が正として controller と同期
-///   （`didUpdateWidget` で同期・connections の `_SearchField` と同型）
+///   （`ref.listen` で同期 — 検索結果タイルや空状態のクリアなど
+///   Provider が更新される経路すべてを controller へ反映する）
 /// - タブ離脱（currentTabProvider が Settings=4 以外へ）で unfocus し、
 ///   キーボードを自動で閉じる（L2-5 イベント表）
 class SettingsSearchField extends ConsumerStatefulWidget {
@@ -42,16 +43,6 @@ class _SettingsSearchFieldState extends ConsumerState<SettingsSearchField> {
   }
 
   @override
-  void didUpdateWidget(covariant SettingsSearchField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Provider が正: クエリ非空の初期値や clear を controller へ反映（同期）
-    final query = ref.read(settingsSearchProvider);
-    if (query != _controller.text) {
-      _controller.text = query;
-    }
-  }
-
-  @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
     _controller.dispose();
@@ -64,6 +55,15 @@ class _SettingsSearchFieldState extends ConsumerState<SettingsSearchField> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = context.l10n;
+
+    // Provider が正: 外部（検索結果タイル・空状態のクリア等）からの変更を
+    // controller へ反映。タイプ入力と同値の更新はスキップされるため、
+    // 入力中のカーソル位置は動かない。
+    ref.listen(settingsSearchProvider, (prev, query) {
+      if (query != _controller.text) {
+        _controller.text = query;
+      }
+    });
 
     // タブ離脱（Settings タブ以外へ切替）でフォーカスを外す。
     ref.listen(currentTabProvider, (prev, next) {

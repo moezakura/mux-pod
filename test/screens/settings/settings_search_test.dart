@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_muxpod/screens/settings/widgets/settings_section_header.dart';
+import 'package:flutter_muxpod/screens/settings/widgets/settings_search_field.dart';
 
 import 'test_helpers.dart';
 
@@ -21,6 +22,17 @@ void main() {
   Future<void> typeQuery(WidgetTester tester, String query) async {
     await tester.enterText(find.byType(TextField), query);
     await tester.pumpAndSettle();
+  }
+
+  /// 検索フィールドの現在の入力値（Provider→controller 同期の検証用）。
+  String searchFieldText(WidgetTester tester) {
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(SettingsSearchField),
+        matching: find.byType(TextField),
+      ),
+    );
+    return field.controller?.text ?? '';
   }
 
   group('Settings search field', () {
@@ -134,6 +146,8 @@ void main() {
       expect(find.text('Adjust Mode'), findsOneWidget);
       expect(find.text('Auto Fit'), findsOneWidget);
       expect(find.text('Display'), findsWidgets); // 左ペイン一覧復帰
+      // Provider clear がフィールドへも反映される（ref.listen 同期）
+      expect(searchFieldText(tester), '');
     });
   });
 
