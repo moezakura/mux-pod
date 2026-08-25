@@ -14,7 +14,6 @@ class AppSettings {
   final String fontFamily;
   final bool requireBiometricAuth;
   final bool enableNotifications;
-  final bool enableVibration;
   final bool keepScreenOn;
 
   /// 画面の向き: 'auto'（デバイスに追従）/ 'portrait' / 'landscape'
@@ -100,7 +99,6 @@ class AppSettings {
     this.fontFamily = 'JetBrains Mono',
     this.requireBiometricAuth = false,
     this.enableNotifications = true,
-    this.enableVibration = true,
     this.keepScreenOn = true,
     this.screenOrientation = 'portrait',
     this.refreshRate = 'auto',
@@ -146,7 +144,6 @@ class AppSettings {
     String? fontFamily,
     bool? requireBiometricAuth,
     bool? enableNotifications,
-    bool? enableVibration,
     bool? keepScreenOn,
     String? screenOrientation,
     String? refreshRate,
@@ -188,7 +185,6 @@ class AppSettings {
       fontFamily: fontFamily ?? this.fontFamily,
       requireBiometricAuth: requireBiometricAuth ?? this.requireBiometricAuth,
       enableNotifications: enableNotifications ?? this.enableNotifications,
-      enableVibration: enableVibration ?? this.enableVibration,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
       screenOrientation: screenOrientation ?? this.screenOrientation,
       refreshRate: refreshRate ?? this.refreshRate,
@@ -233,7 +229,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _fontFamilyKey = 'settings_font_family';
   static const String _biometricKey = 'settings_biometric_auth';
   static const String _notificationsKey = 'settings_notifications';
-  static const String _vibrationKey = 'settings_vibration';
   static const String _keepScreenOnKey = 'settings_keep_screen_on';
   static const String _screenOrientationKey = 'settings_screen_orientation';
   static const String _refreshRateKey = 'settings_refresh_rate';
@@ -292,7 +287,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
       fontFamily: prefs.getString(_fontFamilyKey) ?? 'JetBrains Mono',
       requireBiometricAuth: prefs.getBool(_biometricKey) ?? false,
       enableNotifications: prefs.getBool(_notificationsKey) ?? true,
-      enableVibration: prefs.getBool(_vibrationKey) ?? true,
       keepScreenOn: prefs.getBool(_keepScreenOnKey) ?? true,
       screenOrientation: prefs.getString(_screenOrientationKey) ?? 'portrait',
       refreshRate: prefs.getString(_refreshRateKey) ?? 'auto',
@@ -386,12 +380,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setEnableNotifications(bool value) async {
     state = state.copyWith(enableNotifications: value);
     await _saveSetting(_notificationsKey, value);
-  }
-
-  /// バイブレーションを設定
-  Future<void> setEnableVibration(bool value) async {
-    state = state.copyWith(enableVibration: value);
-    await _saveSetting(_vibrationKey, value);
   }
 
   /// 画面常時オンを設定
