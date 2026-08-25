@@ -208,12 +208,15 @@ void main() {
         );
       });
 
-      test('returns null for trailing default text after color (endStyle semantics)', () {
-        // 前半は赤背景、後半はリセット済み → 有効背景は default → null
-        // （旧実装前提の「最終セグメント基準」から endStyle 基準へ意味を明確化）
-        final lines = parser.parseLines('\x1b[41mRED\x1b[49m tail');
-        expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
-      });
+      test(
+        'returns null for trailing default text after color (endStyle semantics)',
+        () {
+          // 前半は赤背景、後半はリセット済み → 有効背景は default → null
+          // （旧実装前提の「最終セグメント基準」から endStyle 基準へ意味を明確化）
+          final lines = parser.parseLines('\x1b[41mRED\x1b[49m tail');
+          expect(parser.effectiveLineBackgroundColor(lines[0]), isNull);
+        },
+      );
 
       // ==== C-001: endStyle 基準 + ハイブリッド例外（fix-plan §4.1 / regression §4.1） ====
 

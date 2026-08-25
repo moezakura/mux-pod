@@ -170,9 +170,7 @@ void main() {
 
   testWidgets('S3型: 複数色＋末尾リセットはレイヤー無し・セル単位は span が担当', (tester) async {
     // W3: レイヤー無し、RED/GREEN は各セグメント span の backgroundColor で描画
-    await tester.pumpWidget(
-      buildSubject('\x1b[41mRED\x1b[42mGREEN\x1b[49m'),
-    );
+    await tester.pumpWidget(buildSubject('\x1b[41mRED\x1b[42mGREEN\x1b[49m'));
     await tester.pumpAndSettle();
 
     expect(countColoredBoxes(tester, redBackground), 0);
@@ -219,9 +217,7 @@ void main() {
 
   testWidgets('EV-LOG-006型: 実色スペース行には背景レイヤーが残る', (tester) async {
     // W7: 実スペース100個の行（PR#98 の行末色埋め機能維持の回帰防止）
-    await tester.pumpWidget(
-      buildSubject('\x1b[42mtext${' ' * 100}\x1b[0m'),
-    );
+    await tester.pumpWidget(buildSubject('\x1b[42mtext${' ' * 100}\x1b[0m'));
     await tester.pumpAndSettle();
 
     expect(countColoredBoxes(tester, greenBackground), greaterThanOrEqualTo(1));
