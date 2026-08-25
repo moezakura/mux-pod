@@ -125,8 +125,8 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.text('Adjust Mode'), findsOneWidget);
-      // フィールドにクエリが残っている
-      expect(find.text('Adjust Mode'), findsOneWidget);
+      // フィールドにクエリが残っている（TextField の入力値で検証）
+      expect(searchFieldText(tester), 'adjust');
     });
 
     testWidgets('tablet: tapping a result selects category and clears query', (
