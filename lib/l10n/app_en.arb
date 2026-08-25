@@ -1439,6 +1439,7 @@
   "settingsClearHostKeysConfirmAction": "Clear",
   "settingsClearHostKeysCancelAction": "Cancel",
   "settingsClearHostKeysDone": "SSH host keys cleared",
+  "settingsClearHostKeysFailed": "Could not clear SSH host keys",
   "settingsSearch": "Search",
   "settingsSearchHint": "Search settings…",
   "settingsClearSearch": "Clear search",

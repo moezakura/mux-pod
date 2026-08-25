@@ -35,8 +35,10 @@ Future<void> confirmClearHostKeys(BuildContext context) async {
     await SecureStorageService().deleteAllHostKeyFingerprints();
     message = l10n.settingsClearHostKeysDone;
   } catch (e) {
-    // 例外時のみのフォールバック文言（計画に l10n キー定義なし・P1-C4 申告事項）
-    message = 'Could not clear host keys: ${e.runtimeType}';
+    // 例外詳細（型・内容）はユーザーに露出させずログへ流す。
+    // SnackBar は l10n の固定文言で表示する。
+    debugPrint('clearAllHostKeys failed: $e');
+    message = l10n.settingsClearHostKeysFailed;
   }
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));

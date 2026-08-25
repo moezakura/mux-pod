@@ -1439,6 +1439,7 @@
   "settingsClearHostKeysConfirmAction": "クリア",
   "settingsClearHostKeysCancelAction": "キャンセル",
   "settingsClearHostKeysDone": "SSHホストキーをクリアしました",
+  "settingsClearHostKeysFailed": "SSHホストキーをクリアできませんでした",
   "settingsSearch": "検索",
   "settingsSearchHint": "設定を検索…",
   "settingsClearSearch": "検索をクリア",
