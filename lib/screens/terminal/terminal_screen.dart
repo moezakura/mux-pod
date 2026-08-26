@@ -258,10 +258,7 @@ class _HerdrPaneIndicatorData {
   /// アクティブ（表示中）pane ID。
   final String? activePaneId;
 
-  const _HerdrPaneIndicatorData({
-    required this.panes,
-    this.activePaneId,
-  });
+  const _HerdrPaneIndicatorData({required this.panes, this.activePaneId});
 }
 
 /// スナップショット解決の結果（表示対象 pane + 属する workspace/tab の実値）。
@@ -460,7 +457,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 表示状態（pane indicator）: herdr の描画データ（panes + activePaneId）。
   // 既存フロー（接続確立 / mutation 後 / 再解決 / セレクタ切替）の表示最終確定後に
   // [_setHerdrPaneIndicatorData] で更新する（新規タイマーなし・🤝#3）。
-  final _herdrPaneIndicatorNotifier = ValueNotifier<_HerdrPaneIndicatorData?>(null);
+  final _herdrPaneIndicatorNotifier = ValueNotifier<_HerdrPaneIndicatorData?>(
+    null,
+  );
 
   // レイテンシ表示専用のNotifier（ping揺れで本文が再描画されないよう分離）
   final _latencyNotifier = ValueNotifier<int>(0);
@@ -3118,8 +3117,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       Positioned(
                         top: 8,
                         right: 8,
-                        child:
-                            _backendKind == MultiplexerBackendKind.herdr
+                        child: _backendKind == MultiplexerBackendKind.herdr
                             ? ValueListenableBuilder<_HerdrPaneIndicatorData?>(
                                 valueListenable: _herdrPaneIndicatorNotifier,
                                 builder: (context, data, _) {
@@ -4220,10 +4218,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       pane: isDisconnected || activePane == null
           ? null
           : context.l10n.termPaneLabel(activePane.index),
-      onSessionTap:
-          isDisconnected ? null : () => _showSessionSelector(tmuxState),
-      onWindowTap:
-          isDisconnected ? null : () => _showWindowSelector(tmuxState),
+      onSessionTap: isDisconnected
+          ? null
+          : () => _showSessionSelector(tmuxState),
+      onWindowTap: isDisconnected ? null : () => _showWindowSelector(tmuxState),
       onPaneTap: isDisconnected ? null : () => _showPaneSelector(tmuxState),
     );
   }

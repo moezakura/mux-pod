@@ -24,7 +24,9 @@ import '../../helpers/terminal_test_scaffold.dart';
 // 共有 import で使用する（HIGH-1: 既存 fixture は書き換えない）。
 // `kHerdrThreePaneLayoutSnapshotFixture` は #12（mutation 後の pane 数変化）で使用。
 import 'terminal_screen_herdr_mutation_ui_test.dart'
-    show kHerdrTwoPaneLayoutSnapshotFixture, kHerdrThreePaneLayoutSnapshotFixture;
+    show
+        kHerdrTwoPaneLayoutSnapshotFixture,
+        kHerdrThreePaneLayoutSnapshotFixture;
 
 // A8 最小監視のテスト: `_TerminalScreenState` のリングバッファを
 // `@visibleForTesting` フック（herdrSwitchEventsForTesting）経由で読み出す。
@@ -363,9 +365,7 @@ Connection _herdrConnection() {
 
 void main() {
   group('TerminalScreen herdr (backend flow / display)', () {
-    testWidgets('shows pane content without tmux setup', (
-      tester,
-    ) async {
+    testWidgets('shows pane content without tmux setup', (tester) async {
       final client = await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
@@ -1615,9 +1615,7 @@ void main() {
       },
     );
 
-    testWidgets('M2 regression: tmux では pane indicator が表示される', (
-      tester,
-    ) async {
+    testWidgets('M2 regression: tmux では pane indicator が表示される', (tester) async {
       // tmux backend: kFullTreeOutput の mysession/shell は
       // pane %0/%1 の 2 ペインを持つため indicator が描画される。
       await TerminalTestScaffold.pumpTerminalScreen(tester);
@@ -1626,29 +1624,26 @@ void main() {
   });
 
   group('TerminalScreen herdr mutation enabled (T13)', () {
-    testWidgets(
-      'mutation UI is enabled: SpecialKeysBar shown, '
-      'no disconnected banner',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
+    testWidgets('mutation UI is enabled: SpecialKeysBar shown, '
+        'no disconnected banner', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
 
-        // Q-02/T13: herdr でも mutation UI が有効化される。
-        // 未接続バナーは表示されない（H6 の opt-in は廃止）。
-        expect(find.byType(SpecialKeysBar), findsOneWidget);
-        expect(find.text('Not connected — viewing only'), findsNothing);
+      // Q-02/T13: herdr でも mutation UI が有効化される。
+      // 未接続バナーは表示されない（H6 の opt-in は廃止）。
+      expect(find.byType(SpecialKeysBar), findsOneWidget);
+      expect(find.text('Not connected — viewing only'), findsNothing);
 
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      await tester.pump(const Duration(milliseconds: 200));
+    });
 
     testWidgets(
       'special key tap routes accepted keys via PaneKeyMap to send-keys '
@@ -2061,9 +2056,7 @@ void main() {
 
     // 描画中の _PaneLayoutPainter（widget ツリーの CustomPaint）を 1 つ取得する。
     CustomPainter panePainterOf(WidgetTester tester) =>
-        tester
-            .widget<CustomPaint>(paneIndicatorPainter().first)
-            .painter!;
+        tester.widget<CustomPaint>(paneIndicatorPainter().first).painter!;
 
     // painter に描画させ、drawRect された矩形一覧を返す（#18 正規化検証用）。
     List<Rect> paintedRects(CustomPainter painter, Size size) {
@@ -2108,14 +2101,8 @@ void main() {
       // herdr 固有要素で判定: Select Pane タイトル + MultiplexerPaneTile キー。
       // （tmux 用 _showPaneSelector と誤同定しない粒度）
       expect(find.text('Select Pane'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('mux-sel-pane-w1:p1')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey('mux-sel-pane-w1:p2')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('mux-sel-pane-w1:p1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mux-sel-pane-w1:p2')), findsOneWidget);
       // A10: pane 表示名は cwd（/a・/b）優先。
       expect(find.text('/a'), findsOneWidget);
       expect(find.text('/b'), findsOneWidget);
@@ -2127,9 +2114,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('#10: 単一 pane では indicator 非表示（panes<=1 ガード）', (
-      tester,
-    ) async {
+    testWidgets('#10: 単一 pane では indicator 非表示（panes<=1 ガード）', (tester) async {
       await pumpHerdrForIndicator(
         tester,
         snapshotFixture: kHerdrSnapshotWithLayoutFixture,
@@ -2139,9 +2124,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('#11: zoom 中も非 zoom 下地の 2 pane 分割が描画される', (
-      tester,
-    ) async {
+    testWidgets('#11: zoom 中も非 zoom 下地の 2 pane 分割が描画される', (tester) async {
       await pumpHerdrForIndicator(
         tester,
         snapshotFixture: kHerdrZoomedTwoPaneSnapshotFixture,
@@ -2179,8 +2162,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       final painterBefore = panePainterOf(tester);
-      final panesBefore =
-          List<MultiplexerPane>.from((painterBefore as dynamic).panes);
+      final panesBefore = List<MultiplexerPane>.from(
+        (painterBefore as dynamic).panes,
+      );
       expect(panesBefore.first.width, 100);
 
       // mutation 後同期（H5/T18 単一経路）: force 再取得 → 同一 pane 再解決（switch なし）
@@ -2193,8 +2177,9 @@ void main() {
 
       // indicator の panes が新レイアウト（同一 id・rect 変化）へ更新される。
       final painterAfter = panePainterOf(tester);
-      final panesAfter =
-          List<MultiplexerPane>.from((painterAfter as dynamic).panes);
+      final panesAfter = List<MultiplexerPane>.from(
+        (painterAfter as dynamic).panes,
+      );
       expect(panesAfter, hasLength(2));
       expect(panesAfter.first.id, 'w1:p1');
       expect(
@@ -2260,11 +2245,7 @@ void main() {
         hasLength(3),
         reason: 'mutation（split）成功後の新レイアウトが indicator に反映されること',
       );
-      expect(panesAfter.map((p) => p.id).toSet(), {
-        'w1:p1',
-        'w1:p2',
-        'w1:p3',
-      });
+      expect(panesAfter.map((p) => p.id).toSet(), {'w1:p1', 'w1:p2', 'w1:p3'});
 
       await tester.pump(const Duration(milliseconds: 200));
     });
@@ -2299,8 +2280,7 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(TerminalScreen)),
       );
-      final notifier =
-          container.read(sshProvider.notifier) as FakeSshNotifier;
+      final notifier = container.read(sshProvider.notifier) as FakeSshNotifier;
       notifier.onReconnectSuccess?.call();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
@@ -2372,9 +2352,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     });
 
-    testWidgets('#17: セレクタで別 pane へ切替すると indicator が切替後の状態へ更新', (
-      tester,
-    ) async {
+    testWidgets('#17: セレクタで別 pane へ切替すると indicator が切替後の状態へ更新', (tester) async {
       await pumpHerdrForIndicator(
         tester,
         snapshotFixture: kHerdrTwoPaneLayoutSnapshotFixture,

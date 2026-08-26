@@ -75,67 +75,66 @@ dynamic _state(WidgetTester tester) =>
 
 void main() {
   group('TerminalScreen _can framework (T4・H4 等価性 → Phase 2 フリップ T13)', () {
-    testWidgets(
-      'herdr backend: mutation capabilities enabled (T13)',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
+    testWidgets('herdr backend: mutation capabilities enabled (T13)', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
+
+      final state = _state(tester);
+      // 解禁された能力は true（Q-02・T13/T15 フリップ）。
+      for (final required in [
+        PaneCapabilities(sendText: true),
+        PaneCapabilities(sendKeys: true),
+        PaneCapabilities(focus: true),
+        PaneCapabilities(split: true),
+        PaneCapabilities(close: true),
+        PaneCapabilities(rename: true),
+        PaneCapabilities(zoom: true),
+        PaneCapabilities(resize: true),
+        PaneCapabilities(paste: true),
+        PaneCapabilities(imageTransfer: true),
+        PaneCapabilities(workspaceCrud: true),
+        PaneCapabilities(tabCrud: true),
+      ]) {
+        expect(
+          state.canForTesting(required),
+          isTrue,
+          reason: 'capability ${required.toString()} must be true',
         );
+      }
+      // 設計上 false の能力（copy-mode なし・相対 resize のみ・Q-04）。
+      for (final required in [
+        PaneCapabilities(copyMode: true),
+        PaneCapabilities(absoluteResize: true),
+      ]) {
+        expect(
+          state.canForTesting(required),
+          isFalse,
+          reason: 'capability ${required.toString()} must be false',
+        );
+      }
+      final caps = state.paneCapabilitiesForTesting();
+      expect(caps.sendText, isTrue);
+      expect(caps.imageTransfer, isTrue);
+      expect(caps.absoluteResize, isFalse);
 
-        final state = _state(tester);
-        // 解禁された能力は true（Q-02・T13/T15 フリップ）。
-        for (final required in [
-          PaneCapabilities(sendText: true),
-          PaneCapabilities(sendKeys: true),
-          PaneCapabilities(focus: true),
-          PaneCapabilities(split: true),
-          PaneCapabilities(close: true),
-          PaneCapabilities(rename: true),
-          PaneCapabilities(zoom: true),
-          PaneCapabilities(resize: true),
-          PaneCapabilities(paste: true),
-          PaneCapabilities(imageTransfer: true),
-          PaneCapabilities(workspaceCrud: true),
-          PaneCapabilities(tabCrud: true),
-        ]) {
-          expect(
-            state.canForTesting(required),
-            isTrue,
-            reason: 'capability ${required.toString()} must be true',
-          );
-        }
-        // 設計上 false の能力（copy-mode なし・相対 resize のみ・Q-04）。
-        for (final required in [
-          PaneCapabilities(copyMode: true),
-          PaneCapabilities(absoluteResize: true),
-        ]) {
-          expect(
-            state.canForTesting(required),
-            isFalse,
-            reason: 'capability ${required.toString()} must be false',
-          );
-        }
-        final caps = state.paneCapabilitiesForTesting();
-        expect(caps.sendText, isTrue);
-        expect(caps.imageTransfer, isTrue);
-        expect(caps.absoluteResize, isFalse);
+      // UI: SpecialKeysBar 表示・未接続バナー非表示（mutation 解禁）。
+      expect(find.byType(SpecialKeysBar), findsOneWidget);
+      expect(find.text('Not connected — viewing only'), findsNothing);
 
-        // UI: SpecialKeysBar 表示・未接続バナー非表示（mutation 解禁）。
-        expect(find.byType(SpecialKeysBar), findsOneWidget);
-        expect(find.text('Not connected — viewing only'), findsNothing);
-
-        // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了
-        // （dispose でキャンセルされないためテスト終端で pending になる）。
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了
+      // （dispose でキャンセルされないためテスト終端で pending になる）。
+      await tester.pump(const Duration(milliseconds: 200));
+    });
 
     testWidgets('tmux backend: 全 capability true → mutation 有効', (
       tester,
