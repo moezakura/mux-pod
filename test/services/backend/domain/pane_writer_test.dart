@@ -34,7 +34,7 @@ void main() {
   });
 
   group('PaneCapabilities', () {
-    test('defaults to all capabilities disabled (read-only equivalent)', () {
+    test('defaults to all capabilities disabled (no writer)', () {
       const caps = PaneCapabilities();
       expect(caps.sendText, isFalse);
       expect(caps.sendKeys, isFalse);

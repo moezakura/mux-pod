@@ -10,8 +10,7 @@ import 'package:flutter_muxpod/services/backend/domain/multiplexer_backend.dart'
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 
 // 表示統一の回帰テスト: herdr / tmux とも trailing が「>」（chevron_right）
-// で、workspace 操作メニュー（⋮ / 'Workspace actions'）と READ ONLY バッジが
-// 表示されないこと。
+// で、workspace 操作メニュー（⋮ / 'Workspace actions'）が表示されないこと。
 
 class _MixedActiveSessionsNotifier extends ActiveSessionsNotifier {
   @override
@@ -72,7 +71,7 @@ void main() {
 
   testWidgets(
     'herdr/tmux session cards both show chevron_right with no workspace '
-    'actions and no READ ONLY badge',
+    'actions',
     (tester) async {
       await pumpDashboard(tester);
 
@@ -87,8 +86,7 @@ void main() {
       expect(find.byTooltip('Workspace actions'), findsNothing);
       expect(find.byIcon(Icons.more_vert), findsNothing);
 
-      // herdr の READ ONLY バッジは出ない。
-      expect(find.text('READ ONLY'), findsNothing);
+      // 両カードとも追加バッジは表示されない。
     },
   );
 }

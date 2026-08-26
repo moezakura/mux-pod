@@ -583,8 +583,6 @@ class ConnectionsScreen extends ConsumerWidget {
           connectionId: connection.id,
           sessionName: sessionName,
           sessionId: sessionId,
-          // T16（Q-05）: herdr も mutation 可能。readOnly は呼び出し側明示の
-          // opt-in としてのみ渡す（herdr による自動付与は廃止・H6）。
         ),
       ),
     );
@@ -1065,8 +1063,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
     ColorScheme colorScheme,
   ) {
     // Tmux/Herdr を共通 domain モデル（MultiplexerSession）で表示する。
-    // T16（Q-05）: herdr も workspace 操作（New/Kill）を有効化するため
-    // read-only 分岐は撤廃する。
+    // T16（Q-05）: herdr も workspace 操作（New/Kill）を有効化する。
     final sessions = _backendKind == MultiplexerBackendKind.herdr
         ? (_herdrSnapshot?.toDomainSessions() ?? const <MultiplexerSession>[])
         : _sessions.map((s) => s.toDomain()).toList();
@@ -1318,7 +1315,7 @@ class _ConnectionCardState extends ConsumerState<_ConnectionCard> {
   ///
   /// 既存の tmux 表示（terminal アイコン・名前・window 数・
   /// Attached/Detached バッジ・Kill ボタン）を再現する。T16（Q-05）:
-  /// herdr も workspace 操作を有効化するため read-only 分岐は撤廃する。
+  /// herdr も workspace 操作を有効化する。
   List<Widget> _buildDomainSessionItems(
     List<MultiplexerSession> sessions, {
     required List<ActiveSession> activeSessions,

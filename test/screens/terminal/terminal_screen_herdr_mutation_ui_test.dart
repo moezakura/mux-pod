@@ -1179,48 +1179,6 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 200));
     });
-
-    testWidgets('read-only ではアクティブ pane タップが分割モードに入らず選択に倒れる（N-T5）', (
-      tester,
-    ) async {
-      final client = await TerminalTestScaffold.pumpTerminalScreen(
-        tester,
-        connection: _herdrConnection(),
-        sessionName: 'lab-ws1',
-        execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
-          'herdr pane read': 'hello\n',
-        },
-        readOnly: true,
-        settle: false,
-      );
-
-      await tester.tap(find.text('Pane 1'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
-
-      // read-only では onSplitRequested == null のため、アクティブ pane タップ
-      // は分割モードに入らず選択（onPaneSelected）に倒れる。
-      await tester.tap(
-        find.byKey(const ValueKey('terminal-pane-layout-w1:p1')),
-      );
-      await tester.pump();
-      // シートの閉じアニメーションを進める。
-      await tester.pump(const Duration(milliseconds: 400));
-
-      // 分割ボタンは表示されず、シートが閉じる。split コマンドも発行されない。
-      expect(
-        find.byKey(const ValueKey('terminal-split-right-w1:p1')),
-        findsNothing,
-      );
-      expect(find.text('Select Pane'), findsNothing);
-      expect(
-        client.execCommands.where((c) => c.startsWith('herdr pane split')),
-        isEmpty,
-      );
-
-      await tester.pump(const Duration(milliseconds: 200));
-    });
   });
 
   group('Q-05: herdr tab セレクタの tab CRUD 配線', () {

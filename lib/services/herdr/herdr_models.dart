@@ -4,8 +4,7 @@
 /// ID 形式: workspace=`wN` / tab=`wN:tN` / pane=`wN:tN:pN`（G4 実測）。
 /// mutation 対応（send-text / send-keys / focus / split / close / zoom /
 /// resize / rename / tab・workspace CRUD 等）は実装・公開済み
-/// （G6 合意#3 改訂: herdr read-only → 全 mutation 解禁・Q-01 の 1 回
-/// リリース）。read-only 記述は廃止。
+/// （G6 合意#3 改訂・Q-01: 全 mutation 解禁の 1 回リリース）。
 library;
 
 // inventory: HERDR-MODELS-STATUS-001

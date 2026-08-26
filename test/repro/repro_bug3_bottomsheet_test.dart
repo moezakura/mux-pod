@@ -73,7 +73,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
           'herdr pane read w1:p1': 'content from p1\n',
@@ -129,7 +128,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': _kHerdrTwoWorkspaceSnapshot,
           'herdr pane read w1:p1': 'content from p1\n',

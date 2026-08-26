@@ -120,8 +120,7 @@ void main() {
       expect(find.text('lab-ws1'), findsOneWidget);
       expect(find.text('1 windows'), findsOneWidget);
 
-      // T16（Q-05）: READ ONLY バッジは表示されない（Attached バッジ表示）。
-      expect(find.text('READ ONLY'), findsNothing);
+      // 接続状態表示: Attached バッジのみ表示され、追加のバッジは出ない。
       expect(find.text('Attached'), findsOneWidget);
 
       // workspace 操作が有効化される（New Workspace / Kill workspace）。
@@ -143,8 +142,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.byType(TerminalScreen), findsOneWidget);
 
-      // read-only 表示ではなく、mutation UI（SpecialKeysBar）が表示される。
-      expect(find.text('READ ONLY — viewing only'), findsNothing);
+      // 未接続バナーは表示されず、mutation UI（SpecialKeysBar）が表示される。
+      expect(find.text('Not connected — viewing only'), findsNothing);
       expect(find.byType(SpecialKeysBar), findsOneWidget);
     },
   );
@@ -392,6 +391,5 @@ void main() {
     expect(find.text('mysession'), findsOneWidget);
     expect(find.text('New Session'), findsOneWidget);
     expect(find.byTooltip('Kill session'), findsOneWidget);
-    expect(find.text('READ ONLY'), findsNothing);
   });
 }

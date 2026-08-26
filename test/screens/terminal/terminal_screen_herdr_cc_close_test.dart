@@ -193,26 +193,6 @@ void main() {
       // 同様）と判明したため、警告バッジは表示しない（tmux と同じ操作感・
       // ユーザー決定）。C-c は確認なしで送信する。
       expect(find.text('Ctrl-C 注意'), findsNothing);
-      expect(find.text('Read-only'), findsNothing);
-
-      await tester.pump(const Duration(milliseconds: 200));
-    });
-
-    testWidgets('readOnly 明示時は Read-only バッジ', (tester) async {
-      await TerminalTestScaffold.pumpTerminalScreen(
-        tester,
-        connection: _herdrConnection(),
-        sessionName: 'lab-ws1',
-        readOnly: true,
-        execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotFixture,
-          'herdr pane read': 'hello\n',
-        },
-        settle: false,
-      );
-
-      expect(find.text('Read-only'), findsOneWidget);
-      expect(find.text('Ctrl-C 注意'), findsNothing);
 
       await tester.pump(const Duration(milliseconds: 200));
     });

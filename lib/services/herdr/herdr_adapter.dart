@@ -6,8 +6,7 @@
 /// mutation 実行基盤（[_execMutation] / [HerdrMutationResult]）と mutation
 /// メソッド群（sendText / sendKey / focusDirection / edges / resize /
 /// zoom / rename / close / split / tab CRUD / workspace CRUD）を提供する。
-/// mutation は公開済み（G6 合意#3 改訂: herdr read-only → 全 mutation
-/// 解禁・Q-01 の 1 回リリース）。
+/// mutation は公開済み（G6 合意#3 改訂・Q-01: 全 mutation 解禁の 1 回リリース）。
 library;
 
 import 'dart:async';
