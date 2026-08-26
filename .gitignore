@@ -71,3 +71,6 @@ ios/fastlane/screenshots/
 ios/fastlane/test_output/
 ios/.bundle/
 ios/vendor/bundle/
+
+# Agent working notes (session artifacts)
+work/

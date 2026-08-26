@@ -139,9 +139,6 @@ class DashboardScreen extends ConsumerWidget {
     WidgetRef ref,
     ActiveSession session,
   ) {
-    // T16（Q-05）: herdr も mutation 可能。readOnly は呼び出し側明示の
-    // opt-in としてのみ渡す（herdr による自動付与は廃止・H6）。
-
     // 最終アクセス日時を更新
     ref
         .read(activeSessionsProvider.notifier)

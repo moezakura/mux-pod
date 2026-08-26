@@ -14,16 +14,14 @@ import 'package:flutter_muxpod/widgets/special_keys_bar.dart';
 import '../../helpers/terminal_test_scaffold.dart';
 
 // H4 等価性テスト（T4 基本版）:
-// Phase 0 では `_can(capability)` が従来の `_isReadOnly`
-// （`widget.readOnly || _backendKind == herdr`）と同値であることを検証する。
-// - herdr（readOnly 明示なし）: 全 capability false → `!_can` は常に true
-//   （read-only 挙動を維持）
-// - herdr + readOnly: true: 同上
-// - tmux（readOnly 明示なし）: 全 capability true → mutation 有効
-// - tmux + readOnly: true: 全 capability false → read-only 挙動
+// `_can(capability)` が操作単位の能力判定になることを検証する。
+// - herdr（T13 フリップ後）: mutation の各能力は有効、copy-mode / absoluteResize
+//   は設計上 false。
+// - tmux: 全 capability true → mutation 有効。
 //
-// UI の期待（SpecialKeysBar 非表示・READ ONLY バナー表示）も併せて検証する
-// （既存 read-only テストの回帰防止）。
+// UI の期待（SpecialKeysBar 表示・未接続バナー非表示）も併せて検証する。
+// ※ 未接続時のみ全能力 false。接続後はバックエンドの能力に応じて操作単位で
+//   有効化される。
 
 // G4 実測のスナップショット fixture（workspace label は lab-ws1 / pane は w1:p1）。
 const kHerdrSnapshotFixture =
@@ -77,76 +75,13 @@ dynamic _state(WidgetTester tester) =>
 
 void main() {
   group('TerminalScreen _can framework (T4・H4 等価性 → Phase 2 フリップ T13)', () {
-    testWidgets(
-      'herdr backend: mutation capabilities enabled without readOnly (T13)',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
-
-        final state = _state(tester);
-        // 解禁された能力は true（Q-02・T13/T15 フリップ）。
-        for (final required in [
-          PaneCapabilities(sendText: true),
-          PaneCapabilities(sendKeys: true),
-          PaneCapabilities(focus: true),
-          PaneCapabilities(split: true),
-          PaneCapabilities(close: true),
-          PaneCapabilities(rename: true),
-          PaneCapabilities(zoom: true),
-          PaneCapabilities(resize: true),
-          PaneCapabilities(paste: true),
-          PaneCapabilities(imageTransfer: true),
-          PaneCapabilities(workspaceCrud: true),
-          PaneCapabilities(tabCrud: true),
-        ]) {
-          expect(
-            state.canForTesting(required),
-            isTrue,
-            reason: 'capability ${required.toString()} must be true',
-          );
-        }
-        // 設計上 false の能力（copy-mode なし・相対 resize のみ・Q-04）。
-        for (final required in [
-          PaneCapabilities(copyMode: true),
-          PaneCapabilities(absoluteResize: true),
-        ]) {
-          expect(
-            state.canForTesting(required),
-            isFalse,
-            reason: 'capability ${required.toString()} must be false',
-          );
-        }
-        final caps = state.paneCapabilitiesForTesting();
-        expect(caps.sendText, isTrue);
-        expect(caps.imageTransfer, isTrue);
-        expect(caps.absoluteResize, isFalse);
-
-        // UI: SpecialKeysBar 表示・READ ONLY バナー非表示（mutation 解禁）。
-        expect(find.byType(SpecialKeysBar), findsOneWidget);
-        expect(find.text('READ ONLY — viewing only'), findsNothing);
-
-        // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了
-        // （dispose でキャンセルされないためテスト終端で pending になる）。
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
-
-    testWidgets('herdr backend + readOnly: true: 全 capability false', (
+    testWidgets('herdr backend: mutation capabilities enabled (T13)', (
       tester,
     ) async {
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'hello\n',
@@ -155,13 +90,49 @@ void main() {
       );
 
       final state = _state(tester);
-      for (final required in kAllCapabilityRequirements) {
-        expect(state.canForTesting(required), isFalse);
+      // 解禁された能力は true（Q-02・T13/T15 フリップ）。
+      for (final required in [
+        PaneCapabilities(sendText: true),
+        PaneCapabilities(sendKeys: true),
+        PaneCapabilities(focus: true),
+        PaneCapabilities(split: true),
+        PaneCapabilities(close: true),
+        PaneCapabilities(rename: true),
+        PaneCapabilities(zoom: true),
+        PaneCapabilities(resize: true),
+        PaneCapabilities(paste: true),
+        PaneCapabilities(imageTransfer: true),
+        PaneCapabilities(workspaceCrud: true),
+        PaneCapabilities(tabCrud: true),
+      ]) {
+        expect(
+          state.canForTesting(required),
+          isTrue,
+          reason: 'capability ${required.toString()} must be true',
+        );
       }
-      expect(find.text('READ ONLY — viewing only'), findsOneWidget);
-      expect(find.byType(SpecialKeysBar), findsNothing);
+      // 設計上 false の能力（copy-mode なし・相対 resize のみ・Q-04）。
+      for (final required in [
+        PaneCapabilities(copyMode: true),
+        PaneCapabilities(absoluteResize: true),
+      ]) {
+        expect(
+          state.canForTesting(required),
+          isFalse,
+          reason: 'capability ${required.toString()} must be false',
+        );
+      }
+      final caps = state.paneCapabilitiesForTesting();
+      expect(caps.sendText, isTrue);
+      expect(caps.imageTransfer, isTrue);
+      expect(caps.absoluteResize, isFalse);
 
-      // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。
+      // UI: SpecialKeysBar 表示・未接続バナー非表示（mutation 解禁）。
+      expect(find.byType(SpecialKeysBar), findsOneWidget);
+      expect(find.text('Not connected — viewing only'), findsNothing);
+
+      // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了
+      // （dispose でキャンセルされないためテスト終端で pending になる）。
       await tester.pump(const Duration(milliseconds: 200));
     });
 
@@ -171,7 +142,7 @@ void main() {
       await TerminalTestScaffold.pumpTerminalScreen(tester);
 
       final state = _state(tester);
-      // readOnly 明示なしの tmux は全 capability true
+      // tmux は全 capability true
       for (final required in kAllCapabilityRequirements) {
         expect(
           state.canForTesting(required),
@@ -187,25 +158,9 @@ void main() {
         isTrue,
       );
 
-      // UI: SpecialKeysBar 表示・READ ONLY バナー非表示
+      // UI: SpecialKeysBar 表示・未接続バナー非表示
       expect(find.byType(SpecialKeysBar), findsOneWidget);
-      expect(find.text('READ ONLY — viewing only'), findsNothing);
-
-      // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。
-      await tester.pump(const Duration(milliseconds: 200));
-    });
-
-    testWidgets('tmux backend + readOnly: true: 全 capability false', (
-      tester,
-    ) async {
-      await TerminalTestScaffold.pumpTerminalScreen(tester, readOnly: true);
-
-      final state = _state(tester);
-      for (final required in kAllCapabilityRequirements) {
-        expect(state.canForTesting(required), isFalse);
-      }
-      expect(find.text('READ ONLY — viewing only'), findsOneWidget);
-      expect(find.byType(SpecialKeysBar), findsNothing);
+      expect(find.text('Not connected — viewing only'), findsNothing);
 
       // `_scrollToCaret` の 100ms 遅延タイマーを消化してクリーンに終了。
       await tester.pump(const Duration(milliseconds: 200));

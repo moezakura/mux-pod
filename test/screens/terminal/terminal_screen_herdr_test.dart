@@ -5,20 +5,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
-import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
+import 'package:flutter_muxpod/services/backend/domain/multiplexer_pane.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
 import 'package:flutter_muxpod/widgets/multiplexer_tiles.dart';
 import 'package:flutter_muxpod/widgets/special_keys_bar.dart';
 
+import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/fake_ssh_notifier.dart';
 import '../../helpers/terminal_test_scaffold.dart';
+
+// Phase 3 (#8): 既存 `kHerdrTwoPaneLayoutSnapshotFixture`（mutation_ui_test）を
+// 共有 import で使用する（HIGH-1: 既存 fixture は書き換えない）。
+// `kHerdrThreePaneLayoutSnapshotFixture` は #12（mutation 後の pane 数変化）で使用。
+import 'terminal_screen_herdr_mutation_ui_test.dart'
+    show
+        kHerdrTwoPaneLayoutSnapshotFixture,
+        kHerdrThreePaneLayoutSnapshotFixture;
 
 // A8 最小監視のテスト: `_TerminalScreenState` のリングバッファを
 // `@visibleForTesting` フック（herdrSwitchEventsForTesting）経由で読み出す。
@@ -60,6 +68,32 @@ class _ReResolvePropagationReader implements PaneContentReader {
     return MultiplexerPaneSnapshot(content: pollContent);
   }
 }
+
+// G4 実測のスナップショット fixture（workspace label は lab-ws1 / pane は w1:p1）。
+/// 2 pane（w1:p1 / w1:p2）だが `layouts: []`（layout 未取得）の snapshot fixture。
+/// 実機で接続直後に layout が届いていない状態を再現する（HIGH-2 の全 rect 0
+/// ガードで indicator 非表示になる想定）。後続 poll で layout 付き snapshot に
+/// 置き換わるシナリオ（#19）で使用する。
+const kHerdrTwoPaneNoLayoutSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1","layouts":[],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":2,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
 
 // G4 実測のスナップショット fixture（workspace label は lab-ws1 / pane は w1:p1）。
 const kHerdrSnapshotFixture =
@@ -223,6 +257,100 @@ const kHerdrLabeledTabSnapshotFixture =
     '"pane_count":1,"tab_count":1,"workspace_id":"w1"}]},'
     '"type":"session_snapshot"}}';
 
+// Phase 3 (#18) min 正規化検証用: 非 0 起点 rect（x:26 / y:1 ベース・
+// `kHerdrResizedSnapshotFixture` 相当）の 2 pane 新規 fixture。
+// 0 起点 fixture では min 正規化を検証できないため新規追加する（HIGH-1/LOW-2）。
+const kHerdrMinNormalizeSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1",'
+    '"layouts":[{"area":{"x":26,"y":1,"width":200,"height":70},'
+    '"focused_pane_id":"w1:p1",'
+    '"panes":[{"pane_id":"w1:p1","focused":true,'
+    '"rect":{"x":26,"y":1,"width":100,"height":70}},'
+    '{"pane_id":"w1:p2","focused":false,'
+    '"rect":{"x":126,"y":1,"width":100,"height":70}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":2,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// Phase 3 (#11) zoom 検証用: 2 pane + zoomed:true の新規 fixture（既存
+// `kHerdrSnapshotZoomedFixture` は書き換えない・HIGH-1）。pane rect は非 zoom 値の
+// まま（下地レイアウトをそのまま描画する設計の検証）。
+const kHerdrZoomedTwoPaneSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1",'
+    '"layouts":[{"area":{"x":0,"y":0,"width":200,"height":70},'
+    '"focused_pane_id":"w1:p1",'
+    '"panes":[{"pane_id":"w1:p1","focused":true,'
+    '"rect":{"x":0,"y":0,"width":100,"height":70}},'
+    '{"pane_id":"w1:p2","focused":false,'
+    '"rect":{"x":100,"y":0,"width":100,"height":70}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":true}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":2,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
+// Phase 3 (#12/#13) mutation 後更新（同一 id・rect 変化=resize）検証用: 初期
+// `kHerdrTwoPaneLayoutSnapshotFixture`（w1:p1 100x70 / w1:p2 100x70）に対して、
+// 同一 pane id のまま rect のみ変化させた 2 pane 新規 fixture。
+// MultiplexerPane.== は id のみ比較のため shouldRepaint の rect 明示比較が効く。
+const kHerdrIndicatorResizeSnapshotFixture =
+    '{"id":"cli:api:snapshot","result":{"snapshot":{"agents":[],'
+    '"focused_pane_id":"w1:p1","focused_tab_id":"w1:t1",'
+    '"focused_workspace_id":"w1",'
+    '"layouts":[{"area":{"x":0,"y":0,"width":200,"height":70},'
+    '"focused_pane_id":"w1:p1",'
+    '"panes":[{"pane_id":"w1:p1","focused":true,'
+    '"rect":{"x":0,"y":0,"width":130,"height":70}},'
+    '{"pane_id":"w1:p2","focused":false,'
+    '"rect":{"x":130,"y":0,"width":70,"height":70}}],'
+    '"splits":[],"tab_id":"w1:t1","workspace_id":"w1","zoomed":false}],'
+    '"panes":[{"agent_status":"unknown","cwd":"/a","focused":true,'
+    '"foreground_cwd":"/a","pane_id":"w1:p1","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_1","workspace_id":"w1"},'
+    '{"agent_status":"unknown","cwd":"/b","focused":false,'
+    '"foreground_cwd":"/b","pane_id":"w1:p2","revision":0,'
+    '"scroll":{"max_offset_from_bottom":0,"offset_from_bottom":0,'
+    '"viewport_rows":23},"tab_id":"w1:t1",'
+    '"terminal_id":"term_2","workspace_id":"w1"}],"protocol":17,'
+    '"tabs":[{"agent_status":"unknown","focused":true,"label":"1","number":1,'
+    '"pane_count":2,"tab_id":"w1:t1","workspace_id":"w1"}],'
+    '"version":"0.7.5","workspaces":[{"active_tab_id":"w1:t1",'
+    '"agent_status":"unknown","focused":true,"label":"lab-ws1","number":1,'
+    '"pane_count":2,"tab_count":1,"workspace_id":"w1"}]},'
+    '"type":"session_snapshot"}}';
+
 Connection _herdrConnection() {
   return Connection(
     id: 'test-conn',
@@ -236,15 +364,12 @@ Connection _herdrConnection() {
 }
 
 void main() {
-  group('TerminalScreen herdr (read-only)', () {
-    testWidgets('shows pane content read-only without tmux setup', (
-      tester,
-    ) async {
+  group('TerminalScreen herdr (backend flow / display)', () {
+    testWidgets('shows pane content without tmux setup', (tester) async {
       final client = await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'hello\nworld\n',
@@ -275,12 +400,10 @@ void main() {
         isTrue,
       );
 
-      // read-only 表示（バナー + パンくずバッジ）
-      expect(find.text('READ ONLY — viewing only'), findsOneWidget);
-      expect(find.text('Read-only'), findsOneWidget);
-
-      // 特殊キー入力バーは表示されない（mutation 無効化）
-      expect(find.byType(SpecialKeysBar), findsNothing);
+      // 特殊キー入力バー（SpecialKeysBar）が表示される（mutation 有効）。
+      // 未接続バナーは表示されない。
+      expect(find.byType(SpecialKeysBar), findsOneWidget);
+      expect(find.text('Not connected — viewing only'), findsNothing);
 
       // pane 内容が表示される
       expect(find.textContaining('hello'), findsWidgets);
@@ -293,7 +416,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'hello\n',
@@ -324,7 +446,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'content\n',
@@ -364,7 +485,6 @@ void main() {
           connection: _herdrConnection(),
           sessionName: 'tmp',
           sessionId: 'w2',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
             'herdr pane read': 'content from w2\n',
@@ -403,7 +523,6 @@ void main() {
           connection: _herdrConnection(),
           sessionName: 'tmp',
           sessionId: 'w9', // 存在しない ID → label 一致にフォールバック
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
             'herdr pane read': 'content from fallback\n',
@@ -434,7 +553,6 @@ void main() {
           connection: _herdrConnection(),
           // 旧データ（sessionId: null）の "tmp" エントリから遷移した状態。
           sessionName: 'tmp',
-          readOnly: true,
           execOutputs: {
             // snapshot に workspace / pane が 1 件も無い（herdr サーバ空）。
             'herdr api snapshot': kHerdrEmptySnapshotFixture,
@@ -471,7 +589,6 @@ void main() {
           connection: _herdrConnection(),
           sessionName: 'tmp',
           sessionId: 'w4',
-          readOnly: true,
           // `herdr api snapshot` が exit 1 で失敗する（server-down 相当・
           // stderr は fake が空文字のため "herdr command failed (exit code: 1)"）。
           execExitCodes: {'herdr api snapshot': 1},
@@ -511,7 +628,6 @@ void main() {
         connection: _herdrConnection(),
         sessionName: 'tmp',
         sessionId: 'w4',
-        readOnly: true,
         // `herdr api snapshot` が構造化エラー
         // `{"error":{"code":"workspace_not_found",...}}` を返して exit 1。
         execOutputs: {
@@ -547,7 +663,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         initialPaneId: 'w1:p1',
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
@@ -569,14 +684,13 @@ void main() {
     });
 
     testWidgets(
-      'breadcrumb shows workspace label, tab segment, pane segment, and '
-      'display-only read-only badge (A9 display state / T11 / T4)',
+      'breadcrumb shows workspace label, tab segment, and pane segment '
+      '(A9 display state / T11)',
       (tester) async {
         await TerminalTestScaffold.pumpTerminalScreen(
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read': 'content\n',
@@ -584,15 +698,14 @@ void main() {
           settle: false,
         );
 
-        // workspace ラベル + tab セグメント + pane セグメント + Read-only バッジ
-        // （T11）。tabId はスナップショット解決済みの実値（w1:t1）を保持するため、
+        // workspace ラベル + tab セグメント + pane セグメント（T11）。
+        // tabId はスナップショット解決済みの実値（w1:t1）を保持するため、
         // 2 セグメント pane ID（w1:p1）でも tab セグメント "1"（実ラベル）が
         // 表示される（L-1 / M-4）。
         expect(find.text('lab-ws1'), findsOneWidget);
         expect(find.text('1'), findsOneWidget); // tab セグメント（実ラベル '1'）
         expect(find.byIcon(Icons.tab), findsOneWidget);
         expect(find.text('Pane 1'), findsOneWidget);
-        expect(find.text('Read-only'), findsOneWidget);
 
         // T4: セッション（workspace）セグメントのタップで共通シートの
         // workspace 一覧（第 1 段）が開く
@@ -604,36 +717,12 @@ void main() {
     );
 
     testWidgets(
-      'T4: Read-only badge is display-only and does not open a selector',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          readOnly: true,
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'content\n',
-          },
-          settle: false,
-        );
-
-        // バッジは表示のみ（非インタラクティブ）: タップしてもセレクタは開かない
-        await tester.tap(find.text('Read-only'));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
-        expect(find.text('Select Session'), findsNothing);
-      },
-    );
-
-    testWidgets(
       'T4: tab segment tap opens the selector at the tab stage (stage 2)',
       (tester) async {
         await TerminalTestScaffold.pumpTerminalScreen(
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read': 'content\n',
@@ -659,7 +748,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read': 'content\n',
@@ -684,7 +772,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrLabeledTabSnapshotFixture,
             'herdr pane read': 'content\n',
@@ -705,7 +792,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             // 構造化エラー: server 未稼働系 errorCode（A1 条件2）
@@ -738,7 +824,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             // 構造化エラー: target 不在（A2 再解決トリガ）
@@ -766,7 +851,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           initialPaneId: 'w1:p1',
           execOutputs: {'herdr pane read': 'content\n'},
           settle: false,
@@ -800,7 +884,7 @@ void main() {
           reason: '切替後に新しい pane ID がポーリング対象になること',
         );
 
-        // read-only: mutation（select-pane 等の tmux/herdr CLI）は一切発行されない
+        // 切替のみ: mutation（select-pane 等の tmux/herdr CLI）は一切発行されない
         expect(
           client.execCommands.any((c) => c.contains('select-pane')),
           isFalse,
@@ -819,7 +903,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         initialPaneId: 'w1:p1',
         execOutputs: {'herdr pane read': 'content\n'},
         settle: false,
@@ -851,7 +934,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             // 構造化エラー: server 未稼働系 errorCode（A1 条件2）
@@ -917,7 +999,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             // フォールバック: 3 回目以降の snapshot は再取得済み（w1:p2）を返す
             'herdr api snapshot': kHerdrSnapshotPane2Fixture,
@@ -979,7 +1060,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           initialPaneId: 'w1:p1',
           paneContentReader: reader,
           // 直接指定（initialPaneId）のため初回の snapshot 取得は再解決時のみ
@@ -1034,7 +1114,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             // フォールバック: 3 回目以降の snapshot も空（対象不在）
             'herdr api snapshot': kHerdrEmptySnapshotFixture,
@@ -1102,7 +1181,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             // フォールバック: 3 回目以降の snapshot も再取得済み（w1:p2）を返す
             'herdr api snapshot': kHerdrSnapshotPane2Fixture,
@@ -1175,7 +1253,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read w1:p1': 'content from p1\n',
@@ -1226,7 +1303,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             // 構造化エラー: server 未稼働系 errorCode（A1 条件2）
@@ -1294,7 +1370,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSnapshotFixture,
             'herdr pane read': 'content\n',
@@ -1327,7 +1402,6 @@ void main() {
           tester,
           connection: _herdrConnection(),
           sessionName: 'lab-ws1',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrTwoWorkspaceSnapshotFixture,
             'herdr pane read w1:p1': 'content from p1\n',
@@ -1407,7 +1481,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.text('Select Pane'), findsNothing);
 
-        // read-only（A6）: セレクタ経由でも mutation コマンドは一切発行されない
+        // セレクタ経由の切替でも mutation コマンドは一切発行されない
         expect(
           client.execCommands.any((c) => c.contains('select-pane')),
           isFalse,
@@ -1425,7 +1499,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'content\n',
@@ -1502,7 +1575,6 @@ void main() {
           connection: _herdrConnection(),
           sessionName: 'tmp',
           sessionId: 'w2',
-          readOnly: true,
           execOutputs: {
             'herdr api snapshot': kHerdrSameLabelSnapshotFixture,
             'herdr pane read': 'content from w2\n',
@@ -1543,74 +1615,8 @@ void main() {
       },
     );
 
-    testWidgets('M2: herdr (read-only) では stale な tmux 複数ペイン状態でも pane '
-        'indicator を表示せず mutation を発行しない', (tester) async {
-      final client = await TerminalTestScaffold.pumpTerminalScreen(
-        tester,
-        connection: _herdrConnection(),
-        sessionName: 'lab-ws1',
-        readOnly: true,
-        execOutputs: {
-          'herdr api snapshot': kHerdrSnapshotFixture,
-          'herdr pane read': 'content\n',
-        },
-        settle: false,
-      );
-
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(TerminalScreen)),
-      );
-
-      // stale な tmuxProvider 状態を作る: 2 ペインのアクティブウィンドウを注入。
-      // herdr 経路では tmuxProvider は更新されないため、接続前の残骸が残りうる。
-      final tmuxNotifier = container.read(tmuxProvider.notifier);
-      tmuxNotifier.updateSessions([
-        TmuxSession(
-          name: 'stale-session',
-          windows: [
-            TmuxWindow(
-              index: 0,
-              name: 'stale-win',
-              panes: const [
-                TmuxPane(index: 0, id: 'stale-p1', active: true),
-                TmuxPane(index: 1, id: 'stale-p2'),
-              ],
-            ),
-          ],
-        ),
-      ]);
-      tmuxNotifier.setActive(
-        sessionName: 'stale-session',
-        windowIndex: 0,
-        paneId: 'stale-p1',
-      );
-      await tester.pump();
-
-      // 注入した状態が本当に複数ペイン（panes.length > 1）であることを確認
-      // （ガードなしなら _buildPaneIndicator は表示される条件を満たす）。
-      final staleState = container.read(tmuxProvider);
-      expect(staleState.activeWindow?.panes.length, 2);
-
-      // ガード: read-only では pane indicator は描画されない
-      expect(paneIndicatorPainter(), findsNothing);
-
-      // mutation（select/split/kill-pane 等の tmux コマンド）は一切発行されない
-      expect(
-        client.execCommands.any((c) => c.contains('select-pane')),
-        isFalse,
-      );
-      expect(
-        client.execCommands.any(
-          (c) => c.contains('split-window') || c.contains('kill-pane'),
-        ),
-        isFalse,
-      );
-    });
-
-    testWidgets('M2 regression: tmux (非 read-only) では pane indicator が表示される', (
-      tester,
-    ) async {
-      // tmux backend（readOnly: false）: kFullTreeOutput の mysession/shell は
+    testWidgets('M2 regression: tmux では pane indicator が表示される', (tester) async {
+      // tmux backend: kFullTreeOutput の mysession/shell は
       // pane %0/%1 の 2 ペインを持つため indicator が描画される。
       await TerminalTestScaffold.pumpTerminalScreen(tester);
       expect(paneIndicatorPainter(), findsWidgets);
@@ -1618,29 +1624,26 @@ void main() {
   });
 
   group('TerminalScreen herdr mutation enabled (T13)', () {
-    testWidgets(
-      'mutation UI is enabled without readOnly: SpecialKeysBar shown, '
-      'no READ ONLY banner',
-      (tester) async {
-        await TerminalTestScaffold.pumpTerminalScreen(
-          tester,
-          connection: _herdrConnection(),
-          sessionName: 'lab-ws1',
-          execOutputs: {
-            'herdr api snapshot': kHerdrSnapshotFixture,
-            'herdr pane read': 'hello\n',
-          },
-          settle: false,
-        );
+    testWidgets('mutation UI is enabled: SpecialKeysBar shown, '
+        'no disconnected banner', (tester) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrSnapshotFixture,
+          'herdr pane read': 'hello\n',
+        },
+        settle: false,
+      );
 
-        // Q-02/T13: herdr でも mutation UI が有効化される（readOnly 明示時のみ
-        // read-only バナー。H6 の opt-in は存続）。
-        expect(find.byType(SpecialKeysBar), findsOneWidget);
-        expect(find.text('READ ONLY — viewing only'), findsNothing);
+      // Q-02/T13: herdr でも mutation UI が有効化される。
+      // 未接続バナーは表示されない（H6 の opt-in は廃止）。
+      expect(find.byType(SpecialKeysBar), findsOneWidget);
+      expect(find.text('Not connected — viewing only'), findsNothing);
 
-        await tester.pump(const Duration(milliseconds: 200));
-      },
-    );
+      await tester.pump(const Duration(milliseconds: 200));
+    });
 
     testWidgets(
       'special key tap routes accepted keys via PaneKeyMap to send-keys '
@@ -1790,7 +1793,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotWithLayoutFixture,
           'herdr pane read': 'content\n',
@@ -1823,7 +1825,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotZoomedFixture,
           'herdr pane read': 'content\n',
@@ -1850,7 +1851,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
           'herdr pane read': 'content\n',
@@ -1877,7 +1877,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         execOutputs: {
           'herdr api snapshot': kHerdrTwoWorkspaceSnapshotFixture,
           'herdr pane read w1:p1': 'content from p1\n',
@@ -1918,7 +1917,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         settings: const AppSettings(keepScreenOn: false, scrollbackLines: 2000),
         execOutputs: {
           'herdr api snapshot': kHerdrSnapshotFixture,
@@ -1952,7 +1950,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         // 20000 超過（例: 99999）→ クランプして 20000 で要求される。
         settings: const AppSettings(
           keepScreenOn: false,
@@ -1991,7 +1988,6 @@ void main() {
         tester,
         connection: _herdrConnection(),
         sessionName: 'lab-ws1',
-        readOnly: true,
         settings: const AppSettings(
           keepScreenOn: false,
           adjustMode: 'manual',
@@ -2030,5 +2026,430 @@ void main() {
         reason: 'herdr（cursorY=0固定）では末尾アラインで最下部に到達すること',
       );
     });
+  });
+
+  group('TerminalScreen herdr pane indicator (Phase 3)', () {
+    // pane indicator 用 pump ヘルパー: snapshot（layout 付き）を 1 つ以上供給する。
+    // [snapshotQueue] を渡すと [`_fetchHerdrSessions`] の force 再取得が順に消費する
+    // （接続時 resolve → setup indicator fetch（cache ヒット）→ 各 force 再取得）。
+    Future<void> pumpHerdrForIndicator(
+      WidgetTester tester, {
+      required String snapshotFixture,
+      List<String>? snapshotQueue,
+    }) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': snapshotFixture,
+          'herdr pane read': 'content\n',
+        },
+        execOutputQueues: snapshotQueue == null
+            ? const {}
+            : {'herdr api snapshot': snapshotQueue},
+        settle: false,
+      );
+      // 接続時 resolve + setup の indicator 設定 + 初回ポーリングを進める。
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    // 描画中の _PaneLayoutPainter（widget ツリーの CustomPaint）を 1 つ取得する。
+    CustomPainter panePainterOf(WidgetTester tester) =>
+        tester.widget<CustomPaint>(paneIndicatorPainter().first).painter!;
+
+    // painter に描画させ、drawRect された矩形一覧を返す（#18 正規化検証用）。
+    List<Rect> paintedRects(CustomPainter painter, Size size) {
+      final canvas = TestRecordingCanvas();
+      painter.paint(canvas, size);
+      return canvas.invocations
+          .where((inv) => inv.invocation.memberName == #drawRect)
+          .map((inv) => inv.invocation.positionalArguments.first as Rect)
+          .toList();
+    }
+
+    testWidgets('#8: herdr 接続 + 2 pane layout で pane indicator が表示される', (
+      tester,
+    ) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrTwoPaneLayoutSnapshotFixture,
+      );
+      expect(paneIndicatorPainter(), findsWidgets);
+      // painter の入力は 2 pane（w1:p1 / w1:p2）。
+      final painter = panePainterOf(tester);
+      final panes = List<MultiplexerPane>.from((painter as dynamic).panes);
+      expect(panes, hasLength(2));
+      expect(panes.map((p) => p.id).toSet(), {'w1:p1', 'w1:p2'});
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#9: indicator タップで herdr 用 pane セレクタ（Select Pane）が開く', (
+      tester,
+    ) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrTwoPaneLayoutSnapshotFixture,
+      );
+
+      // indicator をタップ → _showHerdrPaneSelector（herdr 固有・HIGH-4）
+      await tester.tap(paneIndicatorPainter());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // herdr 固有要素で判定: Select Pane タイトル + MultiplexerPaneTile キー。
+      // （tmux 用 _showPaneSelector と誤同定しない粒度）
+      expect(find.text('Select Pane'), findsOneWidget);
+      expect(find.byKey(const ValueKey('mux-sel-pane-w1:p1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('mux-sel-pane-w1:p2')), findsOneWidget);
+      // A10: pane 表示名は cwd（/a・/b）優先。
+      expect(find.text('/a'), findsOneWidget);
+      expect(find.text('/b'), findsOneWidget);
+
+      // シートを閉じて pending タイマーを消化。
+      await tester.tapAt(const Offset(500, 100));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#10: 単一 pane では indicator 非表示（panes<=1 ガード）', (tester) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrSnapshotWithLayoutFixture,
+      );
+      expect(paneIndicatorPainter(), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#11: zoom 中も非 zoom 下地の 2 pane 分割が描画される', (tester) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrZoomedTwoPaneSnapshotFixture,
+      );
+      expect(paneIndicatorPainter(), findsWidgets);
+      // zoom 特別対応なし: 下地（非 zoom rect）の 2 pane が描画される。
+      final painter = panePainterOf(tester);
+      final panes = List<MultiplexerPane>.from((painter as dynamic).panes);
+      expect(panes, hasLength(2));
+      expect(panes[0].width, 100, reason: '非 zoom 下地の rect が使われること');
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#12: mutation 後同期で同一 id・rect 変化（resize）が再描画される', (
+      tester,
+    ) async {
+      final client = await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+          'herdr pane read': 'content\n',
+        },
+        execOutputQueues: {
+          // 接続時 resolve（force）: 2 pane → mutation 後同期（force）: resize 版
+          'herdr api snapshot': [
+            kHerdrTwoPaneLayoutSnapshotFixture,
+            kHerdrIndicatorResizeSnapshotFixture,
+          ],
+        },
+        settle: false,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final painterBefore = panePainterOf(tester);
+      final panesBefore = List<MultiplexerPane>.from(
+        (painterBefore as dynamic).panes,
+      );
+      expect(panesBefore.first.width, 100);
+
+      // mutation 後同期（H5/T18 単一経路）: force 再取得 → 同一 pane 再解決（switch なし）
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      await state.syncAfterHerdrMutationForTesting(
+        eventLabel: 'test mutation sync',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      // indicator の panes が新レイアウト（同一 id・rect 変化）へ更新される。
+      final painterAfter = panePainterOf(tester);
+      final panesAfter = List<MultiplexerPane>.from(
+        (painterAfter as dynamic).panes,
+      );
+      expect(panesAfter, hasLength(2));
+      expect(panesAfter.first.id, 'w1:p1');
+      expect(
+        panesAfter.first.width,
+        130,
+        reason: '同一 id でも rect 変化（resize）が indicator に反映されること',
+      );
+      // shouldRepaint: MultiplexerPane.== は id のみ比較だが、rect 明示比較で true。
+      expect(
+        (painterAfter as dynamic).shouldRepaint(painterBefore),
+        isTrue,
+        reason: '同一 id・rect のみ変化でも shouldRepaint が true になること（B-2）',
+      );
+      // force 再取得が実 CLI で発行された（接続時 1 + mutation 後 1）。
+      expect(
+        client.execCommands
+            .where((c) => c.contains('herdr api snapshot'))
+            .length,
+        greaterThanOrEqualTo(2),
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#12b: mutation 後同期で pane 追加（2→3）が indicator に反映される', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+          'herdr pane read': 'content\n',
+        },
+        execOutputQueues: {
+          'herdr api snapshot': [
+            kHerdrTwoPaneLayoutSnapshotFixture,
+            kHerdrThreePaneLayoutSnapshotFixture,
+          ],
+        },
+        settle: false,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final panesBefore = List<MultiplexerPane>.from(
+        (panePainterOf(tester) as dynamic).panes,
+      );
+      expect(panesBefore, hasLength(2));
+
+      final dynamic state = tester.state(find.byType(TerminalScreen));
+      await state.syncAfterHerdrMutationForTesting(
+        eventLabel: 'test split sync',
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final panesAfter = List<MultiplexerPane>.from(
+        (panePainterOf(tester) as dynamic).panes,
+      );
+      expect(
+        panesAfter,
+        hasLength(3),
+        reason: 'mutation（split）成功後の新レイアウトが indicator に反映されること',
+      );
+      expect(panesAfter.map((p) => p.id).toSet(), {'w1:p1', 'w1:p2', 'w1:p3'});
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#13: 再接続後の同一 pane 再解決（switch なし）でも indicator が更新', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(
+        tester,
+        connection: _herdrConnection(),
+        sessionName: 'lab-ws1',
+        execOutputs: {
+          'herdr api snapshot': kHerdrTwoPaneLayoutSnapshotFixture,
+          'herdr pane read': 'content\n',
+        },
+        execOutputQueues: {
+          'herdr api snapshot': [
+            kHerdrTwoPaneLayoutSnapshotFixture, // 接続時 resolve
+            kHerdrIndicatorResizeSnapshotFixture, // 再接続後再解決
+          ],
+        },
+        settle: false,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final panesBefore = List<MultiplexerPane>.from(
+        (panePainterOf(tester) as dynamic).panes,
+      );
+      expect(panesBefore.first.width, 100);
+
+      // 再接続成功（同一 pane に再解決 → 切替コミットなしの早期 return 経路）。
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TerminalScreen)),
+      );
+      final notifier = container.read(sshProvider.notifier) as FakeSshNotifier;
+      notifier.onReconnectSuccess?.call();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+
+      // 再接続中は notifier が null クリアされるが、再解決（早期 return 経路）の
+      // 共通末尾で再設定され、新レイアウトが反映される。
+      expect(paneIndicatorPainter(), findsWidgets);
+      final panesAfter = List<MultiplexerPane>.from(
+        (panePainterOf(tester) as dynamic).panes,
+      );
+      expect(
+        panesAfter.first.width,
+        130,
+        reason: '同 pane 再解決（switch なし）でも indicator が更新されること',
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#14: layout 無し（全 pane rect 0）では indicator 非表示（空ボックスなし）', (
+      tester,
+    ) async {
+      // kHerdrSnapshotFixture: layout なし → 全 pane rect 0。
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrSnapshotFixture,
+      );
+      expect(
+        paneIndicatorPainter(),
+        findsNothing,
+        reason: '全 pane rect 0 では空の半透明ボックスを表示しない（HIGH-2）',
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#18: 非 0 起点 rect（x:26/y:1）でも 0 起点へ正規化されて描画される', (
+      tester,
+    ) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrMinNormalizeSnapshotFixture,
+      );
+      expect(paneIndicatorPainter(), findsWidgets);
+
+      final painter = panePainterOf(tester);
+      // 入力は非 0 起点のまま（正規化は paint 内・min を 0 へ引く）。
+      final panes = List<MultiplexerPane>.from((painter as dynamic).panes);
+      expect(panes, hasLength(2));
+      expect(panes.first.left, 26);
+
+      // 描画矩形の検証: 最初の pane の left/top が 0 起点化され、全矩形が領域内。
+      final rects = paintedRects(painter, const Size(44, 44));
+      expect(rects, isNotEmpty);
+      expect(
+        rects.first.left,
+        0,
+        reason: 'min（x:26）が引かれ 0 起点で描画されること（非正規化なら 26 分ずれる）',
+      );
+      expect(rects.first.top, 0, reason: 'min（y:1）が引かれ 0 起点で描画されること');
+      for (final r in rects) {
+        expect(r.left, greaterThanOrEqualTo(0));
+        expect(r.top, greaterThanOrEqualTo(0));
+        expect(r.right, lessThanOrEqualTo(44));
+        expect(r.bottom, lessThanOrEqualTo(44));
+      }
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets('#17: セレクタで別 pane へ切替すると indicator が切替後の状態へ更新', (tester) async {
+      await pumpHerdrForIndicator(
+        tester,
+        snapshotFixture: kHerdrTwoPaneLayoutSnapshotFixture,
+      );
+
+      // 初期: activePaneId = w1:p1
+      var painter = panePainterOf(tester);
+      expect((painter as dynamic).activePaneId, 'w1:p1');
+
+      // pane セレクタを開いて w1:p2 を選択（_herdrSelectPane → _switchHerdrTarget →
+      // setter が switch 後に呼ばれる・CRITICAL-1 の順序検証）。
+      await tester.tap(paneIndicatorPainter());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Select Pane'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('mux-sel-pane-w1:p2')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // switch 後の差し込みで activePaneId が更新される（旧値残留 = stale）。
+      painter = panePainterOf(tester);
+      expect(
+        (painter as dynamic).activePaneId,
+        'w1:p2',
+        reason: 'セレクタ切替（switch 後 setter）で indicator が更新されること',
+      );
+
+      await tester.pump(const Duration(milliseconds: 200));
+    });
+
+    testWidgets(
+      '#19: 接続直後に layout 未取得でも poll 駆動の snapshot 再取得後に indicator が表示',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: _herdrConnection(),
+          sessionName: 'lab-ws1',
+          // TTL を fake time（tester.pump で進む clock）で駆動し、poll 経路の
+          // snapshot 再取得（接続後 5s 以降）をテスト内で再現する。
+          herdrCacheClock: () => tester.binding.clock.now(),
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          execOutputQueues: {
+            // 接続時 resolve（fetch#1）+ その後の cache 再取得は FIFO で消費される。
+            'herdr api snapshot': [
+              kHerdrTwoPaneNoLayoutSnapshotFixture, // 接続直後: layout 未取得
+              kHerdrTwoPaneLayoutSnapshotFixture, // poll 駆動再取得後: layout あり
+            ],
+          },
+          settle: false,
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // 接続直後は layout 無し（全 rect 0）→ HIGH-2 ガードで非表示。
+        expect(
+          paneIndicatorPainter(),
+          findsNothing,
+          reason: '接続直後（layout 未取得）は rect 0 により非表示',
+        );
+
+        // cache TTL(5s) を超えるまで時間を進め、poll 駆動の snapshot 再取得を走らせて
+        // layout 付き snapshot がキャッシュへ入るようにする（既存 poll 経路の定期再取得）。
+        await tester.pump(const Duration(seconds: 7));
+        await tester.pump();
+
+        // 前提検証: poll 経路の cache 再取得で 2 件目の snapshot が実際に取得された。
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        final sshNotifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
+        final client = sshNotifier.client as FakeSshClient;
+        final snapshotExecs = client.execCommands
+            .where((c) => c.contains('herdr api snapshot'))
+            .length;
+        expect(
+          snapshotExecs,
+          greaterThanOrEqualTo(2),
+          reason: 'poll 駆動で 2 件目の snapshot（layout 付き）が取得されていること',
+        );
+
+        // 再取得後の snapshot には layout があるため、indicator が表示されるべき。
+        // （現行コードは poll 経路で notifier を再設定しないため RED になる想定・#19）
+        expect(
+          paneIndicatorPainter(),
+          findsWidgets,
+          reason: 'layout 付き snapshot が届いたら indicator が表示されること',
+        );
+        final painter = panePainterOf(tester);
+        final panes = List<MultiplexerPane>.from((painter as dynamic).panes);
+        expect(panes, hasLength(2));
+        expect(panes.first.width, 100, reason: 'layout の rect が反映されること');
+
+        await tester.pump(const Duration(milliseconds: 200));
+      },
+    );
   });
 }

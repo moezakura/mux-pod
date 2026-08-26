@@ -130,10 +130,10 @@ class TerminalTestScaffold {
     // テスト用に FakeSshClient を差し替える（遅延・特殊応答の再現）。
     // 指定が無ければ内部で生成する。
     FakeSshClient Function()? clientFactory,
-    // herdr（read-only）向け
-    bool readOnly = false,
     String? initialPaneId,
     PaneContentReader? paneContentReader,
+    // cache TTL 動作の検証用: fake clock（例: `() => tester.binding.clock.now()`）。
+    DateTime Function()? herdrCacheClock,
     // tmuxProvider の初期状態（T9: stale tmuxProvider が herdr セッション確立
     // 時に clear() されることを検証するテスト用。未指定なら空状態）
     TmuxState tmuxInitialState = const TmuxState(),
@@ -206,9 +206,9 @@ class TerminalTestScaffold {
             lastPaneId: lastPaneId,
             deepLinkWindowName: deepLinkWindowName,
             deepLinkPaneIndex: deepLinkPaneIndex,
-            readOnly: readOnly,
             initialPaneId: initialPaneId,
             paneContentReader: paneContentReader,
+            herdrCacheClock: herdrCacheClock,
           ),
         ),
       ),

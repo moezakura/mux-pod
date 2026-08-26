@@ -50,8 +50,8 @@ class HerdrSnapshotCache {
 
   /// snapshot の世代（adapter 差し替え / force 再取得で増える）。
   ///
-  /// read only。バンプは [get] 内部（force / adapter 差し替え）でのみ行われ、
-  /// 画面側はバンプしない（A3改・エポック照合の照合キーとして使う）。
+  /// バンプは [get] 内部（force / adapter 差し替え）でのみ行われ、画面側から
+  /// は変更できない（A3改・エポック照合の照合キーとして使う）。
   int get epoch => _epoch;
 
   /// snapshot を保持しているかどうか。

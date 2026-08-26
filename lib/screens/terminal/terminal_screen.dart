@@ -245,6 +245,22 @@ class _HerdrDisplayData {
   });
 }
 
+/// pane indicator（右上ミニマップ）の描画データ。
+///
+/// 既存 [`_fetchHerdrSessions`]（[HerdrSnapshotCache]・単一 chokepoint）の成果物から
+/// 導出し、画面ローカル notifier（[_herdrPaneIndicatorNotifier]）に保持する。
+/// panes は表示対象 workspace のウィンドウ（tab）に属する pane 一覧で、
+/// activePaneId は [`_targetSource`] の現在 pane ID。
+class _HerdrPaneIndicatorData {
+  /// 描画する pane 一覧（共通 domain 型）。
+  final List<MultiplexerPane> panes;
+
+  /// アクティブ（表示中）pane ID。
+  final String? activePaneId;
+
+  const _HerdrPaneIndicatorData({required this.panes, this.activePaneId});
+}
+
 /// スナップショット解決の結果（表示対象 pane + 属する workspace/tab の実値）。
 ///
 /// [HerdrTargetResolver.resolve] で決定した pane ID に対し、snapshot の
@@ -316,14 +332,11 @@ class _BreadcrumbData {
   /// セッション名（tmux）または workspace ラベル（herdr）。
   final String session;
 
-  /// ウィンドウ名。null なら非表示（read-only 等）。
+  /// ウィンドウ名。null なら非表示（未接続時等）。
   final String? window;
 
   /// ペイン表示文字列（例: "Pane 0"）。null なら非表示。
   final String? pane;
-
-  /// true なら read-only バッジを表示し、window/pane セグメントを省略する。
-  final bool readOnlyBadge;
 
   /// セッション/workspace セグメントのタップ（セレクタ表示）。
   final VoidCallback? onSessionTap;
@@ -334,18 +347,13 @@ class _BreadcrumbData {
   /// ペインセグメントのタップ（セレクタ表示）。
   final VoidCallback? onPaneTap;
 
-  /// read-only バッジのタップ（T11: herdr のみ 3 段セレクタを開く）。
-  final VoidCallback? onReadOnlyTap;
-
   const _BreadcrumbData({
     required this.session,
     this.window,
     this.pane,
-    this.readOnlyBadge = false,
     this.onSessionTap,
     this.onWindowTap,
     this.onPaneTap,
-    this.onReadOnlyTap,
   });
 }
 
@@ -389,19 +397,19 @@ class TerminalScreen extends ConsumerStatefulWidget {
   /// [TmuxPaneContentReader] / [HerdrPaneContentReader] を自動生成する。
   final PaneContentReader? paneContentReader;
 
-  // inventory: TERM-SCREEN-005
-  /// read-only（herdr）表示モード。
-  ///
-  /// true の場合、mutation（キー入力・copy-mode・特殊キー・CRUD・リサイズ）
-  /// を非表示/無効化し、ペイン内容の表示とスクロールのみを提供する。
-  final bool readOnly;
-
   // inventory: TERM-SCREEN-006
   /// 直接表示する pane ID（herdr 用）。
   ///
   /// null なら接続先の herdr スナップショットから
   /// セッション名（workspace label/id）に一致する pane を解決する。
   final String? initialPaneId;
+
+  /// テスト用: herdr snapshot cache の時刻源（TTL 動作の検証用）。
+  ///
+  /// null なら [DateTime.now]（既定・本番同等）。cache 生成時にクロージャとして
+  /// 保持されるため、接続（[_recreatePaneReader]）より前に注入すること。
+  /// `@visibleForTesting` 相当（本番呼び出し元は渡さない）。
+  final DateTime Function()? herdrCacheClock;
 
   const TerminalScreen({
     super.key,
@@ -413,8 +421,8 @@ class TerminalScreen extends ConsumerStatefulWidget {
     this.deepLinkWindowName,
     this.deepLinkPaneIndex,
     this.paneContentReader,
-    this.readOnly = false,
     this.initialPaneId,
+    this.herdrCacheClock,
   });
 
   @override
@@ -445,6 +453,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 表示状態（A9）: herdr の workspace/tab/pane 位置。コンテンツ（_viewNotifier）
   // とは別系統の画面ローカル Notifier。ブレッドクラムの入力になる。
   final _herdrDisplayNotifier = ValueNotifier<_HerdrDisplayData?>(null);
+
+  // 表示状態（pane indicator）: herdr の描画データ（panes + activePaneId）。
+  // 既存フロー（接続確立 / mutation 後 / 再解決 / セレクタ切替）の表示最終確定後に
+  // [_setHerdrPaneIndicatorData] で更新する（新規タイマーなし・🤝#3）。
+  final _herdrPaneIndicatorNotifier = ValueNotifier<_HerdrPaneIndicatorData?>(
+    null,
+  );
 
   // レイテンシ表示専用のNotifier（ping揺れで本文が再描画されないよう分離）
   final _latencyNotifier = ValueNotifier<int>(0);
@@ -582,8 +597,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   PaneFrameReader? _frameReader;
 
   // ペイン操作（write 側抽象）。backend 種別で生成する（T8: `TmuxPaneWriter` /
-  // `HerdrPaneWriter`。Phase 0 の仮実装 `_Phase0PaneWriter` は廃止）。呼び出し
-  // 側の明示（`readOnly: true`）・未接続時は null（全 capability false 扱い）。
+  // `HerdrPaneWriter`）。未接続時は null（全 capability false 扱い）。
   PaneWriter? _paneWriter;
 
   // ポーリング対象 pane ID の取得抽象（tmux=遅延委譲 / herdr=固定 ID）
@@ -609,10 +623,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// 現在のバックエンドが持つ操作能力。
   ///
-  /// `_paneWriter` が未生成（[TerminalScreen.readOnly] 明示・未接続）の場合は
-  /// 全能力 false（read-only 相当）。Phase 0 では herdr は全能力 false・
-  /// tmux は全 true のため、`!_can` は従来の `_isReadOnly`
-  /// （`widget.readOnly || _backendKind == herdr`）と同値になる（H4 等価性）。
+  /// `_paneWriter` が未生成（未接続）の場合は全能力 false（接続なし相当）。
   PaneCapabilities get _paneCapabilities =>
       _paneWriter?.capabilities ?? const PaneCapabilities();
 
@@ -620,8 +631,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// バックエンドで有効かどうか。
   ///
   /// 判定は純データで副作用なし（L2-1）。UI ガードはすべて `!_can(...)`
-  /// に置換する（`_isReadOnly` の boolean では操作単位の解禁/遮断を表現
-  /// できない・Q-02/H4）。
+  /// に置換する（boolean の一括判定では操作単位の解禁/遮断を表現できない）。
   bool _can(PaneCapabilities required) {
     final caps = _paneCapabilities;
     return (required.sendText == false || caps.sendText) &&
@@ -1417,6 +1427,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （[_paneWriter]）も同じタイミングで再生成する。
   void _recreatePaneReader() {
     _recreatePaneWriter();
+    // 再接続時 stale 防止（MED-4）: 新 adapter / cache に差し替わる前に
+    // indicator データを null へ戻す（旧 layout の残骸を表示しない）。
+    if (!_isDisposed) _herdrPaneIndicatorNotifier.value = null;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null) return;
     if (widget.paneContentReader != null) {
@@ -1427,14 +1440,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // cache を生成してエポック照合を有効にする（バックエンドは client 由来）。
       if (_backendKind == MultiplexerBackendKind.herdr) {
         final adapter = HerdrAdapter(sshClient);
-        _herdrSnapshotCache = HerdrSnapshotCache(() => adapter);
+        _herdrSnapshotCache = HerdrSnapshotCache(
+          () => adapter,
+          clock: widget.herdrCacheClock,
+        );
       }
     } else if (_backendKind == MultiplexerBackendKind.herdr) {
       final adapter = HerdrAdapter(sshClient);
       _paneReader = HerdrPaneContentReader(adapter);
       // スナップショット読み取りは cache（唯一の read chokepoint・A5）経由に
       // する。adapter 差し替え（再接続・SSH client 再生成）は cache を作り直して追随。
-      _herdrSnapshotCache = HerdrSnapshotCache(() => adapter);
+      _herdrSnapshotCache = HerdrSnapshotCache(
+        () => adapter,
+        clock: widget.herdrCacheClock,
+      );
       // content + geometry の合成（バグ1 根本対応: 表示層の backend 分岐と
       // 診断 getter の表示利用を除去）。cache.get() の TTL/single-flight/epoch
       // 契約を守る PaneLayoutResolver を使う。
@@ -1469,14 +1488,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// backend 種別に応じてペイン操作（write 側抽象）を（再）生成する。
-  /// 呼び出し側の明示（[TerminalScreen.readOnly]）・未接続・backend 未確定の
-  /// ときは null（全 capability false 扱い = read-only）。T8 で `_Phase0PaneWriter`
-  /// を廃止し、実実装（`TmuxPaneWriter` / `HerdrPaneWriter`）を生成する。
-  /// herdr は Phase 2（T13）で capability がフリップされ mutation が解禁される
-  /// （Q-01: 公開は 1 回のリリース・中間状態は出さない）。
+  /// 未接続・backend 未確定のときは null（全 capability false 扱い）。T8 で
+  /// `_Phase0PaneWriter` を廃止し、実実装（`TmuxPaneWriter` / `HerdrPaneWriter`）
+  /// を生成する。
   void _recreatePaneWriter() {
     final sshClient = ref.read(sshProvider.notifier).client;
-    if (sshClient == null || widget.readOnly) {
+    if (sshClient == null) {
       _paneWriter = null;
       return;
     }
@@ -1504,6 +1521,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 根絶する（mutation は必ず herdr の pane_id `wN:pN` を使用する実装規約）。
   Future<void> _setupHerdrSession(SshClient client) async {
     ref.read(tmuxProvider.notifier).clear();
+    // 再接続時 stale 防止（MED-4）: indicator データを null に戻してから再解決する。
+    _herdrPaneIndicatorNotifier.value = null;
     _recreatePaneReader();
 
     // 表示対象 pane を解決（直接指定 or スナップショットから）。
@@ -1539,6 +1558,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       tabLabel: resolvedTarget?.tabLabel,
       paneId: resolvedId,
     );
+
+    // pane indicator の初期描画データを確定する（表示最終確定後・CRITICAL-1）。
+    // 非 directId は resolve 済みの cache 再取得（SSH 追加なし）。directId は
+    // ここで初回 fetch が 1 回走る（LOW-5 許容）。fetch 失敗（null）時は
+    // indicator を非表示にする（MEDIUM-2）。
+    final indicatorSessions = await _fetchHerdrSessions(
+      eventLabel: 'initial indicator',
+      isTerminal: false,
+    );
+    _setHerdrPaneIndicatorData(indicatorSessions);
 
     // ライブ表示を開始
     _viewNotifier.value = _viewNotifier.value.copyWith(content: '');
@@ -1959,6 +1988,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // 再接続が発生）ならこの結果を破棄し、次回ポーリングに任せる。
       if (!_isCurrentHerdrTarget(herdrIdentity)) return;
 
+      // ポーリング契機の pane indicator 再設定（CRITICAL-1・🤝#3: 新規タイマーなし）。
+      // 接続直後に layout 未取得（全 rect 0）等で indicator が非表示のまま stale に
+      // なる問題の対策: poll 経路では frame geometry 解決（layout resolver）が既に
+      // snapshot cache を TTL 5s で定期再取得しているため、その最新 snapshot から
+      // 再導出して notifier へ反映する（backend レイアウト変化にも追従）。
+      await _refreshHerdrPaneIndicatorFromCache();
+
       // カーソル位置とペインサイズを更新
       // tmux は snapshot（poll）経由で geometry を得る。herdr は PaneFrameReader
       // が layout から合成済み。zoom 時は pane rect が非 zoom 値のまま
@@ -2146,22 +2182,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (resolved == null) {
       // 終端: 再解決でも対象不在 → 再接続しない（R1）
       _recordHerdrSwitchEvent('re-resolve failed: target missing');
+      _setHerdrPaneIndicatorData(null); // 終端: indicator を null クリア（MED-3）
       _notifyHerdrTargetLost();
       return;
     }
 
     _recordHerdrSwitchEvent('re-resolve succeeded -> ${resolved.paneId}');
-    if (resolved.paneId == currentPaneId) {
-      // 同じ pane なら切替コミットは不要（表示継続）
-      return;
+    if (resolved.paneId != currentPaneId) {
+      // 再解決で確定した tabId / workspaceId / tabLabel（snapshot 実値）を表示状態へ伝播する
+      _switchHerdrTarget(
+        resolved.paneId,
+        workspaceId: resolved.workspaceId,
+        tabId: resolved.tabId,
+        tabLabel: resolved.tabLabel,
+      );
     }
-    // 再解決で確定した tabId / workspaceId / tabLabel（snapshot 実値）を表示状態へ伝播する
-    _switchHerdrTarget(
-      resolved.paneId,
-      workspaceId: resolved.workspaceId,
-      tabId: resolved.tabId,
-      tabLabel: resolved.tabLabel,
-    );
+    // 表示最終確定後（switch あり/なし共通末尾）に indicator を更新（CRITICAL-1）
+    _setHerdrPaneIndicatorData(sessions);
   }
 
   /// 再接続後のターゲット再解決（T9a）。
@@ -2197,22 +2234,23 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _recordHerdrSwitchEvent(
         're-resolve failed after reconnect: target missing',
       );
+      _setHerdrPaneIndicatorData(null); // 終端: indicator を null クリア（MED-3）
       _notifyHerdrTargetLost();
       return false;
     }
 
     _recordHerdrSwitchEvent('re-resolve after reconnect -> ${resolved.paneId}');
-    if (resolved.paneId == currentPaneId) {
-      // 同じ pane なら切替コミットは不要（表示継続）
-      return true;
+    if (resolved.paneId != currentPaneId) {
+      // 再解決で確定した tabId / workspaceId / tabLabel（snapshot 実値）を表示状態へ伝播する
+      _switchHerdrTarget(
+        resolved.paneId,
+        workspaceId: resolved.workspaceId,
+        tabId: resolved.tabId,
+        tabLabel: resolved.tabLabel,
+      );
     }
-    // 再解決で確定した tabId / workspaceId / tabLabel（snapshot 実値）を表示状態へ伝播する
-    _switchHerdrTarget(
-      resolved.paneId,
-      workspaceId: resolved.workspaceId,
-      tabId: resolved.tabId,
-      tabLabel: resolved.tabLabel,
-    );
+    // 表示最終確定後（switch あり/なし共通末尾）に indicator を更新（CRITICAL-1）
+    _setHerdrPaneIndicatorData(sessions);
     return true;
   }
 
@@ -2349,6 +2387,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
 
     // 4. 即時反映（切替コミット内でも boost されるが、同一 pane 時も反映する）。
+    // 表示最終確定後（switch あり/なし共通・switch コミット済み）に indicator を
+    // 更新する（CRITICAL-1: _boostPolling の前）。
+    _setHerdrPaneIndicatorData(sessions);
     _boostPolling();
     return true;
   }
@@ -2489,6 +2530,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// ポーリングを停止し（再接続ループ防止）、キャッシュを失効させ、SnackBar
   /// で通知する。Retry は「再接続」ではなく「再試行」（ポーリング再開）。
   Future<void> _handleHerdrServerDown(Object e) async {
+    // 接続断中の stale レイアウト表示を除去（MEDIUM-1）
+    _setHerdrPaneIndicatorData(null);
     _suspendPollingAfterError();
     _herdrSnapshotCache?.invalidate();
     if (mounted && !_isDisposed) {
@@ -2501,6 +2544,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 終端エラー（再解決でも対象不在）を通知する。再接続はしない（A2 / R1）。
   void _notifyHerdrTargetLost() {
     if (!mounted || _isDisposed) return;
+    // 対象消滅時の stale レイアウト表示を除去（MEDIUM-1）
+    _setHerdrPaneIndicatorData(null);
     _suspendPollingAfterError();
     _showHerdrErrorSnackBar(context.l10n.termHerdrTargetPaneNotFound);
   }
@@ -2934,6 +2979,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ValueNotifierを破棄
     _viewNotifier.dispose();
     _herdrDisplayNotifier.dispose();
+    _herdrPaneIndicatorNotifier.dispose();
     _latencyNotifier.dispose();
     // スクロールコントローラーのリスナーを削除して破棄
     _terminalScrollController.removeListener(_onTerminalScroll);
@@ -3065,17 +3111,33 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           },
                         ),
                       ),
-                      // Pane indicator: ConsumerでtmuxProviderを直接watch
+                      // Pane indicator: tmux は Consumer で tmuxProvider を直接
+                      // watch し、herdr は _herdrPaneIndicatorNotifier を
+                      // ValueListenableBuilder で監視（P2-4 分岐）。
                       Positioned(
                         top: 8,
                         right: 8,
-                        child: Consumer(
-                          builder: (context, ref, _) {
-                            final tmuxState = ref.watch(tmuxProvider);
-                            // inventory: TERM-DIALOG-006
-                            return _buildPaneIndicator(tmuxState);
-                          },
-                        ),
+                        child: _backendKind == MultiplexerBackendKind.herdr
+                            ? ValueListenableBuilder<_HerdrPaneIndicatorData?>(
+                                valueListenable: _herdrPaneIndicatorNotifier,
+                                builder: (context, data, _) {
+                                  if (data == null) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return _buildPaneIndicatorShell(
+                                    panes: data.panes,
+                                    activePaneId: data.activePaneId,
+                                    onTap: _showHerdrPaneSelector,
+                                  );
+                                },
+                              )
+                            : Consumer(
+                                builder: (context, ref, _) {
+                                  final tmuxState = ref.watch(tmuxProvider);
+                                  // inventory: TERM-DIALOG-006
+                                  return _buildTmuxPaneIndicator(tmuxState);
+                                },
+                              ),
                       ),
                       // スクロールボタン: ターミナルエリア右下
                       Positioned(
@@ -3115,9 +3177,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 },
               ),
               // 特殊キー入力バー（`_canSendSpecialKey` が false のときは
-              // 読み取り専用バナーを表示し mutation 導線を隠す）
+              // 未接続バナーを表示し mutation 導線を隠す）
               if (!_canSendSpecialKey)
-                _ReadOnlyBanner(isDark: isDark)
+                _DisconnectedBanner(isDark: isDark)
               else
                 // customKeysProvider はこの Consumer 内でだけ watch する:
                 // 親 build() を再実行させると BottomSheet が閉じてしまう
@@ -3249,7 +3311,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// AnsiTextViewからのキー入力を処理
   void _handleKeyInput(KeyInputEvent event) {
-    // テキスト送信不可（read-only）ではキー入力を無効化
+    // テキスト送信不可時はキー入力を無効化
     if (!_canSendText) return;
     // 特殊キーの場合はtmux形式で送信（オーバーレイ付き）
     if (event.isSpecialKey && event.tmuxKeyName != null) {
@@ -3335,7 +3397,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// （[_syncAfterHerdrMutation]）で表示を更新する。stale tmuxProvider への
   /// 誤送信はない（R3・backend 分岐）。
   void _handleTwoFingerSwipe(SwipeDirection direction) {
-    // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
+    // 方向フォーカス不可時は tmuxProvider を読まない（R3）。
     if (!_canFocusDirection) return;
     if (_backendKind == MultiplexerBackendKind.herdr) {
       _focusHerdrPaneDirection(direction);
@@ -3409,7 +3471,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// 現在のペインからナビゲーション可能な方向を取得
   Map<SwipeDirection, bool>? _getNavigableDirections() {
-    // 方向フォーカス不可（read-only）では tmuxProvider を読まない（R3）。
+    // 方向フォーカス不可時は tmuxProvider を読まない（R3）。
     if (!_canFocusDirection) return null;
 
     // herdr: snapshot の layout（pane rect）から隣接判定する。
@@ -3525,7 +3587,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// キーデータを PaneWriter 経由で送信（tmux: send-keys -l / herdr: send-text）
   Future<void> _sendKeyData(String data) async {
-    // テキスト送信不可（read-only）では送信しない
+    // テキスト送信不可時は送信しない
     if (!_canSendText) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
@@ -3619,7 +3681,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // inventory: TERM-NAV-008
   /// herdr の表示対象 pane を切り替える（切替コミットの単一入口・A4）。
   ///
-  /// tmux の [_selectPane]（select-pane コマンド発行）とは別系統の read-only
+  /// tmux の [_selectPane]（select-pane コマンド発行）とは別系統の
   /// 表示切替で、mutation は一切発行しない。表示リセット漏れによるスクロール/
   /// モード残留を防ぐため、以下の状態変更をこのメソッドに単一化する:
   ///
@@ -3794,7 +3856,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// ペインを選択（T8: PaneWriter 経由。tmux の select-pane 発行 + 状態同期）
   Future<void> _selectPane(String paneId) async {
-    // フォーカス不可（read-only）では送信しない（R3: herdr で tmuxProvider を
+    // フォーカス不可時は送信しない（R3: herdr で tmuxProvider を
     // 読まない）。herdr は直接アクティブ化 CLI が無いため（OQ1）、セレクタの
     // pane 選択は表示切替コミット（_switchHerdrTarget）を経由する。
     if (!_can(const PaneCapabilities(focus: true))) return;
@@ -4008,7 +4070,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    // セッション名（read-only ではタップ不可）
+                    // セッション名（未接続時はタップ不可）
                     // inventory: TERM-DIALOG-004
                     _buildBreadcrumbItem(
                       data.session,
@@ -4016,8 +4078,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                       isActive: true,
                       onTap: data.onSessionTap,
                     ),
-                    // ウィンドウ（tab）セグメント。herdr（T11）では read-only
-                    // でも現在ターゲット（workspace/tab/pane）を表示する。
+                    // ウィンドウ（tab）セグメント。herdr（T11）では現在
+                    // ターゲット（workspace/tab/pane）を表示する。
                     if (data.window != null) ...[
                       // inventory: TERM-DIALOG-005
                       _buildBreadcrumbSeparator(),
@@ -4037,17 +4099,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         icon: Icons.terminal,
                         isActive: false,
                         onTap: data.onPaneTap,
-                      ),
-                    ],
-                    if (data.readOnlyBadge) ...[
-                      // herdr: read-only バッジ（T4: 表示専用・非インタラクティブ。
-                      // セレクタ導線は各セグメントのタップに移行した）
-                      _buildBreadcrumbSeparator(),
-                      _buildBreadcrumbItem(
-                        context.l10n.termReadOnlyBadge,
-                        icon: Icons.lock_outline,
-                        isActive: false,
-                        onTap: data.onReadOnlyTap,
                       ),
                     ],
                   ],
@@ -4118,9 +4169,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               builder: (context, latency, _) =>
                   _buildConnectionIndicator(latency),
             ),
-            // File browser button（normal 以外・read-only は場所を空けるため非表示。
-            // H2: scrollSend 中も非表示 = `== normal` のみ表示）
-            if (_terminalMode == TerminalMode.normal && !data.readOnlyBadge)
+            // File browser button（normal 以外・未接続（特殊キー送信不可）は
+            // 場所を空けるため非表示。H2: scrollSend 中も非表示 = `== normal` のみ表示）
+            if (_terminalMode == TerminalMode.normal && _canSendSpecialKey)
               IconButton(
                 // inventory: TERM-FILE-001
                 onPressed: _handleFileBrowser,
@@ -4154,37 +4205,36 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux 経路: [TmuxState] をブレッドクラム描画用データへ変換する（A9）。
   ///
-  /// 特殊キー送信不可（read-only）の場合はバッジ表示に切り替え、セレクタ
-  /// tap を無効化する。
+  /// 未接続（特殊キー送信不可）の場合は簡易表示（session のみ）に切り替え、
+  /// セレクタ tap を無効化する。
   _BreadcrumbData _tmuxToBreadcrumb(TmuxState tmuxState) {
-    final isReadOnly = !_canSendSpecialKey;
+    final isDisconnected = !_canSendSpecialKey;
     final activePane = tmuxState.activePane;
     return _BreadcrumbData(
-      session: isReadOnly
+      session: isDisconnected
           ? (widget.sessionName ?? tmuxState.activeSessionName ?? '')
           : (tmuxState.activeSessionName ?? ''),
-      window: isReadOnly ? null : (tmuxState.activeWindow?.name ?? ''),
-      pane: isReadOnly || activePane == null
+      window: isDisconnected ? null : (tmuxState.activeWindow?.name ?? ''),
+      pane: isDisconnected || activePane == null
           ? null
           : context.l10n.termPaneLabel(activePane.index),
-      readOnlyBadge: isReadOnly,
-      onSessionTap: isReadOnly ? null : () => _showSessionSelector(tmuxState),
-      onWindowTap: isReadOnly ? null : () => _showWindowSelector(tmuxState),
-      onPaneTap: isReadOnly ? null : () => _showPaneSelector(tmuxState),
+      onSessionTap: isDisconnected
+          ? null
+          : () => _showSessionSelector(tmuxState),
+      onWindowTap: isDisconnected ? null : () => _showWindowSelector(tmuxState),
+      onPaneTap: isDisconnected ? null : () => _showPaneSelector(tmuxState),
     );
   }
 
   /// herdr 経路: 表示状態（[display]）をブレッドクラム描画用データへ変換する（A9）。
   ///
-  /// read-only は呼び出し側明示（[TerminalScreen.readOnly]）のときのみバッジを
-  /// 表示する（T16/H6）。セレクタ導線は各セグメントのタップ:
+  /// セレクタ導線は各セグメントのタップ:
   /// - session/workspace セグメント → workspace セレクタ（Select Session 相当）
   /// - window/tab セグメント → tab セレクタ（Select Window 相当）
   /// - pane セグメント → pane セレクタ（Select Pane 相当）
   _BreadcrumbData _herdrToBreadcrumb(_HerdrDisplayData? display) {
     final paneId = display?.paneId;
     final tabId = display?.tabId;
-    final isExplicitReadOnly = widget.readOnly;
     return _BreadcrumbData(
       session: display?.workspaceLabel ?? widget.sessionName ?? '',
       // M-4: tab セグメントは数字抽出（旧 _herdrTabSegmentLabel）ではなく、
@@ -4193,12 +4243,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       pane: paneId != null
           ? _herdrPaneSegmentLabel(paneId, context.l10n)
           : null,
-      readOnlyBadge: isExplicitReadOnly,
       onSessionTap: () => _showHerdrWorkspaceSelector(),
       onWindowTap: () => _showHerdrTabSelector(),
       onPaneTap: () => _showHerdrPaneSelector(),
-      // T4: Read-only バッジは表示専用（非インタラクティブ）
-      onReadOnlyTap: null,
     );
   }
 
@@ -4509,6 +4556,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       tabId: target.tabId,
       tabLabel: target.tabLabel,
     );
+    // 表示最終確定後（switch コミット後）に indicator を更新（CRITICAL-1 / B-1）
+    _setHerdrPaneIndicatorData(sessions);
   }
 
   /// [workspace] の表示対象 pane を解決する（HerdrTargetResolver の決定順と
@@ -4584,6 +4633,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       tabId: target.tabId,
       tabLabel: target.tabLabel,
     );
+    // 表示最終確定後（switch コミット後）に indicator を更新（CRITICAL-1 / B-1）
+    _setHerdrPaneIndicatorData(sessions);
   }
 
   /// pane 選択（Select Pane 相当）: [_switchHerdrTarget]（切替コミット・T6）で
@@ -4601,6 +4652,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       tabId: target.tabId,
       tabLabel: target.tabLabel,
     );
+    // 表示最終確定後（switch コミット後）に indicator を更新（CRITICAL-1 / B-1）
+    _setHerdrPaneIndicatorData(sessions);
   }
 
   /// [sessions] から現在表示中の workspace（[_HerdrDisplayData.workspaceId] /
@@ -4630,6 +4683,62 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (window.id == tabId) return window;
     }
     return null;
+  }
+
+  /// herdr の pane indicator 描画データを更新する（CRITICAL-1・最重要）。
+  ///
+  /// **差し込み位置規約**: 各フローの**表示最終確定後（switch が起きうる全経路で
+  /// switch コミット後）に 1 回**呼ぶ。setter は表示状態（[_herdrDisplayNotifier]
+  /// の workspaceId / tabId）と [_targetSource] の現在 pane ID から再導出するため、
+  /// switch 前に呼ぶと旧値のまま導出され stale になる。
+  ///
+  /// - sessions == null（取得失敗・終端）→ notifier を null クリア（stale 非表示）
+  /// - 表示対象 workspace / tab が sessions 内に見つからない → null クリア
+  /// - それ以外 → (panes: window.panes, activePaneId: _targetSource.currentPaneId)
+  ///
+  /// tmux では何もしない（_backendKind ガード・P2-4 分岐と整合）。
+  void _setHerdrPaneIndicatorData(List<MultiplexerSession>? sessions) {
+    if (_isDisposed) return; // notifier 破棄後の設定を防ぐ
+    if (_backendKind != MultiplexerBackendKind.herdr) return;
+    if (sessions == null) {
+      _herdrPaneIndicatorNotifier.value = null;
+      return;
+    }
+    final display = _herdrDisplayNotifier.value;
+    final workspace = _herdrFindWorkspace(sessions, display);
+    final window = _herdrFindWindow(workspace, display);
+    if (window == null) {
+      _herdrPaneIndicatorNotifier.value = null;
+      return;
+    }
+    _herdrPaneIndicatorNotifier.value = _HerdrPaneIndicatorData(
+      panes: window.panes,
+      activePaneId: _targetSource?.currentPaneId,
+    );
+  }
+
+  /// ポーリング駆動の pane indicator 再設定（CRITICAL-1・🤝#3: 新規タイマーなし）。
+  ///
+  /// 接続直後に layout 未取得（HIGH-2 の全 rect 0 ガード）や pane 数不足で
+  /// indicator が非表示のまま fixed になる問題の対策。poll 経路では frame geometry
+  /// 解決が既に [HerdrSnapshotCache.get]（TTL 5s）を呼ぶため、ここでは同じ cache を
+  /// 再利用して最新 snapshot から再導出する（fetch は single-flight で重複しない）。
+  ///
+  /// - 取得失敗は静かにスキップ（次回 poll で再試行。既存 poll エラー処理と二重にならない）
+  /// - await 中に切替・再解決が起きた場合は破棄（switch 側の setter が正しく更新済み）
+  Future<void> _refreshHerdrPaneIndicatorFromCache() async {
+    if (_backendKind != MultiplexerBackendKind.herdr) return;
+    final cache = _herdrSnapshotCache;
+    if (cache == null) return;
+    final identity = _captureHerdrTarget();
+    try {
+      final snapshot = await cache.get();
+      if (_isDisposed) return;
+      if (!_isCurrentHerdrTarget(identity)) return;
+      _setHerdrPaneIndicatorData(snapshot.toDomainSessions());
+    } catch (_) {
+      // 取得失敗は既存 poll エラー処理に委ねる（ここでは SnackBar 等を出さない）。
+    }
   }
 
   // inventory: TERM-NAV-004
@@ -4664,14 +4773,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 現在のアクティブ session の window 一覧を 1 階層で表示する。タップした
   /// window は [_selectWindow] で即時確定してシートを閉じる。mutation（New
-  /// Window / Resize Window / Rename / Close）は非 read-only 時のみヘッダーと
+  /// Window / Resize Window / Rename / Close）は能力あり（接続中）時のみヘッダーと
   /// PopupMenu に表示する（H-4）。
   void _showWindowSelector(TmuxState tmuxState) {
     final session = tmuxState.activeSession;
     if (session == null) return;
     final domainSession = session.toDomain();
     final current = _selectorContextOf(tmuxState);
-    // mutation アクションは能力単位で有効化（T4: `_isReadOnly` の一括 boolean
+    // mutation アクションは能力単位で有効化（T4: boolean の一括判定
     // を `_can` の各 capability に分解）。
     final canTabCrud = _can(const PaneCapabilities(tabCrud: true));
     final canResize = _can(const PaneCapabilities(resize: true));
@@ -4826,7 +4935,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (session == null || window == null) return;
     final domainWindow = window.toDomain();
     final current = _selectorContextOf(tmuxState);
-    // mutation アクションは能力単位で有効化（T4: `_isReadOnly` の一括 boolean
+    // mutation アクションは能力単位で有効化（T4: boolean の一括判定
     // を `_can` の各 capability に分解）。
     final canResize = _can(const PaneCapabilities(resize: true));
     final canClose = _can(const PaneCapabilities(close: true));
@@ -5042,7 +5151,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // inventory: TERM-CRUD-003
   /// ペインを分割（T8: PaneWriter 経由）
   Future<void> _splitPane(String paneId, SplitDirection direction) async {
-    // 分割不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    // 分割不可時は送信しない
     if (!_canSplitPane) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
@@ -5796,7 +5905,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     required bool isLastPane,
     required bool isLastWindow,
   }) async {
-    // close 不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    // close 不可時は送信しない
     if (!_can(const PaneCapabilities(close: true))) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) {
@@ -6477,7 +6586,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 失敗時は T19/S4 の分類別通知（target-not-found → 通知 + 再同期 /
   /// server-down → 既存ポーリング停止 + 通知 / その他 → エラー通知）へ倒れる。
   Future<void> _killHerdrPane({required String paneId}) async {
-    // close 不可（read-only 明示）では送信しない
+    // close 不可時は送信しない
     if (!_can(const PaneCapabilities(close: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6509,7 +6618,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
   /// は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
   Future<void> _renameHerdrPane(String paneId, String label) async {
-    // rename 不可（read-only 明示）では送信しない
+    // rename 不可時は送信しない
     if (!_can(const PaneCapabilities(rename: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6529,7 +6638,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 実行し、成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、
   /// 失敗時は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
   Future<void> _handleHerdrZoomPane(String paneId) async {
-    // zoom 不可（read-only 明示）では送信しない
+    // zoom 不可時は送信しない
     if (!_can(const PaneCapabilities(zoom: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6603,7 +6712,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 成功後は H5/T18 単一経路（[_syncAfterHerdrMutation]）でツリー同期、失敗時
   /// は T19/S4 の分類別通知（[_handleHerdrMutationError]）へ倒れる。
   Future<void> _renameHerdrTab(String tabId, String label) async {
-    // rename 不可（read-only 明示）では送信しない
+    // rename 不可時は送信しない
     if (!_can(const PaneCapabilities(rename: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6632,7 +6741,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     String? label,
     bool? focus,
   }) async {
-    // tab CRUD 不可（read-only 明示）では送信しない
+    // tab CRUD 不可時は送信しない
     if (!_can(const PaneCapabilities(tabCrud: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6727,7 +6836,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 前提。再解決不能（全 workspace 消滅）は [_syncAfterHerdrMutation] が終端
   /// 通知（再接続しない・R1）まで行う。
   Future<void> _closeHerdrTab({required String tabId}) async {
-    // tab CRUD 不可（read-only 明示）では送信しない
+    // tab CRUD 不可時は送信しない
     if (!_can(const PaneCapabilities(tabCrud: true))) return;
     final writer = _paneWriter;
     if (writer == null) return;
@@ -6927,7 +7036,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// [key] 送信するキー
   /// [literal] trueの場合はリテラル送信（sendText / tmux send-keys -l）
   Future<void> _sendKey(String key, {bool literal = true}) async {
-    // テキスト送信不可（read-only）では送信しない。非リテラル（特殊キー）は
+    // テキスト送信不可時は送信しない。非リテラル（特殊キー）は
     // 特殊キー送信能力（sendKeys）で判定する。
     if (literal ? !_canSendText : !_canSendSpecialKey) return;
     final sshClient = ref.read(sshProvider.notifier).client;
@@ -6971,7 +7080,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeに入る
   Future<void> _enterTmuxCopyMode() async {
-    // copy-mode 不可（read-only）では使わない（履歴は直接取得する）
+    // copy-mode 不可時は使わない（履歴は直接取得する）
     if (!_canCopyMode) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
@@ -6985,7 +7094,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// tmux copy-modeを終了
   Future<void> _cancelTmuxCopyMode() async {
-    // copy-mode 不可（read-only）では使わない
+    // copy-mode 不可時は使わない
     if (!_canCopyMode) return;
     final sshClient = ref.read(sshProvider.notifier).client;
     if (sshClient == null || !sshClient.isConnected) return;
@@ -7004,7 +7113,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 適用するため、**「送信できないキー」は存在しない**。万一 `invalid_key` が
   /// 返った場合のみ防御的に SnackBar 通知する（T19・R9。通常は発生しない）。
   Future<void> _sendSpecialKey(String tmuxKey) async {
-    // 特殊キー送信不可（read-only）では送信しない
+    // 特殊キー送信不可時は送信しない
     if (!_canSendSpecialKey) return;
     final sshClient = ref.read(sshProvider.notifier).client;
 
@@ -7151,7 +7260,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     String remotePath,
     ImageTransferOptions options,
   ) async {
-    // 画像転送不可（read-only・herdr は Phase 2 まで capability false）では
+    // 画像転送不可時は
     // 送信しない。
     if (!_can(const PaneCapabilities(imageTransfer: true))) return;
 
@@ -7211,7 +7320,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   Future<void> _sendMultilineText(String text) async {
     if (text.isEmpty) return;
 
-    // paste 不可（read-only・herdr は Phase 1 で capability false）では送信しない
+    // paste 不可時は送信しない
     if (!_can(const PaneCapabilities(paste: true))) return;
 
     final writer = _paneWriter;
@@ -7247,35 +7356,53 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     }
   }
 
-  /// 右上のペインインジケーター
+  /// 右上のペインインジケーター（共通シェル・tmux / herdr 両経路で使用）。
   ///
-  /// ペインの実際のサイズ比率に基づいてレイアウトを表示
+  /// ペインの実際のサイズ比率に基づいてレイアウトを表示する。
   ///
-  /// 分割不可（`!_canSplitPane`・read-only）では表示しない。タップで
-  /// [_showPaneSelector] → [_selectPane] / [_splitPane] / [_killPane]
-  /// （mutation 発行）に到達するため、herdr 接続中に stale な tmuxProvider
-  /// 状態があっても mutation が発行されないよう本メソッド先頭でガードする
-  /// （M2）。
-  Widget _buildPaneIndicator(TmuxState tmuxState) {
+  /// 表示ガード:
+  /// - ピン操作能力なし（`!_canSplitPane`・未接続）→ 非表示
+  /// - ペイン数 1 以下 → 非表示（ミニマップの情報量ゼロ・右上の被覆を避ける）
+  /// - 全 pane の rect が 0（layout 情報なし）→ 非表示（空の半透明ボックスを
+  ///   表示しない・HIGH-2）
+  ///
+  /// タップは呼び出し側（[onTap]）に委譲する（tmux = [_showPaneSelector] /
+  /// herdr = [_showHerdrPaneSelector]）。表示は 48×48・opacity 0.5。
+  Widget _buildPaneIndicatorShell({
+    required List<MultiplexerPane> panes,
+    required String? activePaneId,
+    required VoidCallback onTap,
+  }) {
     if (!_canSplitPane) return const SizedBox.shrink();
+    if (panes.length <= 1) return const SizedBox.shrink();
 
-    final window = tmuxState.activeWindow;
-    final panes = window?.panes ?? [];
-    final activePaneId = tmuxState.activePaneId;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    // 1ペイン（または0）ではミニマップは情報量ゼロ。右上に重なって内容
-    // （プロンプトやスクロール位置表示など）を隠すだけなので表示しない。
-    if (panes.length <= 1) {
+    // 全 pane の rect が 0（layout なし）の場合は空ボックスを描かない（HIGH-2）。
+    // min 正規化後の全体サイズが 0 になる場合も同様（painter の早期 return では
+    // シェルの背景ボックスが残るためシェル側でガードする）。
+    var minLeft = panes.first.left;
+    var minTop = panes.first.top;
+    var maxRight = 0;
+    var maxBottom = 0;
+    for (final pane in panes) {
+      final right = pane.left + pane.width;
+      final bottom = pane.top + pane.height;
+      if (pane.left < minLeft) minLeft = pane.left;
+      if (pane.top < minTop) minTop = pane.top;
+      if (right > maxRight) maxRight = right;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    if (maxRight - minLeft == 0 || maxBottom - minTop == 0) {
       return const SizedBox.shrink();
     }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
 
     // インジケーター全体のサイズ
     const double indicatorSize = 48.0;
 
     return GestureDetector(
-      onTap: () => _showPaneSelector(tmuxState),
+      onTap: onTap,
       child: Opacity(
         opacity: 0.5,
         child: Container(
@@ -7299,14 +7426,31 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       ),
     );
   }
+
+  /// tmux 経路の薄いアダプタ: [TmuxState] のアクティブウィンドウを共通 domain の
+  /// [MultiplexerPane] 一覧へ変換し、共通シェルへ渡す。
+  ///
+  /// アクティブウィンドウが null の場合は空リストを渡す（LOW-1: シェルの
+  /// ペイン数ガードで非表示に倒れる）。タップは tmux 用セレクタ
+  /// [_showPaneSelector]。
+  Widget _buildTmuxPaneIndicator(TmuxState tmuxState) {
+    final window = tmuxState.activeWindow;
+    final panes = window?.toDomain().panes ?? const <MultiplexerPane>[];
+    return _buildPaneIndicatorShell(
+      panes: panes,
+      activePaneId: tmuxState.activePaneId,
+      onTap: () => _showPaneSelector(tmuxState),
+    );
+  }
 }
 
 /// ペインレイアウトを描画するCustomPainter
 ///
-/// tmuxから取得したpane_left/pane_topを使用して
-/// 実際のレイアウトを正確に再現する
+/// 共通 domain 型（[MultiplexerPane]）の pane リストから、pane_left/pane_top を
+/// 使用して実際のレイアウトを正確に再現する（tmux / herdr 共通・クラス名維持: テスト
+/// helper `paneIndicatorPainter()` が runtimeType で判別するため）。
 class _PaneLayoutPainter extends CustomPainter {
-  final List<TmuxPane> panes;
+  final List<MultiplexerPane> panes;
   final String? activePaneId;
   // inventory: LEGACY-0080
   final Color activeColor;
@@ -7324,16 +7468,27 @@ class _PaneLayoutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (panes.isEmpty) return;
 
-    // ウィンドウ全体のサイズを計算（全ペインを含む範囲）
+    // 全 pane の min を 0 起点へ正規化する（[_PaneLayoutVisualizer] と同一の
+    // 幾何学）。herdr の layout rect は 0 起点でないため（実測 x:26 / y:1）、
+    // min を引いて 0 起点へ揃える。tmux は 0 起点パースのため正規化は恒等。
+    var minLeft = panes.first.left;
+    var minTop = panes.first.top;
     int maxRight = 0;
     int maxBottom = 0;
     for (final pane in panes) {
       final right = pane.left + pane.width;
       final bottom = pane.top + pane.height;
+      if (pane.left < minLeft) minLeft = pane.left;
+      if (pane.top < minTop) minTop = pane.top;
       if (right > maxRight) maxRight = right;
       if (bottom > maxBottom) maxBottom = bottom;
     }
 
+    if (maxRight == 0 || maxBottom == 0) return;
+
+    // 0 起点へ正規化した全体サイズ
+    maxRight -= minLeft;
+    maxBottom -= minTop;
     if (maxRight == 0 || maxBottom == 0) return;
 
     // スケール係数を計算
@@ -7345,9 +7500,9 @@ class _PaneLayoutPainter extends CustomPainter {
     for (final pane in panes) {
       final isActive = pane.id == activePaneId;
 
-      // 実際の位置とサイズからRectを計算
-      final left = pane.left * scaleX;
-      final top = pane.top * scaleY;
+      // 実際の位置とサイズからRectを計算（0 起点へ正規化済み）
+      final left = (pane.left - minLeft) * scaleX;
+      final top = (pane.top - minTop) * scaleY;
       final width = pane.width * scaleX - gap;
       final height = pane.height * scaleY - gap;
 
@@ -7374,10 +7529,28 @@ class _PaneLayoutPainter extends CustomPainter {
   @override
   // inventory: LEGACY-0083
   bool shouldRepaint(covariant _PaneLayoutPainter oldDelegate) {
-    return panes != oldDelegate.panes ||
-        activePaneId != oldDelegate.activePaneId ||
+    // 既存 4 項目（panes/activePaneId/activeColor/isDark）を維持しつつ、
+    // panes 比較を「長さ + 各 pane の id/left/top/width/height の明示比較」
+    // へ強化する（B-2）。[MultiplexerPane.==] は id のみ比較のため、同一 id で
+    // rect だけが変化した resize でも描画更新できるようにする。
+    if (activePaneId != oldDelegate.activePaneId ||
         activeColor != oldDelegate.activeColor ||
-        isDark != oldDelegate.isDark;
+        isDark != oldDelegate.isDark) {
+      return true;
+    }
+    if (panes.length != oldDelegate.panes.length) return true;
+    for (var i = 0; i < panes.length; i++) {
+      final a = panes[i];
+      final b = oldDelegate.panes[i];
+      if (a.id != b.id ||
+          a.left != b.left ||
+          a.top != b.top ||
+          a.width != b.width ||
+          a.height != b.height) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -8591,7 +8764,7 @@ bool _isCurrentPane(MultiplexerPane pane, _SelectorContext? current) =>
 /// Select Pane）は [title] / [icon] / [children] / [headerActions] の違いで
 /// 1 クラスが表現する（M-6: タイトル統一）。
 ///
-/// [headerActions] はヘッダー右側の mutation ボタン（tmux の非 read-only 時のみ
+/// [headerActions] はヘッダー右側の mutation ボタン（tmux は能力あり（接続中）時のみ
 /// 呼び出し側が構築）。[top] は一覧の上部に表示するウィジェット（tmux pane
 /// シートの [_PaneLayoutVisualizer]）。ハイライト（H-1）は [_SelectorContext]
 /// から呼び出し側がタイルへ渡す。
@@ -8806,14 +8979,14 @@ class _MultiplexerSelectorSheetState extends State<_MultiplexerSelectorSheet> {
   }
 }
 
-/// READ ONLY バナー（herdr 表示用）。
+/// 未接続バナー。
 ///
-/// 特殊キーバー（SpecialKeysBar）の代わりに表示し、読み取り専用であることを
-/// 示す。キー入力が無効なため、デザイン上の注意書きのみを担う。
-class _ReadOnlyBanner extends StatelessWidget {
+/// 特殊キーバー（SpecialKeysBar）の代わりに表示し、未接続（書き込み不可）
+/// であることを示す。キー入力が無効なため、デザイン上の注意書きのみを担う。
+class _DisconnectedBanner extends StatelessWidget {
   final bool isDark;
 
-  const _ReadOnlyBanner({required this.isDark});
+  const _DisconnectedBanner({required this.isDark});
 
   @override
   Widget build(BuildContext context) {
@@ -8835,7 +9008,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            context.l10n.termReadOnlyBanner,
+            context.l10n.termDisconnectedBanner,
             style: GoogleFonts.jetBrainsMono(
               fontSize: 11,
               fontWeight: FontWeight.w600,

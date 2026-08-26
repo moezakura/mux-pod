@@ -112,8 +112,8 @@ final class HerdrKeyRouteSendTextControl extends HerdrKeyRoute {
 
 /// バックエンドの操作能力セット。
 ///
-/// UI は `_can(capability)` で操作を有効/無効にする。`_isReadOnly` の
-/// boolean では操作単位の解禁/遮断を表現できない（H4 等価性テスト）ため、
+/// UI は `_can(capability)` で操作を有効/無効にする。boolean の一括判定では
+/// 操作単位の解禁/遮断を表現できない（H4 等価性テスト）ため、
 /// 操作単位の判定をこの値に集約する。判定は純データで副作用なし。
 class PaneCapabilities {
   /// テキスト送信（`send-text`）が可能か。
