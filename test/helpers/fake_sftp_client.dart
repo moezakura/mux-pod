@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:dartssh2/src/sftp/sftp_statvfs.dart';
@@ -6,14 +7,23 @@ import 'package:dartssh2/src/sftp/sftp_statvfs.dart';
 /// [SftpClient] インターフェースを実装した fake。
 ///
 /// ディレクトリエントリは [entriesByPath] で提供する。
+/// ファイル内容は [contentsByPath] で提供し、`open` で [FakeSftpFile] を返す。
 class FakeSftpClient implements SftpClient {
   final Map<String, List<SftpName>> entriesByPath;
+  final Map<String, Uint8List> contentsByPath;
   final String homeDirectory;
   final List<String> listdirCalls = [];
   final List<(String, String)> renameCalls = [];
 
+  /// `close()` が呼ばれた回数（SftpClient 側。呼び出し側 close 禁止契約の検証用）。
+  int closeCalls = 0;
+
+  /// `remove()` が呼ばれたファイルパス（部分削除の検証用）。
+  final List<String> removeCalls = [];
+
   FakeSftpClient({
     this.entriesByPath = const {},
+    this.contentsByPath = const {},
     this.homeDirectory = '/home/user',
   });
 
@@ -50,7 +60,18 @@ class FakeSftpClient implements SftpClient {
 
   @override
   Future<SftpFileAttrs> stat(String path, {bool followLink = true}) async {
-    throw UnimplementedError();
+    // SftpService.ensureDirectory が stat を try { } on SftpStatusError { mkdir } で呼ぶため、
+    // 存在しないパスは SftpStatusError を投げる（UnimplementedError だと捕捉されない）。
+    final isKnown =
+        path == '/' ||
+        path == '.' ||
+        path == '..' ||
+        path == homeDirectory ||
+        entriesByPath.containsKey(path);
+    if (!isKnown) {
+      throw SftpStatusError(SftpStatusCode.noSuchFile, 'No such file');
+    }
+    return _makeEntry(path, true).attr;
   }
 
   @override
@@ -63,7 +84,7 @@ class FakeSftpClient implements SftpClient {
     String path, {
     SftpFileOpenMode mode = SftpFileOpenMode.read,
   }) async {
-    throw UnimplementedError();
+    return FakeSftpFile(this, contentsByPath[path] ?? Uint8List(0));
   }
 
   @override
@@ -92,7 +113,9 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
-  Future<void> remove(String filename) async {}
+  Future<void> remove(String filename) async {
+    removeCalls.add(filename);
+  }
 
   @override
   Future<void> mkdir(String path, [SftpFileAttrs? attrs]) async {}
@@ -127,5 +150,72 @@ class FakeSftpClient implements SftpClient {
   }
 
   @override
-  Future<void> close() async {}
+  Future<void> close() async {
+    closeCalls++;
+  }
+}
+
+/// [SftpFile] を継承した fake。
+///
+/// `read` / `writeBytes` / `close` を差し替える。
+/// `close()` は super を呼ばず closeCalls 計数のみ行う
+/// （super の close は private `_client._close(_handle)` を呼ぶため
+/// FakeSftpClient では NoSuchMethodError になる）。
+class FakeSftpFile extends SftpFile {
+  Uint8List _content;
+  final int? size;
+
+  /// `close()` が呼ばれた回数（ファイルハンドル close 正常の検証用）。
+  int closeCalls = 0;
+
+  FakeSftpFile(SftpClient client, Uint8List content, {this.size})
+    : _content = content,
+      super(client, Uint8List(0));
+
+  /// 現在の内容（読取専用）。テスト用アクセサ。
+  Uint8List get content => _content;
+
+  @override
+  Stream<Uint8List> read({
+    int? length,
+    int offset = 0,
+    void Function(int bytesRead)? onProgress,
+    int chunkSize = 64 * 1024,
+    int maxPendingRequests = 128,
+  }) async* {
+    final start = offset.clamp(0, _content.length);
+    final end = length == null
+        ? _content.length
+        : (start + length).clamp(0, _content.length);
+    final slice = Uint8List.sublistView(_content, start, end);
+    onProgress?.call(slice.length);
+    yield slice;
+  }
+
+  @override
+  Future<SftpFileAttrs> stat() async {
+    return SftpFileAttrs(
+      mode: SftpFileMode.value(0x81A4),
+      size: size ?? _content.length,
+      modifyTime: DateTime(2025, 1, 1).millisecondsSinceEpoch ~/ 1000,
+    );
+  }
+
+  @override
+  Future<void> writeBytes(Uint8List data, {int offset = 0}) async {
+    // offset 位置へ data を配置。連続 writeBytes（offset を増やしながら）で正しく連結する。
+    // offset 末尾が現内容長を超える場合はゼロパディングで拡張する。
+    final end = offset + data.length;
+    if (end > _content.length) {
+      final grown = Uint8List(end);
+      grown.setRange(0, _content.length, _content);
+      _content = grown;
+    }
+    _content.setRange(offset, end, data);
+  }
+
+  @override
+  Future<void> close() async {
+    closeCalls++;
+  }
 }

@@ -1444,5 +1444,31 @@
   "settingsClearSearch": "Clear search",
   "settingsSearchResults": "Search results",
   "settingsNoResults": "No matching settings",
-  "settingsNoResultsHint": "Try a different search term"
+  "settingsNoResultsHint": "Try a different search term",
+  "fileOverwriteTitle": "File already exists",
+  "fileOverwriteAction": "Overwrite",
+  "fileRenameAction": "Rename",
+  "fileSkipAction": "Skip",
+  "fileApplyToAll": "Apply to all",
+  "fileTransferCancel": "Cancel transfer",
+  "fileTransferSpeed": "Speed: {speed}",
+  "@fileTransferSpeed": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "fileTransferOf": "{done} / {total}",
+  "@fileTransferOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  }
 }
+

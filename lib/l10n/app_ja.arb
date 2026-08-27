@@ -1444,5 +1444,31 @@
   "settingsClearSearch": "検索をクリア",
   "settingsSearchResults": "検索結果",
   "settingsNoResults": "一致する設定がありません",
-  "settingsNoResultsHint": "別のキーワードで検索してください"
+  "settingsNoResultsHint": "別のキーワードで検索してください",
+  "fileOverwriteTitle": "ファイルが既に存在します",
+  "fileOverwriteAction": "上書き",
+  "fileRenameAction": "リネーム",
+  "fileSkipAction": "スキップ",
+  "fileApplyToAll": "すべてに適用",
+  "fileTransferCancel": "転送をキャンセル",
+  "fileTransferSpeed": "速度: {speed}",
+  "@fileTransferSpeed": {
+    "placeholders": {
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "fileTransferOf": "{done} / {total}",
+  "@fileTransferOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  }
 }
+
