@@ -100,7 +100,9 @@ Future<OverwriteConfirmResult?> showOverwriteConfirmDialog(
                 TextButton(
                   // #41 single: 「キャンセル」（全体中止）
                   onPressed: () => Navigator.of(dialogContext).pop(
-                    const OverwriteConfirmResult(choice: OverwriteChoice.cancel),
+                    const OverwriteConfirmResult(
+                      choice: OverwriteChoice.cancel,
+                    ),
                   ),
                   child: Text(l10n.commonCancel),
                 ),

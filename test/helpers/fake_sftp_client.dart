@@ -62,7 +62,8 @@ class FakeSftpClient implements SftpClient {
   Future<SftpFileAttrs> stat(String path, {bool followLink = true}) async {
     // SftpService.ensureDirectory が stat を try { } on SftpStatusError { mkdir } で呼ぶため、
     // 存在しないパスは SftpStatusError を投げる（UnimplementedError だと捕捉されない）。
-    final isKnown = path == '/' ||
+    final isKnown =
+        path == '/' ||
         path == '.' ||
         path == '..' ||
         path == homeDirectory ||
@@ -83,10 +84,7 @@ class FakeSftpClient implements SftpClient {
     String path, {
     SftpFileOpenMode mode = SftpFileOpenMode.read,
   }) async {
-    return FakeSftpFile(
-      this,
-      contentsByPath[path] ?? Uint8List(0),
-    );
+    return FakeSftpFile(this, contentsByPath[path] ?? Uint8List(0));
   }
 
   @override
@@ -171,8 +169,8 @@ class FakeSftpFile extends SftpFile {
   int closeCalls = 0;
 
   FakeSftpFile(SftpClient client, Uint8List content, {this.size})
-      : _content = content,
-        super(client, Uint8List(0));
+    : _content = content,
+      super(client, Uint8List(0));
 
   /// 現在の内容（読取専用）。テスト用アクセサ。
   Uint8List get content => _content;

@@ -53,22 +53,36 @@ void main() {
 
   group('batch モード（#40 用）', () {
     testWidgets('上書き/リネーム/スキップの3ボタンとapplyToAll表示', (tester) async {
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.batch, showApplyToAll: true);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.batch,
+        showApplyToAll: true,
+      );
 
       expect(find.text('report.pdf'), findsOneWidget);
       expect(find.byType(CheckboxListTile), findsOneWidget);
-      expect(find.widgetWithText(TextButton, l10n.fileSkipAction), findsOneWidget);
-      expect(find.widgetWithText(TextButton, l10n.fileRenameAction), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, l10n.fileOverwriteAction), findsOneWidget);
+      expect(
+        find.widgetWithText(TextButton, l10n.fileSkipAction),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(TextButton, l10n.fileRenameAction),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(FilledButton, l10n.fileOverwriteAction),
+        findsOneWidget,
+      );
     });
 
     testWidgets('skip選択で choice=skip が返る', (tester) async {
       OverwriteConfirmResult? result;
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.batch,
-          showApplyToAll: true,
-          onResult: (r) => result = r);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.batch,
+        showApplyToAll: true,
+        onResult: (r) => result = r,
+      );
 
       await tester.tap(find.widgetWithText(TextButton, l10n.fileSkipAction));
       await tester.pumpAndSettle();
@@ -78,12 +92,16 @@ void main() {
       expect(result!.applyToAll, isFalse);
     });
 
-    testWidgets('skip選択＋applyToAllチェックで choice=skip・applyToAll=true', (tester) async {
+    testWidgets('skip選択＋applyToAllチェックで choice=skip・applyToAll=true', (
+      tester,
+    ) async {
       OverwriteConfirmResult? result;
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.batch,
-          showApplyToAll: true,
-          onResult: (r) => result = r);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.batch,
+        showApplyToAll: true,
+        onResult: (r) => result = r,
+      );
 
       await tester.tap(find.byType(CheckboxListTile));
       await tester.pumpAndSettle();
@@ -97,9 +115,11 @@ void main() {
 
     testWidgets('rename選択で choice=rename', (tester) async {
       OverwriteConfirmResult? result;
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.batch,
-          onResult: (r) => result = r);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.batch,
+        onResult: (r) => result = r,
+      );
 
       await tester.tap(find.widgetWithText(TextButton, l10n.fileRenameAction));
       await tester.pumpAndSettle();
@@ -114,15 +134,27 @@ void main() {
       final l10n = await pumpDialog(tester, mode: OverwriteDialogMode.single);
 
       expect(find.byType(CheckboxListTile), findsNothing);
-      expect(find.widgetWithText(TextButton, l10n.commonCancel), findsOneWidget);
-      expect(find.widgetWithText(TextButton, l10n.fileRenameAction), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, l10n.fileOverwriteAction), findsOneWidget);
+      expect(
+        find.widgetWithText(TextButton, l10n.commonCancel),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(TextButton, l10n.fileRenameAction),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(FilledButton, l10n.fileOverwriteAction),
+        findsOneWidget,
+      );
     });
 
     testWidgets('cancel選択で choice=cancel', (tester) async {
       OverwriteConfirmResult? result;
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.single, onResult: (r) => result = r);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.single,
+        onResult: (r) => result = r,
+      );
 
       await tester.tap(find.widgetWithText(TextButton, l10n.commonCancel));
       await tester.pumpAndSettle();
@@ -133,8 +165,11 @@ void main() {
 
     testWidgets('rename選択で choice=rename', (tester) async {
       OverwriteConfirmResult? result;
-      final l10n = await pumpDialog(tester,
-          mode: OverwriteDialogMode.single, onResult: (r) => result = r);
+      final l10n = await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.single,
+        onResult: (r) => result = r,
+      );
 
       await tester.tap(find.widgetWithText(TextButton, l10n.fileRenameAction));
       await tester.pumpAndSettle();
@@ -145,8 +180,11 @@ void main() {
 
     testWidgets('barrier dismiss で null（操作中断）', (tester) async {
       OverwriteConfirmResult? result;
-      await pumpDialog(tester,
-          mode: OverwriteDialogMode.single, onResult: (r) => result = r);
+      await pumpDialog(
+        tester,
+        mode: OverwriteDialogMode.single,
+        onResult: (r) => result = r,
+      );
 
       // barrier（ダイアログ外・画面左上）をタップして dismiss
       await tester.tapAt(const Offset(10, 10));

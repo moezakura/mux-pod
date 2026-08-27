@@ -46,8 +46,10 @@ class TransferProgressRow extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.close, size: 20),
                   padding: EdgeInsets.zero,
-                  constraints:
-                      const BoxConstraints(minWidth: 32, minHeight: 32),
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
                   visualDensity: VisualDensity.compact,
                   tooltip: l10n.fileTransferCancel,
                   onPressed: onCancel,

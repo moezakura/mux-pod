@@ -121,9 +121,7 @@ void main() {
       );
     }
 
-    testWidgets('fraction ありは determinate 表示・キャンセル null で非表示', (
-      tester,
-    ) async {
+    testWidgets('fraction ありは determinate 表示・キャンセル null で非表示', (tester) async {
       await pumpRow(
         tester,
         progress: const TransferProgress(

@@ -30,10 +30,7 @@ void main() {
       // offset=5 は現在長2を超える → [10, 20, 0, 0, 0, 99] になる
       await file.writeBytes(Uint8List.fromList([99]), offset: 5);
 
-      expect(
-        file.content,
-        [10, 20, 0, 0, 0, 99],
-      );
+      expect(file.content, [10, 20, 0, 0, 0, 99]);
     });
 
     test('read: 連結後の total content を返す', () async {

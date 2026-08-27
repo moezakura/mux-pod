@@ -63,7 +63,10 @@ class TransferProgress {
   /// totalBytes 不明の fraction から真の累積 doneBytes は復元できないため、
   /// **EMA 速度計算には使わないこと**（Ch-4）。表示目的では 1000 分率の整数比
   /// として [fraction] が概ね再現されるようにする。
-  factory TransferProgress.fromFraction(double fraction, {double bytesPerSec = 0}) {
+  factory TransferProgress.fromFraction(
+    double fraction, {
+    double bytesPerSec = 0,
+  }) {
     final f = fraction.clamp(0.0, 1.0);
     return TransferProgress(
       doneBytes: (f * 1000).round(),
@@ -110,8 +113,7 @@ class TransferSpeedEma {
       _speed = 0;
       return _speed;
     }
-    final dtSeconds =
-        t.difference(_lastTime!).inMilliseconds / 1000.0;
+    final dtSeconds = t.difference(_lastTime!).inMilliseconds / 1000.0;
     final deltaBytes = doneBytes - _lastDoneBytes!;
     _lastDoneBytes = doneBytes;
     _lastTime = t;
@@ -122,9 +124,7 @@ class TransferSpeedEma {
     }
     final instant = deltaBytes / dtSeconds;
     // 初回実サンプル（_speed==0）は instant をそのまま採用し、以降は EMA で平滑化。
-    _speed = _speed == 0
-        ? instant
-        : (alpha * instant) + (1 - alpha) * _speed;
+    _speed = _speed == 0 ? instant : (alpha * instant) + (1 - alpha) * _speed;
     return _speed;
   }
 

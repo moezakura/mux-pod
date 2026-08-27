@@ -40,10 +40,7 @@ class _TestImageTransferNotifier extends ImageTransferNotifier {
 class _RecordingSftpClient extends FakeSftpClient {
   FakeSftpFile? lastOpened;
 
-  _RecordingSftpClient({
-    super.contentsByPath,
-    super.homeDirectory,
-  });
+  _RecordingSftpClient({super.contentsByPath, super.homeDirectory});
 
   @override
   Future<SftpFile> open(
@@ -58,10 +55,7 @@ class _RecordingSftpClient extends FakeSftpClient {
 
 /// open() を throw して upload を失敗させるテスト用クライアント。
 class _ThrowingSftpClient extends FakeSftpClient {
-  _ThrowingSftpClient({
-    super.contentsByPath,
-    super.homeDirectory,
-  });
+  _ThrowingSftpClient({super.contentsByPath, super.homeDirectory});
 
   @override
   Future<SftpFile> open(
@@ -72,7 +66,9 @@ class _ThrowingSftpClient extends FakeSftpClient {
   }
 }
 
-ImageTransferOptions _originalOptions({String remotePath = '/tmp/muxpod/img.png'}) {
+ImageTransferOptions _originalOptions({
+  String remotePath = '/tmp/muxpod/img.png',
+}) {
   return ImageTransferOptions(
     remotePath: remotePath,
     outputFormat: 'original',
@@ -89,9 +85,7 @@ ImageTransferOptions _originalOptions({String remotePath = '/tmp/muxpod/img.png'
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  ProviderContainer makeContainer({
-    required FakeSshClient sshClient,
-  }) {
+  ProviderContainer makeContainer({required FakeSshClient sshClient}) {
     return ProviderContainer(
       overrides: [
         // FakeSshClient を注入し、既存 file_browser_provider_test と同じ配線にする。
@@ -114,8 +108,9 @@ void main() {
       final container = makeContainer(sshClient: sshClient);
       addTearDown(container.dispose);
 
-      final notifier = container.read(imageTransferProvider.notifier)
-          as _TestImageTransferNotifier;
+      final notifier =
+          container.read(imageTransferProvider.notifier)
+              as _TestImageTransferNotifier;
       notifier.setConfirming(
         bytes: Uint8List.fromList([1, 2, 3, 4]),
         name: 'img.png',
@@ -145,8 +140,9 @@ void main() {
       final container = makeContainer(sshClient: sshClient);
       addTearDown(container.dispose);
 
-      final notifier = container.read(imageTransferProvider.notifier)
-          as _TestImageTransferNotifier;
+      final notifier =
+          container.read(imageTransferProvider.notifier)
+              as _TestImageTransferNotifier;
 
       for (var i = 0; i < 2; i++) {
         notifier.setConfirming(
@@ -173,15 +169,18 @@ void main() {
       final container = makeContainer(sshClient: sshClient);
       addTearDown(container.dispose);
 
-      final notifier = container.read(imageTransferProvider.notifier)
-          as _TestImageTransferNotifier;
+      final notifier =
+          container.read(imageTransferProvider.notifier)
+              as _TestImageTransferNotifier;
       notifier.setConfirming(
         bytes: Uint8List.fromList([9, 9]),
         name: 'img.png',
         remotePath: '/tmp/muxpod/img.png',
       );
 
-      final result = await notifier.confirmAndUpload(options: _originalOptions());
+      final result = await notifier.confirmAndUpload(
+        options: _originalOptions(),
+      );
 
       expect(result, isNull);
       expect(notifier.state.phase, ImageTransferPhase.error);
@@ -198,15 +197,18 @@ void main() {
       // 未接続状態にする。
       sshClient.setConnected(SshConnectionState.disconnected);
 
-      final notifier = container.read(imageTransferProvider.notifier)
-          as _TestImageTransferNotifier;
+      final notifier =
+          container.read(imageTransferProvider.notifier)
+              as _TestImageTransferNotifier;
       notifier.setConfirming(
         bytes: Uint8List.fromList([1]),
         name: 'img.png',
         remotePath: '/tmp/muxpod/img.png',
       );
 
-      final result = await notifier.confirmAndUpload(options: _originalOptions());
+      final result = await notifier.confirmAndUpload(
+        options: _originalOptions(),
+      );
 
       expect(result, isNull);
       expect(notifier.state.phase, ImageTransferPhase.error);
