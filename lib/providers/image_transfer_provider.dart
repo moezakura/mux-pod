@@ -185,30 +185,28 @@ class ImageTransferNotifier extends Notifier<ImageTransferState> {
       );
 
       final sftp = await sshClient.openSftp();
-      try {
-        final dir = remotePath.substring(0, remotePath.lastIndexOf('/'));
-        final filename = remotePath.substring(remotePath.lastIndexOf('/') + 1);
+      // NOTE: sftp.close() は呼ばない。SshClient.openSftp() はキャッシュ共有の
+      // SftpClient を返し、呼び出し側で close() を呼んではならない（ssh_client.dart の契約）。
+      final dir = remotePath.substring(0, remotePath.lastIndexOf('/'));
+      final filename = remotePath.substring(remotePath.lastIndexOf('/') + 1);
 
-        final result = await _sftpService.upload(
-          sftp: sftp,
-          remoteDir: dir,
-          filename: filename,
-          bytes: bytes,
-          onProgress: (progress) {
-            state = state.copyWith(uploadProgress: progress);
-          },
-        );
+      final result = await _sftpService.upload(
+        sftp: sftp,
+        remoteDir: dir,
+        filename: filename,
+        bytes: bytes,
+        onProgress: (progress) {
+          state = state.copyWith(uploadProgress: progress);
+        },
+      );
 
-        state = ImageTransferState(
-          phase: ImageTransferPhase.completed,
-          lastUploadedPath: result.remotePath,
-          uploadProgress: 1.0,
-        );
+      state = ImageTransferState(
+        phase: ImageTransferPhase.completed,
+        lastUploadedPath: result.remotePath,
+        uploadProgress: 1.0,
+      );
 
-        return result.remotePath;
-      } finally {
-        sftp.close();
-      }
+      return result.remotePath;
     } catch (e) {
       state = ImageTransferState(
         phase: ImageTransferPhase.error,
