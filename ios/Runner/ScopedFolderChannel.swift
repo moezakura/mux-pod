@@ -10,7 +10,7 @@ import UIKit
 ///
 /// 提供メソッド:
 /// - `pickFolder`: フォルダ選択ダイアログを表示。選択時は
-///   `URL.bookmarkData(options: .withSecurityScope)` を base64 エンコードして返す。
+///   `URL.bookmarkData(options: .minimalBookmark)` を base64 エンコードして返す。
 ///   キャンセル時は nil、ブックマーク生成失敗時は FlutterError。
 /// - `startScope`(bookmark): base64 ブックマークを復号→ `URL(resolvingBookmarkData:)`
 ///   で URL 化→ `startAccessingSecurityScopedResource()` でアクセス開始→フォルダの
@@ -98,7 +98,7 @@ final class ScopedFolderChannel: NSObject, UIDocumentPickerDelegate {
     let didStart = url.startAccessingSecurityScopedResource()
     var bookmark: Data?
     if didStart {
-      bookmark = try? url.bookmarkData(options: .withSecurityScope)
+      bookmark = try? url.bookmarkData(options: .minimalBookmark)
       url.stopAccessingSecurityScopedResource()
     }
 
@@ -137,8 +137,6 @@ final class ScopedFolderChannel: NSObject, UIDocumentPickerDelegate {
     var isStale = false
     guard let url = try? URL(
       resolvingBookmarkData: data,
-      options: .withSecurityScope,
-      relativeTo: nil,
       bookmarkDataIsStale: &isStale
     ) else {
       result(FlutterError(
