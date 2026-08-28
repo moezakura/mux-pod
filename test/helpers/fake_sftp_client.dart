@@ -21,6 +21,9 @@ class FakeSftpClient implements SftpClient {
   /// `remove()` が呼ばれたファイルパス（部分削除の検証用）。
   final List<String> removeCalls = [];
 
+  /// `open()` が返した [FakeSftpFile]（書き込み内容の検証用・#41）。
+  final List<FakeSftpFile> openedFiles = [];
+
   FakeSftpClient({
     this.entriesByPath = const {},
     this.contentsByPath = const {},
@@ -84,7 +87,9 @@ class FakeSftpClient implements SftpClient {
     String path, {
     SftpFileOpenMode mode = SftpFileOpenMode.read,
   }) async {
-    return FakeSftpFile(this, contentsByPath[path] ?? Uint8List(0));
+    final file = FakeSftpFile(this, contentsByPath[path] ?? Uint8List(0));
+    openedFiles.add(file);
+    return file;
   }
 
   @override
