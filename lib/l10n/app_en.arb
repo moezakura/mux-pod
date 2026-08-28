@@ -1469,6 +1469,87 @@
         "type": "String"
       }
     }
-  }
+  },
+  "fileDownload": "Download",
+  "fileDownloadDestinationTitle": "Choose download destination",
+  "fileDownloadDestinationDownloads": "Downloads",
+  "fileDownloadDestinationDocuments": "Documents",
+  "fileDownloadDestinationNewFolder": "New folder",
+  "fileDownloadOpen": "Open",
+  "fileSelectedCount": "{count} selected",
+  "@fileSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileBatchDownload": "Batch download",
+  "fileClearSelection": "Clear selection",
+  "fileDownloadCancelled": "Download cancelled",
+  "fileDownloadError": "Download failed",
+  "fileDownloadComplete": "Download complete",
+  "fileDownloadResultSummary": "{completed} succeeded, {failed} failed, {skipped} skipped",
+  "@fileDownloadResultSummary": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGroupFileDownload": "File Download",
+  "settingsDownloadDirectory": "Default download directory",
+  "settingsDownloadDirectoryDescription": "Folder used as the default destination when downloading files",
+  "settingsDownloadDirectoryDefault": "Default (app documents/downloads)",
+  "settingsDownloadDirectoryHint": "Absolute app path. Leave empty to use the default.",
+  "notifDownloadProgress": "Downloading {count}/{total} ({percent}%) • {bytes} • {speed}",
+  "@notifDownloadProgress": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "String"
+      },
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadComplete": "Download complete: {completed} succeeded, {failed} failed, {skipped} skipped",
+  "@notifDownloadComplete": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "notifDownloadFailed": "Download failed: {error}",
+  "@notifDownloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadCancelled": "Download cancelled"
 }
 

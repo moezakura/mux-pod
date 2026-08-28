@@ -1469,6 +1469,87 @@
         "type": "String"
       }
     }
-  }
+  },
+  "fileDownload": "ダウンロード",
+  "fileDownloadDestinationTitle": "保存先を選択",
+  "fileDownloadDestinationDownloads": "ダウンロード",
+  "fileDownloadDestinationDocuments": "ドキュメント",
+  "fileDownloadDestinationNewFolder": "新規フォルダ",
+  "fileDownloadOpen": "開く",
+  "fileSelectedCount": "{count} 件選択中",
+  "@fileSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileBatchDownload": "一括ダウンロード",
+  "fileClearSelection": "選択を解除",
+  "fileDownloadCancelled": "ダウンロードをキャンセルしました",
+  "fileDownloadError": "ダウンロードに失敗しました",
+  "fileDownloadComplete": "ダウンロードが完了しました",
+  "fileDownloadResultSummary": "成功 {completed} / 失敗 {failed} / スキップ {skipped}",
+  "@fileDownloadResultSummary": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsGroupFileDownload": "ファイルダウンロード",
+  "settingsDownloadDirectory": "既定のダウンロード先",
+  "settingsDownloadDirectoryDescription": "ファイルダウンロード時の既定の保存先フォルダ",
+  "settingsDownloadDirectoryDefault": "既定（アプリのドキュメント/downloads）",
+  "settingsDownloadDirectoryHint": "アプリ内の絶対パス。空にすると既定を使用します。",
+  "notifDownloadProgress": "ダウンロード中 {count}/{total}（{percent}%）・{bytes}・{speed}",
+  "@notifDownloadProgress": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "String"
+      },
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadComplete": "ダウンロード完了: 成功 {completed} / 失敗 {failed} / スキップ {skipped}",
+  "@notifDownloadComplete": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "notifDownloadFailed": "ダウンロードに失敗しました: {error}",
+  "@notifDownloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadCancelled": "ダウンロードをキャンセルしました"
 }
 

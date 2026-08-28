@@ -93,6 +93,9 @@ class AppSettings {
   final bool imageAutoEnter;
   final bool imageBracketedPaste;
 
+  /// 既定のダウンロード先（'' は未設定＝`getApplicationDocumentsDirectory()/downloads/` へフォールバック）
+  final String downloadDirectory;
+
   const AppSettings({
     this.darkMode = true,
     this.fontSize = 14.0,
@@ -133,6 +136,7 @@ class AppSettings {
     this.imagePathFormat = '{path}',
     this.imageAutoEnter = false,
     this.imageBracketedPaste = false,
+    this.downloadDirectory = '',
   });
 
   bool get isAutoFit => adjustMode == 'autoFit';
@@ -178,6 +182,7 @@ class AppSettings {
     String? imagePathFormat,
     bool? imageAutoEnter,
     bool? imageBracketedPaste,
+    String? downloadDirectory,
   }) {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
@@ -218,6 +223,7 @@ class AppSettings {
       imagePathFormat: imagePathFormat ?? this.imagePathFormat,
       imageAutoEnter: imageAutoEnter ?? this.imageAutoEnter,
       imageBracketedPaste: imageBracketedPaste ?? this.imageBracketedPaste,
+      downloadDirectory: downloadDirectory ?? this.downloadDirectory,
     );
   }
 }
@@ -261,6 +267,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _imageAutoEnterKey = 'settings_image_auto_enter';
   static const String _imageBracketedPasteKey =
       'settings_image_bracketed_paste';
+  static const String _downloadDirectoryKey = 'settings_download_directory';
   static const String _showKeyOverlayKey = 'settings_show_key_overlay';
   static const String _keyOverlayModifierKey = 'settings_key_overlay_modifier';
   static const String _keyOverlaySpecialKey = 'settings_key_overlay_special';
@@ -324,6 +331,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imagePathFormat: prefs.getString(_imagePathFormatKey) ?? '{path}',
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
+      downloadDirectory: prefs.getString(_downloadDirectoryKey) ?? '',
     );
 
     // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
@@ -627,6 +635,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setImageBracketedPaste(bool value) async {
     state = state.copyWith(imageBracketedPaste: value);
     await _saveSetting(_imageBracketedPasteKey, value);
+  }
+
+  /// 既定のダウンロード先を設定（空文字で未設定＝既定フォールバックへ戻す）
+  Future<void> setDownloadDirectory(String value) async {
+    state = state.copyWith(downloadDirectory: value);
+    await _saveSetting(_downloadDirectoryKey, value);
   }
 
   /// リロード

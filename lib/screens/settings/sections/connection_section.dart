@@ -128,6 +128,27 @@ class ConnectionSection extends ConsumerWidget {
               ref.read(settingsProvider.notifier).setImageBracketedPaste(v),
         ),
         const Divider(),
+        SettingsSectionHeader(title: l10n.settingsGroupFileDownload),
+        ListTile(
+          leading: const Icon(Icons.download),
+          title: Text(l10n.settingsDownloadDirectory),
+          subtitle: Text(
+            settings.downloadDirectory.isEmpty
+                ? l10n.settingsDownloadDirectoryDefault
+                : settings.downloadDirectory,
+          ),
+          onTap: () => showTextInputDialog(
+            context,
+            ref,
+            title: l10n.settingsDownloadDirectory,
+            currentValue: settings.downloadDirectory,
+            hint: l10n.settingsDownloadDirectoryHint,
+            onSave: (v) => ref
+                .read(settingsProvider.notifier)
+                .setDownloadDirectory(v),
+          ),
+        ),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.key_off),
           title: Text(l10n.settingsClearHostKeys),
@@ -139,9 +160,10 @@ class ConnectionSection extends ConsumerWidget {
   }
 }
 
-/// Connection セクションの検索 descriptor（全10項目）。
+/// Connection セクションの検索 descriptor（全11項目）。
 ///
 /// 画像転送9項目はグループ「画像転送」（Image Transfer）に属し、
+/// 既定ダウンロード先はグループ「ファイルダウンロード」（File Download）、
 /// Clear SSH Host Keys はフラット（1項目グループの階層過剰回避・A2）。
 /// JPEG Quality / Resize はゲート項目ではなく、ピッカー値は静的選択肢のみ。
 final List<SettingsSearchItem> connectionSearchDescriptors = [
@@ -228,10 +250,20 @@ final List<SettingsSearchItem> connectionSearchDescriptors = [
     groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
     icon: Icons.paste,
   ),
-  // --- フラット（1項目グループ回避・A2） ---
+  // --- ファイルダウンロード（File Download） ---
   SettingsSearchItem(
     category: SettingsCategory.connection,
     orderInCategory: 9,
+    id: 'downloadDirectory',
+    title: (l10n) => l10n.settingsDownloadDirectory,
+    description: (l10n) => l10n.settingsDownloadDirectoryDescription,
+    groupLabel: (l10n) => l10n.settingsGroupFileDownload,
+    icon: Icons.download,
+  ),
+  // --- フラット（1項目グループ回避・A2） ---
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 10,
     id: 'clearHostKeys',
     title: (l10n) => l10n.settingsClearHostKeys,
     description: (l10n) => l10n.settingsClearHostKeysDescription,

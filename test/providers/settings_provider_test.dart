@@ -350,4 +350,62 @@ void main() {
       expect(toggled.keepKeyboardOnEnter, isFalse);
     });
   });
+
+  group('SettingsNotifier downloadDirectory（既定ダウンロード先・Issue #40）', () {
+    test('未保存時はデフォルト空文字になる', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+
+      expect(container.read(settingsProvider).downloadDirectory, '');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('settings_download_directory'), isFalse);
+    });
+
+    test('setDownloadDirectory で state が更新され SharedPreferences に保存される', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+      await container
+          .read(settingsProvider.notifier)
+          .setDownloadDirectory('/storage/emulated/0/Download');
+
+      expect(
+        container.read(settingsProvider).downloadDirectory,
+        '/storage/emulated/0/Download',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString('settings_download_directory'),
+        '/storage/emulated/0/Download',
+      );
+    });
+
+    test('保存した downloadDirectory は新規コンテナ（再起動相当）の再読込で復元される', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(settingsProvider.notifier).reload();
+      await container
+          .read(settingsProvider.notifier)
+          .setDownloadDirectory('downloads/');
+
+      final restarted = ProviderContainer();
+      addTearDown(restarted.dispose);
+      await restarted.read(settingsProvider.notifier).reload();
+
+      expect(restarted.read(settingsProvider).downloadDirectory, 'downloads/');
+    });
+
+    test('copyWith は downloadDirectory を指定しない場合他の設定のみ変更する', () {
+      const base = AppSettings(downloadDirectory: 'downloads/');
+      final updated = base.copyWith(keepScreenOn: false);
+      expect(updated.downloadDirectory, 'downloads/');
+      expect(updated.keepScreenOn, isFalse);
+
+      final cleared = base.copyWith(downloadDirectory: '');
+      expect(cleared.downloadDirectory, '');
+    });
+  });
 }
