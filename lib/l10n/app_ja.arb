@@ -1469,6 +1469,31 @@
         "type": "String"
       }
     }
-  }
+  },
+  "mdPreviewTitle": "Markdown プレビュー",
+  "mdRaw": "Raw",
+  "mdRendered": "レンダリング",
+  "mdLoadFailed": "読み込みに失敗しました: {error}",
+  "@mdLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "mdRetry": "再試行",
+  "mdFileTooLargeTitle": "ファイルが大きすぎます",
+  "mdFileTooLargeMessage": "このファイルは {size} MB で、プレビュー上限を超えています。",
+  "@mdFileTooLargeMessage": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "mdBinaryFile": "このファイルはバイナリファイルのため、プレビューできません。",
+  "mdTruncatedMessage": "ファイルがプレビュー上限を超えるため、先頭部分のみ表示しています。",
+  "mdEmpty": "このファイルは空です。",
+  "mdSshLost": "SSH 接続が切断されました"
 }
 
