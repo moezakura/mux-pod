@@ -43,6 +43,11 @@ class AppTheme {
       onPrimaryContainer: DesignColors.primary,
       secondary: DesignColors.primary,
       onSecondary: Colors.black,
+      // 未設定だと SDK が secondary（＝primary）を代用し、M3 の track 色
+      // （secondaryContainer）と indicator（primary）が同色になって
+      // LinearProgressIndicator の進捗が視認できなくなるため明示設定する。
+      secondaryContainer: DesignColors.primary.withValues(alpha: 0.2),
+      onSecondaryContainer: DesignColors.primary,
       surface: DesignColors.surfaceDark,
       onSurface: DesignColors.textPrimary,
       error: DesignColors.error,
@@ -257,6 +262,11 @@ class AppTheme {
       onPrimaryContainer: DesignColors.primaryDark,
       secondary: DesignColors.primary,
       onSecondary: Colors.white,
+      // 未設定だと SDK が secondary（＝primary）を代用し、M3 の track 色
+      // （secondaryContainer）と indicator（primary）が同色になって
+      // LinearProgressIndicator の進捗が視認できなくなるため明示設定する。
+      secondaryContainer: DesignColors.primary.withValues(alpha: 0.1),
+      onSecondaryContainer: DesignColors.primaryDark,
       surface: DesignColors.surfaceLight,
       onSurface: DesignColors.textPrimaryLight,
       error: DesignColors.error,
