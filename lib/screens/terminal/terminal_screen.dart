@@ -9070,10 +9070,7 @@ class _DisconnectedBanner extends StatelessWidget {
 /// は _ensureDownloadListener が行う。仕様を純関数化することで、TerminalScreen 全体を
 /// pump せずに phase 遷移ごとの表示をテストできる。
 class DownloadSnackBarDisplay {
-  const DownloadSnackBarDisplay({
-    required this.message,
-    this.backgroundColor,
-  });
+  const DownloadSnackBarDisplay({required this.message, this.backgroundColor});
 
   final String message;
   final Color? backgroundColor;

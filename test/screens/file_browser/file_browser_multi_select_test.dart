@@ -95,8 +95,11 @@ Future<void> _settleTransfer(
 ) async {
   const timeout = Duration(seconds: 10);
   final sw = Stopwatch()..start();
-  while (const {DownloadPhase.idle, DownloadPhase.selecting, DownloadPhase.downloading}
-      .contains(container.read(downloadProvider).phase)) {
+  while (const {
+    DownloadPhase.idle,
+    DownloadPhase.selecting,
+    DownloadPhase.downloading,
+  }.contains(container.read(downloadProvider).phase)) {
     if (sw.elapsed > timeout) {
       fail(
         'transfer did not settle: ${container.read(downloadProvider).phase}',
