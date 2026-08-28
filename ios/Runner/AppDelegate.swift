@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   private var deepLinkChannel: FlutterMethodChannel?
+  private var scopedFolderChannel: ScopedFolderChannel?
   private var initialLink: String?
 
   override func application(
@@ -26,6 +27,17 @@ import UIKit
         result(FlutterMethodNotImplemented)
       }
     }
+
+    // scoped_folder チャンネル登録（iOS セキュリティスコープ付きフォルダ。詳細は
+    // ScopedFolderChannel.swift を参照）。
+    let scopedFolderMethodChannel = FlutterMethodChannel(
+      name: "mux.pod/scoped_folder",
+      binaryMessenger: controller.binaryMessenger
+    )
+    scopedFolderChannel = ScopedFolderChannel(
+      channel: scopedFolderMethodChannel,
+      viewController: controller
+    )
 
     // Check cold-start URL
     if let url = launchOptions?[.url] as? URL {
