@@ -29,25 +29,6 @@ void main() {
       expect(find.text('Bracketed Paste'), findsOneWidget);
     });
 
-    testWidgets('displays File Download settings (Issue #40)', (tester) async {
-      await buildSettingsApp(tester);
-      await openCategory(tester, 'Connection & Transfer');
-
-      // グループ見出し
-      await scrollUntilFound(tester, find.text('File Download'));
-      expect(find.text('File Download'), findsOneWidget);
-
-      await scrollUntilFound(tester, find.text('Default download directory'));
-      expect(find.text('Default download directory'), findsOneWidget);
-
-      // 未設定時はフォールバック既定を表示
-      await scrollUntilFound(
-        tester,
-        find.text('Default (app documents/downloads)'),
-      );
-      expect(find.text('Default (app documents/downloads)'), findsOneWidget);
-    });
-
     testWidgets(
       'Clear SSH Host Keys clears stored fingerprints after confirm',
       (tester) async {

@@ -1499,11 +1499,6 @@
       }
     }
   },
-  "settingsGroupFileDownload": "ファイルダウンロード",
-  "settingsDownloadDirectory": "既定のダウンロード先",
-  "settingsDownloadDirectoryDescription": "ファイルダウンロード時の既定の保存先フォルダ",
-  "settingsDownloadDirectoryDefault": "既定（アプリのドキュメント/downloads）",
-  "settingsDownloadDirectoryHint": "アプリ内の絶対パス。空にすると既定を使用します。",
   "notifDownloadProgress": "ダウンロード中 {count}/{total}（{percent}%）・{bytes}・{speed}",
   "@notifDownloadProgress": {
     "placeholders": {

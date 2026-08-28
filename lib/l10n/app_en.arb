@@ -1499,11 +1499,6 @@
       }
     }
   },
-  "settingsGroupFileDownload": "File Download",
-  "settingsDownloadDirectory": "Default download directory",
-  "settingsDownloadDirectoryDescription": "Folder used as the default destination when downloading files",
-  "settingsDownloadDirectoryDefault": "Default (app documents/downloads)",
-  "settingsDownloadDirectoryHint": "Absolute app path. Leave empty to use the default.",
   "notifDownloadProgress": "Downloading {count}/{total} ({percent}%) • {bytes} • {speed}",
   "@notifDownloadProgress": {
     "placeholders": {
