@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/file_browser_provider.dart';
+import '../../providers/markdown_preview_provider.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../services/sftp/file_entry.dart';
 import '../../theme/design_colors.dart';
+import 'markdown_preview_screen.dart';
 import 'widgets/file_action_menu.dart';
 import 'widgets/file_list_tile.dart';
 import 'widgets/path_bar.dart';
@@ -302,10 +304,47 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       ref
           .read(fileBrowserProvider.notifier)
           .navigateToDirectory(entry.fullPath);
+    } else if (FileActionMenu.isMarkdown(entry)) {
+      // .md/.markdown タップ = プレビュー遷移（合意#2/#3）。
+      // 遷移前サイズチェック・load は呼ばない（H-3）。
+      _openMarkdownPreview(context, entry);
     } else {
       _showActionMenu(context, entry);
     }
   }
+
+  /// .md / .markdown のプレビュー画面へ遷移する（タップ・メニュー open 共通）。
+  ///
+  /// 遷移前に [maxPreviewBytes]（20MB）超過をチェックし、超過時は警告
+  /// SnackBar のみ表示して遷移しない（合意#1・[MarkdownPreviewScreen] を
+  /// build しないため load も開始されない・H-3）。
+  void _openMarkdownPreview(BuildContext context, FileEntry entry) {
+    final size = entry.size;
+    if (size != null && size > maxPreviewBytes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.l10n.mdFileTooLargeTitle}: '
+            '${context.l10n.mdFileTooLargeMessage(_toMbCeil(size))}',
+          ),
+          backgroundColor: DesignColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MarkdownPreviewScreen(
+          connectionId: widget.connectionId,
+          entry: entry,
+        ),
+      ),
+    );
+  }
+
+  /// バイト数を実サイズの MB に切り上げる（mdFileTooLargeMessage の size 用）。
+  static int _toMbCeil(int bytes) => (bytes / (1024 * 1024)).ceil();
 
   Future<void> _showActionMenu(BuildContext context, FileEntry entry) async {
     final action = await FileActionMenu.show(context, entry);
@@ -313,9 +352,17 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
     switch (action) {
       case FileAction.open:
-        ref
-            .read(fileBrowserProvider.notifier)
-            .navigateToDirectory(entry.fullPath);
+        // 合意#2: ディレクトリは従来どおり遷移・.md/.markdown はプレビュー遷移
+        // （タップと同義）・対象外ファイルは何もしない（従来の誤った
+        // navigateToDirectory 呼び出しを除去。メニュー側で open 非表示のため
+        // 通常は到達しない防御的分岐）。
+        if (entry.isDirectory) {
+          ref
+              .read(fileBrowserProvider.notifier)
+              .navigateToDirectory(entry.fullPath);
+        } else if (FileActionMenu.isMarkdown(entry)) {
+          _openMarkdownPreview(context, entry);
+        }
       case FileAction.rename:
         await _showRenameDialog(context, entry);
       case FileAction.delete:
