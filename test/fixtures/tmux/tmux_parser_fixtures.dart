@@ -2,8 +2,8 @@
 
 /// tmux コマンド出力の fixture
 ///
-/// 区切り文字は TmuxCommands.fieldDelimiter（US: 0x1f）と
-/// TmuxCommands.recordDelimiter（RS: 0x1e）を使用
+/// Delimiters come from TmuxParser's constants, never hard-coded bytes: they
+/// are printable because tmux 3.7 rewrites non-printable bytes in -F output.
 library;
 
 import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';

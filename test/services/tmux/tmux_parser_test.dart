@@ -13,10 +13,22 @@ const _rs = TmuxParser.defaultRecordDelimiter;
 void main() {
   group('TmuxParser', () {
     test(
-      'TMUX-PARSER-001: deprecated defaultDelimiter remains the US delimiter',
+      'TMUX-PARSER-001: deprecated defaultDelimiter tracks the field delimiter',
       () {
-        expect(TmuxParser.defaultDelimiter, String.fromCharCode(0x1f));
         expect(TmuxParser.defaultDelimiter, TmuxParser.defaultFieldDelimiter);
+        // Must stay printable: tmux 3.7 rewrites every non-printable byte in
+        // -F output to '_', which silently collapses the fields into one.
+        for (final d in [
+          TmuxParser.defaultFieldDelimiter,
+          TmuxParser.defaultRecordDelimiter,
+        ]) {
+          expect(d, isNotEmpty);
+          expect(
+            d.codeUnits.every((c) => c >= 0x20 && c != 0x7f),
+            isTrue,
+            reason: 'delimiter must contain no control characters: $d',
+          );
+        }
       },
     );
 

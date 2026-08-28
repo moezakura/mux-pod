@@ -4,14 +4,18 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
 
 void main() {
   group('TmuxCommands', () {
     test(
-      'TMUX-CMD-001: deprecated delimiter remains the US field delimiter',
+      'TMUX-CMD-001: deprecated delimiter tracks the field delimiter',
       () {
-        expect(TmuxCommands.delimiter, String.fromCharCode(0x1f));
         expect(TmuxCommands.delimiter, TmuxCommands.fieldDelimiter);
+        // The builder and the parser must agree, or every record parses to a
+        // single field and the session list comes back empty with no error.
+        expect(TmuxCommands.fieldDelimiter, TmuxParser.defaultFieldDelimiter);
+        expect(TmuxCommands.recordDelimiter, TmuxParser.defaultRecordDelimiter);
       },
     );
 

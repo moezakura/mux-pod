@@ -14,13 +14,14 @@ import 'tmux_executable_resolver.dart';
 /// TmuxParserと対応するフォーマット文字列を使用。
 class TmuxCommands {
   // inventory: TMUX-CMD-001
-  /// フィールド区切り文字（US: 0x1f）。
-  /// ユーザーが入力可能な `|` やタブより出現確率が極めて低い制御文字を使う。
-  static const String fieldDelimiter = '\x1f';
+  /// Field delimiter. Printable on purpose: tmux 3.7 rewrites every
+  /// non-printable byte in `-F` output to `_`, so a control character here
+  /// arrives indistinguishable from the next one and parsing yields nothing.
+  static const String fieldDelimiter = '@@F@@';
 
-  /// レコード区切り文字（RS: 0x1e）。
-  /// tmux の各レコード末尾に追加し、フィールド内改行を含んでも崩れないようにする。
-  static const String recordDelimiter = '\x1e';
+  /// Record delimiter, appended after each record so a newline inside a field
+  /// cannot split it. Printable for the same reason as [fieldDelimiter].
+  static const String recordDelimiter = '@@R@@';
 
   /// 旧区切り文字（後方互換）。
   @Deprecated('Use fieldDelimiter')

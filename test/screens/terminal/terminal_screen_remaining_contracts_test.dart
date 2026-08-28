@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/providers/image_transfer_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
@@ -176,7 +177,8 @@ void main() {
     testWidgets('TERM-DIALOG-012 last pane termination disconnects', (
       tester,
     ) async {
-      final onePaneTree = '${kFullTreeOutput.split('\x1e').first}\x1e';
+      const rs = TmuxParser.defaultRecordDelimiter;
+      final onePaneTree = '${kFullTreeOutput.split(rs).first}$rs';
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         execOutputs: {'list-panes -a': onePaneTree, 'list-sessions': ''},

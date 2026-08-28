@@ -12,10 +12,10 @@ import 'tmux_models.dart';
 class TmuxParser {
   // inventory: TMUX-PARSER-001
   /// デフォルトのフィールド区切り文字（US: 0x1f）。
-  static const String defaultFieldDelimiter = '\x1f';
+  static const String defaultFieldDelimiter = '@@F@@';
 
   /// デフォルトのレコード区切り文字（RS: 0x1e）。
-  static const String defaultRecordDelimiter = '\x1e';
+  static const String defaultRecordDelimiter = '@@R@@';
 
   /// 旧区切り文字（後方互換）。
   @Deprecated('Use defaultFieldDelimiter')
@@ -478,17 +478,24 @@ class TmuxParser {
   }
 
   // inventory: TMUX-PARSER-020
-  /// tmux の `-F` 出力で、制御文字がリテラル表記に化けた場合に制御文字へ戻す。
+  /// Normalises every delimiter spelling tmux may emit into the current ones.
   ///
-  /// tmux は `-F` フォーマット内の制御文字（0x1f / 0x1e）を、SSH シェル経由で
-  /// `\037` / `\036`（8 進数表記）や `\x1f` / `\x1e`（16 進数表記）のリテラル
-  /// 文字列として出力することがある。このヘルパーで各リテラル表記を元の
-  /// 制御文字に正規化してから分割できるようにする。
+  /// Delimiters are printable (`@@F@@` / `@@R@@`) because tmux 3.7 replaces
+  /// EVERY non-printable byte in `-F` output with `_` — 0x1f, 0x1e, 0x01 and
+  /// even TAB all come back as the same character. Control-character
+  /// delimiters are therefore unrecoverable there: the parser sees one field,
+  /// returns null per line, and the session list silently comes back empty.
   ///
-  /// tmux のセッション名・ウィンドウ名は ASCII 制御文字を受け付けないため、
-  /// リテラル表記が名前の中に現れて誤変換される実害はない。
+  /// Older tmux passes 0x1f/0x1e through, and some shells render them as the
+  /// literal text `\037` / `\x1f`, so all three spellings are accepted.
   static String normalizeDelimiters(String output) {
     return output
+        // tmux >= 3.7 rewrites every non-printable byte in -F output to '_',
+        // so control-character delimiters never survive; these two lines keep
+        // output from older tmux, which passes 0x1f/0x1e through untouched,
+        // parseable by the same code path.
+        .replaceAll('\x1f', defaultFieldDelimiter)
+        .replaceAll('\x1e', defaultRecordDelimiter)
         .replaceAll(r'\x1f', defaultFieldDelimiter)
         .replaceAll(r'\x1e', defaultRecordDelimiter)
         .replaceAll(r'\037', defaultFieldDelimiter)
