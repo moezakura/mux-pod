@@ -65,6 +65,9 @@ dependencies:
   path_provider: ^2.1.6
   flutter_localizations:
     sdk: flutter
+  flutter_markdown_plus: 1.0.12
+  highlight: 0.7.0
+  markdown: ^7.3.1
 
 dev_dependencies:
   flutter_test:
