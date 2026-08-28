@@ -7,6 +7,25 @@ import 'package:flutter_displaymode/flutter_displaymode.dart';
 import '../services/settings_migration.dart';
 import '../l10n/l10n_lookup.dart';
 
+/// アップロード時のファイル名衝突ポリシー（#41）。
+/// - [prompt]: 既定。衝突時にモーダルで上書き/リネーム/キャンセルを確認
+/// - [autoRename]: 確認なしで自動リネーム（generateUniqueName）
+enum TransferConflictPolicy {
+  prompt,
+  autoRename;
+
+  /// SharedPreferences 永続化値。
+  String get persistedValue =>
+      this == TransferConflictPolicy.autoRename ? 'autoRename' : 'prompt';
+
+  /// 永続化値からの復元（不正値は既定の prompt にフォールバック）。
+  static TransferConflictPolicy fromPersisted(String? value) {
+    return value == 'autoRename'
+        ? TransferConflictPolicy.autoRename
+        : TransferConflictPolicy.prompt;
+  }
+}
+
 /// アプリ設定
 class AppSettings {
   final bool darkMode;
@@ -93,6 +112,16 @@ class AppSettings {
   final bool imageAutoEnter;
   final bool imageBracketedPaste;
 
+  // --- ファイル転送設定（#41） ---
+  /// アップロード時のファイル名衝突ポリシー
+  final TransferConflictPolicy uploadConflictPolicy;
+
+  /// 同時アップロード並列数
+  final int uploadConcurrency;
+
+  /// アップロード書き込みチャンクサイズ（KB）
+  final int uploadChunkKb;
+
   const AppSettings({
     this.darkMode = true,
     this.fontSize = 14.0,
@@ -133,6 +162,9 @@ class AppSettings {
     this.imagePathFormat = '{path}',
     this.imageAutoEnter = false,
     this.imageBracketedPaste = false,
+    this.uploadConflictPolicy = TransferConflictPolicy.prompt,
+    this.uploadConcurrency = 2,
+    this.uploadChunkKb = 256,
   });
 
   bool get isAutoFit => adjustMode == 'autoFit';
@@ -178,6 +210,9 @@ class AppSettings {
     String? imagePathFormat,
     bool? imageAutoEnter,
     bool? imageBracketedPaste,
+    TransferConflictPolicy? uploadConflictPolicy,
+    int? uploadConcurrency,
+    int? uploadChunkKb,
   }) {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
@@ -218,6 +253,9 @@ class AppSettings {
       imagePathFormat: imagePathFormat ?? this.imagePathFormat,
       imageAutoEnter: imageAutoEnter ?? this.imageAutoEnter,
       imageBracketedPaste: imageBracketedPaste ?? this.imageBracketedPaste,
+      uploadConflictPolicy: uploadConflictPolicy ?? this.uploadConflictPolicy,
+      uploadConcurrency: uploadConcurrency ?? this.uploadConcurrency,
+      uploadChunkKb: uploadChunkKb ?? this.uploadChunkKb,
     );
   }
 }
@@ -267,6 +305,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _keyOverlayArrowKey = 'settings_key_overlay_arrow';
   static const String _keyOverlayShortcutKey = 'settings_key_overlay_shortcut';
   static const String _keyOverlayPositionKey = 'settings_key_overlay_position';
+  static const String _uploadConflictPolicyKey =
+      'settings_upload_conflict_policy';
+  static const String _uploadConcurrencyKey = 'settings_upload_concurrency';
+  static const String _uploadChunkKbKey = 'settings_upload_chunk_kb';
 
   @override
   AppSettings build() {
@@ -324,6 +366,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
       imagePathFormat: prefs.getString(_imagePathFormatKey) ?? '{path}',
       imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
       imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
+      uploadConflictPolicy: TransferConflictPolicy.fromPersisted(
+        prefs.getString(_uploadConflictPolicyKey),
+      ),
+      uploadConcurrency: prefs.getInt(_uploadConcurrencyKey) ?? 2,
+      uploadChunkKb: prefs.getInt(_uploadChunkKbKey) ?? 256,
     );
 
     // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
@@ -627,6 +674,27 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setImageBracketedPaste(bool value) async {
     state = state.copyWith(imageBracketedPaste: value);
     await _saveSetting(_imageBracketedPasteKey, value);
+  }
+
+  // --- ファイル転送設定（#41）のsetter ---
+  /// ファイル名衝突ポリシーを設定
+  Future<void> setUploadConflictPolicy(TransferConflictPolicy value) async {
+    state = state.copyWith(uploadConflictPolicy: value);
+    await _saveSetting(_uploadConflictPolicyKey, value.persistedValue);
+  }
+
+  /// 同時アップロード並列数を設定（1〜8 に制限）
+  Future<void> setUploadConcurrency(int value) async {
+    final clamped = value.clamp(1, 8);
+    state = state.copyWith(uploadConcurrency: clamped);
+    await _saveSetting(_uploadConcurrencyKey, clamped);
+  }
+
+  /// アップロード書き込みチャンクサイズ（KB）を設定（16〜8192 に制限）
+  Future<void> setUploadChunkKb(int value) async {
+    final clamped = value.clamp(16, 8192);
+    state = state.copyWith(uploadChunkKb: clamped);
+    await _saveSetting(_uploadChunkKbKey, clamped);
   }
 
   /// リロード
