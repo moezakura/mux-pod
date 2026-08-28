@@ -74,10 +74,7 @@ class _FakeMarkdownNotifier extends MarkdownPreviewNotifier {
   }
 }
 
-FileEntry _mdEntry({
-  int? size,
-  String path = '/home/user/docs/readme.md',
-}) {
+FileEntry _mdEntry({int? size, String path = '/home/user/docs/readme.md'}) {
   return FileEntry(
     name: path.split('/').last,
     fullPath: path,
@@ -102,7 +99,8 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final client = sshClient ??
+    final client =
+        sshClient ??
         (FakeSshClient()..sftpClient = sftpClient ?? FakeSftpClient());
     await tester.pumpWidget(
       ProviderScope(
@@ -144,10 +142,7 @@ void main() {
         child: MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          home: MarkdownPreviewScreen(
-            connectionId: 'conn1',
-            entry: _mdEntry(),
-          ),
+          home: MarkdownPreviewScreen(connectionId: 'conn1', entry: _mdEntry()),
         ),
       ),
     );
@@ -299,9 +294,7 @@ void main() {
 
     testWidgets('取得失敗は mdLoadFailed + mdRetry を表示し再試行で復帰する', (tester) async {
       final sftpClient = _FlakySftpClient(
-        contentsByPath: {
-          '/home/user/docs/readme.md': _bytes('# Recovered\n'),
-        },
+        contentsByPath: {'/home/user/docs/readme.md': _bytes('# Recovered\n')},
       );
       await pumpScreen(tester, sftpClient: sftpClient);
 
@@ -320,7 +313,10 @@ void main() {
     testWidgets('バイナリ .md は mdBinaryFile を表示し本文を表示しない', (tester) async {
       final binary = Uint8List.fromList([
         ..._bytes('# fake md\n'),
-        0x00, 0x01, 0x02, 0x03,
+        0x00,
+        0x01,
+        0x02,
+        0x03,
       ]);
       await pumpScreen(
         tester,
@@ -329,16 +325,16 @@ void main() {
         ),
       );
       expect(
-        find.text(
-          'This file appears to be binary and cannot be previewed.',
-        ),
+        find.text('This file appears to be binary and cannot be previewed.'),
         findsOneWidget,
       );
       expect(find.byType(SelectableText), findsNothing);
       expect(find.text('fake md', findRichText: true), findsNothing);
     });
 
-    testWidgets('20MB 超は mdFileTooLarge 警告を表示する（SFTP 非アクセス・H-3）', (tester) async {
+    testWidgets('20MB 超は mdFileTooLarge 警告を表示する（SFTP 非アクセス・H-3）', (
+      tester,
+    ) async {
       final sftpClient = _RecordingSftpClient();
       await pumpScreen(
         tester,
@@ -347,7 +343,9 @@ void main() {
       );
       expect(find.text('File is too large'), findsOneWidget);
       expect(
-        find.textContaining('This file is 21 MB and exceeds the preview limit.'),
+        find.textContaining(
+          'This file is 21 MB and exceeds the preview limit.',
+        ),
         findsOneWidget,
       );
       expect(sftpClient.openedPaths, isEmpty); // 拒否は読み取らない
@@ -369,7 +367,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Truncated', findRichText: true), findsOneWidget);
-      expect(find.textContaining('body text', findRichText: true), findsOneWidget);
+      expect(
+        find.textContaining('body text', findRichText: true),
+        findsOneWidget,
+      );
     });
 
     testWidgets('バイナリ && 切詰めの複合時はバイナリ表示を優先する（レビュー #3 LOW-2）', (tester) async {
@@ -378,9 +379,7 @@ void main() {
         const MarkdownPreviewState(isBinary: true, isTruncated: true),
       );
       expect(
-        find.text(
-          'This file appears to be binary and cannot be previewed.',
-        ),
+        find.text('This file appears to be binary and cannot be previewed.'),
         findsOneWidget,
       );
       expect(
@@ -405,7 +404,9 @@ void main() {
 ![ftp](ftp://example.com/x.png)
 ''';
 
-    testWidgets('相対は SFTP 解決・拒否群は placeholder・https のみネットワーク（許可時のみ取得）', (tester) async {
+    testWidgets('相対は SFTP 解決・拒否群は placeholder・https のみネットワーク（許可時のみ取得）', (
+      tester,
+    ) async {
       final sftpClient = _RecordingSftpClient(
         contentsByPath: {
           '/home/user/docs/readme.md': _bytes(mdImages),
@@ -416,17 +417,14 @@ void main() {
 
       // --- SFTP 読込は md 本体 + 許可された相対パス 1 件のみ
       //（denied 群は一切 open されない）---
-      expect(
-        sftpClient.openedPaths,
-        ['/home/user/docs/readme.md', '/home/user/docs/img.png'],
-        reason: 'トラバーサル・ルート・絶対 URL は SFTP を一切呼ばない',
-      );
+      expect(sftpClient.openedPaths, [
+        '/home/user/docs/readme.md',
+        '/home/user/docs/img.png',
+      ], reason: 'トラバーサル・ルート・絶対 URL は SFTP を一切呼ばない');
       // 相対成功 → Image.memory（ImageProvider 構造で検証）
       final memoryImages = tester
           .widgetList<Image>(
-            find.byWidgetPredicate(
-              (w) => w is Image && w.image is MemoryImage,
-            ),
+            find.byWidgetPredicate((w) => w is Image && w.image is MemoryImage),
           )
           .toList();
       expect(memoryImages, hasLength(1));
@@ -514,7 +512,11 @@ void main() {
     });
 
     test('https/http は許可（ホスト名・パブリック IP）', () {
-      for (final src in ['https://example.com/logo.png', 'http://example.com/x.png', 'https://8.8.8.8/x.png']) {
+      for (final src in [
+        'https://example.com/logo.png',
+        'http://example.com/x.png',
+        'https://8.8.8.8/x.png',
+      ]) {
         final r = SftpMarkdownImage.resolveImage(
           uri: Uri.parse(src),
           mdBaseDirectory: '/home/user/docs',
@@ -652,7 +654,9 @@ void main() {
 
     test('MarkdownHighlighter: 20K 文字超はプレーン表示（M-3）', () {
       final longCode = 'a' * (MarkdownHighlighter.kMaxHighlightChars + 1);
-      final span = MarkdownHighlighter(isDark: false).highlight(longCode, 'dart');
+      final span = MarkdownHighlighter(
+        isDark: false,
+      ).highlight(longCode, 'dart');
       expect(span.children, isNull);
       expect(span.text, longCode); // ハイライトされずそのまま
     });
@@ -668,22 +672,36 @@ void main() {
       expect(darkSpans.any((s) => s.style?.color != null), isTrue);
       expect(lightSpans.any((s) => s.style?.color != null), isTrue);
       // コメントは斜体
-      final italic = darkSpans.where((s) => s.style?.fontStyle == FontStyle.italic);
+      final italic = darkSpans.where(
+        (s) => s.style?.fontStyle == FontStyle.italic,
+      );
       expect(italic, isNotEmpty);
     });
   });
 
   group('MarkdownHighlighter.languageFromClassAttribute', () {
     test('language-xxx から言語名を抽出する', () {
-      expect(MarkdownHighlighter.languageFromClassAttribute('language-dart'), 'dart');
-      expect(MarkdownHighlighter.languageFromClassAttribute('language-cpp'), 'cpp');
-      expect(MarkdownHighlighter.languageFromClassAttribute('language-bash'), 'bash');
+      expect(
+        MarkdownHighlighter.languageFromClassAttribute('language-dart'),
+        'dart',
+      );
+      expect(
+        MarkdownHighlighter.languageFromClassAttribute('language-cpp'),
+        'cpp',
+      );
+      expect(
+        MarkdownHighlighter.languageFromClassAttribute('language-bash'),
+        'bash',
+      );
     });
 
     test('プレフィクス不一致・空・null は null を返す', () {
       expect(MarkdownHighlighter.languageFromClassAttribute(null), isNull);
       expect(MarkdownHighlighter.languageFromClassAttribute(''), isNull);
-      expect(MarkdownHighlighter.languageFromClassAttribute('language-'), isNull);
+      expect(
+        MarkdownHighlighter.languageFromClassAttribute('language-'),
+        isNull,
+      );
       expect(MarkdownHighlighter.languageFromClassAttribute('plain'), isNull);
     });
   });
@@ -694,13 +712,12 @@ void main() {
     /// url_launcher プラットフォームチャンネルをモックし呼び出しを記録する。
     List<MethodCall> mockUrlLauncher(WidgetTester tester) {
       final calls = <MethodCall>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        channel,
-        (call) async {
-          calls.add(call);
-          return true;
-        },
-      );
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return true;
+      });
       addTearDown(
         () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           channel,
@@ -728,7 +745,10 @@ void main() {
 
       final launches = calls.where((c) => c.method == 'launch').toList();
       expect(launches, hasLength(1));
-      expect((launches.single.arguments as Map)['url'], 'https://example.com/page');
+      expect(
+        (launches.single.arguments as Map)['url'],
+        'https://example.com/page',
+      );
       // スキームガード前の canLaunch 経由で起動する（about_section パターン）
       expect(calls.where((c) => c.method == 'canLaunch'), hasLength(1));
     });

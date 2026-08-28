@@ -91,10 +91,7 @@ class SftpBrowserService {
     required int maxBytes,
   }) async {
     final normalizedPath = validatePath(path);
-    final file = await sftp.open(
-      normalizedPath,
-      mode: SftpFileOpenMode.read,
-    );
+    final file = await sftp.open(normalizedPath, mode: SftpFileOpenMode.read);
     try {
       // 読取前のサイズ確認（symlink は follow した実サイズ・目安扱い・合意#4）
       final attrs = await file.stat();

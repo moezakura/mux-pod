@@ -169,29 +169,35 @@ void main() {
     expect(state.isTooLarge, isFalse);
   });
 
-  test('load decodes japanese utf8 text without false binary detection', () async {
-    const jpText = '# 日本語の見出し\n\nこれはテストです。\n- 箇条書き\n';
-    final sftpClient = FakeSftpClient(
-      contentsByPath: {'/home/user/readme.md': _bytes(jpText)},
-    );
-    final sshClient = FakeSshClient()..sftpClient = sftpClient;
-    final container = makeContainer(sshClient: sshClient);
-    addTearDown(container.dispose);
+  test(
+    'load decodes japanese utf8 text without false binary detection',
+    () async {
+      const jpText = '# 日本語の見出し\n\nこれはテストです。\n- 箇条書き\n';
+      final sftpClient = FakeSftpClient(
+        contentsByPath: {'/home/user/readme.md': _bytes(jpText)},
+      );
+      final sshClient = FakeSshClient()..sftpClient = sftpClient;
+      final container = makeContainer(sshClient: sshClient);
+      addTearDown(container.dispose);
 
-    await container
-        .read(markdownPreviewProvider.notifier)
-        .load(connectionId: 'conn1', entry: _mdEntry());
+      await container
+          .read(markdownPreviewProvider.notifier)
+          .load(connectionId: 'conn1', entry: _mdEntry());
 
-    final state = container.read(markdownPreviewProvider);
-    expect(state.isBinary, isFalse);
-    expect(state.content, jpText);
-  });
+      final state = container.read(markdownPreviewProvider);
+      expect(state.isBinary, isFalse);
+      expect(state.content, jpText);
+    },
+  );
 
   test('load detects binary content and does not decode', () async {
     // 先頭ブロック（8KB）内に NUL を含む疑似 .md
     final binary = Uint8List.fromList([
       ...utf8.encode('# fake md\n'),
-      0x00, 0x01, 0x02, 0x03,
+      0x00,
+      0x01,
+      0x02,
+      0x03,
     ]);
     final sftpClient = FakeSftpClient(
       contentsByPath: {'/home/user/readme.md': binary},
@@ -211,27 +217,33 @@ void main() {
     expect(state.error, isNull);
   });
 
-  test('load rejects entry.size over maxPreviewBytes without sftp access', () async {
-    final sftpClient = _CountingSftpClient(
-      contentsByPath: {'/home/user/readme.md': _bytes(_mdText())},
-    );
-    final sshClient = FakeSshClient()..sftpClient = sftpClient;
-    final container = makeContainer(sshClient: sshClient);
-    addTearDown(container.dispose);
+  test(
+    'load rejects entry.size over maxPreviewBytes without sftp access',
+    () async {
+      final sftpClient = _CountingSftpClient(
+        contentsByPath: {'/home/user/readme.md': _bytes(_mdText())},
+      );
+      final sshClient = FakeSshClient()..sftpClient = sftpClient;
+      final container = makeContainer(sshClient: sshClient);
+      addTearDown(container.dispose);
 
-    const oversize = maxPreviewBytes + 1; // 21MB 相当
-    await container
-        .read(markdownPreviewProvider.notifier)
-        .load(connectionId: 'conn1', entry: _mdEntry(size: oversize));
+      const oversize = maxPreviewBytes + 1; // 21MB 相当
+      await container
+          .read(markdownPreviewProvider.notifier)
+          .load(
+            connectionId: 'conn1',
+            entry: _mdEntry(size: oversize),
+          );
 
-    final state = container.read(markdownPreviewProvider);
-    expect(state.isTooLarge, isTrue);
-    expect(state.isLoading, isFalse);
-    expect(state.error, isNull);
-    expect(state.content, isEmpty);
-    expect(state.size, (oversize / (1024 * 1024)).ceil()); // 21
-    expect(sftpClient.openCalls, 0); // SFTP に一切触れない（H-3）
-  });
+      final state = container.read(markdownPreviewProvider);
+      expect(state.isTooLarge, isTrue);
+      expect(state.isLoading, isFalse);
+      expect(state.error, isNull);
+      expect(state.content, isEmpty);
+      expect(state.size, (oversize / (1024 * 1024)).ceil()); // 21
+      expect(sftpClient.openCalls, 0); // SFTP に一切触れない（H-3）
+    },
+  );
 
   test('load sets isTooLarge when stat().size exceeds limit', () async {
     // entry.size は不明（null）だが、open 後の stat が 20MB 超を報告する

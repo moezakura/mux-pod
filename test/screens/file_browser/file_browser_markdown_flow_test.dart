@@ -129,9 +129,7 @@ void main() {
       expect(find.text('Hello'), findsOneWidget);
     });
 
-    testWidgets('20MB 超の .md タップで警告のみ表示・遷移せず・SFTP 読込なし', (
-      tester,
-    ) async {
+    testWidgets('20MB 超の .md タップで警告のみ表示・遷移せず・SFTP 読込なし', (tester) async {
       final sftp = await pumpScreen(tester, sftpClient: _defaultSftp());
       final l10n = l10nOf(tester);
 
@@ -154,9 +152,7 @@ void main() {
       await drainSnackBar(tester);
     });
 
-    testWidgets('非 .md ファイルのタップは従来どおりメニュー表示（遷移しない）', (
-      tester,
-    ) async {
+    testWidgets('非 .md ファイルのタップは従来どおりメニュー表示（遷移しない）', (tester) async {
       await pumpScreen(tester, sftpClient: _defaultSftp());
 
       await tester.tap(find.text('data.txt'));
@@ -168,9 +164,7 @@ void main() {
       expect(find.byIcon(Icons.delete_outline), findsOneWidget); // delete
     });
 
-    testWidgets('非 .md ファイルのメニューに open は表示されない（ディレクトリ専用化）', (
-      tester,
-    ) async {
+    testWidgets('非 .md ファイルのメニューに open は表示されない（ディレクトリ専用化）', (tester) async {
       await pumpScreen(tester, sftpClient: _defaultSftp());
 
       await tester.longPress(find.text('data.txt'));
@@ -180,9 +174,7 @@ void main() {
       expect(find.byIcon(Icons.edit), findsOneWidget); // rename は従来どおり
     });
 
-    testWidgets('ディレクトリのメニューには従来どおり open が表示される', (
-      tester,
-    ) async {
+    testWidgets('ディレクトリのメニューには従来どおり open が表示される', (tester) async {
       await pumpScreen(tester, sftpClient: _defaultSftp());
 
       await tester.longPress(find.text('docs'));
@@ -191,9 +183,7 @@ void main() {
       expect(find.byIcon(Icons.folder_open), findsOneWidget);
     });
 
-    testWidgets('.md 長押しメニューの open でプレビュー画面へ遷移する（合意#2）', (
-      tester,
-    ) async {
+    testWidgets('.md 長押しメニューの open でプレビュー画面へ遷移する（合意#2）', (tester) async {
       final sftp = await pumpScreen(tester, sftpClient: _defaultSftp());
 
       await tester.longPress(find.text('readme.md'));
@@ -209,9 +199,7 @@ void main() {
       expect(sftp.openedPaths, contains('/home/user/readme.md'));
     });
 
-    testWidgets('.markdown 拡張子のタップでもプレビュー画面へ遷移する（合意#3）', (
-      tester,
-    ) async {
+    testWidgets('.markdown 拡張子のタップでもプレビュー画面へ遷移する（合意#3）', (tester) async {
       final sftp = await pumpScreen(tester, sftpClient: _defaultSftp());
 
       await tester.tap(find.text('notes.markdown'));

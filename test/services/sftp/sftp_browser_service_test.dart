@@ -76,7 +76,9 @@ void main() {
     test('stat 超過時は読取前に PreviewTooLargeException・readBytes は呼ばれない', () async {
       // content は 3 バイトだが stat サイズだけ 100 → maxBytes=10 を超過
       final sftp = _CountingSftpClient(
-        contentsByPath: {'/docs/README.md': Uint8List.fromList([65, 66, 67])},
+        contentsByPath: {
+          '/docs/README.md': Uint8List.fromList([65, 66, 67]),
+        },
         sizesByPath: {'/docs/README.md': 100},
       );
 
@@ -112,30 +114,45 @@ void main() {
       expect(sftp.closeCalls, 0);
     });
 
-    test('maxBytes+1 で切詰めを検知し isTruncated=true（size が実サイズより小さい伸長ケース）', () async {
-      // stat.size=4（maxBytes=4 以下）だが実内容は 10 バイト
-      final sftp = _CountingSftpClient(
-        contentsByPath: {
-          '/docs/README.md':
-              Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-        },
-        sizesByPath: {'/docs/README.md': 4},
-      );
+    test(
+      'maxBytes+1 で切詰めを検知し isTruncated=true（size が実サイズより小さい伸長ケース）',
+      () async {
+        // stat.size=4（maxBytes=4 以下）だが実内容は 10 バイト
+        final sftp = _CountingSftpClient(
+          contentsByPath: {
+            '/docs/README.md': Uint8List.fromList([
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+            ]),
+          },
+          sizesByPath: {'/docs/README.md': 4},
+        );
 
-      final result = await SftpBrowserService.readFileAsBytes(
-        sftp,
-        '/docs/README.md',
-        maxBytes: 4,
-      );
+        final result = await SftpBrowserService.readFileAsBytes(
+          sftp,
+          '/docs/README.md',
+          maxBytes: 4,
+        );
 
-      // readBytes(length: maxBytes+1 = 5) により 5 バイト読まれる
-      expect(result.bytes.length, 5);
-      expect(result.isTruncated, isTrue);
-    });
+        // readBytes(length: maxBytes+1 = 5) により 5 バイト読まれる
+        expect(result.bytes.length, 5);
+        expect(result.isTruncated, isTrue);
+      },
+    );
 
     test('size 指定で stat 超過 → PreviewTooLargeException・readBytes 非呼出', () async {
       final sftp = _CountingSftpClient(
-        contentsByPath: {'/docs/large.md': Uint8List.fromList([65])},
+        contentsByPath: {
+          '/docs/large.md': Uint8List.fromList([65]),
+        },
         sizesByPath: {'/docs/large.md': 100},
       );
 
@@ -214,7 +231,9 @@ void main() {
     test('readBytes 失敗時は例外が伝播し file.close が保証される（IO 失敗）', () async {
       // リーダー指示: 計画の「タイムアウト」項目を「IO 失敗の伝播」に置換
       final sftp = _CountingSftpClient(
-        contentsByPath: {'/docs/README.md': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/docs/README.md': Uint8List.fromList([1, 2, 3]),
+        },
         readErrorsByPath: {
           '/docs/README.md': SftpStatusError(SftpStatusCode.failure, 'boom'),
         },
@@ -245,8 +264,10 @@ void main() {
     });
 
     test('日本語 UTF-8 テキストは誤検知されない', () {
-      final text = 'README: MuxPod の日本語ドキュメントです。\n'
-          'これは Markdown の本文であり、バイナリではありません。\n' * 5;
+      final text =
+          'README: MuxPod の日本語ドキュメントです。\n'
+              'これは Markdown の本文であり、バイナリではありません。\n' *
+          5;
       expect(
         SftpBrowserService.isLikelyBinary(
           Uint8List.fromList(utf8.encode(text)),

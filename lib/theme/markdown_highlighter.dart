@@ -31,7 +31,8 @@ class MarkdownHighlighter {
   static const int kMaxHighlightChars = 20000;
 
   /// highlight 0.7.0 のエンジン（プロセス内で 1 回だけ生成し再利用）。
-  static final Highlight _highlight = Highlight()..registerLanguages(allLanguages);
+  static final Highlight _highlight = Highlight()
+    ..registerLanguages(allLanguages);
 
   /// ダークテーマかどうか（色マップ切替）。
   final bool isDark;
