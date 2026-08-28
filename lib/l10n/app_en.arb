@@ -1494,6 +1494,43 @@
   "mdBinaryFile": "This file appears to be binary and cannot be previewed.",
   "mdTruncatedMessage": "This file is larger than the preview limit and has been truncated.",
   "mdEmpty": "This file is empty.",
-  "mdSshLost": "SSH connection lost"
+  "mdSshLost": "SSH connection lost",
+  "fileUploadAction": "Upload",
+  "fileUploadSshUnavailable": "SSH is not connected",
+  "fileUploadCancelled": "Upload cancelled",
+  "fileUploadAllFailed": "Upload failed",
+  "fileUploadSuccessSingle": "Uploaded to {path}",
+  "@fileUploadSuccessSingle": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "fileUploadSuccessMulti": "Uploaded {count} files to {dir}",
+  "@fileUploadSuccessMulti": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "dir": {"type": "String"}
+    }
+  },
+  "fileUploadPartialFailure": "{failed} of {total} files failed to upload",
+  "@fileUploadPartialFailure": {
+    "placeholders": {
+      "failed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "fileUploadCount": "Uploading files ({done} / {total})",
+  "@fileUploadCount": {
+    "placeholders": {
+      "done": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "fileUploadCancelAll": "Cancel all",
+  "settingsGroupFileTransfer": "File Transfer",
+  "settingsUploadConflictPolicy": "On filename conflict",
+  "settingsUploadConflictPrompt": "Ask (overwrite / rename)",
+  "settingsUploadConflictAutoRename": "Rename automatically",
+  "settingsUploadConcurrency": "Parallel uploads",
+  "settingsUploadChunkSize": "Upload chunk size (KB)"
 }
-
