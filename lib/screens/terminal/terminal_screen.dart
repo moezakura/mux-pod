@@ -41,7 +41,6 @@ import '../../services/herdr/herdr_target_resolver.dart';
 import '../../services/herdr/herdr_to_domain.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/network/network_monitor.dart';
-import '../../services/share/download_share_service.dart';
 import '../../services/ssh/input_queue.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/pane_navigator.dart';
@@ -7151,14 +7150,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// ダウンロード転送の SnackBar 報告リスナー（常駐・1回のみ）。
   ProviderSubscription<DownloadState>? _downloadSub;
 
-  /// 成功ダウンロードファイルの共有（T14・share_plus・Platform.isAndroid ガード＋
-  /// 失敗時は保存のみフォールバックを内包）。
-  final _downloadShare = DownloadShareService();
-
   // inventory: TERM-FILE-DL-001
   /// ダウンロード転送の SnackBar 報告リスナーを初期化（1回のみ・常駐画面で listen）。
   ///
-  /// SnackBar の表示仕様（文言・色・アクション）は [downloadSnackBarDisplay] に分離し、
+  /// SnackBar の表示仕様（文言・色）は [downloadSnackBarDisplay] に分離し、
   /// 表示遷移のみここで行う（phase 遷移時のみ発火・進捗 publish では発火しない）。
   void _ensureDownloadListener() {
     if (_downloadSub != null) return;
@@ -7174,20 +7169,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           content: Text(display.message),
           backgroundColor: display.backgroundColor,
           behavior: SnackBarBehavior.floating,
-          action: display.actionLabel == null
-              ? null
-              : SnackBarAction(
-                  label: display.actionLabel!,
-                  onPressed: () {
-                    // T14/T16: 共有対象は成功ファイルのみ（isCompleted && !isError）。
-                    // 一括で一部失敗・スキップがあっても成功分のみ共有シートへ渡す。
-                    final paths = successfulDownloadLocalPaths(
-                      ref.read(downloadProvider),
-                    );
-                    if (paths.isEmpty) return; // 成功ファイルなし: 共有しない
-                    unawaited(_downloadShare.shareFiles(paths));
-                  },
-                ),
         ),
       );
     });
@@ -9085,38 +9066,25 @@ class _DisconnectedBanner extends StatelessWidget {
 
 /// ダウンロード転送の SnackBar 表示仕様（T12）。
 ///
-/// 文言・色・アクションを [downloadSnackBarDisplay] から導出し、表示遷移（ScaffoldMessenger）
+/// 文言・色を [downloadSnackBarDisplay] から導出し、表示遷移（ScaffoldMessenger）
 /// は _ensureDownloadListener が行う。仕様を純関数化することで、TerminalScreen 全体を
 /// pump せずに phase 遷移ごとの表示をテストできる。
 class DownloadSnackBarDisplay {
   const DownloadSnackBarDisplay({
     required this.message,
     this.backgroundColor,
-    this.actionLabel,
   });
 
   final String message;
   final Color? backgroundColor;
-
-  /// null 以外なら SnackBarAction を表示（#40 は「開く」。共有は T14 で接続）。
-  final String? actionLabel;
 }
-
-/// 共有/「開く」対象＝成功ファイル（`isCompleted && !isError`）のローカルパス一覧。
-///
-/// downloadProvider の [DownloadState.completedCount] と同一判定。一括で一部失敗・
-/// スキップがあっても成功分のみ共有シートへ渡す（T14 の共有と T16 の集約表示を接続）。
-List<String> successfulDownloadLocalPaths(DownloadState state) => [
-  for (final item in state.items)
-    if (item.isCompleted && !item.isError) item.localPath,
-];
 
 /// downloadProvider の phase 遷移に対する SnackBar 仕様を導出する。
 ///
 /// - **phase 遷移時のみ**仕様を返し、進捗 publish・idle 復帰では null（発火しない）。
-/// - completed（全成功）: 緑 + 「開く」アクション（成功ファイルのみ対象・T14 の共有へ接続）
-/// - completed（部分失敗）: 赤 + 集約 + 「開く」（成功分のみ・T16 補完）
-/// - completed（全スキップ）: 集約表示（中立色・開くなし・LOW#3）
+/// - completed（全成功）: 緑 + 完了文言（「開く」アクションは廃止）
+/// - completed（部分失敗）: 赤 + 集約（T16 補完）
+/// - completed（全スキップ）: 集約表示（中立色・LOW#3）
 /// - cancelled: 中立（既定色）
 /// - error: 赤 + エラー文言 + 集約
 DownloadSnackBarDisplay? downloadSnackBarDisplay(
@@ -9133,26 +9101,23 @@ DownloadSnackBarDisplay? downloadSnackBarDisplay(
   switch (state.phase) {
     case DownloadPhase.completed:
       if (state.errorMessage != null) {
-        // 部分失敗: 赤 + 集約報告 + 「開く」（成功ファイルのみ・成功分が無ければ開かない）。
-        // T16 仕様補完（L1-a: 部分失敗時も成功ファイルのみ「開く」対象・T14 の共有と接続）。
+        // 部分失敗: 赤 + 集約報告（「開く」アクションは廃止）。
         return DownloadSnackBarDisplay(
           message: '${l10n.fileDownloadError}（$summary）',
           backgroundColor: DesignColors.error,
-          actionLabel: state.completedCount > 0 ? l10n.fileDownloadOpen : null,
         );
       }
       // 全スキップ（成功 0・失敗 0・スキップのみ）: 緑の「Download complete」は誤認誘発
-      // → 集約表示（fileDownloadResultSummary・中立色・開くなし）。review LOW#3 対応。
+      // → 集約表示（fileDownloadResultSummary・中立色）。review LOW#3 対応。
       if (state.completedCount == 0 &&
           state.skippedCount > 0 &&
           state.failedCount == 0) {
         return DownloadSnackBarDisplay(message: summary);
       }
-      // 全成功（成功 + スキップ混在を含む）: 緑 + 「開く」（成功ファイルのみ対象）。
+      // 全成功（成功 + スキップ混在を含む）: 緑 + 完了文言。
       return DownloadSnackBarDisplay(
         message: l10n.fileDownloadComplete,
         backgroundColor: DesignColors.success,
-        actionLabel: l10n.fileDownloadOpen,
       );
     case DownloadPhase.cancelled:
       return DownloadSnackBarDisplay(message: l10n.fileDownloadCancelled);

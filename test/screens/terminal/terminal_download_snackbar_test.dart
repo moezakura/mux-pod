@@ -8,7 +8,7 @@ import 'package:flutter_muxpod/theme/design_colors.dart';
 ///
 /// 検証対象（実装計画 §L2-2 SnackBar / Phase 4 #12）:
 /// - **phase 遷移時のみ**仕様を返す（進捗 publish・idle 復帰では発火しない）
-/// - completed（全成功）: 緑 + 「開く」アクション（T14 で共有へ接続・表示まで）
+/// - completed（全成功）: 緑 + 完了文言（「開く」アクションは廃止）
 /// - completed（部分失敗）: 赤 + 集約（成功 a / 失敗 b / スキップ c）
 /// - cancelled: 中立（既定色）
 /// - error: 赤 + エラー文言 + 集約
@@ -70,7 +70,7 @@ void main() {
       },
     );
 
-    test('completed（全成功）: 緑 + 「開く」アクション', () {
+    test('completed（全成功）: 緑 + 完了文言（「開く」アクションは廃止）', () {
       final state = DownloadState(
         phase: DownloadPhase.completed,
         items: [_item('a.bin', isCompleted: true)],
@@ -84,10 +84,9 @@ void main() {
       expect(display, isNotNull);
       expect(display!.message, 'Download complete');
       expect(display.backgroundColor, DesignColors.success);
-      expect(display.actionLabel, 'Open');
     });
 
-    test('completed（部分失敗）: 赤 + 集約（成功a/失敗b/スキップc）+「開く」（T16 補完）', () {
+    test('completed（部分失敗）: 赤 + 集約（成功a/失敗b/スキップc）', () {
       final state = DownloadState(
         phase: DownloadPhase.completed,
         errorMessage: 'Download failed',
@@ -109,8 +108,6 @@ void main() {
         'Download failed（1 succeeded, 1 failed, 1 skipped）',
       );
       expect(display.backgroundColor, DesignColors.error);
-      // T16 仕様補完（L1-a: 部分失敗時も成功ファイルのみ「開く」対象・共有は成功分のみ）。
-      expect(display.actionLabel, 'Open');
     });
 
     test('cancelled: 中立（既定色）・キャンセル文言', () {
@@ -127,7 +124,6 @@ void main() {
       expect(display, isNotNull);
       expect(display!.message, 'Download cancelled');
       expect(display.backgroundColor, isNull); // 中立
-      expect(display.actionLabel, isNull);
     });
 
     test('error: 赤 + エラー文言 + 集約', () {
