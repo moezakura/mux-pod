@@ -1471,11 +1471,7 @@
     }
   },
   "fileDownload": "ダウンロード",
-  "fileDownloadDestinationTitle": "保存先を選択",
-  "fileDownloadDestinationDownloads": "ダウンロード",
-  "fileDownloadDestinationDocuments": "ドキュメント",
-  "fileDownloadDestinationNewFolder": "新規フォルダ",
-  "fileDownloadOpen": "開く",
+  "fileDownloadExporting": "保存先を選択中…",
   "fileSelectedCount": "{count} 件選択中",
   "@fileSelectedCount": {
     "placeholders": {

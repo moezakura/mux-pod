@@ -1471,11 +1471,7 @@
     }
   },
   "fileDownload": "Download",
-  "fileDownloadDestinationTitle": "Choose download destination",
-  "fileDownloadDestinationDownloads": "Downloads",
-  "fileDownloadDestinationDocuments": "Documents",
-  "fileDownloadDestinationNewFolder": "New folder",
-  "fileDownloadOpen": "Open",
+  "fileDownloadExporting": "Choosing destination…",
   "fileSelectedCount": "{count} selected",
   "@fileSelectedCount": {
     "placeholders": {
