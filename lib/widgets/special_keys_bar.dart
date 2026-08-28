@@ -665,6 +665,10 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
+      // Plain Row on purpose: these builders return Expanded, so they share the
+      // width. Wrapping this in a horizontal scroll view makes the row
+      // unbounded and every flex child an error — the backspace key is just a
+      // tenth flex child, and they all get slightly narrower.
       child: Row(
         children: [
           _buildSpecialKeyButton('ESC', 'Escape'),
@@ -682,6 +686,7 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           _buildShiftEnterKeyButton(),
           _buildLiteralKeyButton('/', '/'),
           _buildLiteralKeyButton('-', '-'),
+          _buildSpecialKeyButton('\u232b', 'BSpace'),
           if (withManageButton) _buildManageButton(),
         ],
       ),
@@ -796,6 +801,11 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
         return _buildLiteralKeyButton('/', '/', width: 32);
       case 'dash':
         return _buildLiteralKeyButton('-', '-', width: 32);
+      // Without this there is no way to erase anything typed from this bar:
+      // its literal keys go straight into the pane, and the phone keyboard is
+      // only reachable in Direct Input mode.
+      case 'bspace':
+        return _buildNavigationKeyButton('\u232b', 'BSpace');
       case 'pgup':
         return _buildNavigationKeyButton('PgUp', 'PPage');
       case 'pgdn':

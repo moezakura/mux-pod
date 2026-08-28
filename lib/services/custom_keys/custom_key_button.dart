@@ -96,6 +96,7 @@ class CustomKeyRows {
     'senter',
     'slash',
     'dash',
+    'bspace',
   ];
 
   static const List<String> standardRow2 = [
@@ -150,6 +151,7 @@ class CustomKeyRows {
     'senter' => 'S-RET',
     'slash' => '/',
     'dash' => '-',
+    'bspace' => '\u232b',
     'pgup' => 'PgUp',
     'pgdn' => 'PgDn',
     'left' => 'Left',
