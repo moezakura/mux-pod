@@ -1469,6 +1469,43 @@
         "type": "String"
       }
     }
-  }
+  },
+  "fileUploadAction": "アップロード",
+  "fileUploadSshUnavailable": "SSH接続がありません",
+  "fileUploadCancelled": "アップロードをキャンセルしました",
+  "fileUploadAllFailed": "アップロードに失敗しました",
+  "fileUploadSuccessSingle": "{path} にアップロードしました",
+  "@fileUploadSuccessSingle": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "fileUploadSuccessMulti": "{count} 件を {dir} にアップロードしました",
+  "@fileUploadSuccessMulti": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "dir": {"type": "String"}
+    }
+  },
+  "fileUploadPartialFailure": "{total} 件中 {failed} 件が失敗しました",
+  "@fileUploadPartialFailure": {
+    "placeholders": {
+      "failed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "fileUploadCount": "アップロード中（{done} / {total}）",
+  "@fileUploadCount": {
+    "placeholders": {
+      "done": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "fileUploadCancelAll": "すべてキャンセル",
+  "settingsGroupFileTransfer": "ファイル転送",
+  "settingsUploadConflictPolicy": "ファイル名の衝突時",
+  "settingsUploadConflictPrompt": "確認する（上書き / リネーム）",
+  "settingsUploadConflictAutoRename": "自動でリネーム",
+  "settingsUploadConcurrency": "同時アップロード数",
+  "settingsUploadChunkSize": "アップロード チャンクサイズ (KB)"
 }
-

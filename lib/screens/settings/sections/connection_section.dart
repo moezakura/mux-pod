@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/l10n_ext.dart';
 import '../../../providers/settings_provider.dart';
 import '../pickers/clear_host_keys_confirmation.dart';
+import '../pickers/conflict_policy_picker.dart';
 import '../pickers/output_format_picker.dart';
 import '../pickers/resize_preset_picker.dart';
 import '../pickers/slider_dialog.dart';
@@ -128,6 +129,48 @@ class ConnectionSection extends ConsumerWidget {
               ref.read(settingsProvider.notifier).setImageBracketedPaste(v),
         ),
         const Divider(),
+        SettingsSectionHeader(title: l10n.settingsGroupFileTransfer),
+        ListTile(
+          leading: const Icon(Icons.rule),
+          title: Text(l10n.settingsUploadConflictPolicy),
+          subtitle: Text(switch (settings.uploadConflictPolicy) {
+            TransferConflictPolicy.prompt => l10n.settingsUploadConflictPrompt,
+            TransferConflictPolicy.autoRename =>
+              l10n.settingsUploadConflictAutoRename,
+          }),
+          onTap: () => showConflictPolicyPicker(
+            context,
+            ref,
+            settings.uploadConflictPolicy,
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.call_split),
+          title: Text(l10n.settingsUploadConcurrency),
+          subtitle: Text('${settings.uploadConcurrency}'),
+          onTap: () => showNumberInputDialog(
+            context,
+            ref,
+            title: l10n.settingsUploadConcurrency,
+            currentValue: settings.uploadConcurrency,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setUploadConcurrency(v),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.memory),
+          title: Text(l10n.settingsUploadChunkSize),
+          subtitle: Text('${settings.uploadChunkKb} KB'),
+          onTap: () => showNumberInputDialog(
+            context,
+            ref,
+            title: l10n.settingsUploadChunkSize,
+            currentValue: settings.uploadChunkKb,
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setUploadChunkKb(v),
+          ),
+        ),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.key_off),
           title: Text(l10n.settingsClearHostKeys),
@@ -228,10 +271,39 @@ final List<SettingsSearchItem> connectionSearchDescriptors = [
     groupLabel: (l10n) => l10n.settingsGroupImageTransfer,
     icon: Icons.paste,
   ),
-  // --- フラット（1項目グループ回避・A2） ---
+  // --- ファイル転送（File Transfer・#41） ---
   SettingsSearchItem(
     category: SettingsCategory.connection,
     orderInCategory: 9,
+    id: 'uploadConflictPolicy',
+    title: (l10n) => l10n.settingsUploadConflictPolicy,
+    valueLabels: [
+      (l10n) => l10n.settingsUploadConflictPrompt,
+      (l10n) => l10n.settingsUploadConflictAutoRename,
+    ],
+    groupLabel: (l10n) => l10n.settingsGroupFileTransfer,
+    icon: Icons.rule,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 10,
+    id: 'uploadConcurrency',
+    title: (l10n) => l10n.settingsUploadConcurrency,
+    groupLabel: (l10n) => l10n.settingsGroupFileTransfer,
+    icon: Icons.call_split,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 11,
+    id: 'uploadChunkSize',
+    title: (l10n) => l10n.settingsUploadChunkSize,
+    groupLabel: (l10n) => l10n.settingsGroupFileTransfer,
+    icon: Icons.memory,
+  ),
+  // --- フラット（1項目グループ回避・A2） ---
+  SettingsSearchItem(
+    category: SettingsCategory.connection,
+    orderInCategory: 12,
     id: 'clearHostKeys',
     title: (l10n) => l10n.settingsClearHostKeys,
     description: (l10n) => l10n.settingsClearHostKeysDescription,
