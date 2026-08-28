@@ -5,12 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/file_browser_provider.dart';
+import '../../providers/download_provider.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../services/sftp/file_entry.dart';
+import '../../services/sftp/overwrite_choice.dart';
 import '../../theme/design_colors.dart';
+import '../../widgets/dialogs/overwrite_confirm_dialog.dart';
 import 'widgets/file_action_menu.dart';
 import 'widgets/file_list_tile.dart';
 import 'widgets/path_bar.dart';
+import 'widgets/save_destination_dialog.dart';
+import 'widgets/transfer_progress_sheet.dart';
 
 /// SFTPファイルブラウザ画面
 ///
@@ -26,6 +31,23 @@ class FileBrowserScreen extends ConsumerStatefulWidget {
 }
 
 class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
+  /// ダウンロードフローのフェーズ駆動リスナー（T10/T11）。
+  ///
+  /// `startDownloads` はキュー完了まで await されるため、await ベースでは
+  /// 「転送中」の進捗シートを開けない。フェーズ遷移を listen して
+  /// awaitingOverwrite → 上書き確認導線 / downloading → 進捗シートを駆動する。
+  ProviderSubscription<DownloadState>? _downloadFlowSub;
+
+  /// 進捗シートの多重表示防止（already-mounted エラー回避）。
+  bool _sheetOpen = false;
+
+  /// 複数選択モード中か（長押しで突入・解除/フォルダ移動で終了）。
+  bool _selectMode = false;
+
+  /// 選択中のエントリ（screen ローカル Set・`FileEntry` は fullPath ベースの
+  /// ==/hashCode のためトグルは fullPath 一致で動作・Pattern Map Concern 11）。
+  final Set<FileEntry> _selectedEntries = {};
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +55,26 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (!mounted) return;
       ref.read(fileBrowserProvider.notifier).initialize(widget.paneId);
     });
+    _downloadFlowSub = ref.listenManual<DownloadState>(downloadProvider, (prev, next) {
+      if (!mounted) return;
+      // フェーズ遷移時のみ処理（進捗 publish では発火しない）。
+      if (prev?.phase == next.phase) return;
+      switch (next.phase) {
+        case DownloadPhase.awaitingOverwrite:
+          _handleAwaitingOverwrite();
+        case DownloadPhase.downloading:
+          _showDownloadProgressSheet();
+        default:
+          break;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _downloadFlowSub?.close();
+    _downloadFlowSub = null;
+    super.dispose();
   }
 
   @override
@@ -53,6 +95,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               child: PathBar(
                 currentPath: state.currentPath,
                 onPathSelected: (path) {
+                  _exitSelectionMode(); // フォルダ移動 = 選択解除
                   ref
                       .read(fileBrowserProvider.notifier)
                       .navigateToDirectory(path);
@@ -76,6 +119,35 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     bool isDark,
     ColorScheme colorScheme,
   ) {
+    // 複数選択モード: 件数 + 一括DL（0 件で無効）+ 解除。通常 actions は非表示。
+    if (_selectMode) {
+      return SliverAppBar(
+        floating: true,
+        pinned: true,
+        backgroundColor: colorScheme.surface.withValues(alpha: 0.95),
+        surfaceTintColor: Colors.transparent,
+        title: Text(
+          context.l10n.fileSelectedCount(_selectedEntries.length),
+          style: GoogleFonts.spaceGrotesk(
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, size: 22),
+            tooltip: context.l10n.fileBatchDownload,
+            onPressed: _selectedEntries.isEmpty ? null : _handleBatchDownload,
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 22),
+            tooltip: context.l10n.fileClearSelection,
+            onPressed: _exitSelectionMode,
+          ),
+        ],
+      );
+    }
+
     final dirName = state.currentPath == '/'
         ? '/'
         : state.currentPath.split('/').where((s) => s.isNotEmpty).lastOrNull ??
@@ -270,8 +342,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               return ListTile(
                 leading: const Icon(Icons.subdirectory_arrow_left, size: 24),
                 title: const Text('..', style: TextStyle(fontSize: 14)),
-                onTap: () =>
-                    ref.read(fileBrowserProvider.notifier).navigateUp(),
+                onTap: () {
+                  _exitSelectionMode(); // フォルダ移動 = 選択解除
+                  ref.read(fileBrowserProvider.notifier).navigateUp();
+                },
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 2,
@@ -279,21 +353,27 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
               );
             }
             final entry = entries[index - 1];
-            return FileListTile(
-              entry: entry,
-              onTap: () => _handleEntryTap(context, entry),
-              onLongPress: () => _showActionMenu(context, entry),
-            );
+            return _buildFileListTile(entry);
           }
 
           final entry = entries[index];
-          return FileListTile(
-            entry: entry,
-            onTap: () => _handleEntryTap(context, entry),
-            onLongPress: () => _showActionMenu(context, entry),
-          );
+          return _buildFileListTile(entry);
         }, childCount: entries.length + (state.currentPath != '/' ? 1 : 0)),
       ),
+    );
+  }
+
+  /// 一覧行を組み立てる。選択モード中はタップ＝トグル・長押し＝選択追加（ファイル）、
+  /// 通常時はタップ＝既存挙動・長押し＝アクションメニュー。
+  Widget _buildFileListTile(FileEntry entry) {
+    return FileListTile(
+      entry: entry,
+      selectionMode: _selectMode,
+      selected: _selectedEntries.contains(entry),
+      onTap: () => _selectMode
+          ? _handleSelectionTap(entry)
+          : _handleEntryTap(context, entry),
+      onLongPress: () => _handleLongPress(context, entry),
     );
   }
 
@@ -305,6 +385,56 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     } else {
       _showActionMenu(context, entry);
     }
+  }
+
+  /// 長押し（T15）: 選択可能（ダウンロード対象）ファイルなら複数選択モードへ突入し
+  /// そのファイルを選択。ディレクトリ・シンボリックリンクは従来どおりアクションメニュー
+  /// （ディレクトリの rename/delete は長押しメニューが唯一の導線のため温存）。
+  void _handleLongPress(BuildContext context, FileEntry entry) {
+    if (!_canSelect(entry)) {
+      _showActionMenu(context, entry);
+      return;
+    }
+    setState(() {
+      _selectMode = true;
+      _selectedEntries.add(entry);
+    });
+  }
+
+  /// 選択モード中のタップ: ファイル → トグル / ディレクトリ → ナビゲート（選択解除）。
+  void _handleSelectionTap(FileEntry entry) {
+    if (_canSelect(entry)) {
+      setState(() {
+        if (!_selectedEntries.remove(entry)) _selectedEntries.add(entry);
+      });
+      return;
+    }
+    _exitSelectionMode();
+    ref.read(fileBrowserProvider.notifier).navigateToDirectory(entry.fullPath);
+  }
+
+  /// 選択モードを終了し選択をクリアする（解除ボタン・フォルダ移動時に呼ぶ）。
+  void _exitSelectionMode() {
+    if (!_selectMode && _selectedEntries.isEmpty) return;
+    setState(() {
+      _selectMode = false;
+      _selectedEntries.clear();
+    });
+  }
+
+  /// 複数選択（ダウンロード対象）の可否: ファイルのみ・シンボリックリンク除外
+  /// （FileActionMenu の download 表示条件と同一）。
+  bool _canSelect(FileEntry entry) => !entry.isDirectory && !entry.isSymlink;
+
+  /// 一括ダウンロード（T15）: 選択一覧を保存先選択（1 回）→ startDownloads →
+  /// 順次転送。awaitingOverwrite → 上書き確認 / downloading → 進捗シートは
+  /// [_downloadFlowSub] が担当（既存 T10/T11 導線の再利用・件数非依存）。
+  Future<void> _handleBatchDownload() async {
+    final entries = _selectedEntries.toList();
+    if (entries.isEmpty) return;
+    final dir = await showSaveDestinationDialog(context, ref);
+    if (dir == null || !mounted) return; // 保存先キャンセル → idle 維持
+    await ref.read(downloadProvider.notifier).startDownloads(entries, dir);
   }
 
   Future<void> _showActionMenu(BuildContext context, FileEntry entry) async {
@@ -320,7 +450,78 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
         await _showRenameDialog(context, entry);
       case FileAction.delete:
         await _showDeleteConfirmDialog(context, entry);
+      case FileAction.download:
+        await _handleDownload(context, [entry]);
     }
+  }
+
+  /// ダウンロード導線: 保存先選択 → startDownloads（単一・一括の共通経路）。
+  ///
+  /// フェーズ駆動（awaitingOverwrite → 上書き確認 / downloading → 進捗シート）は
+  /// initState の [_downloadFlowSub] listen が担う。
+  Future<void> _handleDownload(
+    BuildContext context,
+    List<FileEntry> entries,
+  ) async {
+    if (entries.isEmpty) return;
+    final dir = await showSaveDestinationDialog(context, ref);
+    if (dir == null || !mounted) return; // 保存先キャンセル → idle 維持
+
+    await ref.read(downloadProvider.notifier).startDownloads(entries, dir);
+  }
+
+  /// awaitingOverwrite: 同名衝突の事前スキャン検出を基盤ダイアログで一括確認（🤝#5）。
+  Future<void> _handleAwaitingOverwrite() async {
+    final decisions = await _collectOverwriteDecisions(context);
+    if (!mounted) return;
+    if (decisions == null) {
+      // null 戻り値（barrier/back dismiss）= 操作中断 → バッチ中断（転送開始しない）。
+      ref.read(downloadProvider.notifier).reset();
+      return;
+    }
+    await ref
+        .read(downloadProvider.notifier)
+        .applyOverwriteDecisions(decisions);
+  }
+
+  /// downloading: 進捗シートを表示（多重表示防止・閉じても転送は継続）。
+  void _showDownloadProgressSheet() {
+    if (_sheetOpen) return;
+    _sheetOpen = true;
+    showTransferProgressSheet(context).whenComplete(() {
+      _sheetOpen = false;
+    });
+  }
+
+  /// 上書き確認導線。[DownloadState.collidingItems] をファイルごとに
+  /// 基盤 [showOverwriteConfirmDialog]（batch モード + 全ファイル適用）で確認する。
+  ///
+  /// - null 戻り値（barrier/back dismiss）＝操作中断 → 呼び出し側でバッチ中断（reset）。
+  /// - `applyToAll == true` は残り全衝突へ同じ決定を適用する（基盤契約 C-8）。
+  /// - 決定は `Map<localPath, OverwriteChoice>` で返し、呼び出し側が applyOverwriteDecisions へ渡す。
+  Future<Map<String, OverwriteChoice>?> _collectOverwriteDecisions(
+    BuildContext context,
+  ) async {
+    final decisions = <String, OverwriteChoice>{};
+    final remaining = List.of(ref.read(downloadProvider).collidingItems);
+    while (remaining.isNotEmpty) {
+      final item = remaining.removeAt(0);
+      final result = await showOverwriteConfirmDialog(
+        context,
+        fileName: item.name,
+        mode: OverwriteDialogMode.batch,
+        showApplyToAll: true,
+      );
+      if (result == null) return null; // 操作中断 → バッチ中断
+      decisions[item.localPath] = result.choice;
+      if (result.applyToAll) {
+        for (final rest in remaining) {
+          decisions[rest.localPath] = result.choice;
+        }
+        break;
+      }
+    }
+    return decisions;
   }
 
   Future<void> _showRenameDialog(BuildContext context, FileEntry entry) async {
