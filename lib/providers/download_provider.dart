@@ -134,7 +134,8 @@ class DownloadState {
       items.fold(0, (s, i) => s + (i.totalBytes > 0 ? i.totalBytes : 0));
 
   /// 正常完了アイテム数。
-  int get completedCount => items.where((i) => i.isCompleted && !i.isError).length;
+  int get completedCount =>
+      items.where((i) => i.isCompleted && !i.isError).length;
 
   /// 失敗アイテム数。
   int get failedCount => items.where((i) => i.isError).length;
@@ -325,7 +326,10 @@ class DownloadNotifier extends Notifier<DownloadState> {
           final reserved = {for (final it in _items) it.localPath};
           updated.add(
             item.copyWith(
-              localPath: _firstAvailablePath(item.localPath, reserved: reserved),
+              localPath: _firstAvailablePath(
+                item.localPath,
+                reserved: reserved,
+              ),
             ),
           );
         case OverwriteChoice.skip:
@@ -514,10 +518,7 @@ class DownloadNotifier extends Notifier<DownloadState> {
     final cumulative = items.fold<int>(0, (s, i) => s + i.bytesReceived);
     final speed = _ema.update(cumulative, now: now);
     final speedLabel = formatTransferSpeed(speed);
-    state = state.copyWith(
-      items: items,
-      speedLabel: speedLabel,
-    );
+    state = state.copyWith(items: items, speedLabel: speedLabel);
     // 進捗通知（100ms 間引き publish と同期・n/total・%・bytes・速度）。
     final fraction = state.fraction;
     final percent = fraction == null ? 0 : (fraction * 100).round();
@@ -544,9 +545,12 @@ class DownloadNotifier extends Notifier<DownloadState> {
   }
 
   /// バイト表示（Concern 4: 既存 [FileEntry.formattedSize] を流用・再実装しない）。
-  String _bytesLabel(int bytes) =>
-      FileEntry(name: '', fullPath: '', isDirectory: false, size: bytes)
-          .formattedSize;
+  String _bytesLabel(int bytes) => FileEntry(
+    name: '',
+    fullPath: '',
+    isDirectory: false,
+    size: bytes,
+  ).formattedSize;
 
   void _updateItem(
     int index,
@@ -572,9 +576,11 @@ class DownloadNotifier extends Notifier<DownloadState> {
     final base = dot > 0 ? localPath.substring(0, dot) : localPath;
     final ext = dot > 0 ? localPath.substring(dot) : '';
     var candidate = '${base}_1$ext';
-    for (var n = 2;
-        File(candidate).existsSync() || (reserved?.contains(candidate) ?? false);
-        n++) {
+    for (
+      var n = 2;
+      File(candidate).existsSync() || (reserved?.contains(candidate) ?? false);
+      n++
+    ) {
       candidate = '${base}_$n$ext';
     }
     return candidate;
@@ -582,5 +588,6 @@ class DownloadNotifier extends Notifier<DownloadState> {
 }
 
 /// ダウンロード状態プロバイダー（非 AutoDispose・画面破棄後も転送継続）。
-final downloadProvider =
-    NotifierProvider<DownloadNotifier, DownloadState>(DownloadNotifier.new);
+final downloadProvider = NotifierProvider<DownloadNotifier, DownloadState>(
+  DownloadNotifier.new,
+);

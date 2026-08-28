@@ -145,44 +145,64 @@ class _SaveDestinationDialogState extends State<_SaveDestinationDialog> {
             // 設定済みの既定 DL 先（あれば先頭・初期選択）
             if (widget.customDir != null)
               _buildOption(
-                title: Text(widget.customDir!,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  widget.customDir!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 selected: _customSelected,
                 icon: Icons.settings,
                 onTap: () => _select(custom: true),
               ),
             _buildOption(
               title: Text(l10n.fileDownloadDestinationDownloads),
-              subtitle: Text(widget.downloadsDir,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              selected: !_customSelected &&
+              subtitle: Text(
+                widget.downloadsDir,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected:
+                  !_customSelected &&
                   _choice == SaveDestinationChoice.downloads,
               icon: Icons.download,
-              onTap: () =>
-                  _select(custom: false, choice: SaveDestinationChoice.downloads),
+              onTap: () => _select(
+                custom: false,
+                choice: SaveDestinationChoice.downloads,
+              ),
             ),
             _buildOption(
               title: Text(l10n.fileDownloadDestinationDocuments),
-              subtitle: Text(widget.documentsDir,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              selected: !_customSelected &&
+              subtitle: Text(
+                widget.documentsDir,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected:
+                  !_customSelected &&
                   _choice == SaveDestinationChoice.documents,
               icon: Icons.folder,
-              onTap: () =>
-                  _select(custom: false, choice: SaveDestinationChoice.documents),
+              onTap: () => _select(
+                custom: false,
+                choice: SaveDestinationChoice.documents,
+              ),
             ),
             _buildOption(
               title: Text(l10n.fileDownloadDestinationNewFolder),
-              subtitle: Text('${widget.downloadsDir}/<name>',
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              selected: !_customSelected &&
+              subtitle: Text(
+                '${widget.downloadsDir}/<name>',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              selected:
+                  !_customSelected &&
                   _choice == SaveDestinationChoice.subfolder,
               icon: Icons.create_new_folder,
-              onTap: () =>
-                  _select(custom: false, choice: SaveDestinationChoice.subfolder),
+              onTap: () => _select(
+                custom: false,
+                choice: SaveDestinationChoice.subfolder,
+              ),
             ),
-            if (!_customSelected &&
-                _choice == SaveDestinationChoice.subfolder)
+            if (!_customSelected && _choice == SaveDestinationChoice.subfolder)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: TextField(
@@ -219,10 +239,7 @@ class _SaveDestinationDialogState extends State<_SaveDestinationDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.commonCancel),
         ),
-        FilledButton(
-          onPressed: _confirm,
-          child: Text(l10n.commonSave),
-        ),
+        FilledButton(onPressed: _confirm, child: Text(l10n.commonSave)),
       ],
     );
   }

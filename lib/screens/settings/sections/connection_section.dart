@@ -143,9 +143,8 @@ class ConnectionSection extends ConsumerWidget {
             title: l10n.settingsDownloadDirectory,
             currentValue: settings.downloadDirectory,
             hint: l10n.settingsDownloadDirectoryHint,
-            onSave: (v) => ref
-                .read(settingsProvider.notifier)
-                .setDownloadDirectory(v),
+            onSave: (v) =>
+                ref.read(settingsProvider.notifier).setDownloadDirectory(v),
           ),
         ),
         const Divider(),

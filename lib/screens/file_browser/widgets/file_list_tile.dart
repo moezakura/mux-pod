@@ -41,9 +41,9 @@ class FileListTile extends StatelessWidget {
 
     return ListTile(
       selected: selectionMode && selected,
-      selectedTileColor: Theme.of(context).colorScheme.primary.withValues(
-        alpha: 0.08,
-      ),
+      selectedTileColor: Theme.of(
+        context,
+      ).colorScheme.primary.withValues(alpha: 0.08),
       leading: _buildIcon(isDark),
       title: Text(
         entry.name,
@@ -68,10 +68,7 @@ class FileListTile extends StatelessWidget {
   /// 防ぐ）。ディレクトリは従来どおり chevron。
   Widget? _buildTrailing(Color subtitleColor) {
     if (selectionMode && _selectable) {
-      return Checkbox(
-        value: selected,
-        onChanged: (_) => onTap(),
-      );
+      return Checkbox(value: selected, onChanged: (_) => onTap());
     }
     return entry.isDirectory
         ? Icon(Icons.chevron_right, color: subtitleColor, size: 20)

@@ -55,7 +55,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (!mounted) return;
       ref.read(fileBrowserProvider.notifier).initialize(widget.paneId);
     });
-    _downloadFlowSub = ref.listenManual<DownloadState>(downloadProvider, (prev, next) {
+    _downloadFlowSub = ref.listenManual<DownloadState>(downloadProvider, (
+      prev,
+      next,
+    ) {
       if (!mounted) return;
       // フェーズ遷移時のみ処理（進捗 publish では発火しない）。
       if (prev?.phase == next.phase) return;

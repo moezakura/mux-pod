@@ -82,7 +82,11 @@ void main() {
           _item('c.bin', isCompleted: true),
         ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(display!.message, 'Download complete');
@@ -100,10 +104,17 @@ void main() {
           _item('c.bin', isSkipped: true),
         ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
-      expect(display!.message, 'Download failed（1 succeeded, 1 failed, 1 skipped）');
+      expect(
+        display!.message,
+        'Download failed（1 succeeded, 1 failed, 1 skipped）',
+      );
       expect(display.backgroundColor, DesignColors.error);
       // T16 補完: 部分失敗でも成功ファイルがあれば「開く」（共有は成功分のみ）。
       expect(display.actionLabel, 'Open');
@@ -115,10 +126,17 @@ void main() {
         errorMessage: 'Download failed',
         items: [_item('a.bin', isError: true), _item('b.bin', isError: true)],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
-      expect(display!.message, 'Download failed（0 succeeded, 2 failed, 0 skipped）');
+      expect(
+        display!.message,
+        'Download failed（0 succeeded, 2 failed, 0 skipped）',
+      );
       expect(display.backgroundColor, DesignColors.error);
       expect(display.actionLabel, isNull);
     });
@@ -126,9 +144,16 @@ void main() {
     test('全スキップ（成功0/失敗0/スキップのみ）: 集約表示・中立色・「開く」なし（LOW#3）', () {
       final state = DownloadState(
         phase: DownloadPhase.completed,
-        items: [_item('a.bin', isSkipped: true), _item('b.bin', isSkipped: true)],
+        items: [
+          _item('a.bin', isSkipped: true),
+          _item('b.bin', isSkipped: true),
+        ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       // 緑の「Download complete」ではなく集約表示（成功 0 / 失敗 0 / スキップ 2）。
@@ -145,7 +170,11 @@ void main() {
           _item('c.bin', isSkipped: true),
         ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(display!.message, 'Download complete');
@@ -163,10 +192,17 @@ void main() {
           _item('c.bin', isSkipped: true),
         ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
-      expect(display!.message, 'Download failed（0 succeeded, 2 failed, 1 skipped）');
+      expect(
+        display!.message,
+        'Download failed（0 succeeded, 2 failed, 1 skipped）',
+      );
       expect(display.backgroundColor, DesignColors.error);
       expect(display.actionLabel, isNull);
     });
@@ -176,7 +212,11 @@ void main() {
         phase: DownloadPhase.cancelled,
         items: [_item('a.bin'), _item('b.bin', isCompleted: true)],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(display!.message, 'Download cancelled');

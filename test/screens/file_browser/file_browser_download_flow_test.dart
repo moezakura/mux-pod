@@ -66,8 +66,7 @@ Future<void> _settleTransfer(
 ) async {
   const timeout = Duration(seconds: 10);
   final sw = Stopwatch()..start();
-  while (container.read(downloadProvider).phase ==
-      DownloadPhase.downloading) {
+  while (container.read(downloadProvider).phase == DownloadPhase.downloading) {
     if (sw.elapsed > timeout) {
       fail(
         'transfer did not settle: ${container.read(downloadProvider).phase}',
@@ -179,138 +178,133 @@ void main() {
       expect(sshClient.sftpClient.closeCalls, 0);
     });
 
-    testWidgets(
-      '上書き確認導線: 衝突検出 → 基盤ダイアログ → Overwrite 決定で転送',
-      (tester) async {
-        // 事前に衝突ファイルを配置（500B の旧内容）
-        Directory('$appDocs/downloads').createSync(recursive: true);
-        File('$appDocs/downloads/report.pdf').writeAsStringSync(
-          List.filled(500, 0x61).map((c) => String.fromCharCode(c)).join(),
+    testWidgets('上書き確認導線: 衝突検出 → 基盤ダイアログ → Overwrite 決定で転送', (tester) async {
+      // 事前に衝突ファイルを配置（500B の旧内容）
+      Directory('$appDocs/downloads').createSync(recursive: true);
+      File('$appDocs/downloads/report.pdf').writeAsStringSync(
+        List.filled(500, 0x61).map((c) => String.fromCharCode(c)).join(),
+      );
+
+      final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(
+          contentsByPath: {'/home/user/report.pdf': content},
         );
+      final container = await _pumpScreen(
+        tester,
+        sshClient: sshClient,
+        entries: [_entry('report.pdf')],
+      );
 
-        final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
-        final sshClient = FakeSshClient()
-          ..sftpClient = _TestSftpClient(
-            contentsByPath: {'/home/user/report.pdf': content},
-          );
-        final container = await _pumpScreen(
-          tester,
-          sshClient: sshClient,
-          entries: [_entry('report.pdf')],
+      await _startDownloadViaUi(tester);
+
+      // 事前スキャンで衝突検出 → awaitingOverwrite → 基盤ダイアログ表示
+      expect(
+        container.read(downloadProvider).phase,
+        DownloadPhase.awaitingOverwrite,
+      );
+      expect(find.text('File already exists'), findsOneWidget);
+
+      // Overwrite 決定
+      await tester.tap(find.text('Overwrite'));
+      await tester.pumpAndSettle();
+
+      await _settleTransfer(tester, container);
+      expect(container.read(downloadProvider).phase, DownloadPhase.completed);
+      expect(container.read(downloadProvider).completedCount, 1);
+      // 上書きされた（新内容 300B）
+      final saved = File('$appDocs/downloads/report.pdf');
+      expect(saved.existsSync(), isTrue);
+      expect(saved.lengthSync(), 300);
+      expect(sshClient.sftpClient.closeCalls, 0);
+    });
+
+    testWidgets('上書き確認導線: barrier dismiss（null）→ バッチ中断・転送開始しない', (
+      tester,
+    ) async {
+      Directory('$appDocs/downloads').createSync(recursive: true);
+      final existing = File('$appDocs/downloads/report.pdf')
+        ..writeAsStringSync('old-content');
+
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(
+          contentsByPath: {
+            '/home/user/report.pdf': Uint8List.fromList(
+              List.generate(300, (i) => i % 256),
+            ),
+          },
         );
+      final container = await _pumpScreen(
+        tester,
+        sshClient: sshClient,
+        entries: [_entry('report.pdf')],
+      );
 
-        await _startDownloadViaUi(tester);
+      await _startDownloadViaUi(tester);
+      expect(
+        container.read(downloadProvider).phase,
+        DownloadPhase.awaitingOverwrite,
+      );
 
-        // 事前スキャンで衝突検出 → awaitingOverwrite → 基盤ダイアログ表示
-        expect(
-          container.read(downloadProvider).phase,
-          DownloadPhase.awaitingOverwrite,
+      // barrier（ダイアログ外）タップ = dismiss → 戻り値 null → バッチ中断
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(container.read(downloadProvider).phase, DownloadPhase.idle);
+      // 転送は開始されていない（既存ファイルが変更されていない）
+      expect(existing.readAsStringSync(), 'old-content');
+      expect(sshClient.sftpClient.closeCalls, 0);
+    });
+
+    testWidgets('上書き確認導線: applyToAll で残りの衝突にも同じ決定を適用（listen 導線）', (
+      tester,
+    ) async {
+      // 2 件衝突（a.pdf / b.pdf）
+      Directory('$appDocs/downloads').createSync(recursive: true);
+      File('$appDocs/downloads/a.pdf').writeAsStringSync('old-a');
+      File('$appDocs/downloads/b.pdf').writeAsStringSync('old-b');
+
+      final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(
+          contentsByPath: {
+            '/home/user/a.pdf': content,
+            '/home/user/b.pdf': content,
+          },
         );
-        expect(find.text('File already exists'), findsOneWidget);
+      final container = await _pumpScreen(
+        tester,
+        sshClient: sshClient,
+        entries: [_entry('a.pdf'), _entry('b.pdf')],
+      );
 
-        // Overwrite 決定
-        await tester.tap(find.text('Overwrite'));
-        await tester.pumpAndSettle();
+      // UI のメニューは単一エントリのため、listen 導線（_downloadFlowSub）を
+      // 検証する形で startDownloads を直接開始する。
+      final started = container.read(downloadProvider.notifier);
+      started.startDownloads([
+        _entry('a.pdf'),
+        _entry('b.pdf'),
+      ], '$appDocs/downloads');
+      await tester.pumpAndSettle();
 
-        await _settleTransfer(tester, container);
-        expect(container.read(downloadProvider).phase, DownloadPhase.completed);
-        expect(container.read(downloadProvider).completedCount, 1);
-        // 上書きされた（新内容 300B）
-        final saved = File('$appDocs/downloads/report.pdf');
-        expect(saved.existsSync(), isTrue);
-        expect(saved.lengthSync(), 300);
-        expect(sshClient.sftpClient.closeCalls, 0);
-      },
-    );
+      expect(
+        container.read(downloadProvider).phase,
+        DownloadPhase.awaitingOverwrite,
+      );
+      expect(find.text('File already exists'), findsOneWidget);
 
-    testWidgets(
-      '上書き確認導線: barrier dismiss（null）→ バッチ中断・転送開始しない',
-      (tester) async {
-        Directory('$appDocs/downloads').createSync(recursive: true);
-        final existing = File('$appDocs/downloads/report.pdf')
-          ..writeAsStringSync('old-content');
+      // Overwrite + 全ファイルに適用
+      await tester.tap(find.text('Apply to all'));
+      await tester.pump();
+      await tester.tap(find.text('Overwrite'));
+      await tester.pump();
 
-        final sshClient = FakeSshClient()
-          ..sftpClient = _TestSftpClient(
-            contentsByPath: {
-              '/home/user/report.pdf': Uint8List.fromList(
-                List.generate(300, (i) => i % 256),
-              ),
-            },
-          );
-        final container = await _pumpScreen(
-          tester,
-          sshClient: sshClient,
-          entries: [_entry('report.pdf')],
-        );
-
-        await _startDownloadViaUi(tester);
-        expect(
-          container.read(downloadProvider).phase,
-          DownloadPhase.awaitingOverwrite,
-        );
-
-        // barrier（ダイアログ外）タップ = dismiss → 戻り値 null → バッチ中断
-        await tester.tapAt(const Offset(5, 5));
-        await tester.pumpAndSettle();
-
-        expect(container.read(downloadProvider).phase, DownloadPhase.idle);
-        // 転送は開始されていない（既存ファイルが変更されていない）
-        expect(existing.readAsStringSync(), 'old-content');
-        expect(sshClient.sftpClient.closeCalls, 0);
-      },
-    );
-
-    testWidgets(
-      '上書き確認導線: applyToAll で残りの衝突にも同じ決定を適用（listen 導線）',
-      (tester) async {
-        // 2 件衝突（a.pdf / b.pdf）
-        Directory('$appDocs/downloads').createSync(recursive: true);
-        File('$appDocs/downloads/a.pdf').writeAsStringSync('old-a');
-        File('$appDocs/downloads/b.pdf').writeAsStringSync('old-b');
-
-        final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
-        final sshClient = FakeSshClient()
-          ..sftpClient = _TestSftpClient(
-            contentsByPath: {
-              '/home/user/a.pdf': content,
-              '/home/user/b.pdf': content,
-            },
-          );
-        final container = await _pumpScreen(
-          tester,
-          sshClient: sshClient,
-          entries: [_entry('a.pdf'), _entry('b.pdf')],
-        );
-
-        // UI のメニューは単一エントリのため、listen 導線（_downloadFlowSub）を
-        // 検証する形で startDownloads を直接開始する。
-        final started = container.read(downloadProvider.notifier);
-        started.startDownloads(
-          [_entry('a.pdf'), _entry('b.pdf')],
-          '$appDocs/downloads',
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          container.read(downloadProvider).phase,
-          DownloadPhase.awaitingOverwrite,
-        );
-        expect(find.text('File already exists'), findsOneWidget);
-
-        // Overwrite + 全ファイルに適用
-        await tester.tap(find.text('Apply to all'));
-        await tester.pump();
-        await tester.tap(find.text('Overwrite'));
-        await tester.pump();
-
-        await _settleTransfer(tester, container);
-        expect(container.read(downloadProvider).phase, DownloadPhase.completed);
-        expect(container.read(downloadProvider).completedCount, 2);
-        expect(File('$appDocs/downloads/a.pdf').lengthSync(), 300);
-        expect(File('$appDocs/downloads/b.pdf').lengthSync(), 300);
-        expect(sshClient.sftpClient.closeCalls, 0);
-      },
-    );
+      await _settleTransfer(tester, container);
+      expect(container.read(downloadProvider).phase, DownloadPhase.completed);
+      expect(container.read(downloadProvider).completedCount, 2);
+      expect(File('$appDocs/downloads/a.pdf').lengthSync(), 300);
+      expect(File('$appDocs/downloads/b.pdf').lengthSync(), 300);
+      expect(sshClient.sftpClient.closeCalls, 0);
+    });
   });
 }

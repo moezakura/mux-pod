@@ -363,25 +363,28 @@ void main() {
       expect(prefs.containsKey('settings_download_directory'), isFalse);
     });
 
-    test('setDownloadDirectory で state が更新され SharedPreferences に保存される', () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'setDownloadDirectory で state が更新され SharedPreferences に保存される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      await container.read(settingsProvider.notifier).reload();
-      await container
-          .read(settingsProvider.notifier)
-          .setDownloadDirectory('/storage/emulated/0/Download');
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setDownloadDirectory('/storage/emulated/0/Download');
 
-      expect(
-        container.read(settingsProvider).downloadDirectory,
-        '/storage/emulated/0/Download',
-      );
-      final prefs = await SharedPreferences.getInstance();
-      expect(
-        prefs.getString('settings_download_directory'),
-        '/storage/emulated/0/Download',
-      );
-    });
+        expect(
+          container.read(settingsProvider).downloadDirectory,
+          '/storage/emulated/0/Download',
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getString('settings_download_directory'),
+          '/storage/emulated/0/Download',
+        );
+      },
+    );
 
     test('保存した downloadDirectory は新規コンテナ（再起動相当）の再読込で復元される', () async {
       final container = ProviderContainer();

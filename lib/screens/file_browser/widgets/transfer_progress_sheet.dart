@@ -51,8 +51,7 @@ class _TransferProgressSheet extends ConsumerWidget {
 
     final l10n = context.l10n;
     final total = state.items.length;
-    final done =
-        state.completedCount + state.failedCount + state.skippedCount;
+    final done = state.completedCount + state.failedCount + state.skippedCount;
 
     return SafeArea(
       child: Padding(
@@ -155,7 +154,9 @@ class _TransferProgressSheet extends ConsumerWidget {
         doneBytes: item.bytesReceived,
         totalBytes: item.totalBytes,
       ),
-      label: item.isSkipped ? '${item.name}（${l10n.fileSkipAction}）' : item.name,
+      label: item.isSkipped
+          ? '${item.name}（${l10n.fileSkipAction}）'
+          : item.name,
     );
 
     // 失敗アイテム: 赤字のエラー表記を付加（エラー赤字・L2-2）。
@@ -170,10 +171,7 @@ class _TransferProgressSheet extends ConsumerWidget {
               item.errorMessage ?? l10n.fileDownloadError,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: DesignColors.error,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: DesignColors.error, fontSize: 12),
             ),
           ),
         ],

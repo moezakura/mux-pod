@@ -51,25 +51,35 @@ void main() {
       );
     });
 
-    test('idle / selecting / downloading / awaitingOverwrite からの遷移先が無ければ null', () {
-      final idle = const DownloadState(phase: DownloadPhase.idle);
-      expect(downloadSnackBarDisplay(en, idle, DownloadPhase.completed), isNull);
-      expect(
-        downloadSnackBarDisplay(
-          en,
-          const DownloadState(phase: DownloadPhase.selecting),
-          DownloadPhase.idle,
-        ),
-        isNull,
-      );
-    });
+    test(
+      'idle / selecting / downloading / awaitingOverwrite からの遷移先が無ければ null',
+      () {
+        final idle = const DownloadState(phase: DownloadPhase.idle);
+        expect(
+          downloadSnackBarDisplay(en, idle, DownloadPhase.completed),
+          isNull,
+        );
+        expect(
+          downloadSnackBarDisplay(
+            en,
+            const DownloadState(phase: DownloadPhase.selecting),
+            DownloadPhase.idle,
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('completed（全成功）: 緑 + 「開く」アクション', () {
       final state = DownloadState(
         phase: DownloadPhase.completed,
         items: [_item('a.bin', isCompleted: true)],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(display!.message, 'Download complete');
@@ -87,10 +97,17 @@ void main() {
           _item('c.bin', isSkipped: true),
         ],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
-      expect(display!.message, 'Download failed（1 succeeded, 1 failed, 1 skipped）');
+      expect(
+        display!.message,
+        'Download failed（1 succeeded, 1 failed, 1 skipped）',
+      );
       expect(display.backgroundColor, DesignColors.error);
       // T16 仕様補完（L1-a: 部分失敗時も成功ファイルのみ「開く」対象・共有は成功分のみ）。
       expect(display.actionLabel, 'Open');
@@ -101,7 +118,11 @@ void main() {
         phase: DownloadPhase.cancelled,
         items: [_item('a.bin')],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(display!.message, 'Download cancelled');
@@ -113,12 +134,13 @@ void main() {
       final state = DownloadState(
         phase: DownloadPhase.error,
         errorMessage: 'Download failed',
-        items: [
-          _item('a.bin', isError: true),
-          _item('b.bin', isSkipped: true),
-        ],
+        items: [_item('a.bin', isError: true), _item('b.bin', isSkipped: true)],
       );
-      final display = downloadSnackBarDisplay(en, state, DownloadPhase.downloading);
+      final display = downloadSnackBarDisplay(
+        en,
+        state,
+        DownloadPhase.downloading,
+      );
 
       expect(display, isNotNull);
       expect(

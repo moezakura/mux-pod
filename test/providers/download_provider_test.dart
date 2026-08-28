@@ -142,43 +142,47 @@ void main() {
       expect(state.speedLabel, '');
     });
 
-    test('衝突なし: downloading → completed・bytesReceived==size・sftp.close 不呼', () async {
-      final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
-      final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/data.bin': content},
-        emitChunkSize: 100,
-      );
-      final sshClient = FakeSshClient()..sftpClient = sftp;
-      final container = makeContainer(sshClient: sshClient);
-      addTearDown(container.dispose);
-      final notifier = container.read(downloadProvider.notifier);
+    test(
+      '衝突なし: downloading → completed・bytesReceived==size・sftp.close 不呼',
+      () async {
+        final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
+        final sftp = _TestSftpClient(
+          contentsByPath: {'/remote/data.bin': content},
+          emitChunkSize: 100,
+        );
+        final sshClient = FakeSshClient()..sftpClient = sftp;
+        final container = makeContainer(sshClient: sshClient);
+        addTearDown(container.dispose);
+        final notifier = container.read(downloadProvider.notifier);
 
-      await notifier.startDownloads(
-        [_entry('/remote/data.bin', size: 300)],
-        tmp.path,
-      );
+        await notifier.startDownloads([
+          _entry('/remote/data.bin', size: 300),
+        ], tmp.path);
 
-      final state = container.read(downloadProvider);
-      expect(state.phase, DownloadPhase.completed);
-      expect(state.items, hasLength(1));
-      expect(state.items[0].remotePath, '/remote/data.bin');
-      expect(state.items[0].localPath, '${tmp.path}/data.bin');
-      expect(state.items[0].bytesReceived, 300);
-      expect(state.items[0].isCompleted, isTrue);
-      expect(state.items[0].isError, isFalse);
-      expect(state.completedCount, 1);
-      expect(state.failedCount, 0);
-      expect(state.totalBytes, 300);
-      expect(state.receivedBytes, 300);
-      // 端末ファイルへ逐次書込済み。
-      expect(File('${tmp.path}/data.bin').readAsBytesSync(), content);
-      // sftp.close() 禁止契約。
-      expect(sftp.closeCalls, 0);
-    });
+        final state = container.read(downloadProvider);
+        expect(state.phase, DownloadPhase.completed);
+        expect(state.items, hasLength(1));
+        expect(state.items[0].remotePath, '/remote/data.bin');
+        expect(state.items[0].localPath, '${tmp.path}/data.bin');
+        expect(state.items[0].bytesReceived, 300);
+        expect(state.items[0].isCompleted, isTrue);
+        expect(state.items[0].isError, isFalse);
+        expect(state.completedCount, 1);
+        expect(state.failedCount, 0);
+        expect(state.totalBytes, 300);
+        expect(state.receivedBytes, 300);
+        // 端末ファイルへ逐次書込済み。
+        expect(File('${tmp.path}/data.bin').readAsBytesSync(), content);
+        // sftp.close() 禁止契約。
+        expect(sftp.closeCalls, 0);
+      },
+    );
 
     test('衝突検出: awaitingOverwrite + collidingItems 公開・転送未開始', () async {
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/data.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/data.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final sshClient = FakeSshClient()..sftpClient = sftp;
       final container = makeContainer(sshClient: sshClient);
@@ -186,9 +190,9 @@ void main() {
       // 同名ファイルを事前作成（事前スキャンで検出される）。
       File('${tmp.path}/data.bin').writeAsBytesSync([9, 9, 9, 9]);
 
-      await container
-          .read(downloadProvider.notifier)
-          .startDownloads([_entry('/remote/data.bin')], tmp.path);
+      await container.read(downloadProvider.notifier).startDownloads([
+        _entry('/remote/data.bin'),
+      ], tmp.path);
 
       final state = container.read(downloadProvider);
       expect(state.phase, DownloadPhase.awaitingOverwrite);
@@ -255,10 +259,7 @@ void main() {
       final state = container.read(downloadProvider);
       expect(state.phase, DownloadPhase.completed);
       expect(state.items[0].localPath, '${tmp.path}/data_2.bin');
-      expect(
-        File('${tmp.path}/data_2.bin').readAsBytesSync(),
-        content,
-      );
+      expect(File('${tmp.path}/data_2.bin').readAsBytesSync(), content);
       // 元ファイルは変更されない。
       expect(File('${tmp.path}/data.bin').readAsBytesSync(), [9, 9, 9, 9]);
       expect(sftp.closeCalls, 0);
@@ -266,7 +267,9 @@ void main() {
 
     test('skip 決定: isSkipped・skippedCount==1・キューから除外（ファイル未作成）', () async {
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/data.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/data.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final sshClient = FakeSshClient()..sftpClient = sftp;
       final container = makeContainer(sshClient: sshClient);
@@ -327,10 +330,10 @@ void main() {
         }
       });
 
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin'), _entry('/remote/b.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+        _entry('/remote/b.bin'),
+      ], tmp.path);
       await reached100.future;
 
       notifier.cancel();
@@ -382,7 +385,9 @@ void main() {
       });
 
       // 1 回目: 途中キャンセル。
-      final first = notifier.startDownloads([_entry('/remote/a.bin')], tmp.path);
+      final first = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
       notifier.cancel();
       gate.complete();
@@ -433,10 +438,10 @@ void main() {
         }
       });
 
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin'), _entry('/remote/b.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+        _entry('/remote/b.bin'),
+      ], tmp.path);
       await reached100.future;
 
       // 転送中に SSH 切断 → トークン cancel + phase=error（broadcast 配送はマイクロタスク）。
@@ -469,10 +474,10 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(downloadProvider.notifier);
 
-      await notifier.startDownloads(
-        [_entry('/remote/a.bin'), _entry('/remote/b.bin')],
-        tmp.path,
-      );
+      await notifier.startDownloads([
+        _entry('/remote/a.bin'),
+        _entry('/remote/b.bin'),
+      ], tmp.path);
 
       final state = container.read(downloadProvider);
       // 失敗は記録して続行し、最終 phase=completed（errorItems>0）。
@@ -494,7 +499,9 @@ void main() {
     test('切断×キャンセル競合(a): cancel 先行 → cancelled を維持', () async {
       final gate = Completer<void>();
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList(List.generate(300, (i) => i))},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList(List.generate(300, (i) => i)),
+        },
         emitChunkSize: 100,
         beforeEmit: (i) async {
           if (i == 1) await gate.future;
@@ -506,13 +513,20 @@ void main() {
       final notifier = container.read(downloadProvider.notifier);
 
       final reached100 = Completer<void>();
-      final sub = container.listen<DownloadState>(downloadProvider, (prev, next) {
-        if (!reached100.isCompleted && next.items.isNotEmpty && next.items[0].bytesReceived >= 100) {
+      final sub = container.listen<DownloadState>(downloadProvider, (
+        prev,
+        next,
+      ) {
+        if (!reached100.isCompleted &&
+            next.items.isNotEmpty &&
+            next.items[0].bytesReceived >= 100) {
           reached100.complete();
         }
       });
 
-      final downloadFuture = notifier.startDownloads([_entry('/remote/a.bin')], tmp.path);
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       // cancel 先行 → phase=cancelled。
@@ -531,7 +545,9 @@ void main() {
     test('切断×キャンセル競合(b): 切断先行 → error を維持', () async {
       final gate = Completer<void>();
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList(List.generate(300, (i) => i))},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList(List.generate(300, (i) => i)),
+        },
         emitChunkSize: 100,
         beforeEmit: (i) async {
           if (i == 1) await gate.future;
@@ -543,13 +559,20 @@ void main() {
       final notifier = container.read(downloadProvider.notifier);
 
       final reached100 = Completer<void>();
-      final sub = container.listen<DownloadState>(downloadProvider, (prev, next) {
-        if (!reached100.isCompleted && next.items.isNotEmpty && next.items[0].bytesReceived >= 100) {
+      final sub = container.listen<DownloadState>(downloadProvider, (
+        prev,
+        next,
+      ) {
+        if (!reached100.isCompleted &&
+            next.items.isNotEmpty &&
+            next.items[0].bytesReceived >= 100) {
           reached100.complete();
         }
       });
 
-      final downloadFuture = notifier.startDownloads([_entry('/remote/a.bin')], tmp.path);
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       // 切断先行 → phase=error + トークン cancel（broadcast 配送はマイクロタスク）。
@@ -570,7 +593,9 @@ void main() {
       // 既知サイズ（300B・2 チャンクで 100B まで反映された状態）。
       final gate = Completer<void>();
       final sftpKnown = _TestSftpClient(
-        contentsByPath: {'/remote/k.bin': Uint8List.fromList(List.generate(300, (i) => i))},
+        contentsByPath: {
+          '/remote/k.bin': Uint8List.fromList(List.generate(300, (i) => i)),
+        },
         emitChunkSize: 100,
         beforeEmit: (i) async {
           if (i == 1) await gate.future;
@@ -582,12 +607,19 @@ void main() {
       final notifier = container.read(downloadProvider.notifier);
 
       final reached100 = Completer<void>();
-      final sub = container.listen<DownloadState>(downloadProvider, (prev, next) {
-        if (!reached100.isCompleted && next.items.isNotEmpty && next.items[0].bytesReceived >= 100) {
+      final sub = container.listen<DownloadState>(downloadProvider, (
+        prev,
+        next,
+      ) {
+        if (!reached100.isCompleted &&
+            next.items.isNotEmpty &&
+            next.items[0].bytesReceived >= 100) {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads([_entry('/remote/k.bin', size: 300)], tmp.path);
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/k.bin', size: 300),
+      ], tmp.path);
       await reached100.future;
 
       final mid = container.read(downloadProvider);
@@ -601,7 +633,9 @@ void main() {
 
       // サイズ未知（stat 失敗）: fraction == null（不確定表示）。
       final sftpUnknown = _TestSftpClient(
-        contentsByPath: {'/remote/u.bin': Uint8List.fromList(List.generate(50, (i) => i))},
+        contentsByPath: {
+          '/remote/u.bin': Uint8List.fromList(List.generate(50, (i) => i)),
+        },
         failStatFor: {'/remote/u.bin'},
       );
       sshClient.sftpClient = sftpUnknown;
@@ -617,7 +651,9 @@ void main() {
       var now = DateTime(2026, 1, 1);
       final gate = Completer<void>();
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/s.bin': Uint8List.fromList(List.generate(200, (i) => i))},
+        contentsByPath: {
+          '/remote/s.bin': Uint8List.fromList(List.generate(200, (i) => i)),
+        },
         emitChunkSize: 100,
         beforeEmit: (i) async {
           if (i == 1) await gate.future;
@@ -629,13 +665,20 @@ void main() {
       final notifier = container.read(downloadProvider.notifier);
 
       final reached100 = Completer<void>();
-      final sub = container.listen<DownloadState>(downloadProvider, (prev, next) {
-        if (!reached100.isCompleted && next.items.isNotEmpty && next.items[0].bytesReceived >= 100) {
+      final sub = container.listen<DownloadState>(downloadProvider, (
+        prev,
+        next,
+      ) {
+        if (!reached100.isCompleted &&
+            next.items.isNotEmpty &&
+            next.items[0].bytesReceived >= 100) {
           reached100.complete();
         }
       });
 
-      final downloadFuture = notifier.startDownloads([_entry('/remote/s.bin', size: 200)], tmp.path);
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/s.bin', size: 200),
+      ], tmp.path);
       await reached100.future;
       // 1 回目サンプル: EMA 初回は 0 → '0.0 B/s'。
       expect(container.read(downloadProvider).speedLabel, '0.0 B/s');
@@ -655,7 +698,9 @@ void main() {
 
     test('reset: completed → idle・items クリア・再開始可能', () async {
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final sshClient = FakeSshClient()..sftpClient = sftp;
       final container = makeContainer(sshClient: sshClient);
@@ -711,10 +756,9 @@ void main() {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       notifier.cancel();
@@ -759,10 +803,9 @@ void main() {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       // 転送中に reset（バッチ無効化）→ キューは safe abort。
@@ -785,7 +828,9 @@ void main() {
     test('openSftp 失敗: 例外を投げず phase=error（MEDIUM#2 回帰）', () async {
       final sshClient = _OpenSftpFailingSshClient();
       sshClient.sftpClient = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final container = makeContainer(sshClient: sshClient);
       addTearDown(container.dispose);
@@ -812,10 +857,10 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(downloadProvider.notifier);
 
-      await notifier.startDownloads(
-        [_entry('/dir1/x.bin'), _entry('/dir2/x.bin')],
-        tmp.path,
-      );
+      await notifier.startDownloads([
+        _entry('/dir1/x.bin'),
+        _entry('/dir2/x.bin'),
+      ], tmp.path);
 
       final state = container.read(downloadProvider);
       expect(state.phase, DownloadPhase.completed);
@@ -834,9 +879,7 @@ void main() {
       final notification = FakeSshForegroundTaskService();
       final sftp = _TestSftpClient(
         contentsByPath: {
-          '/remote/s.bin': Uint8List.fromList(
-            List.generate(200, (i) => i),
-          ),
+          '/remote/s.bin': Uint8List.fromList(List.generate(200, (i) => i)),
         },
         emitChunkSize: 100,
         beforeEmit: (i) async {
@@ -863,10 +906,9 @@ void main() {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/s.bin', size: 200)],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/s.bin', size: 200),
+      ], tmp.path);
       await reached100.future;
       // 1 回目 publish（進捗通知 1 回目）が記録されている。
       expect(notification.updateCalls, isNotEmpty);
@@ -877,9 +919,7 @@ void main() {
       await downloadFuture;
       await pumpEventQueue();
 
-      final texts = notification.updateCalls
-          .map((c) => c.text ?? '')
-          .toList();
+      final texts = notification.updateCalls.map((c) => c.text ?? '').toList();
       expect(texts.any((t) => t.contains('Downloading')), isTrue);
       // 完了サマリ（成功 a / 失敗 b / スキップ c）が最後に記録される。
       expect(texts.last, contains('Download complete'));
@@ -922,10 +962,9 @@ void main() {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       notifier.cancel();
@@ -974,10 +1013,9 @@ void main() {
           reached100.complete();
         }
       });
-      final downloadFuture = notifier.startDownloads(
-        [_entry('/remote/a.bin')],
-        tmp.path,
-      );
+      final downloadFuture = notifier.startDownloads([
+        _entry('/remote/a.bin'),
+      ], tmp.path);
       await reached100.future;
 
       sshClient.setConnected(SshConnectionState.disconnected);
@@ -992,9 +1030,12 @@ void main() {
     });
 
     test('通知: サービス未起動（serviceRunning=false）は no-op・転送は続行', () async {
-      final notification = FakeSshForegroundTaskService()..serviceRunning = false;
+      final notification = FakeSshForegroundTaskService()
+        ..serviceRunning = false;
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final sshClient = FakeSshClient()..sftpClient = sftp;
       final container = makeContainer(
@@ -1019,7 +1060,9 @@ void main() {
     test('通知: 更新 throw（throwOnUpdate）でも転送は正常完走（握りつぶし）', () async {
       final notification = FakeSshForegroundTaskService()..throwOnUpdate = true;
       final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/a.bin': Uint8List.fromList([1, 2, 3])},
+        contentsByPath: {
+          '/remote/a.bin': Uint8List.fromList([1, 2, 3]),
+        },
       );
       final sshClient = FakeSshClient()..sftpClient = sftp;
       final container = makeContainer(

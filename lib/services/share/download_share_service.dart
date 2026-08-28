@@ -18,10 +18,7 @@ import 'package:share_plus/share_plus.dart';
 /// clock / notificationService 注入前例に倣う（テスト二重なしではプラグイン呼び出しの
 /// ガード・フォールバックを検証できないため）。
 class DownloadShareService {
-  const DownloadShareService({
-    this.isAndroidOverride,
-    this.shareOverride,
-  });
+  const DownloadShareService({this.isAndroidOverride, this.shareOverride});
 
   /// テスト注入用の Android 判定（null なら `Platform.isAndroid`）。
   final bool? isAndroidOverride;

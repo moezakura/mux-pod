@@ -253,33 +253,36 @@ void main() {
       expect(sftp.closeCalls, 0);
     });
 
-    test('ストリーム throw: rethrow + 部分削除 + closeCalls==0 + ファイル closeCalls==1', () async {
-      final sftp = _TestSftpClient(
-        contentsByPath: {'/remote/data.bin': content300()},
-        emitChunkSize: 100,
-        beforeEmit: (i) async {
-          // 2 チャンク目 emit 前にストリームを失敗させる。
-          if (i == 1) throw SftpError('remote read failed');
-        },
-      );
-      final localPath = '${tmp.path}/data.bin';
+    test(
+      'ストリーム throw: rethrow + 部分削除 + closeCalls==0 + ファイル closeCalls==1',
+      () async {
+        final sftp = _TestSftpClient(
+          contentsByPath: {'/remote/data.bin': content300()},
+          emitChunkSize: 100,
+          beforeEmit: (i) async {
+            // 2 チャンク目 emit 前にストリームを失敗させる。
+            if (i == 1) throw SftpError('remote read failed');
+          },
+        );
+        final localPath = '${tmp.path}/data.bin';
 
-      await expectLater(
-        SftpDownloadService().download(
-          sftp: sftp,
-          remotePath: '/remote/data.bin',
-          localPath: localPath,
-          cancellation: TransferCancelToken(),
-        ),
-        throwsA(isA<SftpError>()),
-      );
+        await expectLater(
+          SftpDownloadService().download(
+            sftp: sftp,
+            remotePath: '/remote/data.bin',
+            localPath: localPath,
+            cancellation: TransferCancelToken(),
+          ),
+          throwsA(isA<SftpError>()),
+        );
 
-      // 1 チャンク目（100B）まで書込済みの部分ファイルは削除される。
-      expect(File(localPath).existsSync(), isFalse);
-      expect(sftp.closeCalls, 0);
-      expect(sftp.lastOpened, isNotNull);
-      expect(sftp.lastOpened!.closeCalls, 1);
-    });
+        // 1 チャンク目（100B）まで書込済みの部分ファイルは削除される。
+        expect(File(localPath).existsSync(), isFalse);
+        expect(sftp.closeCalls, 0);
+        expect(sftp.lastOpened, isNotNull);
+        expect(sftp.lastOpened!.closeCalls, 1);
+      },
+    );
 
     test('書込 I/O エラー（ディスクフル相当）: rethrow + 残骸なし', () async {
       final sftp = _TestSftpClient(
@@ -382,25 +385,28 @@ void main() {
       expect(sftp.closeCalls, 0);
     });
 
-    test('finally の close 失敗でも rethrow 元の例外（書込 I/O エラー）が維持される（LOW#1）', () async {
-      final sftp = _CloseFailingSftp(
-        contentsByPath: {'/remote/data.bin': content300()},
-      );
-      // 存在しない親ディレクトリ配下 → 書込 I/O エラー（FileSystemException）。
-      final localPath = '${tmp.path}/missing_dir/data.bin';
+    test(
+      'finally の close 失敗でも rethrow 元の例外（書込 I/O エラー）が維持される（LOW#1）',
+      () async {
+        final sftp = _CloseFailingSftp(
+          contentsByPath: {'/remote/data.bin': content300()},
+        );
+        // 存在しない親ディレクトリ配下 → 書込 I/O エラー（FileSystemException）。
+        final localPath = '${tmp.path}/missing_dir/data.bin';
 
-      // finally の close() が throw しても、rethrow 元は FileSystemException のまま。
-      await expectLater(
-        SftpDownloadService().download(
-          sftp: sftp,
-          remotePath: '/remote/data.bin',
-          localPath: localPath,
-          cancellation: TransferCancelToken(),
-        ),
-        throwsA(isA<FileSystemException>()),
-      );
-      expect(sftp.closeCalls, 0);
-    });
+        // finally の close() が throw しても、rethrow 元は FileSystemException のまま。
+        await expectLater(
+          SftpDownloadService().download(
+            sftp: sftp,
+            remotePath: '/remote/data.bin',
+            localPath: localPath,
+            cancellation: TransferCancelToken(),
+          ),
+          throwsA(isA<FileSystemException>()),
+        );
+        expect(sftp.closeCalls, 0);
+      },
+    );
   });
 
   group('SftpDownloadService.sanitizeLocalName', () {
@@ -419,10 +425,7 @@ void main() {
     });
 
     test('非 ASCII 名は保持される（サーバー向け sanitizeFilename は流用しない）', () {
-      expect(
-        SftpDownloadService.sanitizeLocalName('/remote/音楽.mp3'),
-        '音楽.mp3',
-      );
+      expect(SftpDownloadService.sanitizeLocalName('/remote/音楽.mp3'), '音楽.mp3');
     });
 
     test('危険文字（\\・制御文字）を除去する', () {
@@ -431,10 +434,7 @@ void main() {
         SftpDownloadService.sanitizeLocalName('name\u0000ctrl.txt'),
         'namectrl.txt',
       );
-      expect(
-        SftpDownloadService.sanitizeLocalName('tab\u0009.txt'),
-        'tab.txt',
-      );
+      expect(SftpDownloadService.sanitizeLocalName('tab\u0009.txt'), 'tab.txt');
     });
 
     test('空・.・.. は download_<timestamp> に補完される（throw しない）', () {

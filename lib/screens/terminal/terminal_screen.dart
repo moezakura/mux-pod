@@ -7162,7 +7162,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 表示遷移のみここで行う（phase 遷移時のみ発火・進捗 publish では発火しない）。
   void _ensureDownloadListener() {
     if (_downloadSub != null) return;
-    _downloadSub = ref.listenManual<DownloadState>(downloadProvider, (prev, next) {
+    _downloadSub = ref.listenManual<DownloadState>(downloadProvider, (
+      prev,
+      next,
+    ) {
       if (!mounted || _isDisposed) return;
       final display = downloadSnackBarDisplay(context.l10n, next, prev?.phase);
       if (display == null) return; // 進捗 publish・idle 復帰では発火しない

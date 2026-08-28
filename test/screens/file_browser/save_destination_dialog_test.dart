@@ -217,7 +217,9 @@ void main() {
       expect(find.text('New folder'), findsOneWidget);
     });
 
-    testWidgets('サブフォルダ名が「..」の場合はエラーで確定しない（親ディレクトリ解決の防止・LOW#2）', (tester) async {
+    testWidgets('サブフォルダ名が「..」の場合はエラーで確定しない（親ディレクトリ解決の防止・LOW#2）', (
+      tester,
+    ) async {
       final container = await makeContainer();
       await pumpDialog(tester, container, appDocs: appDocs);
 

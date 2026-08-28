@@ -53,11 +53,8 @@ FileEntry _file(String name) => FileEntry(
   size: 300,
 );
 
-FileEntry _dir(String name) => FileEntry(
-  name: name,
-  fullPath: '/home/user/$name',
-  isDirectory: true,
-);
+FileEntry _dir(String name) =>
+    FileEntry(name: name, fullPath: '/home/user/$name', isDirectory: true);
 
 FileEntry _symlink(String name) => FileEntry(
   name: name,
@@ -132,12 +129,13 @@ Future<ProviderContainer> _pumpScreen(
 }
 
 /// AppBar の一括DL IconButton を tooltip で取得する。
-IconButton _batchDownloadButton(WidgetTester tester) => tester.widget<IconButton>(
-  find.ancestor(
-    of: find.byTooltip('Batch download'),
-    matching: find.byType(IconButton),
-  ),
-);
+IconButton _batchDownloadButton(WidgetTester tester) =>
+    tester.widget<IconButton>(
+      find.ancestor(
+        of: find.byTooltip('Batch download'),
+        matching: find.byType(IconButton),
+      ),
+    );
 
 /// 選択モード中のチェックボックス値を一覧で返す（entries の表示順）。
 List<bool?> _checkboxValues(WidgetTester tester) => tester
@@ -168,7 +166,8 @@ void main() {
 
   group('複数選択モード（T15・受入⑧）', () {
     testWidgets('ファイル長押しで選択モード突入・件数表示・チェックボックス表示', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -186,7 +185,8 @@ void main() {
     });
 
     testWidgets('タップでトグル・件数が更新される', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -207,7 +207,8 @@ void main() {
     });
 
     testWidgets('選択 0 件では一括DL ボタンが無効', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -226,7 +227,8 @@ void main() {
     });
 
     testWidgets('解除ボタンで選択モード終了（選択クリア・通常 AppBar へ復帰）', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -245,8 +247,11 @@ void main() {
       expect(find.byTooltip('Sort'), findsOneWidget);
     });
 
-    testWidgets('ディレクトリ長押しは選択モードに入らず従来のアクションメニュー（download 非表示）', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+    testWidgets('ディレクトリ長押しは選択モードに入らず従来のアクションメニュー（download 非表示）', (
+      tester,
+    ) async {
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -263,7 +268,8 @@ void main() {
     });
 
     testWidgets('シンボリックリンク長押しは選択不可・アクションメニュー（download 非表示）', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -322,7 +328,8 @@ void main() {
     });
 
     testWidgets('選択モード中のディレクトリタップはナビゲート + 選択解除', (tester) async {
-      final sshClient = FakeSshClient()..sftpClient = _TestSftpClient(contentsByPath: {});
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
       final container = await _pumpScreen(
         tester,
         sshClient: sshClient,
@@ -335,8 +342,9 @@ void main() {
       await tester.tap(find.text('docs'));
       await tester.pumpAndSettle();
 
-      final notifier = container.read(fileBrowserProvider.notifier)
-          as FakeFileBrowserNotifier;
+      final notifier =
+          container.read(fileBrowserProvider.notifier)
+              as FakeFileBrowserNotifier;
       expect(notifier.navigatedPaths, ['/home/user/docs']);
       expect(find.byType(Checkbox), findsNothing); // 選択解除
     });
