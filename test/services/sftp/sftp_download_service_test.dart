@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_muxpod/services/download/download_destination.dart';
+import 'package:flutter_muxpod/services/download/file_destination.dart';
 import 'package:flutter_muxpod/services/sftp/sftp_download_service.dart';
 import 'package:flutter_muxpod/services/sftp/transfer_progress.dart';
 
@@ -121,6 +123,38 @@ class _CloseFailingSftp extends FakeSftpClient {
   }
 }
 
+/// `add()` が書込 I/O エラー（ディスクフル相当）を throw する [DownloadSink]。
+///
+/// LOW#1（finally の `sftpFile.close()` 失敗が rethrow 元の例外を上書きしない）の
+/// 検証用。sftp.open 成功後に書込で失敗するシナリオを再現する。
+class _ThrowingWriteSink implements DownloadSink {
+  final File file;
+  int addCalls = 0;
+  int deletePartialCalls = 0;
+  bool closed = false;
+
+  _ThrowingWriteSink(this.file);
+
+  @override
+  Future<void> add(Uint8List bytes) async {
+    addCalls++;
+    throw const FileSystemException('disk full');
+  }
+
+  @override
+  Future<void> close() async {
+    closed = true;
+  }
+
+  @override
+  Future<void> deletePartial() async {
+    deletePartialCalls++;
+    try {
+      await file.delete();
+    } catch (_) {}
+  }
+}
+
 void main() {
   late Directory tmp;
 
@@ -139,6 +173,9 @@ void main() {
   Uint8List content300() =>
       Uint8List.fromList(List.generate(300, (i) => i % 256));
 
+  /// 実ディレクトリへ書込む [FileDestination] を tmp 配下に用意する。
+  FileDestination destination() => FileDestination(tmp.path);
+
   group('SftpDownloadService.download', () {
     test('全チャンクを書込・進捗は累積バイトで通知・sftp.close は呼ばれない', () async {
       final content = content300();
@@ -146,22 +183,21 @@ void main() {
         contentsByPath: {'/remote/data.bin': content},
         emitChunkSize: 100,
       );
-      final localPath = '${tmp.path}/data.bin';
       final progress = <(int, int)>[];
+      final dest = destination();
 
       final result = await SftpDownloadService().download(
         sftp: sftp,
         remotePath: '/remote/data.bin',
-        localPath: localPath,
+        openSink: () => dest.open('data.bin', overwrite: false),
         cancellation: TransferCancelToken(),
         onProgress: (done, total) => progress.add((done, total)),
       );
 
       expect(result.remotePath, '/remote/data.bin');
-      expect(result.localPath, localPath);
       expect(result.bytesDownloaded, 300);
       // 端末ファイルへ 300B が逐次書込されている。
-      expect(File(localPath).readAsBytesSync(), content);
+      expect(File('${tmp.path}/data.bin').readAsBytesSync(), content);
       // 100B チャンク × 3 で累積バイト通知（totalBytes は stat 由来の 300）。
       expect(progress, [(100, 300), (200, 300), (300, 300)]);
       // sftp.close() 禁止契約: クライアント close は 0 回。
@@ -181,13 +217,13 @@ void main() {
           if (i == 1) await gate.future;
         },
       );
-      final localPath = '${tmp.path}/data.bin';
       final token = TransferCancelToken();
+      final dest = destination();
 
       final downloadFuture = SftpDownloadService().download(
         sftp: sftp,
         remotePath: '/remote/data.bin',
-        localPath: localPath,
+        openSink: () => dest.open('data.bin', overwrite: false),
         cancellation: token,
         onProgress: (done, total) {
           // 1 チャンク目（100B）書込完了時にキャンセル + ゲート解放。
@@ -203,7 +239,7 @@ void main() {
         throwsA(isA<TransferCancelledException>()),
       );
       // 部分ファイルは「sink.close（flush）→ File.delete」で削除済み。
-      expect(File(localPath).existsSync(), isFalse);
+      expect(File('${tmp.path}/data.bin').existsSync(), isFalse);
       expect(sftp.closeCalls, 0);
       expect(sftp.lastOpened, isNotNull);
       expect(sftp.lastOpened!.closeCalls, 1);
@@ -213,21 +249,21 @@ void main() {
       final sftp = _TestSftpClient(
         contentsByPath: {'/remote/data.bin': content300()},
       );
-      final localPath = '${tmp.path}/never.bin';
       final token = TransferCancelToken()..cancel();
+      final dest = destination();
 
       await expectLater(
         SftpDownloadService().download(
           sftp: sftp,
           remotePath: '/remote/data.bin',
-          localPath: localPath,
+          openSink: () => dest.open('never.bin', overwrite: false),
           cancellation: token,
         ),
         throwsA(isA<TransferCancelledException>()),
       );
 
-      // 書込前のトークン検査で空ファイルの残骸を残さない。
-      expect(File(localPath).existsSync(), isFalse);
+      // 書込前のトークン検査で空ファイルの残骸を残さない（deletePartial 済み）。
+      expect(File('${tmp.path}/never.bin').existsSync(), isFalse);
       expect(sftp.lastOpened, isNull); // open は実行されない。
       expect(sftp.closeCalls, 0);
     });
@@ -236,20 +272,20 @@ void main() {
       final sftp = _OpenFailingSftp(
         contentsByPath: {'/remote/data.bin': content300()},
       );
-      final localPath = '${tmp.path}/data.bin';
+      final dest = destination();
 
       await expectLater(
         SftpDownloadService().download(
           sftp: sftp,
           remotePath: '/remote/data.bin',
-          localPath: localPath,
+          openSink: () => dest.open('data.bin', overwrite: false),
           cancellation: TransferCancelToken(),
         ),
         throwsA(isA<SftpStatusError>()),
       );
 
-      // open 前に出来た（可能性のある）空ファイルは部分削除される。
-      expect(File(localPath).existsSync(), isFalse);
+      // openSink で生成された（可能性のある）空ファイルは部分削除される。
+      expect(File('${tmp.path}/data.bin').existsSync(), isFalse);
       expect(sftp.closeCalls, 0);
     });
 
@@ -264,45 +300,49 @@ void main() {
             if (i == 1) throw SftpError('remote read failed');
           },
         );
-        final localPath = '${tmp.path}/data.bin';
+        final dest = destination();
 
         await expectLater(
           SftpDownloadService().download(
             sftp: sftp,
             remotePath: '/remote/data.bin',
-            localPath: localPath,
+            openSink: () => dest.open('data.bin', overwrite: false),
             cancellation: TransferCancelToken(),
           ),
           throwsA(isA<SftpError>()),
         );
 
         // 1 チャンク目（100B）まで書込済みの部分ファイルは削除される。
-        expect(File(localPath).existsSync(), isFalse);
+        expect(File('${tmp.path}/data.bin').existsSync(), isFalse);
         expect(sftp.closeCalls, 0);
         expect(sftp.lastOpened, isNotNull);
         expect(sftp.lastOpened!.closeCalls, 1);
       },
     );
 
-    test('書込 I/O エラー（ディスクフル相当）: rethrow + 残骸なし', () async {
+    test('openSink 失敗（書込 I/O エラー相当）: rethrow + 残骸なし', () async {
       final sftp = _TestSftpClient(
         contentsByPath: {'/remote/data.bin': content300()},
       );
       // 存在しない親ディレクトリ配下を書込先に指定 → FileSystemException（ディスクフル相当）。
-      final localPath = '${tmp.path}/missing_dir/data.bin';
+      // 新 API では書込先のオープンは openSink（FileSink）側で行われ、sftp.open 前に
+      // 失敗するため、sftp.open は実行されない。
+      final dest = FileDestination('${tmp.path}/missing_dir');
 
       await expectLater(
         SftpDownloadService().download(
           sftp: sftp,
           remotePath: '/remote/data.bin',
-          localPath: localPath,
+          openSink: () => dest.open('data.bin', overwrite: false),
           cancellation: TransferCancelToken(),
         ),
         throwsA(isA<FileSystemException>()),
       );
 
-      expect(File(localPath).existsSync(), isFalse);
+      expect(File('${tmp.path}/missing_dir/data.bin').existsSync(), isFalse);
       expect(sftp.closeCalls, 0);
+      // FileSink の書込は遅延オープン（初回 flush で FileSystemException）。
+      // sftp.open は成功済みのため finally でファイルハンドル close が 1 回呼ばれる。
       expect(sftp.lastOpened, isNotNull);
       expect(sftp.lastOpened!.closeCalls, 1);
     });
@@ -315,11 +355,12 @@ void main() {
         failStatFor: {'/remote/unknown.bin'},
       );
       final progress = <(int, int)>[];
+      final dest = destination();
 
       final result = await SftpDownloadService().download(
         sftp: sftp,
         remotePath: '/remote/unknown.bin',
-        localPath: '${tmp.path}/unknown.bin',
+        openSink: () => dest.open('unknown.bin', overwrite: false),
         cancellation: TransferCancelToken(),
         onProgress: (done, total) => progress.add((done, total)),
       );
@@ -336,17 +377,17 @@ void main() {
       final sftp = _TestSftpClient(
         contentsByPath: {'/remote/empty.bin': Uint8List(0)},
       );
-      final localPath = '${tmp.path}/empty.bin';
+      final dest = destination();
 
       final result = await SftpDownloadService().download(
         sftp: sftp,
         remotePath: '/remote/empty.bin',
-        localPath: localPath,
+        openSink: () => dest.open('empty.bin', overwrite: false),
         cancellation: TransferCancelToken(),
       );
 
       expect(result.bytesDownloaded, 0);
-      expect(File(localPath).readAsBytesSync(), isEmpty);
+      expect(File('${tmp.path}/empty.bin').readAsBytesSync(), isEmpty);
       expect(sftp.closeCalls, 0);
       expect(sftp.lastOpened!.closeCalls, 1);
     });
@@ -360,13 +401,13 @@ void main() {
           if (i == 1) await gate.future;
         },
       );
-      final localPath = '${tmp.path}/data.bin';
       final token = TransferCancelToken();
+      final dest = destination();
 
       final downloadFuture = SftpDownloadService().download(
         sftp: sftp,
         remotePath: '/remote/data.bin',
-        localPath: localPath,
+        openSink: () => dest.open('data.bin', overwrite: false),
         cancellation: token,
         onProgress: (done, total) {
           if (done == 100) {
@@ -381,29 +422,33 @@ void main() {
         downloadFuture,
         throwsA(isA<TransferCancelledException>()),
       );
-      expect(File(localPath).existsSync(), isFalse);
+      expect(File('${tmp.path}/data.bin').existsSync(), isFalse);
       expect(sftp.closeCalls, 0);
     });
 
     test(
       'finally の close 失敗でも rethrow 元の例外（書込 I/O エラー）が維持される（LOW#1）',
       () async {
+        // sftp.open 成功後に add() が書き込みエラーを throw する sink を使う。
+        // _CloseFailingSftp により finally の sftpFile.close() も失敗するが、
+        // rethrow 元（FileSystemException）が維持されることを検証する。
+        final sink = _ThrowingWriteSink(File('${tmp.path}/data.bin'));
         final sftp = _CloseFailingSftp(
           contentsByPath: {'/remote/data.bin': content300()},
         );
-        // 存在しない親ディレクトリ配下 → 書込 I/O エラー（FileSystemException）。
-        final localPath = '${tmp.path}/missing_dir/data.bin';
 
-        // finally の close() が throw しても、rethrow 元は FileSystemException のまま。
         await expectLater(
           SftpDownloadService().download(
             sftp: sftp,
             remotePath: '/remote/data.bin',
-            localPath: localPath,
+            openSink: () async => sink,
             cancellation: TransferCancelToken(),
           ),
           throwsA(isA<FileSystemException>()),
         );
+
+        expect(sink.addCalls, 1);
+        expect(sink.deletePartialCalls, 1);
         expect(sftp.closeCalls, 0);
       },
     );

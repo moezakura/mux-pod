@@ -6,11 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/l10n/app_localizations.dart';
+import 'package:flutter_muxpod/providers/batch_destination_picker_provider.dart';
 import 'package:flutter_muxpod/providers/download_provider.dart';
 import 'package:flutter_muxpod/providers/file_browser_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/ssh_provider.dart';
 import 'package:flutter_muxpod/screens/file_browser/file_browser_screen.dart';
+import 'package:flutter_muxpod/services/download/batch_destination_picker.dart';
+import 'package:flutter_muxpod/services/download/download_destination.dart';
+import 'package:flutter_muxpod/services/download/file_destination.dart';
 import 'package:flutter_muxpod/services/sftp/file_entry.dart';
 
 import '../../helpers/fake_file_browser_notifier.dart';
@@ -46,6 +50,22 @@ class _TestSftpClient extends FakeSftpClient {
   }
 }
 
+/// 一括ダウンロードの保存先ピッカー fake（ダウンロード導線の検証用）。
+///
+/// [result]（null は保存先キャンセル）をそのまま返し、pick 呼び出し回数を記録する。
+class FakeBatchDestinationPicker implements BatchDestinationPicker {
+  FakeBatchDestinationPicker({this.result});
+
+  final DownloadDestination? result;
+  int pickCalls = 0;
+
+  @override
+  Future<DownloadDestination?> pick() async {
+    pickCalls++;
+    return result;
+  }
+}
+
 FileEntry _file(String name) => FileEntry(
   name: name,
   fullPath: '/home/user/$name',
@@ -66,15 +86,17 @@ FileEntry _symlink(String name) => FileEntry(
 
 const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
-/// ダウンロードの実 IO（端末書込）は FakeAsync ゾーンでは完了しないため、
-/// `tester.runAsync` で実イベントループを回しながら完了まで進める。
+/// ダウンロードの実 IO（端末書込・事前スキャンの exists）は FakeAsync ゾーンでは
+/// 完了しないため、`tester.runAsync` で実イベントループを回しながら完了まで進める。
+/// 選択開始（selecting・事前スキャン）〜転送（downloading）までを対象にする。
 Future<void> _settleTransfer(
   WidgetTester tester,
   ProviderContainer container,
 ) async {
   const timeout = Duration(seconds: 10);
   final sw = Stopwatch()..start();
-  while (container.read(downloadProvider).phase == DownloadPhase.downloading) {
+  while (const {DownloadPhase.idle, DownloadPhase.selecting, DownloadPhase.downloading}
+      .contains(container.read(downloadProvider).phase)) {
     if (sw.elapsed > timeout) {
       fail(
         'transfer did not settle: ${container.read(downloadProvider).phase}',
@@ -92,6 +114,7 @@ Future<ProviderContainer> _pumpScreen(
   required FakeSshClient sshClient,
   required List<FileEntry> entries,
   required String appDocs,
+  BatchDestinationPicker? picker,
 }) async {
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_pathProviderChannel, (call) async {
@@ -110,6 +133,8 @@ Future<ProviderContainer> _pumpScreen(
       settingsProvider.overrideWith(
         () => FakeSettingsNotifier(settings: const AppSettings()),
       ),
+      if (picker != null)
+        batchDestinationPickerProvider.overrideWithValue(picker),
     ],
   );
   addTearDown(container.dispose);
@@ -286,6 +311,8 @@ void main() {
     });
 
     testWidgets('一括DL: 選択 2 件 → 保存先 1 回 → 順次転送完了・ファイル 2 件生成', (tester) async {
+      // ピッカーが返す保存先ディレクトリを事前生成（FileDestination 書込先）。
+      Directory('$appDocs/downloads').createSync(recursive: true);
       final content = Uint8List.fromList(List.generate(300, (i) => i % 256));
       final sshClient = FakeSshClient()
         ..sftpClient = _TestSftpClient(
@@ -294,11 +321,15 @@ void main() {
             '/home/user/b.txt': content,
           },
         );
+      final picker = FakeBatchDestinationPicker(
+        result: FileDestination('$appDocs/downloads'),
+      );
       final container = await _pumpScreen(
         tester,
         sshClient: sshClient,
         entries: [_file('a.txt'), _file('b.txt')],
         appDocs: appDocs,
+        picker: picker,
       );
 
       await tester.longPress(find.text('a.txt'));
@@ -307,13 +338,10 @@ void main() {
       await tester.pump();
 
       await tester.tap(find.byTooltip('Batch download'));
-      await tester.pumpAndSettle();
-      // 保存先ダイアログは 1 回だけ（Downloads 直下が既定）。転送中の進捗シートは
-      // 未開始アイテムの不定プログレスがアニメーションするため pumpAndSettle は
-      // 使わず、pump + runAsync（実 IO）で完了まで進める。
-      await tester.tap(find.text('Save'));
       await tester.pump();
-      await tester.pump();
+      // OS フォルダピッカー（FakePicker）は 1 回だけ呼ばれ、転送は直後に開始される。
+      // 転送中の進捗シートは未開始アイテムの不定プログレスがアニメーションするため
+      // pumpAndSettle は使わず、pump + runAsync（実 IO）で完了まで進める。
       await _settleTransfer(tester, container);
       await tester.pumpAndSettle(); // 進捗シートの自動クローズ後を確定
 
@@ -321,6 +349,8 @@ void main() {
       expect(state.phase, DownloadPhase.completed);
       expect(state.completedCount, 2);
       expect(state.failedCount, 0);
+      // 保存先ピッカーは 1 回だけ（選択 2 件を 1 ディレクトリへ順次書込）。
+      expect(picker.pickCalls, 1);
       expect(File('$appDocs/downloads/a.txt').existsSync(), isTrue);
       expect(File('$appDocs/downloads/b.txt').existsSync(), isTrue);
       // SftpClient.close() は呼ばれない（チャネル枯渇防止・closeCalls==0）

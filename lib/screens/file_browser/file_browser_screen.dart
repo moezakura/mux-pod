@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../providers/batch_destination_picker_provider.dart';
 import '../../providers/file_browser_provider.dart';
 import '../../providers/download_provider.dart';
 import '../../l10n/l10n_ext.dart';
@@ -14,7 +15,6 @@ import '../../widgets/dialogs/overwrite_confirm_dialog.dart';
 import 'widgets/file_action_menu.dart';
 import 'widgets/file_list_tile.dart';
 import 'widgets/path_bar.dart';
-import 'widgets/save_destination_dialog.dart';
 import 'widgets/transfer_progress_sheet.dart';
 
 /// SFTPファイルブラウザ画面
@@ -64,8 +64,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       if (prev?.phase == next.phase) return;
       switch (next.phase) {
         case DownloadPhase.awaitingOverwrite:
+          // 一括導線のみ到達（単一は OS Save-As 側で上書き確認するため不要）。
           _handleAwaitingOverwrite();
         case DownloadPhase.downloading:
+        case DownloadPhase.exporting:
+          // 転送中（一括）／Save-As 待ち（単一）の間は進捗シートを表示する。
           _showDownloadProgressSheet();
         default:
           break;
@@ -435,9 +438,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   Future<void> _handleBatchDownload() async {
     final entries = _selectedEntries.toList();
     if (entries.isEmpty) return;
-    final dir = await showSaveDestinationDialog(context, ref);
-    if (dir == null || !mounted) return; // 保存先キャンセル → idle 維持
-    await ref.read(downloadProvider.notifier).startDownloads(entries, dir);
+    final dest = await ref.read(batchDestinationPickerProvider).pick();
+    if (dest == null || !mounted) return; // 保存先キャンセル → idle 維持
+    await ref.read(downloadProvider.notifier).startDownloads(entries, dest);
   }
 
   Future<void> _showActionMenu(BuildContext context, FileEntry entry) async {
@@ -467,10 +470,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     List<FileEntry> entries,
   ) async {
     if (entries.isEmpty) return;
-    final dir = await showSaveDestinationDialog(context, ref);
-    if (dir == null || !mounted) return; // 保存先キャンセル → idle 維持
-
-    await ref.read(downloadProvider.notifier).startDownloads(entries, dir);
+    // 単一ダウンロード: Tmp ダウンロード → exporting（OS Save-As）→ completed/cancelled。
+    // 保存先選択は OS ダイアログ側（T5 の基盤 SaveAsExporter）が担うため直接呼び出す。
+    await ref
+        .read(downloadProvider.notifier)
+        .startSingleTmpDownload(entries.first);
   }
 
   /// awaitingOverwrite: 同名衝突の事前スキャン検出を基盤ダイアログで一括確認（🤝#5）。
@@ -501,7 +505,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   ///
   /// - null 戻り値（barrier/back dismiss）＝操作中断 → 呼び出し側でバッチ中断（reset）。
   /// - `applyToAll == true` は残り全衝突へ同じ決定を適用する（基盤契約 C-8）。
-  /// - 決定は `Map<localPath, OverwriteChoice>` で返し、呼び出し側が applyOverwriteDecisions へ渡す。
+  /// - 決定は `Map<name, OverwriteChoice>` で返し、呼び出し側が applyOverwriteDecisions へ渡す。
   Future<Map<String, OverwriteChoice>?> _collectOverwriteDecisions(
     BuildContext context,
   ) async {
@@ -516,10 +520,10 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
         showApplyToAll: true,
       );
       if (result == null) return null; // 操作中断 → バッチ中断
-      decisions[item.localPath] = result.choice;
+      decisions[item.name] = result.choice;
       if (result.applyToAll) {
         for (final rest in remaining) {
-          decisions[rest.localPath] = result.choice;
+          decisions[rest.name] = result.choice;
         }
         break;
       }

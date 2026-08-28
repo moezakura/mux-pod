@@ -79,7 +79,11 @@ class _TransferProgressSheet extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      l10n.fileDownload,
+                      // exporting 中（単一 Save-As 待ち）は見出しを差し替える
+                      // （fileDownloadExporting キーの実使用・M3）。
+                      state.phase == DownloadPhase.exporting
+                          ? l10n.fileDownloadExporting
+                          : l10n.fileDownload,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
