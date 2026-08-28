@@ -244,11 +244,7 @@ class SftpMarkdownImage extends ConsumerStatefulWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: DesignColors.textMuted,
-            ),
+            Icon(icon, size: 32, color: DesignColors.textMuted),
             if (label != null && label.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

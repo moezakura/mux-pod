@@ -176,10 +176,7 @@ class MarkdownPreviewNotifier extends Notifier<MarkdownPreviewState> {
     _connectionSub = client.connectionStateStream.listen((connState) {
       if (connState == SshConnectionState.disconnected ||
           connState == SshConnectionState.error) {
-        state = state.copyWith(
-          error: lookupL10n().mdSshLost,
-          isLoading: false,
-        );
+        state = state.copyWith(error: lookupL10n().mdSshLost, isLoading: false);
       }
     });
   }

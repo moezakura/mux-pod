@@ -74,10 +74,9 @@ class _MarkdownPreviewScreenState extends ConsumerState<MarkdownPreviewScreen> {
   }
 
   void _reload() {
-    ref.read(markdownPreviewProvider.notifier).load(
-      connectionId: widget.connectionId,
-      entry: widget.entry,
-    );
+    ref
+        .read(markdownPreviewProvider.notifier)
+        .load(connectionId: widget.connectionId, entry: widget.entry);
   }
 
   /// トグル時に現在ビューのスクロール比率を他ビューへ適用する（合意#5）。
@@ -426,9 +425,8 @@ class _MarkdownPreviewScreenState extends ConsumerState<MarkdownPreviewScreen> {
       case MarkdownImageResolvedKind.network:
         return Image.network(
           resolution.networkUri!.toString(),
-          loadingBuilder: (context, child, progress) => progress == null
-              ? child
-              : const SizedBox(width: 120, height: 60),
+          loadingBuilder: (context, child, progress) =>
+              progress == null ? child : const SizedBox(width: 120, height: 60),
           errorBuilder: (context, error, stackTrace) =>
               SftpMarkdownImage.placeholder(
                 alt: alt,
@@ -519,15 +517,11 @@ class MarkdownCodeBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final baseStyle = AppTheme.monoTextStyle.copyWith(
       fontSize: 13,
-      color: isDark
-          ? DesignColors.textPrimary
-          : DesignColors.textPrimaryLight,
+      color: isDark ? DesignColors.textPrimary : DesignColors.textPrimaryLight,
     );
-    final span = MarkdownHighlighter(isDark: isDark).highlight(
-      code,
-      language,
-      baseStyle: baseStyle,
-    );
+    final span = MarkdownHighlighter(
+      isDark: isDark,
+    ).highlight(code, language, baseStyle: baseStyle);
     return Padding(
       padding: const EdgeInsets.all(8),
       child: SingleChildScrollView(
