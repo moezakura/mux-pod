@@ -14,7 +14,7 @@ import 'settings_search_item.dart';
 
 /// 検索インデックス。
 ///
-/// 全36項目（Display 10 / Behavior 13 / Connection 10 / About 3）の descriptor と、
+/// 全37項目（Display 10 / Behavior 13 / Connection 11 / About 3）の descriptor と、
 /// **en と ja の両ロケール**の [AppLocalizations] を固定的に保持する（M-2）。
 /// `language` 値（'system'/'ja'/'en'）によらず、エン・ジャのラベル集合を
 /// 常時並置するため、言語横断検索（en 表示中の「フォント」、ja 表示中の

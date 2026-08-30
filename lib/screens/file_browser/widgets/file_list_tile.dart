@@ -10,12 +10,24 @@ class FileListTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onLongPress;
 
+  /// 複数選択モード中か（選択モード中のみチェックボックスを表示）。
+  final bool selectionMode;
+
+  /// 選択済みか（選択モード中のハイライト+チェック表示）。
+  final bool selected;
+
   const FileListTile({
     super.key,
     required this.entry,
     required this.onTap,
     required this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
   });
+
+  /// 選択可能（ダウンロード対象＝ファイルのみ・シンボリックリンク除外。
+  /// FileActionMenu の download 表示条件と同一）。
+  bool get _selectable => !entry.isDirectory && !entry.isSymlink;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +40,10 @@ class FileListTile extends StatelessWidget {
         : DesignColors.textMutedLight;
 
     return ListTile(
+      selected: selectionMode && selected,
+      selectedTileColor: Theme.of(
+        context,
+      ).colorScheme.primary.withValues(alpha: 0.08),
       leading: _buildIcon(isDark),
       title: Text(
         entry.name,
@@ -40,13 +56,23 @@ class FileListTile extends StatelessWidget {
         maxLines: 1,
       ),
       subtitle: _buildSubtitle(subtitleColor),
-      trailing: entry.isDirectory
-          ? Icon(Icons.chevron_right, color: subtitleColor, size: 20)
-          : null,
+      trailing: _buildTrailing(subtitleColor),
       onTap: onTap,
       onLongPress: onLongPress,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
+  }
+
+  /// trailing を組み立てる。選択モード中は選択可能ファイルのみチェックボックスを
+  /// 表示（Checkbox はタップを吸収するためトグルは [onTap] へ委譲し、二重トグルを
+  /// 防ぐ）。ディレクトリは従来どおり chevron。
+  Widget? _buildTrailing(Color subtitleColor) {
+    if (selectionMode && _selectable) {
+      return Checkbox(value: selected, onChanged: (_) => onTap());
+    }
+    return entry.isDirectory
+        ? Icon(Icons.chevron_right, color: subtitleColor, size: 20)
+        : null;
   }
 
   Widget _buildIcon(bool isDark) {

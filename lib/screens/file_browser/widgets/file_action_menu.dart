@@ -5,7 +5,7 @@ import '../../../services/sftp/file_entry.dart';
 import '../../../theme/design_colors.dart';
 
 /// ファイル/ディレクトリのアクションメニュー
-enum FileAction { open, rename, delete }
+enum FileAction { open, download, rename, delete }
 
 /// アクションメニューを表示するBottomSheet
 class FileActionMenu {
@@ -102,6 +102,15 @@ class _FileActionMenuContent extends StatelessWidget {
                 icon: Icons.folder_open,
                 label: context.l10n.fileOpen,
                 action: FileAction.open,
+                textColor: textColor,
+              ),
+            // ダウンロードはファイルのみ（ディレクトリ・シンボリックリンクは除外）
+            if (!entry.isDirectory && !entry.isSymlink)
+              _buildActionTile(
+                context,
+                icon: Icons.download,
+                label: context.l10n.fileDownload,
+                action: FileAction.download,
                 textColor: textColor,
               ),
             _buildActionTile(

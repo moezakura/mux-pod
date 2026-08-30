@@ -65,6 +65,9 @@ dependencies:
   path_provider: ^2.1.6
   flutter_localizations:
     sdk: flutter
+  saf_util: ^3.1.0
+  saf_stream: ^4.0.1
+  flutter_file_dialog: ^3.3.2
 
 dev_dependencies:
   flutter_test:

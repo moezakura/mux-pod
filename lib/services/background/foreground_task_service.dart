@@ -4,8 +4,26 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../../l10n/app_localizations.dart';
 
+/// 転送（ダウンロード）通知の更新窓口。
+///
+/// [DownloadNotifier]（lib/providers/download_provider.dart）が利用し、テストでは
+/// 差し替え可能にするための抽象（テスト二重: fake_ssh_foreground_task_service.dart）。
+abstract class TransferNotificationService {
+  /// 転送進捗 / 完了 / 失敗 / キャンセルの通知テキストを更新する（テキスト更新のみ）。
+  /// [title] / [text] が null の項目は「未更新」扱い。
+  /// サービス未起動・更新失敗（`ServiceNotStartedException` 等）は no-op（ベストエフォート）。
+  Future<void> updateTransferNotification({String? title, String? text});
+
+  /// サービス停止。
+  ///
+  /// **DownloadNotifier は絶対に呼ばない**（転送中は SSH 維持用サービスを停止しない）。
+  /// SSH 切断時の停止は既存の ssh_provider 経路のみ。インターフェースに含めるのは
+  /// 「転送中に stopService されない」ことを回帰テストで機械担保するための観測点。
+  Future<void> stopService();
+}
+
 /// SSH接続をバックグラウンドで維持するためのForeground Serviceを管理
-class SshForegroundTaskService {
+class SshForegroundTaskService implements TransferNotificationService {
   static final SshForegroundTaskService _instance =
       SshForegroundTaskService._internal();
   factory SshForegroundTaskService() => _instance;
@@ -123,7 +141,28 @@ class SshForegroundTaskService {
     );
   }
 
+  /// 転送（ダウンロード）の通知テキストを更新する（[TransferNotificationService]）。
+  ///
+  /// 進捗 / 完了サマリ / 失敗理由 / キャンセルのテキストのみを更新する
+  /// （flutter_foreground_task 8.17.0 の `updateService` はテキスト更新のみで
+  /// 進捗バー API は無い）。`_isRunning` ガードでサービス未起動は no-op、
+  /// `ServiceNotStartedException`（停止競合等）は握りつぶして no-op にする
+  /// （転送自体を不成立にしない・ベストエフォート）。
+  @override
+  Future<void> updateTransferNotification({String? title, String? text}) async {
+    if (!Platform.isAndroid || !_isRunning) return;
+    try {
+      await FlutterForegroundTask.updateService(
+        notificationTitle: title,
+        notificationText: text,
+      );
+    } on ServiceNotStartedException {
+      // サービス未起動（停止競合）は握りつぶし no-op。
+    }
+  }
+
   /// SSH切断時にForeground Serviceを停止
+  @override
   Future<void> stopService() async {
     if (!Platform.isAndroid || !_isRunning) return;
 

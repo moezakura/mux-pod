@@ -173,9 +173,22 @@ class FakeSftpFile extends SftpFile {
   /// `close()` が呼ばれた回数（ファイルハンドル close 正常の検証用）。
   int closeCalls = 0;
 
-  FakeSftpFile(SftpClient client, Uint8List content, {this.size})
-    : _content = content,
-      super(client, Uint8List(0));
+  /// #40 テスト拡張: チャンク分割 emit サイズ（read 呼び出しの [emitChunkSize] で上書き可能）。
+  /// 未指定（null）なら従来どおり単発チャンク emit（基盤テスト互換）。
+  final int? emitChunkSize;
+
+  /// #40 テスト拡張: 各チャンク emit 前に await するフック（read 呼び出しの [beforeEmit] で上書き可能）。
+  /// 戻り Future が完了するまでそのチャンクは emit されない（キャンセル境界テスト用）。
+  final Future<void> Function(int chunkIndex)? beforeEmit;
+
+  FakeSftpFile(
+    SftpClient client,
+    Uint8List content, {
+    this.size,
+    this.emitChunkSize,
+    this.beforeEmit,
+  }) : _content = content,
+       super(client, Uint8List(0));
 
   /// 現在の内容（読取専用）。テスト用アクセサ。
   Uint8List get content => _content;
@@ -187,14 +200,40 @@ class FakeSftpFile extends SftpFile {
     void Function(int bytesRead)? onProgress,
     int chunkSize = 64 * 1024,
     int maxPendingRequests = 128,
+    // #40 テスト拡張: 指定時はこのサイズでチャンク分割 emit する。
+    // 未指定（null・0 以下）ならインスタンス既定値（未設定＝単発チャンク）に従う。
+    int? emitChunkSize,
+    // #40 テスト拡張: 各チャンク emit 前に await するフック。
+    // 戻り Future が完了するまでそのチャンクは emit されない（キャンセル境界テスト用）。
+    Future<void> Function(int chunkIndex)? beforeEmit,
   }) async* {
     final start = offset.clamp(0, _content.length);
     final end = length == null
         ? _content.length
         : (start + length).clamp(0, _content.length);
     final slice = Uint8List.sublistView(_content, start, end);
-    onProgress?.call(slice.length);
-    yield slice;
+
+    // チャンク列を構築する（既定＝単発・拡張時＝emitChunkSize 分割）。
+    final effectiveEmit = emitChunkSize ?? this.emitChunkSize;
+    final effectiveBeforeEmit = beforeEmit ?? this.beforeEmit;
+    final chunks = <Uint8List>[];
+    if (effectiveEmit != null && effectiveEmit > 0) {
+      for (var from = 0; from < slice.length; from += effectiveEmit) {
+        var to = from + effectiveEmit;
+        if (to > slice.length) to = slice.length;
+        chunks.add(Uint8List.sublistView(slice, from, to));
+      }
+    } else {
+      chunks.add(slice);
+    }
+
+    var done = 0;
+    for (var i = 0; i < chunks.length; i++) {
+      await effectiveBeforeEmit?.call(i);
+      done += chunks[i].length;
+      onProgress?.call(done);
+      yield chunks[i];
+    }
   }
 
   @override
