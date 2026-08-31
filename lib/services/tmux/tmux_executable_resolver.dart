@@ -109,20 +109,27 @@ class TmuxExecutableResolver {
   }
 
   // inventory: SSH-LIFE-006
-  /// [command] 内の `tmux` コマンドを解決済み絶対パスに置換する。
+  /// [command] 内の `tmux` 起動を解決済み絶対パス + `-u` に置換する。
   ///
   /// ユーザーが明示パスを指定していればそれを優先し、検出失敗時も
   /// そのパスをそのまま使用して bare `tmux` への勝手な fallback を防ぐ。
   /// 未指定時のみ bare `tmux` または自動検出したパスを使用する。
   /// 挿入するパスは [shQuote] 済みのため、ユーザ入力によるシェルインジェクション
   /// を防ぐ。
+  ///
+  /// `-u` は必須。tmux クライアントが UTF-8 モードになるのは `$TMUX` /
+  /// `LC_ALL` / `LC_CTYPE` / `LANG` がそう言っているときだけで、SSH の
+  /// コマンドチャネルはそのどれも運ばない。UTF-8 でないクライアントに対し、
+  /// tmux は `-F` と `display-message` の出力を `utf8_sanitize()` に通し、
+  /// `0x20..0x7e` の外のバイトをすべて `_` に書き換える。セッション名
+  /// `プロジェクト` は `______` として届き、その名前で attach しても一致しない。
+  /// 既に `-u` が付いている起動には二重に付けない。
   String resolve(String command) {
     final bin = tmuxBin;
-    if (bin == 'tmux') return command;
-    final quoted = shQuote(bin);
+    final invocation = bin == 'tmux' ? 'tmux' : shQuote(bin);
     return command.replaceAllMapped(
-      RegExp(r'(^|;\s*)tmux\b'),
-      (m) => '${m[1]}$quoted',
+      RegExp(r'(^|;\s*)tmux\b(?!\s+-u\b)'),
+      (m) => '${m[1]}$invocation -u',
     );
   }
 
