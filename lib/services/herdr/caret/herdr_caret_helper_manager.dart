@@ -316,7 +316,9 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
 
     // 4. リモート cache base を env から取得
     final baseResult = await _exec(
-      'printf %s\\n "\${XDG_CACHE_HOME:-\$HOME/.cache}"',
+      // m1 修正: `\n` はシェルの非クォート部でエスケープ除去され `n` になる
+      // ため、フォーマットをクォートする（実シェル検証済み）。
+      "printf '%s\\n' \"\${XDG_CACHE_HOME:-\$HOME/.cache}\"",
       timeout: timeout,
     );
     _requireExitCodeZero(baseResult, 'cache base', HerdrCaretHelperFailure.connectFailed);

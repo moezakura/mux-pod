@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -1592,6 +1593,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   HerdrStatus _readHerdrStatus() =>
       _herdrCaretStatus ?? const HerdrStatus();
 
+  /// caret 構成まわりの状態分類ログ（Phase 6。理由文字列のみ・機密なし）。
+  void _logCaretState(String state, String reason) {
+    if (kDebugMode) {
+      debugPrint('[herdr-caret] $state: $reason');
+    }
+  }
+
   /// `herdr status --json` を取得して [_herdrCaretStatus] へ memoize する。
   ///
   /// [HerdrPreflight] とは違い protocol 検証をしない（caret helper は 17/20
@@ -1603,6 +1611,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _herdrCaretStatus = status;
     } catch (_) {
       // status 取得失敗は caret 無効のまま継続（表示・入力を止めない）。
+      _logCaretState('unsupported', 'status fetch failed');
     }
   }
 
@@ -1630,6 +1639,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     try {
       manifest = await HerdrCaretHelperManifest.load();
     } catch (_) {
+      _logCaretState('unsupported', 'manifest load failed');
       return; // manifest 読込失敗は caret 無しで続行。
     }
     if (_isDisposed) return;
