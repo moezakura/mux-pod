@@ -1590,8 +1590,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 未取得（null）は既定値（serverProtocol 0 = 非対応）を返し、caret は
   /// no-op になる。取得は [_refreshHerdrStatus] が best-effort で行う
   /// （失敗しても通常表示・入力を止めない）。
-  HerdrStatus _readHerdrStatus() =>
-      _herdrCaretStatus ?? const HerdrStatus();
+  HerdrStatus _readHerdrStatus() => _herdrCaretStatus ?? const HerdrStatus();
 
   /// caret 構成まわりの状態分類ログ（Phase 6。理由文字列のみ・機密なし）。
   void _logCaretState(String state, String reason) {

@@ -71,10 +71,7 @@ void main() {
         tester,
         find.text('Experimental: Herdr caret position'),
       );
-      expect(
-        find.text('Experimental: Herdr caret position'),
-        findsOneWidget,
-      );
+      expect(find.text('Experimental: Herdr caret position'), findsOneWidget);
     });
 
     testWidgets('experimental Herdr caret position toggle is interactive', (

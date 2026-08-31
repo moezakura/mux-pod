@@ -202,7 +202,10 @@ void main() {
       expect(env.runner.calls, 1);
 
       // adapter 差し替え（SSH 再接続）相当: キャッシュごと作り直す
-      env.cache = HerdrSnapshotCache(() => _MinimalAdapter(), clock: () => env.now);
+      env.cache = HerdrSnapshotCache(
+        () => _MinimalAdapter(),
+        clock: () => env.now,
+      );
 
       gate.complete();
       final s = await future;
@@ -221,7 +224,10 @@ void main() {
 
     test('protocol 18 では runner を呼ばない', () async {
       final env = _ReaderEnv();
-      env.status = const HerdrStatus(serverProtocol: 18, socket: '/tmp/herdr.sock');
+      env.status = const HerdrStatus(
+        serverProtocol: 18,
+        socket: '/tmp/herdr.sock',
+      );
       final s = await env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
       expect(s, isNull);
       expect(env.runner.calls, 0);

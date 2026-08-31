@@ -68,7 +68,8 @@ class DisplaySection extends ConsumerWidget {
           ),
           value: settings.experimentalHerdrCaretPositionEnabled,
           onChanged: (value) {
-            ref.read(settingsProvider.notifier)
+            ref
+                .read(settingsProvider.notifier)
                 .setExperimentalHerdrCaretPositionEnabled(value);
           },
         ),

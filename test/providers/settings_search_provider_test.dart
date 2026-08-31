@@ -213,17 +213,23 @@ void main() {
       expect(hitIds(), contains('clearHostKeys'));
     });
 
-    test('ja 表示中に "caret" で experimentalHerdrCaretPosition がヒット（en ラベル照合）', () async {
-      await setLanguage('ja');
-      await setQuery('caret');
-      expect(hitIds(), contains('experimentalHerdrCaretPosition'));
-    });
+    test(
+      'ja 表示中に "caret" で experimentalHerdrCaretPosition がヒット（en ラベル照合）',
+      () async {
+        await setLanguage('ja');
+        await setQuery('caret');
+        expect(hitIds(), contains('experimentalHerdrCaretPosition'));
+      },
+    );
 
-    test('en 表示中に「実験的」で experimentalHerdrCaretPosition がヒット（ja ラベル照合）', () async {
-      await setLanguage('en');
-      await setQuery('実験的');
-      expect(hitIds(), contains('experimentalHerdrCaretPosition'));
-    });
+    test(
+      'en 表示中に「実験的」で experimentalHerdrCaretPosition がヒット（ja ラベル照合）',
+      () async {
+        await setLanguage('en');
+        await setQuery('実験的');
+        expect(hitIds(), contains('experimentalHerdrCaretPosition'));
+      },
+    );
 
     test("'system'（端末ロケール=テスト en）でも en/ja 両方言語でヒット（M-2）", () async {
       // 初期値 'system' のまま

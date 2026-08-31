@@ -196,10 +196,7 @@ void main() {
         HerdrCaretHelperManager.shellQuote(r"w1:p1'o'"),
         r"'w1:p1'\''o'\'''",
       );
-      expect(
-        HerdrCaretHelperManager.shellQuote('a b'),
-        "'a b'",
-      );
+      expect(HerdrCaretHelperManager.shellQuote('a b'), "'a b'");
     });
   });
 
@@ -238,7 +235,9 @@ void main() {
     test('helper 実行コマンドが shellQuote 済み引数で組み立てられる', () async {
       final env = _Env()..setUpLinux();
       await env.run(paneId: r"w1:p1'o'", cols: 100, rows: 30);
-      final helperCmd = env.ssh.execCommands.firstWhere((c) => c.contains('--pane '));
+      final helperCmd = env.ssh.execCommands.firstWhere(
+        (c) => c.contains('--pane '),
+      );
       expect(helperCmd, contains("--socket '/tmp/herdr-client.sock'"));
       expect(
         helperCmd,
@@ -256,7 +255,10 @@ void main() {
       await env.run(paneId: 'w1:p2');
       expect(env.ssh.execCommands.where((c) => c == 'uname -s'), hasLength(1));
       expect(env.ssh.execCommands.where((c) => c == 'uname -m'), hasLength(1));
-      expect(env.ssh.execCommands.where((c) => c.contains('--pane ')), hasLength(2));
+      expect(
+        env.ssh.execCommands.where((c) => c.contains('--pane ')),
+        hasLength(2),
+      );
       expect(env.ssh.openSftpCalls, 0);
       // helper 実行は memo されず毎回実行される（実行頻度は reader 側の契約）
       expect(env.loadedAssets, hasLength(1));
@@ -276,7 +278,9 @@ void main() {
       expect(env.ssh.execCommands, contains("sha256sum '${env.tempPath}'"));
       // 検証成功後に rename、続いて chmod 0700
       expect(env.sftp.renameCalls, [(env.tempPath, env.remotePath)]);
-      final chmod = env.ssh.execCommands.firstWhere((c) => c.startsWith('chmod '));
+      final chmod = env.ssh.execCommands.firstWhere(
+        (c) => c.startsWith('chmod '),
+      );
       expect(chmod, "chmod 0700 '${env.remotePath}'");
     });
 
@@ -286,13 +290,19 @@ void main() {
       await env.run();
       expect(env.ssh.execCommands.where((c) => c == 'uname -s'), hasLength(1));
       expect(env.ssh.openSftpCalls, 1);
-      expect(env.ssh.execCommands.where((c) => c.contains('--pane ')), hasLength(2));
+      expect(
+        env.ssh.execCommands.where((c) => c.contains('--pane ')),
+        hasLength(2),
+      );
     });
 
     test('chmod が非ゼロ終了なら execFailed', () async {
       final env = _Env()..setUpInstall();
       env.ssh.execExitCodes['chmod'] = 1;
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.execFailed));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.execFailed),
+      );
     });
   });
 
@@ -300,7 +310,10 @@ void main() {
     test('JSON でない出力は invalidOutput で拒否する', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execOutputs['--pane'] = 'hello world';
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.invalidOutput));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.invalidOutput),
+      );
     });
 
     test('出力が 64KB を超える場合は打ち切って返す', () async {
@@ -321,7 +334,10 @@ void main() {
     test('helper が空出力（exit 0）なら invalidOutput で拒否する', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execOutputs['--pane'] = '';
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.invalidOutput));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.invalidOutput),
+      );
     });
   });
 
@@ -347,13 +363,19 @@ void main() {
     test('unsupported: Darwin（非 Linux）は失敗する', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execOutputs['uname -s'] = 'Darwin\n';
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.unsupported));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.unsupported),
+      );
     });
 
     test('unsupported: 未知 arch は失敗する', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execOutputs['uname -m'] = 'mips64\n';
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.unsupported));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.unsupported),
+      );
     });
 
     test('invalidOutput: pane ID の書式不正は実行前に失敗する', () async {
@@ -368,32 +390,46 @@ void main() {
     test('connectFailed: uname -s が非ゼロ終了', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execExitCodes['uname -s'] = 1;
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.connectFailed));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.connectFailed),
+      );
     });
 
     test('connectFailed: uname -m の出力が空', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execOutputs['uname -m'] = '';
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.connectFailed));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.connectFailed),
+      );
     });
 
     test('hashMismatch: bundle のバイト列が manifest と不一致', () async {
-      final env =
-          _Env(loader: (_) async => Uint8List.fromList([9, 9, 9, 9]))
-            ..setUpLinux();
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.hashMismatch));
+      final env = _Env(loader: (_) async => Uint8List.fromList([9, 9, 9, 9]))
+        ..setUpLinux();
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.hashMismatch),
+      );
     });
 
     test('uploadFailed: SFTP セッションが開けない', () async {
       final env = _Env()..setUpInstall();
       env.ssh.failOpenSftp = true;
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.uploadFailed));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.uploadFailed),
+      );
     });
 
     test('hashMismatch: upload 後の sha256/size 再検証が不一致', () async {
       final env = _Env()..setUpInstall();
       env.ssh.execOutputs['.herdr-caret-helper.tmp'] = '0' * 64;
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.hashMismatch));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.hashMismatch),
+      );
       // 不一致時は一時ファイルを削除する
       expect(env.sftp.removeCalls, [env.tempPath]);
     });
@@ -401,7 +437,10 @@ void main() {
     test('execFailed: helper が非ゼロ終了', () async {
       final env = _Env()..setUpLinux();
       env.ssh.execExitCodes['--pane'] = 1;
-      await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.execFailed));
+      await expectLater(
+        env.run(),
+        _failsWith(HerdrCaretHelperFailure.execFailed),
+      );
     });
 
     test('timeout: helper 実行がタイムアウト', () async {

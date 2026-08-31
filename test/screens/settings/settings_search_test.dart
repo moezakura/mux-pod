@@ -77,10 +77,7 @@ void main() {
       await buildSettingsApp(tester);
       await typeQuery(tester, 'caret');
 
-      expect(
-        find.text('Experimental: Herdr caret position'),
-        findsOneWidget,
-      );
+      expect(find.text('Experimental: Herdr caret position'), findsOneWidget);
     });
 
     testWidgets('matches ja labels from a ja locale (フォント)', (tester) async {

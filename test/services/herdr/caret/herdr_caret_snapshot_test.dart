@@ -18,14 +18,13 @@ String helperJson({
   int frameHeight = 24,
   int protocolVersion = 17,
   String paneId = 'w1:p1',
-}) =>
-    jsonEncode({
-      'cursor': cursor,
-      'frameWidth': frameWidth,
-      'frameHeight': frameHeight,
-      'protocolVersion': protocolVersion,
-      'paneId': paneId,
-    });
+}) => jsonEncode({
+  'cursor': cursor,
+  'frameWidth': frameWidth,
+  'frameHeight': frameHeight,
+  'protocolVersion': protocolVersion,
+  'paneId': paneId,
+});
 
 final fixedAt = DateTime(2026, 1, 1, 12, 0, 0);
 
@@ -62,7 +61,9 @@ void main() {
 
     test('visible: false は非表示として扱う', () {
       final snap = HerdrCaretSnapshot.fromHelperJson(
-        helperJson(cursor: const {'x': 1, 'y': 1, 'visible': false, 'shape': 0}),
+        helperJson(
+          cursor: const {'x': 1, 'y': 1, 'visible': false, 'shape': 0},
+        ),
         expectedPaneId: 'w1:p1',
       );
       expect(snap.visible, isFalse);
@@ -86,14 +87,18 @@ void main() {
 
     test('破損 JSON は FormatException', () {
       expect(
-        () => HerdrCaretSnapshot.fromHelperJson('not json', expectedPaneId: 'w1:p1'),
+        () => HerdrCaretSnapshot.fromHelperJson(
+          'not json',
+          expectedPaneId: 'w1:p1',
+        ),
         throwsFormatException,
       );
     });
 
     test('JSON object でないものは FormatException', () {
       expect(
-        () => HerdrCaretSnapshot.fromHelperJson('[1,2]', expectedPaneId: 'w1:p1'),
+        () =>
+            HerdrCaretSnapshot.fromHelperJson('[1,2]', expectedPaneId: 'w1:p1'),
         throwsFormatException,
       );
     });
@@ -104,21 +109,42 @@ void main() {
           helperJson(cursor: 5),
           expectedPaneId: 'w1:p1',
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('cursor'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('cursor'),
+          ),
+        ),
       );
     });
 
     test('範囲外座標（u16 超）は FormatException', () {
       expect(
         () => HerdrCaretSnapshot.fromHelperJson(
-          helperJson(cursor: const {'x': kHerdrCaretU16Max + 1, 'y': 0, 'visible': true, 'shape': 0}),
+          helperJson(
+            cursor: const {
+              'x': kHerdrCaretU16Max + 1,
+              'y': 0,
+              'visible': true,
+              'shape': 0,
+            },
+          ),
           expectedPaneId: 'w1:p1',
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('x'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('x'),
+          ),
+        ),
       );
       expect(
         () => HerdrCaretSnapshot.fromHelperJson(
-          helperJson(cursor: const {'x': 0, 'y': -1, 'visible': true, 'shape': 0}),
+          helperJson(
+            cursor: const {'x': 0, 'y': -1, 'visible': true, 'shape': 0},
+          ),
           expectedPaneId: 'w1:p1',
         ),
         throwsFormatException,
@@ -127,7 +153,14 @@ void main() {
 
     test('u16 上限ちょうど（0xFFFF）は許容する', () {
       final snap = HerdrCaretSnapshot.fromHelperJson(
-        helperJson(cursor: const {'x': kHerdrCaretU16Max, 'y': kHerdrCaretU16Max, 'visible': true, 'shape': 0}),
+        helperJson(
+          cursor: const {
+            'x': kHerdrCaretU16Max,
+            'y': kHerdrCaretU16Max,
+            'visible': true,
+            'shape': 0,
+          },
+        ),
         expectedPaneId: 'w1:p1',
       );
       expect(snap.x, kHerdrCaretU16Max);
@@ -137,7 +170,14 @@ void main() {
     test('shape が u8 超は FormatException', () {
       expect(
         () => HerdrCaretSnapshot.fromHelperJson(
-          helperJson(cursor: const {'x': 0, 'y': 0, 'visible': true, 'shape': kHerdrCaretShapeMax + 1}),
+          helperJson(
+            cursor: const {
+              'x': 0,
+              'y': 0,
+              'visible': true,
+              'shape': kHerdrCaretShapeMax + 1,
+            },
+          ),
           expectedPaneId: 'w1:p1',
         ),
         throwsFormatException,
@@ -150,7 +190,13 @@ void main() {
           helperJson(protocolVersion: 18),
           expectedPaneId: 'w1:p1',
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('protocolVersion'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('protocolVersion'),
+          ),
+        ),
       );
     });
 
@@ -168,7 +214,13 @@ void main() {
           helperJson(paneId: 'w1:p2'),
           expectedPaneId: 'w1:p1',
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('Pane id mismatch'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('Pane id mismatch'),
+          ),
+        ),
       );
     });
 
@@ -189,7 +241,13 @@ void main() {
           helperJson(paneId: longPaneId),
           expectedPaneId: longPaneId,
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('paneId'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('paneId'),
+          ),
+        ),
       );
     });
 
@@ -200,7 +258,13 @@ void main() {
           helperJson(paneId: ctlPaneId),
           expectedPaneId: ctlPaneId,
         ),
-        throwsA(isA<FormatException>().having((e) => e.message, 'message', contains('paneId'))),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('paneId'),
+          ),
+        ),
       );
     });
   });

@@ -79,7 +79,10 @@ class HerdrPaneFrameReader implements PaneFrameReader {
     PaneCaret? caret;
     final caretReader = _caretReader;
     if (caretReader != null) {
-      final cols = math.max(geometry?.width ?? _kDefaultCaretCols, _kMinCaretCols);
+      final cols = math.max(
+        geometry?.width ?? _kDefaultCaretCols,
+        _kMinCaretCols,
+      );
       final rows = geometry?.height ?? _kDefaultCaretRows;
       try {
         final snapshot = await caretReader.read(

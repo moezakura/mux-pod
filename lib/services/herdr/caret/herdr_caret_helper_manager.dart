@@ -108,7 +108,10 @@ class HerdrCaretInstallation {
   final String remotePath;
   final String sha256;
 
-  const HerdrCaretInstallation({required this.remotePath, required this.sha256});
+  const HerdrCaretInstallation({
+    required this.remotePath,
+    required this.sha256,
+  });
 }
 
 /// snapshot reader（Phase 4）から注入される helper 実行抽象。
@@ -197,8 +200,7 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   }
 
   /// POSIX single-quote エスケープ（`'...'` 内の `'` は `'\''`）。
-  static String shellQuote(String arg) =>
-      "'${arg.replaceAll("'", r"'\''")}'";
+  static String shellQuote(String arg) => "'${arg.replaceAll("'", r"'\''")}'";
 
   @override
   Future<HerdrCaretHelperRunResult> run({
@@ -229,16 +231,10 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
 
     // pane ID は検証を通った値だけを shell 引数へ流す。
     if (!isValidPaneId(paneId)) {
-      _fail(
-        HerdrCaretHelperFailure.invalidOutput,
-        'Invalid pane id format',
-      );
+      _fail(HerdrCaretHelperFailure.invalidOutput, 'Invalid pane id format');
     }
     if (cols < 0 || cols > 0xFFFF || rows < 0 || rows > 0xFFFF) {
-      _fail(
-        HerdrCaretHelperFailure.invalidOutput,
-        'Invalid frame size',
-      );
+      _fail(HerdrCaretHelperFailure.invalidOutput, 'Invalid frame size');
     }
 
     final clientSocket = deriveClientSocket(apiSocket);
@@ -282,13 +278,24 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   Future<HerdrCaretInstallation> _install(Duration timeout) async {
     // 1. uname で platform 判定
     final osResult = await _exec('uname -s', timeout: timeout);
-    _requireExitCodeZero(osResult, 'uname -s', HerdrCaretHelperFailure.connectFailed);
+    _requireExitCodeZero(
+      osResult,
+      'uname -s',
+      HerdrCaretHelperFailure.connectFailed,
+    );
     final os = osResult.stdout.trim();
     final archResult = await _exec('uname -m', timeout: timeout);
-    _requireExitCodeZero(archResult, 'uname -m', HerdrCaretHelperFailure.connectFailed);
+    _requireExitCodeZero(
+      archResult,
+      'uname -m',
+      HerdrCaretHelperFailure.connectFailed,
+    );
     final arch = archResult.stdout.trim();
     if (os.isEmpty || arch.isEmpty) {
-      _fail(HerdrCaretHelperFailure.connectFailed, 'Unable to determine remote platform');
+      _fail(
+        HerdrCaretHelperFailure.connectFailed,
+        'Unable to determine remote platform',
+      );
     }
 
     // 2. manifest から platform 選択
@@ -307,10 +314,17 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     try {
       bytes = await _binaryLoader(platform.asset);
     } catch (e) {
-      _fail(HerdrCaretHelperFailure.uploadFailed, 'Failed to load helper asset from bundle', e);
+      _fail(
+        HerdrCaretHelperFailure.uploadFailed,
+        'Failed to load helper asset from bundle',
+        e,
+      );
     }
     if (!platform.matchesBytes(bytes)) {
-      _fail(HerdrCaretHelperFailure.hashMismatch, 'Bundled helper does not match manifest');
+      _fail(
+        HerdrCaretHelperFailure.hashMismatch,
+        'Bundled helper does not match manifest',
+      );
     }
     final expectedSha = platform.sha256.toLowerCase();
 
@@ -321,17 +335,20 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
       "printf '%s\\n' \"\${XDG_CACHE_HOME:-\$HOME/.cache}\"",
       timeout: timeout,
     );
-    _requireExitCodeZero(baseResult, 'cache base', HerdrCaretHelperFailure.connectFailed);
+    _requireExitCodeZero(
+      baseResult,
+      'cache base',
+      HerdrCaretHelperFailure.connectFailed,
+    );
     final base = baseResult.stdout.trim();
     if (base.isEmpty) {
-      _fail(HerdrCaretHelperFailure.connectFailed, 'Remote cache base is unavailable');
+      _fail(
+        HerdrCaretHelperFailure.connectFailed,
+        'Remote cache base is unavailable',
+      );
     }
 
-    final remoteDir = p.posix.join(
-      base,
-      remoteInstallDir,
-      expectedSha,
-    );
+    final remoteDir = p.posix.join(base, remoteInstallDir, expectedSha);
     final remotePath = p.posix.join(remoteDir, _manifest.helperName);
 
     // 5. 既存ファイルの sha256sum 照合（一致なら upload skip）
@@ -368,7 +385,10 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
       timeout: timeout,
     );
     if (chmodResult.exitCode != null && chmodResult.exitCode != 0) {
-      _fail(HerdrCaretHelperFailure.execFailed, 'Failed to set helper permissions');
+      _fail(
+        HerdrCaretHelperFailure.execFailed,
+        'Failed to set helper permissions',
+      );
     }
 
     _log('${_manifest.helperName}: ready (installed)');
@@ -387,13 +407,21 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     try {
       sftp = await _ssh.openSftp();
     } catch (e) {
-      _fail(HerdrCaretHelperFailure.uploadFailed, 'Failed to open SFTP session', e);
+      _fail(
+        HerdrCaretHelperFailure.uploadFailed,
+        'Failed to open SFTP session',
+        e,
+      );
     }
 
     try {
       await _sftpService.ensureDirectory(sftp, remoteDir);
     } catch (e) {
-      _fail(HerdrCaretHelperFailure.uploadFailed, 'Failed to create remote directory', e);
+      _fail(
+        HerdrCaretHelperFailure.uploadFailed,
+        'Failed to create remote directory',
+        e,
+      );
     }
 
     try {
@@ -413,8 +441,9 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
       'sha256sum ${shellQuote(tempPath)}',
       timeout: timeout,
     );
-    final remoteHash =
-        sumResult.exitCode == 0 ? _parseSha256Output(sumResult.stdout) : null;
+    final remoteHash = sumResult.exitCode == 0
+        ? _parseSha256Output(sumResult.stdout)
+        : null;
     int? remoteSize;
     try {
       remoteSize = (await sftp.stat(tempPath)).size;
@@ -428,13 +457,20 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
       } catch (_) {
         // クリーンアップ失敗は無視
       }
-      _fail(HerdrCaretHelperFailure.hashMismatch, 'Remote helper hash/size mismatch after upload');
+      _fail(
+        HerdrCaretHelperFailure.hashMismatch,
+        'Remote helper hash/size mismatch after upload',
+      );
     }
 
     try {
       await sftp.rename(tempPath, remotePath);
     } catch (e) {
-      _fail(HerdrCaretHelperFailure.uploadFailed, 'Failed to move helper into place', e);
+      _fail(
+        HerdrCaretHelperFailure.uploadFailed,
+        'Failed to move helper into place',
+        e,
+      );
     }
   }
 
@@ -446,8 +482,7 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     if (token == null || token.length != 64) return null;
     for (final unit in token.codeUnits) {
       final isHexDigit =
-          (unit >= 0x30 && unit <= 0x39) ||
-          (unit >= 0x61 && unit <= 0x66);
+          (unit >= 0x30 && unit <= 0x39) || (unit >= 0x61 && unit <= 0x66);
       if (!isHexDigit) return null;
     }
     return token;
@@ -516,7 +551,10 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     final result = await _exec(command, timeout: timeout);
 
     if (result.exitCode != null && result.exitCode != 0) {
-      _fail(HerdrCaretHelperFailure.execFailed, 'Helper exited with ${result.exitCode}');
+      _fail(
+        HerdrCaretHelperFailure.execFailed,
+        'Helper exited with ${result.exitCode}',
+      );
     }
 
     var stdout = result.stdout.trim();
@@ -528,7 +566,10 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
       _fail(HerdrCaretHelperFailure.connectFailed, 'Helper produced no output');
     }
     if (!stdout.startsWith('{') || !stdout.endsWith('}')) {
-      _fail(HerdrCaretHelperFailure.invalidOutput, 'Helper output is not a single JSON line');
+      _fail(
+        HerdrCaretHelperFailure.invalidOutput,
+        'Helper output is not a single JSON line',
+      );
     }
     return stdout;
   }
@@ -540,7 +581,10 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   /// 実行層の失敗（切断・タイムアウト）は [HerdrCaretHelperException] へ
   /// 分類する。コマンド文字列は機密情報（socket / pane / 出力内容）を
   /// 含みうるため、例外メッセージへは含めない。
-  Future<CommandResult> _exec(String command, {required Duration timeout}) async {
+  Future<CommandResult> _exec(
+    String command, {
+    required Duration timeout,
+  }) async {
     try {
       return await _ssh
           .execute(

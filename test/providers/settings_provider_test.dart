@@ -359,9 +359,7 @@ void main() {
       await container.read(settingsProvider.notifier).reload();
 
       expect(
-        container
-            .read(settingsProvider)
-            .experimentalHerdrCaretPositionEnabled,
+        container.read(settingsProvider).experimentalHerdrCaretPositionEnabled,
         isFalse,
       );
       final prefs = await SharedPreferences.getInstance();
@@ -390,9 +388,7 @@ void main() {
         );
         final prefs = await SharedPreferences.getInstance();
         expect(
-          prefs.getBool(
-            'settings_experimental_herdr_caret_position_enabled',
-          ),
+          prefs.getBool('settings_experimental_herdr_caret_position_enabled'),
           isTrue,
         );
       },
@@ -424,9 +420,7 @@ void main() {
     test(
       'copyWith は experimentalHerdrCaretPositionEnabled を指定しない場合他の設定のみ変更する',
       () {
-        const base = AppSettings(
-          experimentalHerdrCaretPositionEnabled: true,
-        );
+        const base = AppSettings(experimentalHerdrCaretPositionEnabled: true);
         final updated = base.copyWith(keepScreenOn: false);
         expect(updated.experimentalHerdrCaretPositionEnabled, isTrue);
         expect(updated.keepScreenOn, isFalse);

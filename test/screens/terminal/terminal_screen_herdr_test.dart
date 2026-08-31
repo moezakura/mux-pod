@@ -2553,15 +2553,11 @@ void main() {
       fontSize: 14.0,
     );
 
-    testWidgets('設定OFF時は caret reader が呼ばれず helper wire も 0 回', (
-      tester,
-    ) async {
+    testWidgets('設定OFF時は caret reader が呼ばれず helper wire も 0 回', (tester) async {
       // 注入フェイクを渡しても、設定 OFF（既定）では呼び出し・副作用とも
       // 一切起きない（enabled ゲート）。production manager（uname/sha256sum/
       // helper 実行）も構築されないため wire 呼び出しは 0 回。
-      final caretReader = _FakeHerdrCaretReader(
-        snapshotOf: (_) => _caretAt(),
-      );
+      final caretReader = _FakeHerdrCaretReader(snapshotOf: (_) => _caretAt());
       final client = await TerminalTestScaffold.pumpTerminalScreen(
         tester,
         connection: _herdrConnection(),
@@ -2576,11 +2572,7 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(
-        caretReader.calls,
-        0,
-        reason: '設定 OFF では caret reader が呼ばれないこと',
-      );
+      expect(caretReader.calls, 0, reason: '設定 OFF では caret reader が呼ばれないこと');
 
       // helper wire（uname / sha256sum / helper 実行 / chmod / status）が
       // 一切実行されないこと（OFF 時の追加副作用ゼロ）。
@@ -2606,12 +2598,8 @@ void main() {
       // scrollToCaret は中央寄せで内容中央付近へ、末尾フォールバック
       // （scrollToBottom）とは明確に異なる位置へスクロールする。
       final caretReader = _FakeHerdrCaretReader(
-        snapshotOf: (_) => _caretAt(
-          x: 5,
-          y: 0,
-          frameWidth: 120,
-          frameHeight: 150,
-        ),
+        snapshotOf: (_) =>
+            _caretAt(x: 5, y: 0, frameWidth: 120, frameHeight: 150),
       );
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
@@ -2662,16 +2650,10 @@ void main() {
       );
 
       // 可視 caret は（blink ON 相で）描画される。
-      expect(
-        await caretSeen(tester),
-        isTrue,
-        reason: '可視 caret が描画されること',
-      );
+      expect(await caretSeen(tester), isTrue, reason: '可視 caret が描画されること');
     });
 
-    testWidgets('visible=false（cursor:null 観測）ではカーソルを描画しない', (
-      tester,
-    ) async {
+    testWidgets('visible=false（cursor:null 観測）ではカーソルを描画しない', (tester) async {
       // visible=false / 位置不明のケース: 従来の cursorX/cursorY（0,0 固定）へ
       // フォールバックせず、MuxPod 側カーソルは描画されない。
       final caretReader = _FakeHerdrCaretReader(
@@ -2705,9 +2687,7 @@ void main() {
       );
     });
 
-    testWidgets('caret 取得失敗時は末尾フォールバック（scrollToBottom）', (
-      tester,
-    ) async {
+    testWidgets('caret 取得失敗時は末尾フォールバック（scrollToBottom）', (tester) async {
       // reader が null（取得失敗・非対応環境）を返す場合は従来どおり末尾。
       // （caret 成功テストと同じ tall fixture / 300 行で末尾へ落ちることを確認）
       final caretReader = _FakeHerdrCaretReader(snapshotOf: (_) => null);
@@ -2752,8 +2732,7 @@ void main() {
     testWidgets('pane 切替後は旧 pane の caret を表示しない', (tester) async {
       // w1:p1 は可視 caret、w1:p2 は取得失敗（null）のフェイク。
       final caretReader = _FakeHerdrCaretReader(
-        snapshotOf: (paneId) =>
-            paneId == 'w1:p1' ? _caretAt(x: 5, y: 0) : null,
+        snapshotOf: (paneId) => paneId == 'w1:p1' ? _caretAt(x: 5, y: 0) : null,
       );
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,

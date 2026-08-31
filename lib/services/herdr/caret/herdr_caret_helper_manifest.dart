@@ -80,8 +80,7 @@ class HerdrCaretHelperPlatform {
   ///
   /// size 不一致または sha256 不一致なら false（一致時のみ true）。
   bool matchesBytes(Uint8List bytes) =>
-      bytes.length == size &&
-      hexSha256(bytes) == sha256.toLowerCase();
+      bytes.length == size && hexSha256(bytes) == sha256.toLowerCase();
 
   @override
   String toString() =>

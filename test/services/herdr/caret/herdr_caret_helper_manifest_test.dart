@@ -22,13 +22,15 @@ HerdrCaretHelperManifest _manifest({List<Map<String, dynamic>>? platforms}) {
     jsonEncode({
       'version': 1,
       'helperName': 'herdr-caret-helper',
-      'platforms': platforms ??
+      'platforms':
+          platforms ??
           [
             {
               'id': 'linux-x86_64',
               'os': 'linux',
               'arch': 'x86_64',
-              'asset': 'assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper',
+              'asset':
+                  'assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper',
               'size': bytes.length,
               'sha256': hexSha256(bytes),
             },
@@ -36,7 +38,8 @@ HerdrCaretHelperManifest _manifest({List<Map<String, dynamic>>? platforms}) {
               'id': 'linux-aarch64',
               'os': 'linux',
               'arch': 'aarch64',
-              'asset': 'assets/herdr-caret-helper/linux-aarch64/herdr-caret-helper',
+              'asset':
+                  'assets/herdr-caret-helper/linux-aarch64/herdr-caret-helper',
               'size': bytes.length,
               'sha256': hexSha256(bytes),
             },
@@ -73,7 +76,10 @@ void main() {
       expect(x86.id, 'linux-x86_64');
       expect(x86.os, 'linux');
       expect(x86.arch, 'x86_64');
-      expect(x86.asset, 'assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper');
+      expect(
+        x86.asset,
+        'assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper',
+      );
       expect(x86.size, _helperBytes().length);
       expect(x86.sha256, hexSha256(_helperBytes()));
     });
@@ -95,7 +101,11 @@ void main() {
     test('version が int でないものは FormatException', () {
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 'one', 'helperName': 'x', 'platforms': [_platform()]}),
+          jsonEncode({
+            'version': 'one',
+            'helperName': 'x',
+            'platforms': [_platform()],
+          }),
         ),
         throwsFormatException,
       );
@@ -104,7 +114,11 @@ void main() {
     test('version 不一致は FormatException（メッセージに期待 version を含む）', () {
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 2, 'helperName': 'x', 'platforms': [_platform()]}),
+          jsonEncode({
+            'version': 2,
+            'helperName': 'x',
+            'platforms': [_platform()],
+          }),
         ),
         throwsA(
           isA<FormatException>().having(
@@ -119,13 +133,20 @@ void main() {
     test('helperName が空・欠落は FormatException', () {
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 1, 'helperName': '', 'platforms': [_platform()]}),
+          jsonEncode({
+            'version': 1,
+            'helperName': '',
+            'platforms': [_platform()],
+          }),
         ),
         throwsFormatException,
       );
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 1, 'platforms': [_platform()]}),
+          jsonEncode({
+            'version': 1,
+            'platforms': [_platform()],
+          }),
         ),
         throwsFormatException,
       );
@@ -134,10 +155,18 @@ void main() {
     test('platforms が空リストは FormatException', () {
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 1, 'helperName': 'x', 'platforms': <Object>[]}),
+          jsonEncode({
+            'version': 1,
+            'helperName': 'x',
+            'platforms': <Object>[],
+          }),
         ),
         throwsA(
-          isA<FormatException>().having((e) => e.message, 'message', contains('no platforms')),
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('no platforms'),
+          ),
         ),
       );
     });
@@ -151,7 +180,11 @@ void main() {
       );
       expect(
         () => HerdrCaretHelperManifest.fromJson(
-          jsonEncode({'version': 1, 'helperName': 'x', 'platforms': 'not-a-list'}),
+          jsonEncode({
+            'version': 1,
+            'helperName': 'x',
+            'platforms': 'not-a-list',
+          }),
         ),
         throwsFormatException,
       );
@@ -164,7 +197,13 @@ void main() {
             'version': 1,
             'helperName': 'x',
             'platforms': [
-              {'id': 'linux-x86_64', 'os': 'linux', 'arch': 'x86_64', 'asset': 'a', 'size': 4},
+              {
+                'id': 'linux-x86_64',
+                'os': 'linux',
+                'arch': 'x86_64',
+                'asset': 'a',
+                'size': 4,
+              },
             ],
           }),
         ),
@@ -241,7 +280,10 @@ void main() {
   group('hexSha256', () {
     test('小文字 hex 64 文字を返す', () {
       final digest = hexSha256(utf8.encode('abc'));
-      expect(digest, 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+      expect(
+        digest,
+        'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+      );
       expect(digest, matches(RegExp(r'^[0-9a-f]{64}$')));
     });
   });
