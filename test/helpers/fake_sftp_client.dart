@@ -236,6 +236,22 @@ class FakeSftpFile extends SftpFile {
     }
   }
 
+  /// [SftpFile.readBytes] の additive override（ユーザー指示・計画の「不要」に優先）。
+  ///
+  /// 基盤の [read] override と同一のスライス意味で、1 つの [Uint8List] に
+  /// まとめて返す: start = `offset.clamp(0, 内容長)`、end = length 指定時
+  /// `(start + length).clamp(0, 内容長)`・未指定時 `内容長`（EOF クランプ）。
+  /// super は呼ばない（dartssh2 の readBytes は read() 経由だが、`.clamp`
+  /// の整数化など挙動を単一箇所で固定するため）。
+  @override
+  Future<Uint8List> readBytes({int? length, int offset = 0}) async {
+    final start = offset.clamp(0, _content.length);
+    final end = length == null
+        ? _content.length
+        : (start + length).clamp(0, _content.length);
+    return Uint8List.sublistView(_content, start, end);
+  }
+
   @override
   Future<SftpFileAttrs> stat() async {
     return SftpFileAttrs(

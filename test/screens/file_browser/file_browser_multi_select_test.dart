@@ -193,6 +193,24 @@ void main() {
   });
 
   group('複数選択モード（T15・受入⑧）', () {
+    testWidgets('通常モードは全エントリの右端に more_vert メニューを表示する', (tester) async {
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
+      await _pumpScreen(
+        tester,
+        sshClient: sshClient,
+        entries: [_dir('docs'), _file('a.txt'), _symlink('lnk')],
+        appDocs: appDocs,
+      );
+
+      expect(find.byIcon(Icons.more_vert), findsNWidgets(3));
+      expect(find.byIcon(Icons.chevron_right), findsNothing);
+      final moreTooltip = MaterialLocalizations.of(
+        tester.element(find.byType(FileBrowserScreen)),
+      ).moreButtonTooltip;
+      expect(find.byTooltip(moreTooltip), findsNWidgets(3));
+    });
+
     testWidgets('ファイル長押しで選択モード突入・件数表示・チェックボックス表示', (tester) async {
       final sshClient = FakeSshClient()
         ..sftpClient = _TestSftpClient(contentsByPath: {});
@@ -232,6 +250,30 @@ void main() {
       await tester.pump();
       expect(find.text('1 selected'), findsOneWidget);
       expect(_checkboxValues(tester), [false, true]);
+    });
+
+    testWidgets('選択モードはファイルのみ Checkbox、directory/symlink は右端操作なし', (
+      tester,
+    ) async {
+      final sshClient = FakeSshClient()
+        ..sftpClient = _TestSftpClient(contentsByPath: {});
+      await _pumpScreen(
+        tester,
+        sshClient: sshClient,
+        entries: [_dir('docs'), _file('a.txt'), _symlink('lnk')],
+        appDocs: appDocs,
+      );
+
+      await tester.longPress(find.text('a.txt'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Checkbox), findsOneWidget);
+      expect(find.byIcon(Icons.more_vert), findsNothing);
+
+      await tester.longPress(find.text('lnk'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(find.text('Rename'), findsNothing);
     });
 
     testWidgets('選択 0 件では一括DL ボタンが無効', (tester) async {

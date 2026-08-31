@@ -9,6 +9,7 @@ class FileListTile extends StatelessWidget {
   final FileEntry entry;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback onMenuPressed;
 
   /// 複数選択モード中か（選択モード中のみチェックボックスを表示）。
   final bool selectionMode;
@@ -21,6 +22,7 @@ class FileListTile extends StatelessWidget {
     required this.entry,
     required this.onTap,
     required this.onLongPress,
+    required this.onMenuPressed,
     this.selectionMode = false,
     this.selected = false,
   });
@@ -56,23 +58,26 @@ class FileListTile extends StatelessWidget {
         maxLines: 1,
       ),
       subtitle: _buildSubtitle(subtitleColor),
-      trailing: _buildTrailing(subtitleColor),
+      trailing: _buildTrailing(context),
       onTap: onTap,
       onLongPress: onLongPress,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
     );
   }
 
-  /// trailing を組み立てる。選択モード中は選択可能ファイルのみチェックボックスを
-  /// 表示（Checkbox はタップを吸収するためトグルは [onTap] へ委譲し、二重トグルを
-  /// 防ぐ）。ディレクトリは従来どおり chevron。
-  Widget? _buildTrailing(Color subtitleColor) {
-    if (selectionMode && _selectable) {
+  /// 通常時は全エントリに単体操作メニューを表示する。選択モード中は
+  /// 選択可能ファイルのみチェックボックスに切り替え、ディレクトリと
+  /// シンボリックリンクには trailing を表示しない。
+  Widget? _buildTrailing(BuildContext context) {
+    if (selectionMode) {
+      if (!_selectable) return null;
       return Checkbox(value: selected, onChanged: (_) => onTap());
     }
-    return entry.isDirectory
-        ? Icon(Icons.chevron_right, color: subtitleColor, size: 20)
-        : null;
+    return IconButton(
+      icon: const Icon(Icons.more_vert),
+      tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+      onPressed: onMenuPressed,
+    );
   }
 
   Widget _buildIcon(bool isDark) {

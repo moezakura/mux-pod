@@ -10,12 +10,14 @@ import '../../providers/download_provider.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../providers/file_browser_provider.dart';
 import '../../providers/file_transfer_provider.dart';
+import '../../providers/markdown_preview_provider.dart';
 import '../../services/sftp/file_entry.dart';
 import '../../services/sftp/overwrite_choice.dart';
 import '../../services/sftp/transfer_progress.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/dialogs/overwrite_confirm_dialog.dart';
 import '../../widgets/file_transfer/transfer_progress_row.dart';
+import 'markdown_preview_screen.dart';
 import 'widgets/file_action_menu.dart';
 import 'widgets/file_list_tile.dart';
 import 'widgets/path_bar.dart';
@@ -578,8 +580,9 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
     );
   }
 
-  /// 一覧行を組み立てる。選択モード中はタップ＝トグル・長押し＝選択追加（ファイル）、
-  /// 通常時はタップ＝既存挙動・長押し＝アクションメニュー。
+  /// 一覧行を組み立てる。選択モード中は選択可能ファイルのタップ／長押しで
+  /// 選択を更新する。通常時はタップで既存挙動、長押しでファイル選択を開始し、
+  /// 右端ボタンから全エントリの単体アクションメニューを開く。
   Widget _buildFileListTile(FileEntry entry) {
     return FileListTile(
       entry: entry,
@@ -588,7 +591,11 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       onTap: () => _selectMode
           ? _handleSelectionTap(entry)
           : _handleEntryTap(context, entry),
-      onLongPress: () => _handleLongPress(context, entry),
+      onLongPress: () {
+        if (_selectMode && !_canSelect(entry)) return;
+        _handleLongPress(context, entry);
+      },
+      onMenuPressed: () => _showActionMenu(context, entry),
     );
   }
 
@@ -597,10 +604,47 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       ref
           .read(fileBrowserProvider.notifier)
           .navigateToDirectory(entry.fullPath);
+    } else if (FileActionMenu.isMarkdown(entry)) {
+      // .md/.markdown タップ = プレビュー遷移（合意#2/#3）。
+      // 遷移前サイズチェック・load は呼ばない（H-3）。
+      _openMarkdownPreview(context, entry);
     } else {
       _showActionMenu(context, entry);
     }
   }
+
+  /// .md / .markdown のプレビュー画面へ遷移する（タップ・メニュー open 共通）。
+  ///
+  /// 遷移前に [maxPreviewBytes]（20MB）超過をチェックし、超過時は警告
+  /// SnackBar のみ表示して遷移しない（合意#1・[MarkdownPreviewScreen] を
+  /// build しないため load も開始されない・H-3）。
+  void _openMarkdownPreview(BuildContext context, FileEntry entry) {
+    final size = entry.size;
+    if (size != null && size > maxPreviewBytes) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${context.l10n.mdFileTooLargeTitle}: '
+            '${context.l10n.mdFileTooLargeMessage(_toMbCeil(size))}',
+          ),
+          backgroundColor: DesignColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MarkdownPreviewScreen(
+          connectionId: widget.connectionId,
+          entry: entry,
+        ),
+      ),
+    );
+  }
+
+  /// バイト数を実サイズの MB に切り上げる（mdFileTooLargeMessage の size 用）。
+  static int _toMbCeil(int bytes) => (bytes / (1024 * 1024)).ceil();
 
   /// 長押し（T15）: 選択可能（ダウンロード対象）ファイルなら複数選択モードへ突入し
   /// そのファイルを選択。ディレクトリ・シンボリックリンクは従来どおりアクションメニュー
@@ -617,6 +661,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
   }
 
   /// 選択モード中のタップ: ファイル → トグル / ディレクトリ → ナビゲート（選択解除）。
+  /// シンボリックリンクは選択・単体操作のどちらも行わない。
   void _handleSelectionTap(FileEntry entry) {
     if (_canSelect(entry)) {
       setState(() {
@@ -624,6 +669,7 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
       });
       return;
     }
+    if (!entry.isDirectory) return;
     _exitSelectionMode();
     ref.read(fileBrowserProvider.notifier).navigateToDirectory(entry.fullPath);
   }
@@ -658,9 +704,17 @@ class _FileBrowserScreenState extends ConsumerState<FileBrowserScreen> {
 
     switch (action) {
       case FileAction.open:
-        ref
-            .read(fileBrowserProvider.notifier)
-            .navigateToDirectory(entry.fullPath);
+        // 合意#2: ディレクトリは従来どおり遷移・.md/.markdown はプレビュー遷移
+        // （タップと同義）・対象外ファイルは何もしない（従来の誤った
+        // navigateToDirectory 呼び出しを除去。メニュー側で open 非表示のため
+        // 通常は到達しない防御的分岐）。
+        if (entry.isDirectory) {
+          ref
+              .read(fileBrowserProvider.notifier)
+              .navigateToDirectory(entry.fullPath);
+        } else if (FileActionMenu.isMarkdown(entry)) {
+          _openMarkdownPreview(context, entry);
+        }
       case FileAction.rename:
         await _showRenameDialog(context, entry);
       case FileAction.delete:

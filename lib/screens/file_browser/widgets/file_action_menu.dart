@@ -9,6 +9,16 @@ enum FileAction { open, download, rename, delete }
 
 /// アクションメニューを表示するBottomSheet
 class FileActionMenu {
+  /// .md / .markdown ファイルかどうか（合意#3）。
+  ///
+  /// [FileEntry.extension] は小文字を返すため、lowercase 変換なしで比較する。
+  /// プレビュー遷移のタップ分岐（file_browser_screen）・メニューの open 表示
+  /// の両方で共用し、判定ロジックを 1 箇所に集約する。
+  static bool isMarkdown(FileEntry entry) {
+    final ext = entry.extension;
+    return ext == 'md' || ext == 'markdown';
+  }
+
   /// アクションメニューを表示し、選択されたアクションを返す
   static Future<FileAction?> show(BuildContext context, FileEntry entry) {
     return showModalBottomSheet<FileAction>(
@@ -96,7 +106,10 @@ class _FileActionMenuContent extends StatelessWidget {
             const SizedBox(height: 4),
 
             // アクション一覧
-            if (entry.isDirectory)
+            // open はディレクトリ・.md/.markdown のみ表示（合意#2: .md の
+            // メニュー open = プレビュー遷移。対象外ファイルは open 非表示 =
+            // ディレクトリ専用化）。rename/delete は全エントリで表示。
+            if (entry.isDirectory || FileActionMenu.isMarkdown(entry))
               _buildActionTile(
                 context,
                 icon: Icons.folder_open,

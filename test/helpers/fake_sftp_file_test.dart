@@ -72,5 +72,37 @@ void main() {
       await file.close();
       expect(file.closeCalls, 2);
     });
+
+    test('readBytes: 全読込（length/offset 未指定）で全内容を返す', () async {
+      final file = FakeSftpFile(
+        FakeSftpClient(contentsByPath: {'/a': Uint8List(0)}),
+        Uint8List.fromList([1, 2, 3, 4, 5]),
+      );
+
+      expect(await file.readBytes(), [1, 2, 3, 4, 5]);
+    });
+
+    test('readBytes: offset/length で部分読み出し', () async {
+      final file = FakeSftpFile(
+        FakeSftpClient(contentsByPath: {'/a': Uint8List(0)}),
+        Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]),
+      );
+
+      expect(await file.readBytes(offset: 2, length: 3), [3, 4, 5]);
+    });
+
+    test('readBytes: EOF を超える offset/length は末尾にクランプ', () async {
+      final file = FakeSftpFile(
+        FakeSftpClient(contentsByPath: {'/a': Uint8List(0)}),
+        Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]),
+      );
+
+      // offset が末尾を超える → 空
+      expect(await file.readBytes(offset: 10), isEmpty);
+      // offset + length が末尾を超える → 末尾まで
+      expect(await file.readBytes(offset: 2, length: 100), [3, 4, 5, 6, 7, 8]);
+      // length 未指定 → offset から末尾まで
+      expect(await file.readBytes(offset: 5), [6, 7, 8]);
+    });
   });
 }

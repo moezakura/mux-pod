@@ -1470,6 +1470,31 @@
       }
     }
   },
+  "mdPreviewTitle": "Markdown Preview",
+  "mdRaw": "Raw",
+  "mdRendered": "Rendered",
+  "mdLoadFailed": "Failed to load: {error}",
+  "@mdLoadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "mdRetry": "Retry",
+  "mdFileTooLargeTitle": "File is too large",
+  "mdFileTooLargeMessage": "This file is {size} MB and exceeds the preview limit.",
+  "@mdFileTooLargeMessage": {
+    "placeholders": {
+      "size": {
+        "type": "int"
+      }
+    }
+  },
+  "mdBinaryFile": "This file appears to be binary and cannot be previewed.",
+  "mdTruncatedMessage": "This file is larger than the preview limit and has been truncated.",
+  "mdEmpty": "This file is empty.",
+  "mdSshLost": "SSH connection lost",
   "fileDownload": "Download",
   "fileDownloadExporting": "Choosing destination…",
   "fileSelectedCount": "{count} selected",
