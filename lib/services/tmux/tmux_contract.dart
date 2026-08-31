@@ -10,6 +10,7 @@ import 'dart:async';
 import '../connection_error.dart';
 import 'tmux_command_builder.dart';
 import 'tmux_command_executor.dart';
+import 'tmux_delimiters.dart';
 import 'tmux_models.dart';
 import 'tmux_version.dart';
 
@@ -24,12 +25,26 @@ class TmuxCommandException extends SshConnectionError {
   TmuxCommandException(super.message, [super.cause]);
 }
 
+// inventory: TMUX-CONTRACT-EXC-003
+/// tmux は成功したが、その出力を 1 レコードも解析できなかったときの例外。
+///
+/// 区切り文字が往路で失われた出力（UTF-8 でないクライアントに tmux が返す
+/// `_` 置換など）は、終了コード 0 のまま空リストに解析され、「セッションが
+/// 無い」と区別が付かない。既存の `on TmuxCommandException` でも捕捉できる
+/// よう、失敗系の例外を継承する。
+class TmuxOutputParseException extends TmuxCommandException {
+  // inventory: TMUX-CONTRACT-EXC-004
+  TmuxOutputParseException(super.message, [super.cause]);
+}
+
 // inventory: TMUX-CONTRACT-001
 abstract interface class TmuxContract {
   // inventory: TMUX-CONTRACT-PARSE-001
-  List<TmuxSession> parseSessions(String output);
+  /// [delimiters] は [output] を生成したコマンドに渡したものを指定する。
+  /// 呼び出しごとに生成されるため、既定値は置かない。
+  List<TmuxSession> parseSessions(String output, TmuxDelimiters delimiters);
   // inventory: TMUX-CONTRACT-PARSE-002
-  List<TmuxSession> parseFullTree(String output);
+  List<TmuxSession> parseFullTree(String output, TmuxDelimiters delimiters);
   // inventory: TMUX-CONTRACT-PARSE-003
   TmuxPaneContent parsePaneContent(
     String output, {

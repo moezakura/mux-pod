@@ -1222,6 +1222,7 @@
       }
     }
   },
+  "connTmuxOutputUnparsable": "tmux output could not be parsed (no delimiters found)",
   "connTmuxCommandFailed": "tmux command failed (exit code: {code})",
   "@connTmuxCommandFailed": {
     "placeholders": {

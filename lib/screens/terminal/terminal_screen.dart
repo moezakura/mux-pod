@@ -47,6 +47,7 @@ import '../../services/tmux/tmux_pane_content_reader.dart';
 import '../../services/terminal/font_calculator.dart';
 import '../../services/terminal/adaptive_polling.dart';
 import '../../services/tmux/tmux_command_builder.dart';
+import '../../services/tmux/tmux_contract.dart';
 import '../../services/tmux/tmux_facade.dart';
 import '../../services/tmux/tmux_models.dart';
 import '../../services/tmux/tmux_to_domain.dart';
@@ -5932,11 +5933,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // セッション消滅確認（最後のウィンドウの最後のペインだった場合）
       if (isLastPane && isLastWindow) {
         var sessions = <TmuxSession>[];
+        var listed = true;
         try {
           sessions = await tmuxFacade.listSessions(sshClient.tmuxExecutor);
+        } on TmuxOutputParseException {
+          // 出力を読めなかっただけで、セッションが消えた証拠ではない。
+          // サーバ消滅は素の TmuxCommandException で下の catch に落ちる。
+          listed = false;
         } catch (_) {}
         if (!mounted || _isDisposed) return;
-        if (sessions.isEmpty) {
+        if (listed && sessions.isEmpty) {
           // inventory: TERM-DIALOG-012
           await _disconnect();
           return;
@@ -6358,10 +6364,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       // セッション消滅判定: list-sessionsで直接確認
       var sessions = <TmuxSession>[];
+      var listed = true;
       try {
         sessions = await tmuxFacade.listSessions(sshClient.tmuxExecutor);
+      } on TmuxOutputParseException {
+        // 出力を読めなかっただけで、セッションが消えた証拠ではない。
+        listed = false;
       } catch (_) {}
-      if (sessions.isEmpty) {
+      if (listed && sessions.isEmpty) {
         debugPrint(
           '[Terminal] Last window closed, session terminated. Disconnecting...',
         );

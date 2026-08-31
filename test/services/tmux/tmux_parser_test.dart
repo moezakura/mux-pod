@@ -2,35 +2,60 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
 
 import '../../fixtures/tmux/tmux_parser_fixtures.dart';
 
-const _fs = TmuxParser.defaultFieldDelimiter;
-const _rs = TmuxParser.defaultRecordDelimiter;
+const _fs = TmuxDelimiters.legacyField;
+const _rs = TmuxDelimiters.legacyRecord;
 
 void main() {
   group('TmuxParser', () {
+    test('TMUX-PARSER-001: records written with the legacy pair parse under a '
+        'freshly minted one', () {
+      // Output from a MuxPod that still asked tmux for 0x1f/0x1e, and every
+      // fixture modelled on it, has to keep parsing.
+      final sessions = TmuxParser.parseSessions(
+        kSessionOutput,
+        delimiters: TmuxDelimiters.random(),
+      );
+
+      expect(sessions.map((s) => s.name), ['mysession', 'other']);
+      expect(sessions.first.windowCount, 3);
+    });
+
     test(
-      'TMUX-PARSER-001: deprecated defaultDelimiter tracks the field delimiter',
+      'TMUX-PARSER-001: the literal octal spelling of the legacy pair parses '
+      'under a freshly minted one',
       () {
-        expect(TmuxParser.defaultDelimiter, TmuxParser.defaultFieldDelimiter);
-        // Must stay printable: tmux 3.7 rewrites every non-printable byte in
-        // -F output to '_', which silently collapses the fields into one.
-        for (final d in [
-          TmuxParser.defaultFieldDelimiter,
-          TmuxParser.defaultRecordDelimiter,
-        ]) {
-          expect(d, isNotEmpty);
-          expect(
-            d.codeUnits.every((c) => c >= 0x20 && c != 0x7f),
-            isTrue,
-            reason: 'delimiter must contain no control characters: $d',
-          );
-        }
+        // tmux <= 3.5a escapes the control bytes on the way out, so the
+        // delimiter reaches the app as the four characters \037.
+        const output =
+            r'mysession\0371735689600\0371\0373\037$0\036'
+            r'other\0371735689700\0370\0371\037$1\036';
+
+        final sessions = TmuxParser.parseSessions(
+          output,
+          delimiters: TmuxDelimiters.random(),
+        );
+
+        expect(sessions.map((s) => s.name), ['mysession', 'other']);
+        expect(sessions.first.windowCount, 3);
       },
     );
+
+    test('TMUX-PARSER-022: hasRecordContent separates mangled output from '
+        'nothing to parse', () {
+      // An empty parse result over output that carried records means the
+      // delimiters did not survive; that used to reach the UI as
+      // "no sessions" with exit code 0.
+      expect(TmuxParser.hasRecordContent(''), isFalse);
+      expect(TmuxParser.hasRecordContent('  \n '), isFalse);
+      expect(TmuxParser.hasRecordContent(kNoServerOutput), isFalse);
+      expect(TmuxParser.hasRecordContent('claude/monoroll_\$0\n'), isTrue);
+    });
 
     group('parseSessions', () {
       test('parses detailed session output', () {
@@ -415,29 +440,36 @@ void main() {
       test('TMUX-PARSER-020: converts literal \\x1f/\\x1e to control chars', () {
         const literal =
             'sess\\x1f123\\x1f0\\x1f2\\x1f\$0\\x1eother\\x1f456\\x1f1\\x1f1\\x1f\$1\\x1e';
-        final normalized = TmuxParser.normalizeDelimiters(literal);
+        final normalized = TmuxParser.normalizeDelimiters(
+          literal,
+          TmuxDelimiters.legacy,
+        );
         expect(normalized.contains(_fs), isTrue);
         expect(normalized.contains(_rs), isTrue);
         expect(normalized.contains(r'\x1f'), isFalse);
         expect(normalized.contains(r'\x1e'), isFalse);
       });
 
-      test(
-        'TMUX-PARSER-020: converts octal literal \\037/\\036 to control chars',
-        () {
-          const literal =
-              'sess\\037123\\0370\\0372\\037\$0\\036other\\037456\\0371\\0371\\037\$1\\036';
-          final normalized = TmuxParser.normalizeDelimiters(literal);
-          expect(normalized.contains(_fs), isTrue);
-          expect(normalized.contains(_rs), isTrue);
-          expect(normalized.contains(r'\037'), isFalse);
-          expect(normalized.contains(r'\036'), isFalse);
-        },
-      );
+      test('TMUX-PARSER-020: folds the octal literal \\037/\\036 onto the '
+          'delimiters of the current call', () {
+        const literal =
+            'sess\\037123\\0370\\0372\\037\$0\\036other\\037456\\0371\\0371\\037\$1\\036';
+        final delimiters = TmuxDelimiters.random();
+
+        final normalized = TmuxParser.normalizeDelimiters(literal, delimiters);
+
+        expect(normalized.contains(delimiters.field), isTrue);
+        expect(normalized.contains(delimiters.record), isTrue);
+        expect(normalized.contains(r'\037'), isFalse);
+        expect(normalized.contains(r'\036'), isFalse);
+      });
 
       test('TMUX-PARSER-020: leaves real control chars untouched', () {
         final literal = 'sess$_fs"123"$_fs"0"$_fs"2"$_fs"\$0"$_rs"other"';
-        final normalized = TmuxParser.normalizeDelimiters(literal);
+        final normalized = TmuxParser.normalizeDelimiters(
+          literal,
+          TmuxDelimiters.legacy,
+        );
         expect(normalized, literal);
       });
 

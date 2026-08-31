@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/providers/image_transfer_provider.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
@@ -177,7 +177,7 @@ void main() {
     testWidgets('TERM-DIALOG-012 last pane termination disconnects', (
       tester,
     ) async {
-      const rs = TmuxParser.defaultRecordDelimiter;
+      const rs = TmuxDelimiters.legacyRecord;
       final onePaneTree = '${kFullTreeOutput.split(rs).first}$rs';
       await TerminalTestScaffold.pumpTerminalScreen(
         tester,
@@ -195,6 +195,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(notifier.client, isNull);
     });
+
+    testWidgets(
+      'TERM-DIALOG-012 an unreadable session list does not disconnect',
+      (tester) async {
+        // What tmux answers a non-UTF-8 client when the delimiters are control
+        // characters: every one of them rewritten to '_', exit code 0. That is
+        // not evidence the session died, so the terminal must stay up.
+        const rs = TmuxDelimiters.legacyRecord;
+        final onePaneTree = '${kFullTreeOutput.split(rs).first}$rs';
+        await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          execOutputs: {
+            'list-panes -a': onePaneTree,
+            'list-sessions': 'claude/monoroll_\$0\n',
+          },
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
+        await tester.tap(find.text('Pane 0'));
+        await tester.pumpAndSettle();
+        await tester.longPress(find.text('bash').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Close'));
+        await tester.pumpAndSettle();
+
+        expect(notifier.client, isNotNull);
+      },
+    );
 
     testWidgets('TERM-FILE-003 completed upload injects bracketed path', (
       tester,

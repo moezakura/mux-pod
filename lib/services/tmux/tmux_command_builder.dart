@@ -5,6 +5,7 @@ library;
 import 'dart:convert';
 import 'dart:math';
 
+import 'tmux_delimiters.dart';
 import 'tmux_executable_resolver.dart';
 
 // inventory: TMUX-CMD-000
@@ -14,18 +15,13 @@ import 'tmux_executable_resolver.dart';
 /// TmuxParserと対応するフォーマット文字列を使用。
 class TmuxCommands {
   // inventory: TMUX-CMD-001
-  /// Field delimiter. Printable on purpose: tmux 3.7 rewrites every
-  /// non-printable byte in `-F` output to `_`, so a control character here
-  /// arrives indistinguishable from the next one and parsing yields nothing.
-  static const String fieldDelimiter = '@@F@@';
-
-  /// Record delimiter, appended after each record so a newline inside a field
-  /// cannot split it. Printable for the same reason as [fieldDelimiter].
-  static const String recordDelimiter = '@@R@@';
-
-  /// 旧区切り文字（後方互換）。
-  @Deprecated('Use fieldDelimiter')
-  static const String delimiter = fieldDelimiter;
+  /// Renders the `-F` argument of a list command from [fields].
+  ///
+  /// The delimiters are supplied per call ([TmuxDelimiters.random]) rather
+  /// than fixed, so no session, window or pane name can contain one: see
+  /// [TmuxDelimiters] for why they must also stay printable.
+  static String _listFormat(List<String> fields, TmuxDelimiters delimiters) =>
+      '${fields.join(delimiters.field)}${delimiters.record}';
 
   // ===== セッション =====
 
@@ -33,14 +29,15 @@ class TmuxCommands {
   /// セッション一覧を取得するコマンド（詳細版）
   ///
   /// 出力フォーマット: `session_name\tsession_created\tsession_attached\tsession_windows\tsession_id`
-  static String listSessions() {
-    return 'tmux list-sessions -F "'
-        '#{session_name}$fieldDelimiter'
-        '#{session_created}$fieldDelimiter'
-        '#{session_attached}$fieldDelimiter'
-        '#{session_windows}$fieldDelimiter'
-        '#{session_id}$recordDelimiter'
-        '"';
+  static String listSessions(TmuxDelimiters delimiters) {
+    const fields = [
+      '#{session_name}',
+      '#{session_created}',
+      '#{session_attached}',
+      '#{session_windows}',
+      '#{session_id}',
+    ];
+    return 'tmux list-sessions -F "${_listFormat(fields, delimiters)}"';
   }
 
   // inventory: TMUX-CMD-003
@@ -93,15 +90,16 @@ class TmuxCommands {
   /// ウィンドウ一覧を取得するコマンド（詳細版）
   ///
   /// 出力フォーマット: `window_index\twindow_id\twindow_name\twindow_active\twindow_panes\twindow_flags`
-  static String listWindows(String sessionName) {
-    return 'tmux list-windows -t ${_escapeArg(sessionName)} -F "'
-        '#{window_index}$fieldDelimiter'
-        '#{window_id}$fieldDelimiter'
-        '#{window_name}$fieldDelimiter'
-        '#{window_active}$fieldDelimiter'
-        '#{window_panes}$fieldDelimiter'
-        '#{window_flags}$recordDelimiter'
-        '"';
+  static String listWindows(String sessionName, TmuxDelimiters delimiters) {
+    const fields = [
+      '#{window_index}',
+      '#{window_id}',
+      '#{window_name}',
+      '#{window_active}',
+      '#{window_panes}',
+      '#{window_flags}',
+    ];
+    return 'tmux list-windows -t ${_escapeArg(sessionName)} -F "${_listFormat(fields, delimiters)}"';
   }
 
   // inventory: TMUX-CMD-009
@@ -162,18 +160,24 @@ class TmuxCommands {
   /// ペイン一覧を取得するコマンド（詳細版）
   ///
   /// 出力フォーマット: `pane_index\tpane_id\tpane_active\tpane_current_command\tpane_title\tpane_width\tpane_height\tcursor_x\tcursor_y`
-  static String listPanes(String sessionName, int windowIndex) {
-    return 'tmux list-panes -t ${_escapeArg(sessionName)}:$windowIndex -F "'
-        '#{pane_index}$fieldDelimiter'
-        '#{pane_id}$fieldDelimiter'
-        '#{pane_active}$fieldDelimiter'
-        '#{pane_current_command}$fieldDelimiter'
-        '#{pane_title}$fieldDelimiter'
-        '#{pane_width}$fieldDelimiter'
-        '#{pane_height}$fieldDelimiter'
-        '#{cursor_x}$fieldDelimiter'
-        '#{cursor_y}$recordDelimiter'
-        '"';
+  static String listPanes(
+    String sessionName,
+    int windowIndex,
+    TmuxDelimiters delimiters,
+  ) {
+    const fields = [
+      '#{pane_index}',
+      '#{pane_id}',
+      '#{pane_active}',
+      '#{pane_current_command}',
+      '#{pane_title}',
+      '#{pane_width}',
+      '#{pane_height}',
+      '#{cursor_x}',
+      '#{cursor_y}',
+    ];
+    return 'tmux list-panes -t ${_escapeArg(sessionName)}:$windowIndex '
+        '-F "${_listFormat(fields, delimiters)}"';
   }
 
   // inventory: TMUX-CMD-015
@@ -189,28 +193,29 @@ class TmuxCommands {
   /// 全ペインを取得するコマンド（セッションツリー構築用）
   ///
   /// 出力フォーマット: 完全なツリー情報（window_flags含む）
-  static String listAllPanes() {
-    return 'tmux list-panes -a -F "'
-        '#{session_name}$fieldDelimiter'
-        '#{session_id}$fieldDelimiter'
-        '#{window_index}$fieldDelimiter'
-        '#{window_id}$fieldDelimiter'
-        '#{window_name}$fieldDelimiter'
-        '#{window_active}$fieldDelimiter'
-        '#{pane_index}$fieldDelimiter'
-        '#{pane_id}$fieldDelimiter'
-        '#{pane_active}$fieldDelimiter'
-        '#{pane_width}$fieldDelimiter'
-        '#{pane_height}$fieldDelimiter'
-        '#{pane_left}$fieldDelimiter'
-        '#{pane_top}$fieldDelimiter'
-        '#{pane_title}$fieldDelimiter'
-        '#{pane_current_command}$fieldDelimiter'
-        '#{cursor_x}$fieldDelimiter'
-        '#{cursor_y}$fieldDelimiter'
-        '#{pane_current_path}$fieldDelimiter'
-        '#{window_flags}$recordDelimiter'
-        '"';
+  static String listAllPanes(TmuxDelimiters delimiters) {
+    const fields = [
+      '#{session_name}',
+      '#{session_id}',
+      '#{window_index}',
+      '#{window_id}',
+      '#{window_name}',
+      '#{window_active}',
+      '#{pane_index}',
+      '#{pane_id}',
+      '#{pane_active}',
+      '#{pane_width}',
+      '#{pane_height}',
+      '#{pane_left}',
+      '#{pane_top}',
+      '#{pane_title}',
+      '#{pane_current_command}',
+      '#{cursor_x}',
+      '#{cursor_y}',
+      '#{pane_current_path}',
+      '#{window_flags}',
+    ];
+    return 'tmux list-panes -a -F "${_listFormat(fields, delimiters)}"';
   }
 
   // inventory: TMUX-CMD-017
