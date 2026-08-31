@@ -2,14 +2,16 @@
 
 /// tmux コマンド出力の fixture
 ///
-/// 区切り文字は TmuxCommands.fieldDelimiter（US: 0x1f）と
-/// TmuxCommands.recordDelimiter（RS: 0x1e）を使用
+/// Written with the legacy 0x1f/0x1e pair on purpose: output recorded from a
+/// MuxPod that still asked tmux for the control characters has to keep
+/// parsing, whatever delimiters the current call minted. The live shape —
+/// printable, per-invocation — is covered in tmux_facade_test.dart.
 library;
 
-import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 
-const _fs = TmuxParser.defaultFieldDelimiter;
-const _rs = TmuxParser.defaultRecordDelimiter;
+const _fs = TmuxDelimiters.legacyField;
+const _rs = TmuxDelimiters.legacyRecord;
 
 // セッション一覧（詳細版）
 const kSessionOutput =

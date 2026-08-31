@@ -1225,6 +1225,7 @@
       }
     }
   },
+  "connTmuxOutputUnparsable": "tmux の出力を解析できませんでした（区切り文字が見つかりません）",
   "connTmuxCommandFailed": "tmux コマンドが失敗しました（終了コード: {code}）",
   "@connTmuxCommandFailed": {
     "placeholders": {

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/tmux/tmux_delimiters.dart';
 import '../services/tmux/tmux_facade.dart';
 import '../services/tmux/tmux_models.dart';
 
@@ -125,9 +126,9 @@ class TmuxNotifier extends Notifier<TmuxState> {
   // inventory: PROV-TMUX-016
   // inventory: LEGACY-0173
   /// セッション一覧を解析して更新
-  void parseAndUpdateSessions(String output) {
+  void parseAndUpdateSessions(String output, TmuxDelimiters delimiters) {
     try {
-      final sessions = tmuxFacade.parseSessions(output);
+      final sessions = tmuxFacade.parseSessions(output, delimiters);
       state = state.copyWith(sessions: sessions, error: null);
     } catch (e) {
       state = state.copyWith(error: e.toString());
@@ -137,9 +138,9 @@ class TmuxNotifier extends Notifier<TmuxState> {
   // inventory: PROV-TMUX-017
   // inventory: LEGACY-0174
   /// フルツリーを解析して更新
-  void parseAndUpdateFullTree(String output) {
+  void parseAndUpdateFullTree(String output, TmuxDelimiters delimiters) {
     try {
-      final sessions = tmuxFacade.parseFullTree(output);
+      final sessions = tmuxFacade.parseFullTree(output, delimiters);
       state = state.copyWith(sessions: sessions, error: null);
     } catch (e) {
       state = state.copyWith(error: e.toString());

@@ -2,6 +2,7 @@
 /// tmux コマンド出力パーサー（アダプター）
 library;
 
+import 'tmux_delimiters.dart';
 import 'tmux_models.dart';
 
 // inventory: TMUX-PARSER-000
@@ -11,15 +12,12 @@ import 'tmux_models.dart';
 /// フォーマット文字列に対応したパーサーを提供。
 class TmuxParser {
   // inventory: TMUX-PARSER-001
-  /// デフォルトのフィールド区切り文字（US: 0x1f）。
-  static const String defaultFieldDelimiter = '\x1f';
-
-  /// デフォルトのレコード区切り文字（RS: 0x1e）。
-  static const String defaultRecordDelimiter = '\x1e';
-
-  /// 旧区切り文字（後方互換）。
-  @Deprecated('Use defaultFieldDelimiter')
-  static const String defaultDelimiter = defaultFieldDelimiter;
+  /// Delimiters assumed for output that did not come from [TmuxCommands].
+  ///
+  /// Everything the app itself asks tmux for is parsed with the pair minted
+  /// for that call; this default only covers output of unknown provenance,
+  /// which historically used the control characters.
+  static const TmuxDelimiters defaultDelimiters = TmuxDelimiters.legacy;
 
   // ===== セッション =====
 
@@ -29,21 +27,20 @@ class TmuxParser {
   /// 対応フォーマット: `#{session_name}\t#{session_created}\t#{session_attached}\t#{session_windows}\t#{session_id}`
   static List<TmuxSession> parseSessions(
     String output, {
-    String fieldDelimiter = defaultFieldDelimiter,
-    String recordDelimiter = defaultRecordDelimiter,
+    TmuxDelimiters delimiters = defaultDelimiters,
   }) {
     if (!isServerRunning(output)) {
       return [];
     }
-    output = normalizeDelimiters(output);
+    output = normalizeDelimiters(output, delimiters);
 
     final sessions = <TmuxSession>[];
 
-    for (final record in output.split(recordDelimiter)) {
+    for (final record in output.split(delimiters.record)) {
       final trimmed = record.trim();
       if (trimmed.isEmpty) continue;
 
-      final session = parseSessionLine(trimmed, delimiter: fieldDelimiter);
+      final session = parseSessionLine(trimmed, delimiter: delimiters.field);
       if (session != null) {
         sessions.add(session);
       }
@@ -56,7 +53,7 @@ class TmuxParser {
   /// 単一のセッション行をパース
   static TmuxSession? parseSessionLine(
     String line, {
-    String delimiter = defaultFieldDelimiter,
+    String delimiter = TmuxDelimiters.legacyField,
   }) {
     final parts = line.split(delimiter);
     // 区切り文字が含まれない行はtmux出力ではない（シェルエラー等）
@@ -110,17 +107,16 @@ class TmuxParser {
   /// 対応フォーマット: `#{window_index}\t#{window_id}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_flags}`
   static List<TmuxWindow> parseWindows(
     String output, {
-    String fieldDelimiter = defaultFieldDelimiter,
-    String recordDelimiter = defaultRecordDelimiter,
+    TmuxDelimiters delimiters = defaultDelimiters,
   }) {
-    output = normalizeDelimiters(output);
+    output = normalizeDelimiters(output, delimiters);
     final windows = <TmuxWindow>[];
 
-    for (final record in output.split(recordDelimiter)) {
+    for (final record in output.split(delimiters.record)) {
       final trimmed = record.trim();
       if (trimmed.isEmpty) continue;
 
-      final window = parseWindowLine(trimmed, delimiter: fieldDelimiter);
+      final window = parseWindowLine(trimmed, delimiter: delimiters.field);
       if (window != null) {
         windows.add(window);
       }
@@ -133,7 +129,7 @@ class TmuxParser {
   /// 単一のウィンドウ行をパース
   static TmuxWindow? parseWindowLine(
     String line, {
-    String delimiter = defaultFieldDelimiter,
+    String delimiter = TmuxDelimiters.legacyField,
   }) {
     final parts = line.split(delimiter);
     if (parts.isEmpty) return null;
@@ -186,17 +182,16 @@ class TmuxParser {
   /// 対応フォーマット: `#{pane_index}\t#{pane_id}\t#{pane_active}\t#{pane_current_command}\t#{pane_title}\t#{pane_width}\t#{pane_height}\t#{cursor_x}\t#{cursor_y}`
   static List<TmuxPane> parsePanes(
     String output, {
-    String fieldDelimiter = defaultFieldDelimiter,
-    String recordDelimiter = defaultRecordDelimiter,
+    TmuxDelimiters delimiters = defaultDelimiters,
   }) {
-    output = normalizeDelimiters(output);
+    output = normalizeDelimiters(output, delimiters);
     final panes = <TmuxPane>[];
 
-    for (final record in output.split(recordDelimiter)) {
+    for (final record in output.split(delimiters.record)) {
       final trimmed = record.trim();
       if (trimmed.isEmpty) continue;
 
-      final pane = parsePaneLine(trimmed, delimiter: fieldDelimiter);
+      final pane = parsePaneLine(trimmed, delimiter: delimiters.field);
       if (pane != null) {
         panes.add(pane);
       }
@@ -209,7 +204,7 @@ class TmuxParser {
   /// 単一のペイン行をパース
   static TmuxPane? parsePaneLine(
     String line, {
-    String delimiter = defaultFieldDelimiter,
+    String delimiter = TmuxDelimiters.legacyField,
   }) {
     final parts = line.split(delimiter);
     if (parts.length < 2) return null;
@@ -303,22 +298,21 @@ class TmuxParser {
   /// `tmux list-panes -a -F "..."`の出力から完全なツリーを構築
   static List<TmuxSession> parseFullTree(
     String output, {
-    String fieldDelimiter = defaultFieldDelimiter,
-    String recordDelimiter = defaultRecordDelimiter,
+    TmuxDelimiters delimiters = defaultDelimiters,
   }) {
     if (!isServerRunning(output)) {
       return [];
     }
-    output = normalizeDelimiters(output);
+    output = normalizeDelimiters(output, delimiters);
 
     final sessionsMap = <String, TmuxSession>{};
     final windowsMap = <String, Map<int, TmuxWindow>>{};
 
-    for (final record in output.split(recordDelimiter)) {
+    for (final record in output.split(delimiters.record)) {
       final trimmed = record.trim();
       if (trimmed.isEmpty) continue;
 
-      final parts = trimmed.split(fieldDelimiter);
+      final parts = trimmed.split(delimiters.field);
       if (parts.length < 10) continue;
 
       // フォーマット: session_name, session_id, window_index, window_id, window_name, window_active,
@@ -478,22 +472,35 @@ class TmuxParser {
   }
 
   // inventory: TMUX-PARSER-020
-  /// tmux の `-F` 出力で、制御文字がリテラル表記に化けた場合に制御文字へ戻す。
+  /// Rewrites every spelling of the legacy delimiters into [delimiters].
   ///
-  /// tmux は `-F` フォーマット内の制御文字（0x1f / 0x1e）を、SSH シェル経由で
-  /// `\037` / `\036`（8 進数表記）や `\x1f` / `\x1e`（16 進数表記）のリテラル
-  /// 文字列として出力することがある。このヘルパーで各リテラル表記を元の
-  /// 制御文字に正規化してから分割できるようにする。
+  /// MuxPod used to ask tmux for 0x1f/0x1e, and that output reached the app in
+  /// three shapes: the raw bytes, and — because tmux <= 3.5a ran command
+  /// output through `strvis` — the literal text `\037` / `\x1f`. Records in
+  /// any of those shapes still have to parse, so they are folded onto the pair
+  /// the current call is using.
   ///
-  /// tmux のセッション名・ウィンドウ名は ASCII 制御文字を受け付けないため、
-  /// リテラル表記が名前の中に現れて誤変換される実害はない。
-  static String normalizeDelimiters(String output) {
+  /// The delimiters MuxPod asks for today are printable and minted per call
+  /// (see [TmuxDelimiters]), so nothing here touches them.
+  static String normalizeDelimiters(String output, TmuxDelimiters delimiters) {
     return output
-        .replaceAll(r'\x1f', defaultFieldDelimiter)
-        .replaceAll(r'\x1e', defaultRecordDelimiter)
-        .replaceAll(r'\037', defaultFieldDelimiter)
-        .replaceAll(r'\036', defaultRecordDelimiter);
+        .replaceAll(TmuxDelimiters.legacyField, delimiters.field)
+        .replaceAll(TmuxDelimiters.legacyRecord, delimiters.record)
+        .replaceAll(r'\x1f', delimiters.field)
+        .replaceAll(r'\x1e', delimiters.record)
+        .replaceAll(r'\037', delimiters.field)
+        .replaceAll(r'\036', delimiters.record);
   }
+
+  // inventory: TMUX-PARSER-022
+  /// Whether [output] carried something the record parsers were meant to turn
+  /// into at least one record.
+  ///
+  /// An empty parse result over output that answers `true` here means the
+  /// delimiters did not survive the trip — a failure that used to reach the UI
+  /// as "no sessions" with exit code 0.
+  static bool hasRecordContent(String output) =>
+      output.trim().isNotEmpty && isServerRunning(output);
 
   // inventory: TMUX-PARSER-021
   /// エラーメッセージを抽出

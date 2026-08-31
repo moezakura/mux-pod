@@ -10048,29 +10048,23 @@
     {
       "id": "TMUX-CMD-001",
       "sourceFile": "lib/services/tmux/tmux_command_builder.dart",
-      "line": 16,
-      "name": "TmuxCommands.fieldDelimiter",
-      "public": true,
-      "symbolType": "field",
-      "signature": "static const String fieldDelimiter = '\\x1f'",
-      "contract": "tmux フォーマットのフィールド区切りに US (0x1f) を使用する。",
-      "characterization": "list 系コマンドの各フィールド間に使用する。",
+      "line": 17,
+      "name": "TmuxCommands._listFormat",
+      "public": false,
+      "symbolType": "method",
+      "signature": "static String _listFormat(List<String> fields, TmuxDelimiters delimiters)",
+      "contract": "list 系コマンドの -F 文字列を、呼び出しごとの区切り文字ペアで組み立てる。",
+      "characterization": "区切り文字は TmuxDelimiters から受け取り、この class は固定値を持たない。",
       "failureMode": "N/A",
       "sideEffects": "none",
-      "consumers": [
-        "lib/screens/connections/connection_form_screen.dart",
-        "lib/services/tmux/tmux_commands.dart",
-        "lib/services/tmux/tmux_facade.dart",
-        "lib/services/tmux/tmux_parser_adapter.dart",
-        "lib/services/tmux/tmux_shell_lifecycle.dart"
-      ],
+      "consumers": [],
       "tests": [
         "test/services/tmux/tmux_commands_test.dart"
       ],
       "dependsOn": [],
       "searchTokens": [
-        "fieldDelimiter",
-        "TmuxCommands.fieldDelimiter",
+        "_listFormat",
+        "TmuxCommands._listFormat",
         "TmuxCommands"
       ]
     },
@@ -14063,28 +14057,24 @@
     {
       "id": "TMUX-PARSER-001",
       "sourceFile": "lib/services/tmux/tmux_parser_adapter.dart",
-      "line": 15,
-      "name": "TmuxParser.defaultFieldDelimiter",
+      "line": 14,
+      "name": "TmuxParser.defaultDelimiters",
       "public": true,
       "symbolType": "field",
-      "signature": "static const String defaultFieldDelimiter = '\\x1f'",
-      "contract": "tmux 出力の既定フィールド区切りに US (0x1f) を使用する。",
-      "characterization": "session/window/pane parser の既定フィールド区切り。",
+      "signature": "static const TmuxDelimiters defaultDelimiters = TmuxDelimiters.legacy",
+      "contract": "TmuxCommands 由来でない出力に仮定する区切り文字ペア（旧 US/RS）。",
+      "characterization": "アプリが自分で発行した出力は、その呼び出しで生成したペアで解析する。",
       "failureMode": "N/A",
       "sideEffects": "none",
-      "consumers": [
-        "lib/services/tmux/tmux_command_builder.dart",
-        "lib/services/tmux/tmux_facade.dart",
-        "lib/services/tmux/tmux_parser.dart"
-      ],
+      "consumers": [],
       "tests": [
         "test/services/tmux/tmux_parser_test.dart"
       ],
       "dependsOn": [],
       "searchTokens": [
         "TmuxParser",
-        "defaultFieldDelimiter",
-        "TmuxParser.defaultFieldDelimiter"
+        "defaultDelimiters",
+        "TmuxParser.defaultDelimiters"
       ]
     },
     {

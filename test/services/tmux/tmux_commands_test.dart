@@ -4,14 +4,33 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 
 void main() {
   group('TmuxCommands', () {
     test(
-      'TMUX-CMD-001: deprecated delimiter remains the US field delimiter',
+      'TMUX-CMD-001: every -F command carries the delimiters it was handed',
       () {
-        expect(TmuxCommands.delimiter, String.fromCharCode(0x1f));
-        expect(TmuxCommands.delimiter, TmuxCommands.fieldDelimiter);
+        final delimiters = TmuxDelimiters.random();
+        final commands = [
+          TmuxCommands.listSessions(delimiters),
+          TmuxCommands.listWindows('main', delimiters),
+          TmuxCommands.listPanes('main', 0, delimiters),
+          TmuxCommands.listAllPanes(delimiters),
+        ];
+
+        for (final command in commands) {
+          expect(command, contains(delimiters.field));
+          expect(command, contains(delimiters.record));
+          // A control character never survives the round trip: tmux rewrites
+          // it to '_' for a non-UTF-8 client and the parser then sees a single
+          // field per record.
+          expect(
+            command.codeUnits.every((c) => c >= 0x20 && c != 0x7f),
+            isTrue,
+            reason: 'command must stay free of control characters: $command',
+          );
+        }
       },
     );
 
@@ -472,10 +491,11 @@ void main() {
 
   group('listSessions', () {
     test('generates detailed list-sessions command', () {
-      final fs = TmuxCommands.fieldDelimiter;
-      final rs = TmuxCommands.recordDelimiter;
+      final d = TmuxDelimiters.random();
+      final fs = d.field;
+      final rs = d.record;
       expect(
-        TmuxCommands.listSessions(),
+        TmuxCommands.listSessions(d),
         'tmux list-sessions -F "'
         '#{session_name}$fs'
         '#{session_created}$fs'
@@ -558,10 +578,11 @@ void main() {
 
   group('listWindows', () {
     test('generates detailed list-windows command', () {
-      final fs = TmuxCommands.fieldDelimiter;
-      final rs = TmuxCommands.recordDelimiter;
+      final d = TmuxDelimiters.random();
+      final fs = d.field;
+      final rs = d.record;
       expect(
-        TmuxCommands.listWindows('main'),
+        TmuxCommands.listWindows('main', d),
         'tmux list-windows -t main -F "'
         '#{window_index}$fs'
         '#{window_id}$fs'
@@ -574,10 +595,11 @@ void main() {
     });
 
     test('escapes session name', () {
-      final fs = TmuxCommands.fieldDelimiter;
-      final rs = TmuxCommands.recordDelimiter;
+      final d = TmuxDelimiters.random();
+      final fs = d.field;
+      final rs = d.record;
       expect(
-        TmuxCommands.listWindows('my session'),
+        TmuxCommands.listWindows('my session', d),
         'tmux list-windows -t "my session" -F "'
         '#{window_index}$fs'
         '#{window_id}$fs'
@@ -637,10 +659,11 @@ void main() {
 
   group('listPanes', () {
     test('generates detailed list-panes command', () {
-      final fs = TmuxCommands.fieldDelimiter;
-      final rs = TmuxCommands.recordDelimiter;
+      final d = TmuxDelimiters.random();
+      final fs = d.field;
+      final rs = d.record;
       expect(
-        TmuxCommands.listPanes('main', 0),
+        TmuxCommands.listPanes('main', 0, d),
         'tmux list-panes -t main:0 -F "'
         '#{pane_index}$fs'
         '#{pane_id}$fs'
@@ -667,10 +690,11 @@ void main() {
 
   group('listAllPanes', () {
     test('generates list-panes -a command for full tree', () {
-      final fs = TmuxCommands.fieldDelimiter;
-      final rs = TmuxCommands.recordDelimiter;
+      final d = TmuxDelimiters.random();
+      final fs = d.field;
+      final rs = d.record;
       expect(
-        TmuxCommands.listAllPanes(),
+        TmuxCommands.listAllPanes(d),
         'tmux list-panes -a -F "'
         '#{session_name}$fs'
         '#{session_id}$fs'

@@ -13,6 +13,7 @@ import '../command/command_request.dart';
 import 'tmux_command_builder.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_contract.dart';
+import 'tmux_delimiters.dart';
 import 'tmux_models.dart';
 import 'tmux_parser_adapter.dart';
 import 'tmux_version.dart';
@@ -47,11 +48,11 @@ class TmuxFacade implements TmuxContract {
   }
 
   @override
-  List<TmuxSession> parseSessions(String output) =>
-      TmuxParser.parseSessions(output);
+  List<TmuxSession> parseSessions(String output, TmuxDelimiters delimiters) =>
+      TmuxParser.parseSessions(output, delimiters: delimiters);
   @override
-  List<TmuxSession> parseFullTree(String output) =>
-      TmuxParser.parseFullTree(output);
+  List<TmuxSession> parseFullTree(String output, TmuxDelimiters delimiters) =>
+      TmuxParser.parseFullTree(output, delimiters: delimiters);
   @override
   TmuxPaneContent parsePaneContent(
     String output, {
@@ -90,14 +91,28 @@ class TmuxFacade implements TmuxContract {
 
   @override
   Future<List<TmuxSession>> listSessions(TmuxCommandExecutor executor) async {
-    final output = await _execChecked(executor, TmuxCommands.listSessions());
-    return TmuxParser.parseSessions(output);
+    final delimiters = TmuxDelimiters.random();
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.listSessions(delimiters),
+    );
+    return _requireRecords(
+      output,
+      TmuxParser.parseSessions(output, delimiters: delimiters),
+    );
   }
 
   @override
   Future<List<TmuxSession>> listAllPanes(TmuxCommandExecutor executor) async {
-    final output = await _execChecked(executor, TmuxCommands.listAllPanes());
-    return TmuxParser.parseFullTree(output);
+    final delimiters = TmuxDelimiters.random();
+    final output = await _execChecked(
+      executor,
+      TmuxCommands.listAllPanes(delimiters),
+    );
+    return _requireRecords(
+      output,
+      TmuxParser.parseFullTree(output, delimiters: delimiters),
+    );
   }
 
   @override
@@ -154,11 +169,15 @@ class TmuxFacade implements TmuxContract {
     TmuxCommandExecutor executor,
     String sessionName,
   ) async {
+    final delimiters = TmuxDelimiters.random();
     final output = await _execChecked(
       executor,
-      TmuxCommands.listWindows(sessionName),
+      TmuxCommands.listWindows(sessionName, delimiters),
     );
-    return TmuxParser.parseWindows(output);
+    return _requireRecords(
+      output,
+      TmuxParser.parseWindows(output, delimiters: delimiters),
+    );
   }
 
   @override
@@ -223,11 +242,15 @@ class TmuxFacade implements TmuxContract {
     String sessionName,
     int windowIndex,
   ) async {
+    final delimiters = TmuxDelimiters.random();
     final output = await _execChecked(
       executor,
-      TmuxCommands.listPanes(sessionName, windowIndex),
+      TmuxCommands.listPanes(sessionName, windowIndex, delimiters),
     );
-    return TmuxParser.parsePanes(output);
+    return _requireRecords(
+      output,
+      TmuxParser.parsePanes(output, delimiters: delimiters),
+    );
   }
 
   @override
@@ -574,6 +597,19 @@ class TmuxFacade implements TmuxContract {
     List<String> targets,
   ) async {
     await executor.restoreWindowsNoWait(targets);
+  }
+
+  /// tmux が出力を返したのに 1 レコードも解析できなかった場合は投げる。
+  ///
+  /// 区切り文字が往路で失われた出力は終了コード 0 のまま空リストになり、
+  /// 「セッションが無い」と見分けが付かないため、成功として返さない。
+  List<T> _requireRecords<T>(String output, List<T> records) {
+    if (records.isEmpty && TmuxParser.hasRecordContent(output)) {
+      throw TmuxOutputParseException(
+        (_l10n ?? lookupL10n()).connTmuxOutputUnparsable,
+      );
+    }
+    return records;
   }
 
   // inventory: TMUX-FACADE-CHECK-001

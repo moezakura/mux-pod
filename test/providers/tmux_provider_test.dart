@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
@@ -34,14 +35,14 @@ void main() {
 
     test('parseAndUpdateSessions parses raw output', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateSessions(kSessionOutput);
+      notifier.parseAndUpdateSessions(kSessionOutput, TmuxDelimiters.legacy);
       expect(container.read(tmuxProvider).sessions, hasLength(2));
       expect(container.read(tmuxProvider).sessions[0].name, 'mysession');
     });
 
     test('parseAndUpdateFullTree parses full tree', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       final state = container.read(tmuxProvider);
       expect(state.sessions, hasLength(2));
       expect(state.sessions[0].windows, hasLength(1));
@@ -49,7 +50,7 @@ void main() {
 
     test('setActiveSession selects active window and pane', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       final state = container.read(tmuxProvider);
       expect(state.activeSessionName, 'mysession');
@@ -59,7 +60,7 @@ void main() {
 
     test('setActiveSession on unknown session clears active pane', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('missing');
       final state = container.read(tmuxProvider);
       expect(state.activeSessionName, 'missing');
@@ -69,7 +70,7 @@ void main() {
 
     test('setActiveWindow updates active pane', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       notifier.setActiveWindow(0);
       final state = container.read(tmuxProvider);
@@ -79,7 +80,7 @@ void main() {
 
     test('setActiveWindow clears pane selection when the window is absent', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
 
       notifier.setActiveWindow(99);
@@ -100,7 +101,7 @@ void main() {
 
     test('setActivePane by id updates index', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       notifier.setActivePane('%1');
       final state = container.read(tmuxProvider);
@@ -112,7 +113,7 @@ void main() {
       'setActivePane retains the last index when the pane id is no longer present',
       () {
         final notifier = container.read(tmuxProvider.notifier);
-        notifier.parseAndUpdateFullTree(kFullTreeOutput);
+        notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
         notifier.setActiveSession('mysession');
 
         notifier.setActivePane('%missing');
@@ -125,7 +126,7 @@ void main() {
 
     test('updateCursorPosition updates active pane cursor', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       notifier.updateCursorPosition('%0', 12, 34);
       final pane = container.read(tmuxProvider).activePane;
@@ -137,7 +138,7 @@ void main() {
       'updateCursorPosition ignores inactive pane and unchanged coordinates',
       () {
         final notifier = container.read(tmuxProvider.notifier);
-        notifier.parseAndUpdateFullTree(kFullTreeOutput);
+        notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
         notifier.setActiveSession('mysession');
         final before = container.read(tmuxProvider);
 
@@ -151,7 +152,7 @@ void main() {
 
     test('currentTarget returns pane id', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       expect(notifier.currentTarget, '%0');
     });
@@ -173,7 +174,7 @@ void main() {
 
     test('clear resets state', () {
       final notifier = container.read(tmuxProvider.notifier);
-      notifier.parseAndUpdateFullTree(kFullTreeOutput);
+      notifier.parseAndUpdateFullTree(kFullTreeOutput, TmuxDelimiters.legacy);
       notifier.setActiveSession('mysession');
       notifier.clear();
       final state = container.read(tmuxProvider);
