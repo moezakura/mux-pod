@@ -87,7 +87,7 @@ void main() {
     });
 
     test(
-      'throws HerdrProtocolMismatchException when protocol is not 17',
+      'throws HerdrProtocolMismatchException when server protocol is below 17',
       () async {
         final client = FakeSshClient();
         client.execOutputs['herdr status --json'] = kStatusProtocol16;

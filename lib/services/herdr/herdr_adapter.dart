@@ -46,10 +46,10 @@ class HerdrAdapter {
   bool get isConnected => _backend.isConnected;
 
   // inventory: HERDR-ADAPTER-002
-  /// preflight: `herdr status --json` を実行し protocol 17 を検証する。
+  /// preflight: `herdr status --json` を実行し protocol（最小 17）を検証する。
   ///
   /// server 未稼働の場合は [HerdrServerNotRunningException]、
-  /// protocol が 17 以外の場合は [HerdrProtocolMismatchException] を投げる。
+  /// protocol が 17 未満の場合は [HerdrProtocolMismatchException] を投げる。
   Future<HerdrStatus> preflight({Duration? timeout}) async {
     final stdout = await _execChecked(
       HerdrCommands.preflightCommand(),

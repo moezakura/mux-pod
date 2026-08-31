@@ -1176,7 +1176,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       );
 
       if (isHerdr) {
-        // Herdr preflight: `herdr status --json` で protocol 17 を確認
+        // Herdr preflight: `herdr status --json` で protocol（最小 17）を確認
         try {
           final adapter = HerdrAdapter(sshClient);
           await adapter.preflight();

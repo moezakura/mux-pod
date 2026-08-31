@@ -295,21 +295,22 @@ void main() {
       },
     );
 
-    test(
-      'throws HerdrProtocolMismatchException when client protocol is 18',
-      () {
-        expect(
-          () => HerdrPreflight.validate(status(client: 18)),
-          throwsA(
-            isA<HerdrProtocolMismatchException>().having(
-              (e) => e.actual,
-              'actual',
-              18,
-            ),
-          ),
-        );
-      },
-    );
+    test('accepts protocol 18 on client (18 >= minimum 17)', () {
+      final result = HerdrPreflight.validate(status(client: 18));
+      expect(result.clientProtocol, 18);
+      expect(result.serverProtocol, 17);
+    });
+
+    test('reports client as actual when server is new but client is old', () {
+      expect(
+        () => HerdrPreflight.validate(status(client: 16, server: 18)),
+        throwsA(
+          isA<HerdrProtocolMismatchException>()
+              .having((e) => e.actual, 'actual', 16)
+              .having((e) => e.supported, 'supported', 17),
+        ),
+      );
+    });
 
     test('throws when protocol fields are missing (0)', () {
       expect(

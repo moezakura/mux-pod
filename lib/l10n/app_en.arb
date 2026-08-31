@@ -78,7 +78,7 @@
   },
   "connHerdrNotFound": "herdr not found",
   "connTmuxNotFound": "tmux not found",
-  "connHerdrProtocolMismatch": "Herdr protocol {actual} is not supported (expected {supported}).",
+  "connHerdrProtocolMismatch": "Herdr protocol {actual} is not supported (minimum supported: {supported}).",
   "@connHerdrProtocolMismatch": {
     "placeholders": {
       "actual": {
