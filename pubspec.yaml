@@ -108,6 +108,10 @@ flutter:
     - assets/fonts/HackGenConsole-LICENSE.txt
     - assets/fonts/UDEVGothicNF-LICENSE.txt
     - assets/google_fonts/
+    # Herdr caret helper (experimental): manifest + per-platform static binaries.
+    - assets/herdr-caret-helper/manifest.json
+    - assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper
+    - assets/herdr-caret-helper/linux-aarch64/herdr-caret-helper
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

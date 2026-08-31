@@ -1,0 +1,5 @@
+# Pinned toolchain for reproducible helper builds.
+# Keep in sync with docs/herdr-caret-helper.md and .github/workflows/ci.yml.
+[toolchain]
+channel = "1.94.1"
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
