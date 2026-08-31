@@ -88,7 +88,7 @@ void main() {
         expect(resolver.tmuxPath, isNull);
         expect(resolver.customPath, '/custom/tmux');
         expect(resolver.tmuxBin, '/custom/tmux');
-        expect(resolver.resolve('tmux -V'), "'/custom/tmux' -V");
+        expect(resolver.resolve('tmux -V'), "'/custom/tmux' -u -V");
       },
     );
 
@@ -101,13 +101,38 @@ void main() {
       expect(resolver.tmuxPath, isNull);
     });
 
+    test('resolve forces UTF-8 mode on an unresolved tmux', () async {
+      // A tmux client speaks UTF-8 only when $TMUX, LC_ALL, LC_CTYPE or LANG
+      // says so, and an SSH command channel carries none of them. Without -u
+      // tmux runs every -F field through utf8_sanitize(), which rewrites each
+      // byte outside 0x20..0x7e to '_': a session named 'プロジェクト' comes
+      // back as '______' and attaching to that name cannot match.
+      expect(resolver.resolve('tmux list-sessions'), 'tmux -u list-sessions');
+    });
+
+    test('resolve forces UTF-8 mode on every tmux of a compound command', () {
+      expect(
+        resolver.resolve(
+          "printf 'x'; tmux capture-pane -p; tmux display-message -p '#{pane_id}'",
+        ),
+        "printf 'x'; tmux -u capture-pane -p; "
+        "tmux -u display-message -p '#{pane_id}'",
+      );
+    });
+
+    test('resolve does not add -u twice', () {
+      final once = resolver.resolve('tmux list-sessions');
+
+      expect(resolver.resolve(once), once);
+    });
+
     test('resolve rewrites only tmux commands at command boundaries', () async {
       client.execExitCodes = {"test -x '/path with space/tmux'": 0};
       await resolver.detect(client, executablePath: '/path with space/tmux');
 
       expect(
         resolver.resolve('echo tmux; tmux -V; nottmux -V'),
-        "echo tmux; '/path with space/tmux' -V; nottmux -V",
+        "echo tmux; '/path with space/tmux' -u -V; nottmux -V",
       );
     });
   });

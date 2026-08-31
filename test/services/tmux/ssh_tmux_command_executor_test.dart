@@ -39,7 +39,7 @@ void main() {
       sshClient.setConnected(SshConnectionState.connected);
       sshClient.execOutputs = {
         r"$SHELL -lc 'command -v tmux'": '/usr/bin/tmux',
-        '/usr/bin/tmux -V': 'tmux 3.2a',
+        '/usr/bin/tmux -u -V': 'tmux 3.2a',
       };
       executor = SshTmuxCommandExecutor(sshClient);
     });
@@ -57,7 +57,7 @@ void main() {
       expect(output, 'tmux 3.2a');
       expect(TmuxVersionInfo.parse(output), isNotNull);
       expect(executor.tmuxPath, '/usr/bin/tmux');
-      expect(sshClient.execCommands, contains("'/usr/bin/tmux' -V"));
+      expect(sshClient.execCommands, contains("'/usr/bin/tmux' -u -V"));
     });
 
     test(
@@ -81,7 +81,7 @@ void main() {
         await executor.sendKeysCommand(TmuxCommands.sendKeys('target', 'C-c'));
 
         expect(input.sent, hasLength(1));
-        expect(input.sent.single, contains("'/usr/bin/tmux' send-keys"));
+        expect(input.sent.single, contains("'/usr/bin/tmux' -u send-keys"));
         expect(sshClient.execCommands, [r"$SHELL -lc 'command -v tmux'"]);
       },
     );
@@ -173,7 +173,7 @@ void main() {
 
       client.execExceptions = {};
       client.execExitCodes = {"test -x '/custom/tmux'": 0};
-      client.execOutputs = {'/custom/tmux -V': 'tmux 3.2a'};
+      client.execOutputs = {'/custom/tmux -u -V': 'tmux 3.2a'};
 
       final result = await retryExecutor.execute(
         CommandRequest(
