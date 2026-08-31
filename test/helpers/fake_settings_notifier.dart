@@ -34,6 +34,11 @@ class FakeSettingsNotifier extends SettingsNotifier {
   }
 
   @override
+  Future<void> setExperimentalHerdrCaretPositionEnabled(bool value) async {
+    state = state.copyWith(experimentalHerdrCaretPositionEnabled: value);
+  }
+
+  @override
   Future<void> setZoomFactor(double value) async {
     state = state.copyWith(zoomFactor: value);
   }

@@ -63,6 +63,11 @@ class AppSettings {
   /// ターミナルカーソルの表示設定
   final bool showTerminalCursor;
 
+  /// 実験的: Herdr接続でカーソル位置スナップショットを取得する
+  /// （Phase 1ではフラグとUIのみ・動作はPhase 2/3で実装）
+  // inventory: SETTINGS-HERDR-CARET-001
+  final bool experimentalHerdrCaretPositionEnabled;
+
   /// ペインナビゲーション方向の反転
   final bool invertPaneNavigation;
 
@@ -139,6 +144,8 @@ class AppSettings {
     this.cjkMode = false,
     this.keepKeyboardOnEnter = false,
     this.showTerminalCursor = true,
+    // inventory: SETTINGS-HERDR-CARET-002
+    this.experimentalHerdrCaretPositionEnabled = false,
     this.invertPaneNavigation = false,
     // inventory: SETTINGS-SCROLL-SEND-002
     this.scrollSendInput = 'wheel',
@@ -187,6 +194,8 @@ class AppSettings {
     bool? cjkMode,
     bool? keepKeyboardOnEnter,
     bool? showTerminalCursor,
+    // inventory: SETTINGS-HERDR-CARET-003
+    bool? experimentalHerdrCaretPositionEnabled,
     bool? invertPaneNavigation,
     // inventory: SETTINGS-SCROLL-SEND-003
     String? scrollSendInput,
@@ -231,6 +240,10 @@ class AppSettings {
       cjkMode: cjkMode ?? this.cjkMode,
       keepKeyboardOnEnter: keepKeyboardOnEnter ?? this.keepKeyboardOnEnter,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
+      // inventory: SETTINGS-HERDR-CARET-004
+      experimentalHerdrCaretPositionEnabled:
+          experimentalHerdrCaretPositionEnabled ??
+          this.experimentalHerdrCaretPositionEnabled,
       invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
       scrollSendInput: scrollSendInput ?? this.scrollSendInput,
       invertScrollSendDirection:
@@ -279,6 +292,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const String _keepKeyboardOnEnterKey =
       'settings_keep_keyboard_on_enter';
   static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
+  // inventory: SETTINGS-HERDR-CARET-005
+  static const String _experimentalHerdrCaretPositionEnabledKey =
+      'settings_experimental_herdr_caret_position_enabled';
   static const String _invertPaneNavKey = 'settings_invert_pane_nav';
   // inventory: SETTINGS-SCROLL-SEND-004
   static const String _scrollSendInputKey = 'settings_scroll_send_input';
@@ -340,6 +356,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       cjkMode: prefs.getBool(_cjkModeKey) ?? false,
       keepKeyboardOnEnter: prefs.getBool(_keepKeyboardOnEnterKey) ?? false,
       showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
+      // inventory: SETTINGS-HERDR-CARET-006
+      experimentalHerdrCaretPositionEnabled:
+          prefs.getBool(_experimentalHerdrCaretPositionEnabledKey) ?? false,
       invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
       // inventory: SETTINGS-SCROLL-SEND-005
       scrollSendInput: prefs.getString(_scrollSendInputKey) ?? 'wheel',
@@ -563,6 +582,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setShowTerminalCursor(bool value) async {
     state = state.copyWith(showTerminalCursor: value);
     await _saveSetting(_showTerminalCursorKey, value);
+  }
+
+  /// 実験的: Herdrカーソル位置スナップショット取得を設定
+  // inventory: SETTINGS-HERDR-CARET-007
+  Future<void> setExperimentalHerdrCaretPositionEnabled(bool value) async {
+    state = state.copyWith(experimentalHerdrCaretPositionEnabled: value);
+    await _saveSetting(_experimentalHerdrCaretPositionEnabledKey, value);
   }
 
   /// ペインナビゲーション方向の反転を設定

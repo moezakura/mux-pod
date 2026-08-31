@@ -350,4 +350,92 @@ void main() {
       expect(toggled.keepKeyboardOnEnter, isFalse);
     });
   });
+
+  group('SettingsNotifier experimentalHerdrCaretPositionEnabled 永続化', () {
+    test('未保存時はデフォルト false になる', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+
+      expect(
+        container
+            .read(settingsProvider)
+            .experimentalHerdrCaretPositionEnabled,
+        isFalse,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.containsKey('settings_experimental_herdr_caret_position_enabled'),
+        isFalse,
+      );
+    });
+
+    test(
+      'setExperimentalHerdrCaretPositionEnabled で state が更新され SharedPreferences に保存される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setExperimentalHerdrCaretPositionEnabled(true);
+
+        expect(
+          container
+              .read(settingsProvider)
+              .experimentalHerdrCaretPositionEnabled,
+          isTrue,
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getBool(
+            'settings_experimental_herdr_caret_position_enabled',
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      '保存した experimentalHerdrCaretPositionEnabled は新規コンテナ（再起動相当）の再読込で復元される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setExperimentalHerdrCaretPositionEnabled(true);
+
+        final restarted = ProviderContainer();
+        addTearDown(restarted.dispose);
+        await restarted.read(settingsProvider.notifier).reload();
+
+        expect(
+          restarted
+              .read(settingsProvider)
+              .experimentalHerdrCaretPositionEnabled,
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'copyWith は experimentalHerdrCaretPositionEnabled を指定しない場合他の設定のみ変更する',
+      () {
+        const base = AppSettings(
+          experimentalHerdrCaretPositionEnabled: true,
+        );
+        final updated = base.copyWith(keepScreenOn: false);
+        expect(updated.experimentalHerdrCaretPositionEnabled, isTrue);
+        expect(updated.keepScreenOn, isFalse);
+
+        final toggled = base.copyWith(
+          experimentalHerdrCaretPositionEnabled: false,
+        );
+        expect(toggled.experimentalHerdrCaretPositionEnabled, isFalse);
+      },
+    );
+  });
 }
