@@ -212,7 +212,13 @@ void main() {
       final cmds = env.ssh.execCommands;
       expect(cmds, contains('uname -s'));
       expect(cmds, contains('uname -m'));
-      expect(cmds, anyElement(startsWith('printf %s')));
+      // m1 修正後の形式: フォーマット部がクォートされていること
+      // （非クォートだとシェルのエスケープ除去で末尾に `n` が付加され
+      // cache base が ~/.cachen になってしまう回帰検証）。
+      expect(
+        cmds,
+        anyElement("printf '%s\\n' \"\${XDG_CACHE_HOME:-\$HOME/.cache}\""),
+      );
       expect(cmds, anyElement(startsWith('sha256sum ')));
       expect(cmds, anyElement(contains('--pane ')));
       // skip 経路では SFTP を開かず chmod も実行しない
