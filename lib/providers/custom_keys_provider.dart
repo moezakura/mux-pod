@@ -62,6 +62,11 @@ class CustomKeysNotifier extends Notifier<CustomKeysState> {
 
   static const String shelfMigrationKey = 'custom_keys_shelf_v1';
 
+  /// One-shot: put the backspace key into layouts saved before it existed.
+  /// Without this the key ships only to fresh installs, and anyone who already
+  /// opened the app keeps a bar with no way to erase.
+  static const String bspaceMigrationKey = 'custom_keys_bspace_v1';
+
   @override
   CustomKeysState build() {
     _load();
@@ -76,8 +81,32 @@ class CustomKeysNotifier extends Notifier<CustomKeysState> {
         ? _loadRows(prefs)
         : await _migrateLegacyRows(prefs);
     if (!ref.mounted) return;
-    state = CustomKeysState(buttons: buttons, rows: rows);
+    state = CustomKeysState(
+      buttons: buttons,
+      rows: _ensureBackspace(prefs, rows),
+    );
     await _persist();
+  }
+
+  /// Adds 'bspace' next to 'dash' once, for layouts saved before it existed.
+  List<List<String>> _ensureBackspace(
+    SharedPreferences prefs,
+    List<List<String>> rows,
+  ) {
+    if (prefs.getBool(bspaceMigrationKey) ?? false) return rows;
+    prefs.setBool(bspaceMigrationKey, true);
+    if (rows.any((row) => row.contains('bspace'))) return rows;
+    // Only ever placed next to '-', never appended somewhere arbitrary: a
+    // layout without '-' is one the user rearranged deliberately, and the key
+    // stays available from the customizer shelf either way.
+    for (final row in rows) {
+      final i = row.indexOf('dash');
+      if (i >= 0) {
+        row.insert(i + 1, 'bspace');
+        return rows;
+      }
+    }
+    return rows;
   }
 
   List<CustomKeyButton> _loadButtons(SharedPreferences prefs) {
