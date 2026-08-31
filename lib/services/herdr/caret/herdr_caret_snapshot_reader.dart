@@ -19,6 +19,8 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../herdr_models.dart';
 import '../herdr_snapshot_cache.dart';
 import 'herdr_caret_helper_manager.dart';
@@ -90,19 +92,27 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
     required int rows,
   }) async {
     // 設定 OFF・非対応 protocol/socket・不正 frame は実行しない。
-    if (!_enabled() || cols < 0 || rows < 0) return null;
+    if (!_enabled() || cols < 0 || rows < 0) {
+      _logState('disabled', paneId);
+      return null;
+    }
 
     final HerdrStatus status;
     try {
       status = _statusProvider();
     } catch (_) {
+      _logState('unsupported', paneId);
       return null;
     }
     if (!kHerdrCaretSupportedProtocols.contains(status.serverProtocol)) {
+      _logState('unsupported', paneId);
       return null;
     }
     final apiSocket = status.socket;
-    if (apiSocket == null || apiSocket.trim().isEmpty) return null;
+    if (apiSocket == null || apiSocket.trim().isEmpty) {
+      _logState('unsupported', paneId);
+      return null;
+    }
 
     final now = _clock();
 
@@ -168,7 +178,8 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
       final cacheAfter = _cacheProvider();
       if (!identical(cacheAfter, cacheBefore) ||
           cacheAfter.epoch != epochBefore) {
-        return null; // stale 結果は破棄
+        _logState('stale', paneId); // 結果は破棄
+        return null;
       }
 
       final parsed = HerdrCaretSnapshot.fromHelperJson(
@@ -179,13 +190,23 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
       _cached = parsed;
       _cachedAt = parsed.capturedAt;
       return parsed;
-    } on HerdrCaretHelperException {
+    } on HerdrCaretHelperException catch (e) {
       // 失敗はキャッシュを更新しない（次の read で再試行される）。
+      _logState(e.failure.name, paneId);
       return null;
     } on FormatException {
+      _logState('invalid', paneId);
       return null;
     } catch (_) {
+      _logState('invalid', paneId);
       return null;
+    }
+  }
+
+  /// 状態分類のみを debug log へ出す（socket path・画面内容は出さない）。
+  void _logState(String state, String paneId) {
+    if (kDebugMode) {
+      debugPrint('[herdr-caret] $state (pane=$paneId)');
     }
   }
 }
