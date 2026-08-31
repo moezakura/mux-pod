@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "helperName": "herdr-caret-helper",
+  "platforms": [
+    {
+      "id": "linux-x86_64",
+      "os": "linux",
+      "arch": "x86_64",
+      "asset": "assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper",
+      "size": 740160,
+      "sha256": "8f0fdab92f02620f10167d231b2a9195c0b8489c038af954277e062b210c5f8a"
+    },
+    {
+      "id": "linux-aarch64",
+      "os": "linux",
+      "arch": "aarch64",
+      "asset": "assets/herdr-caret-helper/linux-aarch64/herdr-caret-helper",
+      "size": 501080,
+      "sha256": "7c3cfe1a99d7b8fc8def9bc2502236fad5e480de94a1df08b9ca1bfae0849bcb"
+    }
+  ]
+}

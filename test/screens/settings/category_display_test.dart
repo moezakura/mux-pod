@@ -61,6 +61,41 @@ void main() {
       expect(tester.widget<SwitchListTile>(tile).value, isFalse);
     });
 
+    testWidgets('displays experimental Herdr caret position toggle', (
+      tester,
+    ) async {
+      await buildSettingsApp(tester);
+      await openCategory(tester, 'Display');
+
+      await scrollUntilFound(
+        tester,
+        find.text('Experimental: Herdr caret position'),
+      );
+      expect(find.text('Experimental: Herdr caret position'), findsOneWidget);
+    });
+
+    testWidgets('experimental Herdr caret position toggle is interactive', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      await buildSettingsApp(tester);
+      await openCategory(tester, 'Display');
+
+      await scrollUntilFound(
+        tester,
+        find.text('Experimental: Herdr caret position'),
+      );
+      final tile = find.ancestor(
+        of: find.text('Experimental: Herdr caret position'),
+        matching: find.byType(SwitchListTile),
+      );
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse); // 既定 OFF
+
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    });
+
     testWidgets('displays Screen Orientation setting and opens picker', (
       tester,
     ) async {

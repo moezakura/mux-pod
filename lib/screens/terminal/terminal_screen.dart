@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
@@ -28,6 +29,9 @@ import '../../services/backend/domain/pane_writer.dart';
 import '../../services/backend/domain/tmux_pane_writer.dart';
 import '../../services/backend/domain/wheel_encoder.dart';
 import '../../services/herdr/herdr_adapter.dart';
+import '../../services/herdr/caret/herdr_caret_helper_manager.dart';
+import '../../services/herdr/caret/herdr_caret_helper_manifest.dart';
+import '../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
 import '../../services/herdr/herdr_commands.dart'
     show HerdrCommandException, HerdrTargetNotFoundException;
 import '../../services/herdr/herdr_errors.dart';
@@ -123,21 +127,32 @@ class _TerminalViewData {
   // inventory: LEGACY-0061
   final int paneHeight;
 
+  /// herdr カーソル情報（Phase 4）。null なら AnsiTextView は従来の
+  /// cursorX/cursorY（tmux 等）を使う。pane 切替・設定 OFF では明示的に
+  /// null へ戻す（旧 pane の caret を表示しない）。
+  final PaneCaret? caret;
+
   const _TerminalViewData({
     this.content = '',
     this.paneWidth = 80,
     this.paneHeight = 24,
+    this.caret,
   });
 
-  // inventory: LEGACY-0062
+  /// copyWith で nullable フィールド（[caret]）を明示的に null へ戻せるように
+  /// するためのセンチネル（未指定 = 現状維持。null 指定 = クリア）。
+  static const Object _unset = Object();
+
   _TerminalViewData copyWith({
     String? content,
     int? paneWidth,
     int? paneHeight,
+    Object? caret = _unset,
   }) => _TerminalViewData(
     content: content ?? this.content,
     paneWidth: paneWidth ?? this.paneWidth,
     paneHeight: paneHeight ?? this.paneHeight,
+    caret: identical(caret, _unset) ? this.caret : caret as PaneCaret?,
   );
 }
 
@@ -412,6 +427,14 @@ class TerminalScreen extends ConsumerStatefulWidget {
   /// `@visibleForTesting` 相当（本番呼び出し元は渡さない）。
   final DateTime Function()? herdrCacheClock;
 
+  /// テスト用: herdr caret snapshot reader の注入。
+  ///
+  /// null なら production 実装（[HerdrCaretHelperSnapshotReader]）が設定 ON 時
+  /// に生成される。非 null の場合は**設定 ON（experimentalHerdrCaretPositionEnabled
+  /// && showTerminalCursor）のときだけ**この reader を frame reader へ注入する
+  /// （OFF では呼び出し・副作用とも一切起きない）。`@visibleForTesting` 相当。
+  final HerdrCaretSnapshotReader? herdrCaretReader;
+
   const TerminalScreen({
     super.key,
     required this.connectionId,
@@ -424,6 +447,7 @@ class TerminalScreen extends ConsumerStatefulWidget {
     this.paneContentReader,
     this.initialPaneId,
     this.herdrCacheClock,
+    this.herdrCaretReader,
   });
 
   @override
@@ -485,6 +509,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // `_scheduleUpdate` で設定し、`_applyUpdate` で照合に使う（不一致なら破棄）。
   _HerdrTargetIdentity? _pendingTargetIdentity;
 
+  // Phase 4: 保留中コンテンツ（_pendingContent）に付随する caret。
+  // content と同一フレームから合成された caret だけを表示に適用する
+  // （`_applyUpdate` で view へ反映）。
+  PaneCaret? _pendingCaret;
+
   // 適応型ポーリング用
   int _currentPollingInterval = 100;
   static const int _minPollingInterval = 50;
@@ -497,6 +526,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 選択状態保持用（スクロールモード中の更新抑制）
   String _bufferedContent = '';
   bool _hasBufferedUpdate = false;
+
+  // Phase 4: バッファリングされた更新に付随する caret（適用時に反映）。
+  PaneCaret? _bufferedCaret;
 
   // A3改: バッファされた更新（_bufferedContent）の表示対象同一性。
   // バッファ時に記録し、適用時（_applyBufferedUpdate → _applyUpdate）に照合する。
@@ -607,6 +639,21 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // herdr スナップショットキャッシュ（A5: 唯一の read chokepoint）。
   // 再接続で adapter が差し替わるときは `_recreatePaneReader` で作り直す。
   HerdrSnapshotCache? _herdrSnapshotCache;
+
+  // Phase 4: herdr frame reader の再構築用に保持しておく adapter。
+  // caret reader は manifest load（rootBundle）が非同期のため、frame reader を
+  // 作り直して caret を差し込む必要がある。再接続では `_recreatePaneReader` が
+  // この値を差し替える（stale な caret を新 adapter に紐づけない）。
+  HerdrAdapter? _herdrFrameAdapter;
+
+  // Phase 4: herdr caret snapshot reader。設定 ON かつ caret helper 配布に
+  // 成功したときだけ非 null。設定 OFF / カーソル非表示への遷移で破棄する。
+  HerdrCaretSnapshotReader? _herdrCaretReader;
+
+  // Phase 4: caret reader 用の herdr server status（protocol / socket）。
+  // `herdr status --json` を best-effort で取得（protocol 17/20 の生値・検証なし）。
+  // 未取得（null）の間は caret は no-op（既定値で非対応扱い）。
+  HerdrStatus? _herdrCaretStatus;
 
   /// herdr のターミナル全体 resize を実現する hidden TUI 常駐ブリッジ。
   ///
@@ -906,6 +953,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         setState(() {
           _directInputEnabled = next.directInputEnabled;
         });
+      }
+      // Phase 4: 設定（experimentalHerdrCaretPositionEnabled）・カーソル表示
+      // （showTerminalCursor）の変化で caret reader を再構成する。OFF への遷移
+      // は保持 caret を破棄し、ON への遷移は reader を構築し直す。
+      if (previous == null ||
+          previous.experimentalHerdrCaretPositionEnabled !=
+              next.experimentalHerdrCaretPositionEnabled ||
+          previous.showTerminalCursor != next.showTerminalCursor) {
+        _reconfigureHerdrCaretForSettings();
       }
       // AutoResize時: フォント/ズーム変更（ピンチや設定）で tmux ペインを再フィット
       if (next.isAutoResize &&
@@ -1439,6 +1495,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (widget.paneContentReader != null) {
       _paneReader = widget.paneContentReader;
       _frameReader = null; // テスト注入 reader は content のみ（geometry は解決しない）
+      // Phase 4: 注入 content reader 経路は caret 合成を行わない（stale 防止）。
+      _herdrFrameAdapter = null;
+      _herdrCaretReader = null;
+      _herdrCaretStatus = null;
       // herdr: スナップショット読み取りは content reader とは独立に cache
       // （唯一の read chokepoint・A5 / A3改）経由にする。テスト注入 reader でも
       // cache を生成してエポック照合を有効にする（バックエンドは client 由来）。
@@ -1458,13 +1518,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         () => adapter,
         clock: widget.herdrCacheClock,
       );
+      // Phase 4: frame reader 再構築用に adapter を保持し、caret reader を
+      // 設定ゲート付きで解決する（注入 reader は設定 ON のときのみ有効）。
+      _herdrFrameAdapter = adapter;
+      _herdrCaretReader = _resolveInjectedHerdrCaretReader();
       // content + geometry の合成（バグ1 根本対応: 表示層の backend 分岐と
       // 診断 getter の表示利用を除去）。cache.get() の TTL/single-flight/epoch
-      // 契約を守る PaneLayoutResolver を使う。
-      _frameReader = HerdrPaneFrameReader(
-        adapter,
-        HerdrPaneLayoutResolver(_herdrSnapshotCache!),
-      );
+      // 契約を守る PaneLayoutResolver を使う。caret は設定 ON 時に合成する。
+      _frameReader = _buildHerdrFrameReader();
+      // Phase 4: 非同期で production caret reader を構築する（manifest load は
+      // rootBundle。生成失敗は caret 無しで続行）。注入 reader があれば構築しない。
+      if (widget.herdrCaretReader == null) {
+        unawaited(_setupProductionHerdrCaretReader(sshClient));
+      }
       // hidden TUI 常駐ブリッジ（ターミナル全体 resize 用・lazy start）。
       // 古いブリッジは旧 client の dispose（await）で managed PTY が終了するため、
       // ここでは新しい client / cache に紐づくブリッジに置き換える。
@@ -1477,7 +1543,164 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     } else {
       _paneReader = TmuxPaneContentReader(sshClient.tmuxExecutor);
       _frameReader = null;
+      // Phase 4: tmux 経路は caret 合成を行わない（stale 防止）。
+      _herdrFrameAdapter = null;
+      _herdrCaretReader = null;
+      _herdrCaretStatus = null;
     }
+  }
+
+  // ===== Phase 4: herdr caret reader（合成・注入） =====
+
+  /// 注入 reader（テスト用）を設定ゲート付きで解決する。
+  ///
+  /// 設定 OFF / カーソル表示 OFF のときは null（呼び出し・副作用なし）。
+  HerdrCaretSnapshotReader? _resolveInjectedHerdrCaretReader() {
+    final settings = ref.read(settingsProvider);
+    if (!settings.experimentalHerdrCaretPositionEnabled ||
+        !settings.showTerminalCursor) {
+      return null;
+    }
+    return widget.herdrCaretReader;
+  }
+
+  /// 現在の caret reader を合成した herdr frame reader を構築する。
+  ///
+  /// [caretReader] 差し替え（production 構築完了・設定変化・再接続）のたびに
+  /// 呼び、ポーリングループが使う [_frameReader] へ反映する。
+  HerdrPaneFrameReader _buildHerdrFrameReader() {
+    final adapter = _herdrFrameAdapter;
+    final cache = _herdrSnapshotCache;
+    assert(adapter != null && cache != null, 'herdr frame reader 構築時は必須');
+    return HerdrPaneFrameReader(
+      adapter!,
+      HerdrPaneLayoutResolver(cache!),
+      caretReader: _herdrCaretReader,
+    );
+  }
+
+  /// caret reader の enabled ゲート（設定 ON && カーソル表示 ON）。
+  bool _isHerdrCaretEnabled() =>
+      !_isDisposed &&
+      ref.read(settingsProvider).experimentalHerdrCaretPositionEnabled &&
+      ref.read(settingsProvider).showTerminalCursor;
+
+  /// 現在の herdr server status（protocol / socket）。
+  ///
+  /// 未取得（null）は既定値（serverProtocol 0 = 非対応）を返し、caret は
+  /// no-op になる。取得は [_refreshHerdrStatus] が best-effort で行う
+  /// （失敗しても通常表示・入力を止めない）。
+  HerdrStatus _readHerdrStatus() => _herdrCaretStatus ?? const HerdrStatus();
+
+  /// caret 構成まわりの状態分類ログ（Phase 6。理由文字列のみ・機密なし）。
+  void _logCaretState(String state, String reason) {
+    if (kDebugMode) {
+      debugPrint('[herdr-caret] $state: $reason');
+    }
+  }
+
+  /// `herdr status --json` を取得して [_herdrCaretStatus] へ memoize する。
+  ///
+  /// [HerdrPreflight] とは違い protocol 検証をしない（caret helper は 17/20
+  /// の両方に対応するため）。失敗は caret 無効のまま継続する。
+  Future<void> _refreshHerdrStatus(SshClient sshClient) async {
+    try {
+      final status = await HerdrAdapter(sshClient).status();
+      if (_isDisposed) return;
+      _herdrCaretStatus = status;
+    } catch (_) {
+      // status 取得失敗は caret 無効のまま継続（表示・入力を止めない）。
+      _logCaretState('unsupported', 'status fetch failed');
+    }
+  }
+
+  /// production の herdr caret reader を非同期で構築する。
+  ///
+  /// - 設定 OFF / カーソル表示 OFF の間は何もしない（wire 呼び出し 0 回）。
+  /// - manifest は rootBundle から読み込み、[HerdrCaretHelperManager] を
+  ///   adapter の backend（SshClient）と manifest から生成する。
+  /// - manifest 読み込み失敗等は caret 無しで続行（通常表示を止めない）。
+  /// - await 中に再接続（cache 差し替え）が起きたら構築結果を破棄する。
+  Future<void> _setupProductionHerdrCaretReader(SshClient sshClient) async {
+    // 注入 reader（テスト用）があれば production 構築はしない。
+    if (widget.herdrCaretReader != null) return;
+    final cache = _herdrSnapshotCache;
+    if (cache == null || _isDisposed) return;
+
+    // enabled ゲート（設定 OFF・カーソル非表示は reader を作らない）。
+    final settings = ref.read(settingsProvider);
+    if (!settings.experimentalHerdrCaretPositionEnabled ||
+        !settings.showTerminalCursor) {
+      return;
+    }
+
+    HerdrCaretHelperManifest? manifest;
+    try {
+      manifest = await HerdrCaretHelperManifest.load();
+    } catch (_) {
+      _logCaretState('unsupported', 'manifest load failed');
+      return; // manifest 読込失敗は caret 無しで続行。
+    }
+    if (_isDisposed) return;
+
+    // await 中に再接続（cache 差し替え）が起きていたら破棄。
+    if (!identical(_herdrSnapshotCache, cache)) return;
+
+    try {
+      final manager = HerdrCaretHelperManager(
+        ssh: sshClient,
+        manifest: manifest,
+      );
+      final reader = HerdrCaretHelperSnapshotReader(
+        runner: manager,
+        statusProvider: _readHerdrStatus,
+        cacheProvider: () => _herdrSnapshotCache!,
+        enabled: _isHerdrCaretEnabled,
+      );
+      if (_isDisposed || !identical(_herdrSnapshotCache, cache)) return;
+      _herdrCaretReader = reader;
+      _frameReader = _buildHerdrFrameReader();
+      // 初回 status を best-effort で取得（protocol 17/20 の生値）。
+      unawaited(_refreshHerdrStatus(sshClient));
+    } catch (_) {
+      // 生成失敗は caret 無しで続行（helper 配布・SSH 実行を止めない）。
+      _herdrCaretReader = null;
+    }
+  }
+
+  /// 設定・カーソル表示の変化で caret reader を再構成する。
+  ///
+  /// - OFF への遷移: 保持 caret を破棄し、reader を除去する。
+  /// - ON への遷移: 注入 reader があればそれを差し込み、無ければ
+  ///   production 構築を再開する。
+  void _reconfigureHerdrCaretForSettings() {
+    if (!mounted || _isDisposed) return;
+    if (_backendKind != MultiplexerBackendKind.herdr) return;
+    final sshClient = ref.read(sshProvider.notifier).client;
+    final settings = ref.read(settingsProvider);
+    final enabled =
+        settings.experimentalHerdrCaretPositionEnabled &&
+        settings.showTerminalCursor;
+
+    if (!enabled) {
+      // OFF 遷移: 保持 caret も破棄（旧 pane / 旧設定の残骸を表示しない）。
+      if (_herdrCaretReader != null || _viewNotifier.value.caret != null) {
+        _herdrCaretReader = null;
+        _viewNotifier.value = _viewNotifier.value.copyWith(caret: null);
+        if (_herdrFrameAdapter != null && _herdrSnapshotCache != null) {
+          _frameReader = _buildHerdrFrameReader();
+        }
+      }
+      return;
+    }
+
+    if (sshClient == null) return;
+    if (widget.herdrCaretReader != null) {
+      _herdrCaretReader = widget.herdrCaretReader;
+      _frameReader = _buildHerdrFrameReader();
+      return;
+    }
+    unawaited(_setupProductionHerdrCaretReader(sshClient));
   }
 
   /// hidden herdr TUI の起動コマンド用 executablePath を POSIX shell quote する。
@@ -2057,8 +2280,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       }
 
       // コンテンツ差分があれば更新（スロットリング適用）
+      // Phase 4: caret も同一フレームから合成された値に追従する
+      // （content が同一でも caret が変化していれば反映する）。
       final currentView = _viewNotifier.value;
-      if (processedOutput != currentView.content) {
+      if (processedOutput != currentView.content ||
+          !_caretEquals(snapshot.caret, currentView.caret)) {
         // select 専用（4 経路分離・D12）: 手動選択モード中は更新をバッファリングして
         // 選択状態を保持。scrollSend はここに含まれず `_scheduleUpdate` でライブ表示
         // （D3）。tmux copy-mode 中は capture-pane がスクロール位置の内容を返すため
@@ -2066,11 +2292,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         if (_terminalMode == TerminalMode.select &&
             _scrollModeSource == ScrollModeSource.manual) {
           _bufferedContent = processedOutput;
+          _bufferedCaret = snapshot.caret;
           _hasBufferedUpdate = true;
           // A3改: バッファ時点の表示対象同一性を併記（適用時に照合）。
           _bufferedTargetIdentity = herdrIdentity;
         } else {
-          _scheduleUpdate(processedOutput, targetIdentity: herdrIdentity);
+          _scheduleUpdate(
+            processedOutput,
+            targetIdentity: herdrIdentity,
+            caret: snapshot.caret,
+          );
         }
       }
 
@@ -2688,9 +2919,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _scheduleUpdate(
         _bufferedContent,
         targetIdentity: _bufferedTargetIdentity,
+        caret: _bufferedCaret,
       );
       _hasBufferedUpdate = false;
       _bufferedContent = '';
+      _bufferedCaret = null;
       _bufferedTargetIdentity = null;
     }
   }
@@ -2769,8 +3002,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// 高頻度更新時（htop等）に毎フレーム更新しないようスロットリングを行う。
   /// 16ms（約60fps）以内の連続更新は次フレームに延期される。
-  void _scheduleUpdate(String content, {_HerdrTargetIdentity? targetIdentity}) {
+  /// [caret]: コンテンツに付随する herdr caret（Phase 4）。省略時は現状維持。
+  void _scheduleUpdate(
+    String content, {
+    _HerdrTargetIdentity? targetIdentity,
+    PaneCaret? caret,
+  }) {
     _pendingContent = content;
+    _pendingCaret = caret;
     // A3改: このコンテンツの表示対象同一性を併記し、`_applyUpdate` で照合する。
     _pendingTargetIdentity = targetIdentity;
 
@@ -2804,6 +3043,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // ValueNotifier更新（親のsetState()を回避し、ValueListenableBuilderのみリビルド）
     _viewNotifier.value = _viewNotifier.value.copyWith(
       content: _pendingContent,
+      caret: _pendingCaret,
     );
 
     // 初回コンテンツ受信時に一番下へスクロール
@@ -3097,6 +3337,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                         _terminalScrollController,
                                     cursorX: cursor.x,
                                     cursorY: cursor.y,
+                                    // Phase 4: herdr caret（非 null 時は
+                                    // visible/位置/範囲で描画判定。null は従来）。
+                                    caret: viewData.caret,
                                     // inventory: TERM-INPUT-005
                                     onArrowSwipe: _canSendSpecialKey
                                         ? _sendSpecialKeyWithOverlay
@@ -3741,7 +3984,11 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     source.setPaneId(paneId);
 
     // 2-3. コンテンツクリアと初回スクロールフラグのリセット
-    _viewNotifier.value = _viewNotifier.value.copyWith(content: '');
+    // Phase 4: caret も破棄する（旧 pane のカーソルを新 pane に表示しない）。
+    _viewNotifier.value = _viewNotifier.value.copyWith(
+      content: '',
+      caret: null,
+    );
     _hasInitialScrolled = false;
 
     // 4. スクロールモードとバッファのリセット（切替後の残留防止・H1）。
@@ -3936,16 +4183,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _scrollToCaret() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted || _isDisposed) return;
-      // herdr はカーソル位置情報を持たない（PaneFrame が cursorX/cursorY=0 を
-      // 返す固定値）ため、中央寄せだと最下部より (paneHeight-1)/2 行手前で
-      // 停止してしまう。末尾アライン（scrollToBottom 相当）で表示する。
+      // Phase 4: herdr は有効な caret snapshot（位置既知 x/y non-null）を
+      // 保持している場合のみ scrollToCaret を使う。それ以外（非表示・位置不明・
+      // 未取得・設定 OFF）は従来どおり末尾アライン（scrollToBottom 相当）。
       // tmux は実カーソル位置があるため従来どおり中央寄せを維持。
       if (_backendKind == MultiplexerBackendKind.herdr) {
-        _ansiTextViewKey.currentState?.scrollToBottom();
+        final caret = _viewNotifier.value.caret;
+        if (caret != null && caret.visible && caret.hasPosition) {
+          _ansiTextViewKey.currentState?.scrollToCaret();
+        } else {
+          _ansiTextViewKey.currentState?.scrollToBottom();
+        }
       } else {
         _ansiTextViewKey.currentState?.scrollToCaret();
       }
     });
+  }
+
+  /// caret の値等価判定（x/y/visible/shape/frame 寸法）。
+  ///
+  /// [PaneCaret] は不変オブジェクトで `==` を持たないため、同一フレーム
+  /// から合成された値の変化検出に使う（content が同一でも caret が変化して
+  /// いれば表示へ反映する）。
+  static bool _caretEquals(PaneCaret? a, PaneCaret? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+    return a.x == b.x &&
+        a.y == b.y &&
+        a.visible == b.visible &&
+        a.shape == b.shape &&
+        a.frameWidth == b.frameWidth &&
+        a.frameHeight == b.frameHeight;
   }
 
   /// エラーオーバーレイ

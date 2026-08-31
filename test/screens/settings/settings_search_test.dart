@@ -71,6 +71,15 @@ void main() {
       expect(find.text('Behavior'), findsNothing);
     });
 
+    testWidgets('matches the experimental Herdr caret toggle by title', (
+      tester,
+    ) async {
+      await buildSettingsApp(tester);
+      await typeQuery(tester, 'caret');
+
+      expect(find.text('Experimental: Herdr caret position'), findsOneWidget);
+    });
+
     testWidgets('matches ja labels from a ja locale (フォント)', (tester) async {
       await buildSettingsApp(tester, locale: const Locale('ja'));
       await typeQuery(tester, 'フォント');

@@ -1,0 +1,19 @@
+[package]
+name = "herdr-caret-helper"
+version = "0.1.0"
+edition = "2021"
+description = "One-shot Herdr read-only wire helper that reports the first FrameData cursor."
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "herdr_caret_helper"
+path = "src/lib.rs"
+
+[[bin]]
+name = "herdr-caret-helper"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+bincode = { version = "2", features = ["serde"] }
+serde_json = "1"

@@ -6,6 +6,7 @@
 /// 両 backend を扱えるようにする。
 library;
 
+import 'pane_frame_reader.dart';
 import 'pane_read.dart';
 
 /// ペインの文字セル単位の幾何情報。
@@ -49,6 +50,10 @@ class MultiplexerPaneSnapshot {
   /// 内容が ANSI エスケープを含むかどうか。
   final bool hasAnsi;
 
+  /// herdr カーソル情報（caret）。他 backend・未取得時は null
+  /// （従来の cursorX / cursorY 契約へフォールバックする）。
+  final PaneCaret? caret;
+
   const MultiplexerPaneSnapshot({
     required this.content,
     this.geometry,
@@ -56,6 +61,7 @@ class MultiplexerPaneSnapshot {
     this.cursorY = 0,
     this.paneMode = '',
     this.hasAnsi = false,
+    this.caret,
   });
 
   /// 後方互換: 文字幅（不明なら 0）。

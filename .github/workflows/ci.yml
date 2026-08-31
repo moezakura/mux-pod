@@ -198,3 +198,82 @@ jobs:
         run: |
           GIT_REF="${{ github.ref_name }}@$(echo '${{ github.sha }}' | cut -c1-7)"
           flutter build ios --debug --no-codesign --dart-define=GIT_REF=$GIT_REF
+
+  herdr-caret-helper:
+    name: herdr-caret-helper (test + build + hash verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # tools/herdr-caret-helper/rust-toolchain.toml で 1.94.1 と musl target を固定。
+      # 再現ビルドのため manifest の sha256 と一致する成果物のみを認める。
+      - name: Setup Rust (pinned toolchain)
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: '1.94.1'
+
+      - name: Add musl targets
+        run: |
+          rustup target add x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl
+
+      # aarch64 は cargo-zigbuild でクロスビルドする（zig 0.16.0 固定、docs と同手順）
+      - name: Install Zig 0.16.0
+        run: |
+          curl -fsSL \
+            https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+            -o /tmp/zig.tar.xz
+          sudo tar -C /opt -xf /tmp/zig.tar.xz
+          sudo ln -s /opt/zig-x86_64-linux-0.16.0/zig /usr/local/bin/zig
+          zig version
+
+      - name: Install cargo-zigbuild (pinned)
+        run: cargo install cargo-zigbuild --version 0.22.3 --locked
+
+      # 再現ビルドの検証：ツールチェーン固定で同一手順を再実行でき、静的リンク
+      # を維持することを確認する。絶対パス埋め込み等により環境が異なるとバイト
+      # 同一にはならないため、manifest の sha256 はコミット済み配布バイナリ
+      # （assets/herdr-caret-helper/<id>/herdr-caret-helper）との一致を検証する。
+      - name: Run helper tests
+        working-directory: tools/herdr-caret-helper
+        run: cargo test
+
+      - name: Build x86_64 musl helper (reproducible)
+        working-directory: tools/herdr-caret-helper
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Build aarch64 musl helper (reproducible)
+        working-directory: tools/herdr-caret-helper
+        run: cargo zigbuild --release --target aarch64-unknown-linux-musl
+
+      - name: Check rebuilt binaries are statically linked
+        working-directory: tools/herdr-caret-helper
+        run: |
+          file target/x86_64-unknown-linux-musl/release/herdr-caret-helper
+          file target/aarch64-unknown-linux-musl/release/herdr-caret-helper
+          file target/*/release/herdr-caret-helper | grep -qE 'static-pie|statically linked'
+
+      # 配布物（コミット済み asset）と manifest 記載の size/sha256 の一致を検証
+      - name: Verify manifest matches committed assets
+        run: |
+          python3 - <<'EOF'
+          import hashlib, json, pathlib
+          mp = pathlib.Path('assets/herdr-caret-helper/manifest.json')
+          manifest = json.loads(mp.read_text())
+          assert manifest['version'] == 1
+          assert manifest['helperName'] == 'herdr-caret-helper'
+          ok = True
+          for p in manifest['platforms']:
+              data = pathlib.Path(p['asset']).read_bytes()
+              if len(data) != p['size']:
+                  print(f"size mismatch {p['id']}: actual={len(data)} "
+                        f"manifest={p['size']}")
+                  ok = False
+              if hashlib.sha256(data).hexdigest() != p['sha256']:
+                  print(f"sha256 mismatch {p['id']}")
+                  ok = False
+          print('manifest asset verification:', 'OK' if ok else 'FAILED')
+          raise SystemExit(0 if ok else 1)
+          EOF

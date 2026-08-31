@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/settings_provider.dart';
 import '../../../providers/terminal_display_provider.dart';
+import '../../../services/backend/domain/pane_frame_reader.dart';
 import '../../../services/terminal/ansi_parser.dart';
 import '../../../services/terminal/font_calculator.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
@@ -91,6 +92,17 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// カーソルY位置（0-based, ペイン上部基準）
   final int cursorY;
 
+  /// herdr のカーソル情報（Phase 4）。
+  ///
+  /// null なら従来どおり [cursorX] / [cursorY]（tmux 等）を描画する。
+  /// 非 null の場合、[PaneCaret.visible] == false・位置不明（x/y null）・
+  /// 範囲外（frame 寸法を超える）は**カーソルを描画しない**（従来の
+  /// cursorX/cursorY へフォールバックしない。`cursor: null` 観測と正当な
+  /// `(0,0)` を nullable で分離するため）。座標変換（[FontCalculator]
+  /// による全角セル・行末のオフセット計算）は [cursorX] / [cursorY] と
+  /// 同じ経路へ集約する。
+  final PaneCaret? caret;
+
   /// ホールド+スワイプで矢印キー入力時のコールバック
   /// direction: 'Up', 'Down', 'Left', 'Right'
   final void Function(String direction)? onArrowSwipe;
@@ -126,6 +138,7 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.verticalScrollController,
     this.cursorX = 0,
     this.cursorY = 0,
+    this.caret,
     this.onArrowSwipe,
     this.onTwoFingerSwipe,
     this.navigableDirections,
@@ -150,6 +163,36 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 使用する垂直スクロールコントローラー
   ScrollController get _verticalScrollController =>
       widget.verticalScrollController ?? _internalVerticalScrollController!;
+
+  /// 描画に使う解決済みカーソル位置と描画可否。
+  ///
+  /// - [PaneCaret]（herdr・Phase 4）が非 null: `visible && 位置既知（x/y
+  ///   non-null）&& frame 範囲内` のときだけ描画する（[draw] == true）。
+  ///   非表示・位置不明・範囲外は描画しない（従来の cursorX/cursorY には
+  ///   フォールバックしない。`cursor:null` 観測と正当な `(0,0)` を分離）。
+  /// - [PaneCaret] が null（tmux 等・未取得）: 従来どおり [cursorX] /
+  ///   [cursorY] を描画する。
+  ///
+  /// 座標変換（frame 寸法 → 表示セル）は既存の cursorX/cursorY 計算と同じ
+  /// 経路へ集約し、CJK 全角セル・行末は既存計算に委譲する。
+  ({int x, int y, bool draw}) get _resolvedCaret {
+    final caret = widget.caret;
+    if (caret == null) {
+      return (x: widget.cursorX, y: widget.cursorY, draw: true);
+    }
+    final x = caret.x;
+    final y = caret.y;
+    final draw =
+        caret.visible &&
+        x != null &&
+        y != null &&
+        x >= 0 &&
+        y >= 0 &&
+        // frame 寸法が未知（0 以下）のときは範囲検証をスキップする。
+        (caret.frameWidth <= 0 || x < caret.frameWidth) &&
+        (caret.frameHeight <= 0 || y < caret.frameHeight);
+    return (x: x ?? widget.cursorX, y: y ?? widget.cursorY, draw: draw);
+  }
 
   late AnsiParser _parser;
 
@@ -798,22 +841,26 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
             // カーソル位置の行インデックスを計算
             // parsedLinesには履歴+可視領域が含まれる。
             // 末尾のpaneHeight分が可視領域となる。
+            final resolvedCaret = _resolvedCaret;
             final int cursorLineIndex;
             if (parsedLines.length >= widget.paneHeight) {
               cursorLineIndex =
-                  parsedLines.length - widget.paneHeight + widget.cursorY;
+                  parsedLines.length - widget.paneHeight + resolvedCaret.y;
             } else {
               // 行数がpaneHeight未満の場合は、単純にcursorYを使用（初期状態など）
-              cursorLineIndex = widget.cursorY;
+              cursorLineIndex = resolvedCaret.y;
             }
 
             // カーソル行: キャレットをStack+Positionedで「合成」せず、
             // テキストレイアウト内の正確な位置に直接挿入する（Issue #70 根本対応）。
             // キャレットはゼロ幅インライン要素として文字境界に置かれ、
             // テキストエンジンが決定する描画位置にそのまま乗る。
+            // Phase 4: caret（herdr）が非表示・位置不明・範囲外のときは
+            // MuxPod 側カーソルを描画しない（draw ゲート）。
             if (index == cursorLineIndex &&
                 widget.mode == TerminalMode.normal &&
-                settings.showTerminalCursor) {
+                settings.showTerminalCursor &&
+                resolvedCaret.draw) {
               // 行のプレーンテキストを取得
               final lineText = line.segments.map((s) => s.text).join();
 
@@ -825,12 +872,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
               );
               final charOffset = FontCalculator.columnToCharOffset(
                 lineText,
-                widget.cursorX,
+                resolvedCaret.x,
               );
 
               // キャレットが行テキスト終端より先にある場合（空行や行末以降）の埋めセル数
-              final padColumns = widget.cursorX > lineDisplayWidth
-                  ? widget.cursorX - lineDisplayWidth
+              final padColumns = resolvedCaret.x > lineDisplayWidth
+                  ? resolvedCaret.x - lineDisplayWidth
                   : 0;
 
               lineWidget = ValueListenableBuilder<bool>(
@@ -1459,13 +1506,16 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
       final parsedLines = _cachedParsedLines;
       if (parsedLines == null || parsedLines.isEmpty) return;
 
-      // カーソル行インデックスを計算（build内と同じロジック）
+      // カーソル行インデックスを計算（build内と同じロジック）。
+      // Phase 4: herdr caret が与えられた場合は caret.y を使う（位置不明・
+      // 非表示は画面側で scrollToCaret を呼ばないため、ここでは単純に解決値）。
+      final resolvedCaret = _resolvedCaret;
       final int cursorLineIndex;
       if (parsedLines.length >= widget.paneHeight) {
         cursorLineIndex =
-            parsedLines.length - widget.paneHeight + widget.cursorY;
+            parsedLines.length - widget.paneHeight + resolvedCaret.y;
       } else {
-        cursorLineIndex = widget.cursorY;
+        cursorLineIndex = resolvedCaret.y;
       }
 
       // カーソル行のスクロールオフセット

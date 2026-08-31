@@ -66,6 +66,27 @@ class HerdrAdapter {
     return HerdrPreflight.validate(status, l10n: _strings);
   }
 
+  // inventory: HERDR-ADAPTER-034
+  /// `herdr status --json` の生結果を返す（protocol 検証なし）。
+  ///
+  /// [preflight] は protocol 17 固定を検証して例外を投げるため、caret helper
+  /// （Phase 4。protocol 17 / 20 の両方に対応）のように「対応 protocol かは
+  /// 呼び出し側が判定する」用途には使えない。このメソッドは検証せずにパース
+  /// した [HerdrStatus] を返す（protocol 判定・socket 導出は呼び出し側）。
+  Future<HerdrStatus> status({Duration? timeout}) async {
+    final stdout = await _execChecked(
+      HerdrCommands.preflightCommand(),
+      timeout: timeout,
+    );
+    try {
+      return HerdrStatusParser.parse(stdout);
+    } on FormatException catch (e) {
+      throw HerdrCommandException(
+        _strings.connHerdrParseStatusFailed(e.message),
+      );
+    }
+  }
+
   // inventory: HERDR-ADAPTER-003
   /// 全階層スナップショット（workspace/tab/pane）を取得する。
   Future<HerdrSnapshot> snapshot({Duration? timeout}) async {

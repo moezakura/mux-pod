@@ -15,6 +15,7 @@ import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_snapshot_reader.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/widgets/image_transfer_confirm_dialog.dart';
 
@@ -132,6 +133,9 @@ class TerminalTestScaffold {
     FakeSshClient Function()? clientFactory,
     String? initialPaneId,
     PaneContentReader? paneContentReader,
+    // テスト用: herdr caret snapshot reader の注入（設定 ON 時のみ有効）。
+    // 設定 OFF では呼び出し・副作用とも一切起きないことを検証できる。
+    HerdrCaretSnapshotReader? herdrCaretReader,
     // cache TTL 動作の検証用: fake clock（例: `() => tester.binding.clock.now()`）。
     DateTime Function()? herdrCacheClock,
     // tmuxProvider の初期状態（T9: stale tmuxProvider が herdr セッション確立
@@ -208,6 +212,7 @@ class TerminalTestScaffold {
             deepLinkPaneIndex: deepLinkPaneIndex,
             initialPaneId: initialPaneId,
             paneContentReader: paneContentReader,
+            herdrCaretReader: herdrCaretReader,
             herdrCacheClock: herdrCacheClock,
           ),
         ),

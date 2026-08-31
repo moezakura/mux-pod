@@ -883,6 +883,10 @@
   "commonSave": "Save",
   "settingsShowCursor": "Show Cursor",
   "settingsShowCursorDescription": "Show terminal cursor indicator",
+  "settingsExperimentalHerdrCaretPositionTitle":
+      "Experimental: Herdr caret position",
+  "settingsExperimentalHerdrCaretPositionDescription":
+      "Experimental. Herdr connections only, best-effort (falls back to the current view on failure). Installs a small helper client on the SSH host.",
   "settingsAdjustMode": "Adjust Mode",
   "settingsAdjustModeNone": "None",
   "settingsAdjustModeAutoFit": "Auto Fit",

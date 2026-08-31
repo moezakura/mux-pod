@@ -118,19 +118,19 @@ void main() {
       final systemIndex = container.read(settingsSearchIndexProvider);
       expect(
         systemIndex.items.length,
-        39,
-      ); // Display10+Behavior13+Connection10+About3
+        40,
+      ); // Display11+Behavior13+Connection13+About3
       expect(systemIndex.current, isNotNull);
       expect(systemIndex.other, isNotNull);
 
       await setLanguage('ja');
       final jaIndex = container.read(settingsSearchIndexProvider);
-      expect(jaIndex.items.length, 39);
+      expect(jaIndex.items.length, 40);
       expect(jaIndex.other, isNotNull); // en 側も並置
 
       await setLanguage('en');
       final enIndex = container.read(settingsSearchIndexProvider);
-      expect(enIndex.items.length, 39);
+      expect(enIndex.items.length, 40);
       expect(enIndex.other, isNotNull); // ja 側も並置
     });
   });
@@ -147,6 +147,11 @@ void main() {
     test('title マッチ: "no results に近い" 以外の通常タイトル', () async {
       await setQuery('adjust');
       expect(hitIds(), contains('adjustMode'));
+    });
+
+    test('タイトル: "caret" で experimentalHerdrCaretPosition がヒット', () async {
+      await setQuery('caret');
+      expect(hitIds(), contains('experimentalHerdrCaretPosition'));
     });
 
     test('カテゴリ名マッチ: "Behavior" で Behavior カテゴリ全項目がヒット', () async {
@@ -208,6 +213,24 @@ void main() {
       expect(hitIds(), contains('clearHostKeys'));
     });
 
+    test(
+      'ja 表示中に "caret" で experimentalHerdrCaretPosition がヒット（en ラベル照合）',
+      () async {
+        await setLanguage('ja');
+        await setQuery('caret');
+        expect(hitIds(), contains('experimentalHerdrCaretPosition'));
+      },
+    );
+
+    test(
+      'en 表示中に「実験的」で experimentalHerdrCaretPosition がヒット（ja ラベル照合）',
+      () async {
+        await setLanguage('en');
+        await setQuery('実験的');
+        expect(hitIds(), contains('experimentalHerdrCaretPosition'));
+      },
+    );
+
     test("'system'（端末ロケール=テスト en）でも en/ja 両方言語でヒット（M-2）", () async {
       // 初期値 'system' のまま
       await setQuery('font');
@@ -256,7 +279,7 @@ void main() {
     test('39項目すべてが descriptor に存在しカテゴリと order が一意', () {
       final index = container.read(settingsSearchIndexProvider);
       final ids = index.items.map((e) => e.id).toList();
-      expect(ids.toSet().length, 39);
+      expect(ids.toSet().length, 40);
       // カテゴリ内 order が一意（0..n-1 の重複なし）
       for (final category in SettingsCategory.values) {
         final perCategory =
@@ -267,7 +290,7 @@ void main() {
       }
       expect(
         index.items.where((e) => e.category == SettingsCategory.display).length,
-        10,
+        11,
       );
       expect(
         index.items

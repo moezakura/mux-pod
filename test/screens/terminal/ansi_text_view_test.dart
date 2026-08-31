@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_frame_reader.dart';
 import 'package:flutter_muxpod/services/terminal/font_calculator.dart';
 import 'package:flutter_muxpod/services/terminal/terminal_font_styles.dart';
 import 'package:flutter_muxpod/theme/design_colors.dart';
@@ -207,6 +208,7 @@ void main() {
     int cursorX = 0,
     int cursorY = 0,
     int paneHeight = 3,
+    PaneCaret? caret,
   }) {
     return ProviderScope(
       overrides: [
@@ -233,6 +235,7 @@ void main() {
               paneHeight: paneHeight,
               cursorX: cursorX,
               cursorY: cursorY,
+              caret: caret,
             ),
           ),
         ),
@@ -364,5 +367,129 @@ void main() {
       textScaler: TextScaler.noScaling,
     )..layout();
     expect(caretRect.left, closeTo(below.left + painter.width, 1.0));
+  });
+
+  // ===== Phase 4: herdr caret（PaneCaret）描画 =====
+
+  testWidgets('herdr caret (0,0) is a valid position and is rendered', (
+    tester,
+  ) async {
+    // 正当な (0,0) は「不明」ではなく有効座標として描画される。
+    await tester.pumpWidget(
+      buildCaretSubject(
+        'abc\ndef\nghi',
+        caret: const PaneCaret(
+          x: 0,
+          y: 0,
+          visible: true,
+          shape: 1,
+          frameWidth: 20,
+          frameHeight: 3,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(caretFinder, findsOneWidget);
+    // 1行目・行頭に描画される（従来の cursorX/cursorY 経由と同じ変換経路）。
+    final caretRect = tester.getRect(caretFinder);
+    final firstRow = tester.getRect(find.textContaining('abc'));
+    expect(caretRect.center.dy, closeTo(firstRow.center.dy, 3.0));
+    expect(caretRect.left, closeTo(firstRow.left, 2.0));
+  });
+
+  testWidgets('hidden caret (visible=false) is not rendered even with x/y', (
+    tester,
+  ) async {
+    // visible=false（cursor:null 観測に相当）では MuxPod 側のカーソルを
+    // 描画しない。cursorX/cursorY（従来値）へフォールバックもしない。
+    await tester.pumpWidget(
+      buildCaretSubject(
+        'abc\ndef\nghi',
+        cursorX: 2,
+        cursorY: 1,
+        caret: const PaneCaret(
+          x: 2,
+          y: 1,
+          visible: false,
+          shape: 0,
+          frameWidth: 20,
+          frameHeight: 3,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(caretFinder, findsNothing);
+  });
+
+  testWidgets('caret with unknown position (x/y null) is not rendered', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildCaretSubject(
+        'abc\ndef\nghi',
+        cursorX: 2,
+        cursorY: 1,
+        caret: const PaneCaret(
+          x: null,
+          y: null,
+          visible: true,
+          shape: 1,
+          frameWidth: 20,
+          frameHeight: 3,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(caretFinder, findsNothing);
+  });
+
+  testWidgets('out-of-frame caret (x/y beyond frame size) is not rendered', (
+    tester,
+  ) async {
+    // frame 寸法（20x3）を超える座標は不正値として描画しない（左上へ飛ばない）。
+    await tester.pumpWidget(
+      buildCaretSubject(
+        'abc\ndef\nghi',
+        cursorX: 2,
+        cursorY: 1,
+        caret: const PaneCaret(
+          x: 21,
+          y: 1,
+          visible: true,
+          shape: 1,
+          frameWidth: 20,
+          frameHeight: 3,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(caretFinder, findsNothing);
+  });
+
+  testWidgets('out-of-frame caret (y beyond frame height) is not rendered', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildCaretSubject(
+        'abc\ndef\nghi',
+        cursorX: 1,
+        cursorY: 1,
+        caret: const PaneCaret(
+          x: 1,
+          y: 3,
+          visible: true,
+          shape: 1,
+          frameWidth: 20,
+          frameHeight: 3,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(caretFinder, findsNothing);
   });
 }
