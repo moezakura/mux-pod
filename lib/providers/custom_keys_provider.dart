@@ -81,7 +81,10 @@ class CustomKeysNotifier extends Notifier<CustomKeysState> {
         ? _loadRows(prefs)
         : await _migrateLegacyRows(prefs);
     if (!ref.mounted) return;
-    state = CustomKeysState(buttons: buttons, rows: _ensureBackspace(prefs, rows));
+    state = CustomKeysState(
+      buttons: buttons,
+      rows: _ensureBackspace(prefs, rows),
+    );
     await _persist();
   }
 

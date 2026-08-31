@@ -327,30 +327,33 @@ void main() {
     expect(s.rows[1].first, 'tab');
   });
 
-  test('backspace is inserted next to dash in a layout saved without it', () async {
-    // The real upgrade path: the app was already opened, so a layout without
-    // 'bspace' is persisted. Without the migration the bar would keep no way
-    // to erase, since the key only ships in the defaults.
-    SharedPreferences.setMockInitialValues({
-      CustomKeysNotifier.rowsKey: jsonEncode([
-        <String>[],
-        ['esc', 'tab', 'slash', 'dash'],
-        ['left', 'right'],
-      ]),
-    });
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container.read(customKeysProvider);
-    await Future<void>.delayed(Duration.zero);
+  test(
+    'backspace is inserted next to dash in a layout saved without it',
+    () async {
+      // The real upgrade path: the app was already opened, so a layout without
+      // 'bspace' is persisted. Without the migration the bar would keep no way
+      // to erase, since the key only ships in the defaults.
+      SharedPreferences.setMockInitialValues({
+        CustomKeysNotifier.rowsKey: jsonEncode([
+          <String>[],
+          ['esc', 'tab', 'slash', 'dash'],
+          ['left', 'right'],
+        ]),
+      });
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(customKeysProvider);
+      await Future<void>.delayed(Duration.zero);
 
-    expect(container.read(customKeysProvider).rows[1], [
-      'esc',
-      'tab',
-      'slash',
-      'dash',
-      'bspace',
-    ]);
-  });
+      expect(container.read(customKeysProvider).rows[1], [
+        'esc',
+        'tab',
+        'slash',
+        'dash',
+        'bspace',
+      ]);
+    },
+  );
 
   test('a layout without dash is left untouched', () async {
     // Rearranged by hand: inserting into it would be presumptuous, and the key
