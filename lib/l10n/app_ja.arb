@@ -78,7 +78,7 @@
   },
   "connHerdrNotFound": "herdr が見つかりません",
   "connTmuxNotFound": "tmux が見つかりません",
-  "connHerdrProtocolMismatch": "Herdr プロトコル {actual} はサポートされていません（対応: {supported}）。",
+  "connHerdrProtocolMismatch": "Herdr プロトコル {actual} はサポートされていません（最小対応: {supported}）。",
   "@connHerdrProtocolMismatch": {
     "placeholders": {
       "actual": {

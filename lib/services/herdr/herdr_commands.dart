@@ -10,9 +10,9 @@ import '../../l10n/l10n_lookup.dart';
 import 'herdr_models.dart';
 
 // inventory: HERDR-CMD-PROTO-001
-/// サポートする herdr protocol 番号。
+/// サポートする herdr protocol の最小番号。
 ///
-/// G6 合意#2・#6: protocol 17 固定・最小対応版。
+/// G6 合意#2・#6: protocol は最小 17（17 以上）に対応。
 const int kHerdrSupportedProtocol = 17;
 
 // inventory: HERDR-CMD-001
@@ -378,9 +378,9 @@ class HerdrTargetNotFoundException implements Exception {
 }
 
 // inventory: HERDR-ERR-002
-/// preflight で protocol が非対応（17 以外）の場合に投げる例外。
+/// preflight で protocol が非対応（17 未満）の場合に投げる例外。
 class HerdrProtocolMismatchException implements Exception {
-  /// サポートする protocol 番号（17）。
+  /// サポートする protocol の最小番号（17）。
   final int supported;
 
   /// 実測された protocol 番号。
@@ -394,7 +394,7 @@ class HerdrProtocolMismatchException implements Exception {
   @override
   String toString() =>
       'HerdrProtocolMismatchException: protocol $actual is not supported '
-      '(expected $supported)';
+      '(minimum $supported)';
 }
 
 // inventory: HERDR-ERR-003
@@ -421,12 +421,12 @@ class HerdrServerNotRunningException implements Exception {
 }
 
 // inventory: HERDR-PREFLIGHT-001
-/// `herdr status --json` の結果から protocol 17 を検証する preflight。
+/// `herdr status --json` の結果から protocol（最小 17）を検証する preflight。
 ///
 /// コマンド実行は [HerdrAdapter.preflight] が行い、このクラスは検証のみを
 /// 担当する。server 未稼働の場合は [HerdrServerNotRunningException]、
-/// protocol が 17 以外の場合は [HerdrProtocolMismatchException] を投げる
-/// （G6 合意#2・#6: protocol 17 固定・最小対応版）。
+/// protocol が 17 未満の場合は [HerdrProtocolMismatchException] を投げる
+/// （G6 合意#2・#6: 最小 17（17 以上））。
 class HerdrPreflight {
   HerdrPreflight._();
 
@@ -434,12 +434,12 @@ class HerdrPreflight {
   static const int supportedProtocol = kHerdrSupportedProtocol;
 
   // inventory: HERDR-PREFLIGHT-002
-  /// [status] の client/server protocol が 17 であることを検証する。
+  /// [status] の client/server protocol が 17 以上であることを検証する。
   ///
   /// 検証順序:
   /// 1. server 未稼働（[HerdrStatus.running] == false）なら
   ///    [HerdrServerNotRunningException] を投げる（protocol 判定より先）。
-  /// 2. client/server protocol が 17 以外なら [HerdrProtocolMismatchException]。
+  /// 2. client/server protocol が 17 未満なら [HerdrProtocolMismatchException]。
   ///
   /// 検証に成功した場合は [status] をそのまま返す。
   static HerdrStatus validate(HerdrStatus status, {AppLocalizations? l10n}) {
@@ -451,9 +451,9 @@ class HerdrPreflight {
     }
     final client = status.clientProtocol;
     final server = status.serverProtocol;
-    if (client != supportedProtocol || server != supportedProtocol) {
+    if (client < supportedProtocol || server < supportedProtocol) {
       // より具体的な方（server 優先）を actual として報告する。
-      final actual = server != supportedProtocol ? server : client;
+      final actual = server < supportedProtocol ? server : client;
       throw HerdrProtocolMismatchException(
         supported: supportedProtocol,
         actual: actual,

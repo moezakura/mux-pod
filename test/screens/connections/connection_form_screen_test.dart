@@ -293,7 +293,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('protocol 16 is not supported'),
+        find.textContaining(
+          'protocol 16 is not supported (minimum supported: 17)',
+        ),
         findsOneWidget,
       );
     });

@@ -277,7 +277,7 @@ class HerdrLayout {
 // inventory: HERDR-MODELS-SNAPSHOT-001
 /// `herdr api snapshot` の結果（全階層）。
 class HerdrSnapshot {
-  /// protocol 番号（17 がサポート対象）。
+  /// protocol 番号（17 以上がサポート対象）。
   final int protocol;
 
   /// herdr のバージョン（例: "0.7.5"）。
