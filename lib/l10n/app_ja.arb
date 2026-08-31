@@ -1495,6 +1495,78 @@
   "mdTruncatedMessage": "ファイルがプレビュー上限を超えるため、先頭部分のみ表示しています。",
   "mdEmpty": "このファイルは空です。",
   "mdSshLost": "SSH 接続が切断されました",
+  "fileDownload": "ダウンロード",
+  "fileDownloadExporting": "保存先を選択中…",
+  "fileSelectedCount": "{count} 件選択中",
+  "@fileSelectedCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fileBatchDownload": "一括ダウンロード",
+  "fileClearSelection": "選択を解除",
+  "fileDownloadCancelled": "ダウンロードをキャンセルしました",
+  "fileDownloadError": "ダウンロードに失敗しました",
+  "fileDownloadComplete": "ダウンロードが完了しました",
+  "fileDownloadResultSummary": "成功 {completed} / 失敗 {failed} / スキップ {skipped}",
+  "@fileDownloadResultSummary": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "notifDownloadProgress": "ダウンロード中 {count}/{total}（{percent}%）・{bytes}・{speed}",
+  "@notifDownloadProgress": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "percent": {
+        "type": "int"
+      },
+      "bytes": {
+        "type": "String"
+      },
+      "speed": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadComplete": "ダウンロード完了: 成功 {completed} / 失敗 {failed} / スキップ {skipped}",
+  "@notifDownloadComplete": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "failed": {
+        "type": "int"
+      },
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "notifDownloadFailed": "ダウンロードに失敗しました: {error}",
+  "@notifDownloadFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "notifDownloadCancelled": "ダウンロードをキャンセルしました",
   "fileUploadAction": "アップロード",
   "fileUploadSshUnavailable": "SSH接続がありません",
   "fileUploadCancelled": "アップロードをキャンセルしました",

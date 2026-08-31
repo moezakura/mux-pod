@@ -68,6 +68,9 @@ dependencies:
   flutter_markdown_plus: 1.0.12
   highlight: 0.7.0
   markdown: ^7.3.1
+  saf_util: ^3.1.0
+  saf_stream: ^4.0.1
+  flutter_file_dialog: ^3.3.2
 
 dev_dependencies:
   flutter_test:

@@ -114,6 +114,14 @@ void main() {
   AppLocalizations l10nOf(WidgetTester tester) =>
       AppLocalizations.of(tester.element(find.byType(FileBrowserScreen)));
 
+  Finder menuButtonFor(String entryName) => find.descendant(
+    of: find.ancestor(
+      of: find.text(entryName),
+      matching: find.byType(ListTile),
+    ),
+    matching: find.byIcon(Icons.more_vert),
+  );
+
   group('FileBrowserScreen - .md/.markdown タップ分岐（合意#2/#3）', () {
     testWidgets('適正サイズの .md タップでプレビュー画面へ遷移する', (tester) async {
       final sftp = await pumpScreen(tester, sftpClient: _defaultSftp());
@@ -167,7 +175,7 @@ void main() {
     testWidgets('非 .md ファイルのメニューに open は表示されない（ディレクトリ専用化）', (tester) async {
       await pumpScreen(tester, sftpClient: _defaultSftp());
 
-      await tester.longPress(find.text('data.txt'));
+      await tester.tap(menuButtonFor('data.txt'));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.folder_open), findsNothing); // open 非表示
@@ -177,16 +185,16 @@ void main() {
     testWidgets('ディレクトリのメニューには従来どおり open が表示される', (tester) async {
       await pumpScreen(tester, sftpClient: _defaultSftp());
 
-      await tester.longPress(find.text('docs'));
+      await tester.tap(menuButtonFor('docs'));
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.folder_open), findsOneWidget);
     });
 
-    testWidgets('.md 長押しメニューの open でプレビュー画面へ遷移する（合意#2）', (tester) async {
+    testWidgets('.md の more メニューの open でプレビュー画面へ遷移する（合意#2）', (tester) async {
       final sftp = await pumpScreen(tester, sftpClient: _defaultSftp());
 
-      await tester.longPress(find.text('readme.md'));
+      await tester.tap(menuButtonFor('readme.md'));
       await tester.pumpAndSettle();
 
       // .md のメニューには open が表示される（タップと同義の入口）
@@ -197,6 +205,18 @@ void main() {
 
       expect(find.byType(MarkdownPreviewScreen), findsOneWidget);
       expect(sftp.openedPaths, contains('/home/user/readme.md'));
+    });
+
+    testWidgets('.md 長押しはメニューではなく複数選択を開始する', (tester) async {
+      await pumpScreen(tester, sftpClient: _defaultSftp());
+
+      await tester.longPress(find.text('readme.md'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(find.byType(Checkbox), findsNWidgets(4));
+      expect(find.byIcon(Icons.more_vert), findsNothing);
+      expect(find.byIcon(Icons.folder_open), findsNothing);
     });
 
     testWidgets('.markdown 拡張子のタップでもプレビュー画面へ遷移する（合意#3）', (tester) async {

@@ -9,13 +9,27 @@ class FileListTile extends StatelessWidget {
   final FileEntry entry;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final VoidCallback onMenuPressed;
+
+  /// 複数選択モード中か（選択モード中のみチェックボックスを表示）。
+  final bool selectionMode;
+
+  /// 選択済みか（選択モード中のハイライト+チェック表示）。
+  final bool selected;
 
   const FileListTile({
     super.key,
     required this.entry,
     required this.onTap,
     required this.onLongPress,
+    required this.onMenuPressed,
+    this.selectionMode = false,
+    this.selected = false,
   });
+
+  /// 選択可能（ダウンロード対象＝ファイルのみ・シンボリックリンク除外。
+  /// FileActionMenu の download 表示条件と同一）。
+  bool get _selectable => !entry.isDirectory && !entry.isSymlink;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +42,10 @@ class FileListTile extends StatelessWidget {
         : DesignColors.textMutedLight;
 
     return ListTile(
+      selected: selectionMode && selected,
+      selectedTileColor: Theme.of(
+        context,
+      ).colorScheme.primary.withValues(alpha: 0.08),
       leading: _buildIcon(isDark),
       title: Text(
         entry.name,
@@ -40,12 +58,25 @@ class FileListTile extends StatelessWidget {
         maxLines: 1,
       ),
       subtitle: _buildSubtitle(subtitleColor),
-      trailing: entry.isDirectory
-          ? Icon(Icons.chevron_right, color: subtitleColor, size: 20)
-          : null,
+      trailing: _buildTrailing(context),
       onTap: onTap,
       onLongPress: onLongPress,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+    );
+  }
+
+  /// 通常時は全エントリに単体操作メニューを表示する。選択モード中は
+  /// 選択可能ファイルのみチェックボックスに切り替え、ディレクトリと
+  /// シンボリックリンクには trailing を表示しない。
+  Widget? _buildTrailing(BuildContext context) {
+    if (selectionMode) {
+      if (!_selectable) return null;
+      return Checkbox(value: selected, onChanged: (_) => onTap());
+    }
+    return IconButton(
+      icon: const Icon(Icons.more_vert),
+      tooltip: MaterialLocalizations.of(context).moreButtonTooltip,
+      onPressed: onMenuPressed,
     );
   }
 
