@@ -525,7 +525,18 @@ void main() {
         expect(shells.first.commands, ['echo ping', 'echo ping', 'echo ping']);
         expect(timers.last.duration, const Duration(seconds: 15));
 
+        // A lost probe must NOT tear the session down on its own: on a mobile
+        // link single misses are routine, and treating one as a disconnect
+        // puts the terminal into a permanent reconnect loop.
         shells.first.error = StateError('lost');
+        for (var i = 0; i < 2; i++) {
+          timers.last.fire();
+          await Future<void>.delayed(Duration.zero);
+          expect(client.state, isNot(SshConnectionState.error));
+          expect(closeCalls, 0);
+        }
+
+        // The third consecutive failure is the disconnect.
         timers.last.fire();
         await Future<void>.delayed(Duration.zero);
         expect(client.state, SshConnectionState.error);

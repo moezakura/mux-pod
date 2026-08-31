@@ -265,8 +265,19 @@ class SshClient implements BackendAdapter {
   /// Keep-alive最大間隔（秒）
   static const int _maxKeepAliveIntervalSeconds = 30;
 
-  /// Keep-aliveタイムアウト（秒）- 高速検知のため3秒に短縮
-  static const int _keepAliveTimeoutSeconds = 3;
+  /// Keep-alive timeout. 3s gives fast detection and holds on a LAN, but a
+  /// cellular link, a VPN or a relayed hop misses a 3s round trip routinely,
+  /// and the phone throttling timers in the background makes it likelier still.
+  static const int _keepAliveTimeoutSeconds = 10;
+
+  /// Consecutive keep-alive failures before the connection is declared dead.
+  /// A single lost probe is normal on a mobile link and must not tear down a
+  /// live session; detection stays fast because the probe interval already
+  /// shortens on failure.
+  static const int _keepAliveFailureThreshold = 3;
+
+  /// Consecutive keep-alive failures so far.
+  int _keepAliveFailureCount = 0;
 
   /// 現在のKeep-alive間隔（動的に調整）
   int _currentKeepAliveIntervalSeconds = 10;
@@ -728,6 +739,7 @@ class SshClient implements BackendAdapter {
     _stopKeepAlive();
     _currentKeepAliveIntervalSeconds = 10; // 初期値10秒
     _keepAliveSuccessCount = 0;
+    _keepAliveFailureCount = 0;
     // inventory: SSH-LIFE-009
     _scheduleNextKeepAlive();
   }
@@ -792,10 +804,16 @@ class SshClient implements BackendAdapter {
           timeout: Duration(seconds: _keepAliveTimeoutSeconds),
         ),
       );
+      _keepAliveFailureCount = 0;
       _adjustKeepAliveInterval(success: true);
     } catch (e) {
       _adjustKeepAliveInterval(success: false);
-      // Keep-alive失敗 = 接続切断
+      _keepAliveFailureCount++;
+      if (_keepAliveFailureCount < _keepAliveFailureThreshold) {
+        // Probe more often (the interval already shortened) and give the link
+        // a chance to come back before tearing the session down.
+        return;
+      }
       _lastError =
           _l10n?.sshConnectionLostDetail(e.toString()) ?? 'Connection lost: $e';
       _updateState(SshConnectionState.error);
