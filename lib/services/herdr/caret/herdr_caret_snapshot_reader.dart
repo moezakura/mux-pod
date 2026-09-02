@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 
 import '../herdr_models.dart';
 import '../herdr_snapshot_cache.dart';
+import '../herdr_version.dart';
 import 'herdr_caret_helper_manager.dart';
 import 'herdr_caret_snapshot.dart';
 
@@ -104,7 +105,7 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
       _logState('unsupported', paneId);
       return null;
     }
-    if (!kHerdrCaretSupportedProtocols.contains(status.serverProtocol)) {
+    if (!isHerdrCaretProtocolSupported(status.serverProtocol)) {
       _logState('unsupported', paneId);
       return null;
     }

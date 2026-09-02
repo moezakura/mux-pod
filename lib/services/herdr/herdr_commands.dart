@@ -8,12 +8,7 @@ library;
 import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_lookup.dart';
 import 'herdr_models.dart';
-
-// inventory: HERDR-CMD-PROTO-001
-/// サポートする herdr protocol の最小番号。
-///
-/// G6 合意#2・#6: protocol は最小 17（17 以上）に対応。
-const int kHerdrSupportedProtocol = 17;
+import 'herdr_version.dart';
 
 // inventory: HERDR-CMD-001
 /// herdr CLI コマンド文字列を構築するヘルパー。
@@ -431,7 +426,7 @@ class HerdrPreflight {
   HerdrPreflight._();
 
   /// サポートする protocol 番号。
-  static const int supportedProtocol = kHerdrSupportedProtocol;
+  static const int supportedProtocol = kHerdrMinSupportedProtocol;
 
   // inventory: HERDR-PREFLIGHT-002
   /// [status] の client/server protocol が 17 以上であることを検証する。
@@ -451,9 +446,10 @@ class HerdrPreflight {
     }
     final client = status.clientProtocol;
     final server = status.serverProtocol;
-    if (client < supportedProtocol || server < supportedProtocol) {
+    if (!isHerdrProtocolSupported(client) ||
+        !isHerdrProtocolSupported(server)) {
       // より具体的な方（server 優先）を actual として報告する。
-      final actual = server < supportedProtocol ? server : client;
+      final actual = !isHerdrProtocolSupported(server) ? server : client;
       throw HerdrProtocolMismatchException(
         supported: supportedProtocol,
         actual: actual,

@@ -18,8 +18,7 @@ library;
 
 import 'dart:convert';
 
-/// helper が対応する protocol 番号（17 / 20 のみ）。
-const Set<int> kHerdrCaretSupportedProtocols = {17, 20};
+import '../herdr_version.dart';
 
 /// u16 の上限（x / y / frameWidth / frameHeight 共通）。
 const int kHerdrCaretU16Max = 0xFFFF;
@@ -128,7 +127,7 @@ class HerdrCaretSnapshot {
 
     final protocolVersion = decoded['protocolVersion'];
     if (protocolVersion is! int ||
-        !kHerdrCaretSupportedProtocols.contains(protocolVersion)) {
+        !isHerdrCaretProtocolSupported(protocolVersion)) {
       throw FormatException('Unsupported protocolVersion: $protocolVersion');
     }
 

@@ -1,5 +1,6 @@
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_models.dart';
+import 'package:flutter_muxpod/services/herdr/herdr_version.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -46,8 +47,8 @@ void main() {
     });
 
     test('supported protocol constant is 17', () {
-      expect(kHerdrSupportedProtocol, 17);
-      expect(HerdrPreflight.supportedProtocol, 17);
+      expect(kHerdrMinSupportedProtocol, 17);
+      expect(HerdrPreflight.supportedProtocol, kHerdrMinSupportedProtocol);
     });
   });
 
