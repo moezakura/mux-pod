@@ -13,6 +13,14 @@
 use std::process::ExitCode;
 
 use herdr_caret_helper::runner::{run, CaretOutput, Params, RunError};
+use herdr_caret_helper::is_caret_protocol_supported;
+use herdr_caret_helper::protocols::CARET_SUPPORTED_PROTOCOLS;
+
+fn usage() -> String {
+    let protocols = CARET_SUPPORTED_PROTOCOLS.iter()
+        .map(u8::to_string).collect::<Vec<_>>().join("|");
+    format!("usage: herdr-caret-helper --socket <path> --pane <id> --protocol <{}> [--cols <n>] [--rows <n>] [--timeout-ms <n>]", protocols)
+}
 
 fn parse_required(args: &[String], name: &str) -> Result<String, String> {
     let mut iter = args.iter();
@@ -55,7 +63,7 @@ fn parse_optional_u64(args: &[String], name: &str, default: u64) -> Result<u64, 
 fn parse_args() -> Result<Params, String> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.contains(&"--help".to_owned()) || args.contains(&"-h".to_owned()) {
-        return Err("usage: herdr-caret-helper --socket <path> --pane <id> --protocol <17|20> [--cols <n>] [--rows <n>] [--timeout-ms <n>]".to_owned());
+        return Err(usage());
     }
     let socket = parse_required(&args, "--socket")?;
     let pane = parse_required(&args, "--pane")?;
@@ -64,8 +72,8 @@ fn parse_args() -> Result<Params, String> {
     let rows = parse_optional_u16(&args, "--rows", 24)?;
     let timeout_ms = parse_optional_u64(&args, "--timeout-ms", 1000)?;
 
-    if protocol != 17 && protocol != 20 {
-        return Err(format!("unsupported protocol {}; expected 17 or 20", protocol));
+    if !is_caret_protocol_supported(protocol) {
+        return Err(format!("unsupported protocol {}", protocol));
     }
 
     Ok(Params {
@@ -82,7 +90,7 @@ fn main() -> ExitCode {
     let params = match parse_args() {
         Ok(p) => p,
         Err(msg) => {
-            let hint = "usage: herdr-caret-helper --socket <path> --pane <id> --protocol <17|20> [--cols <n>] [--rows <n>] [--timeout-ms <n>]";
+            let hint = usage();
             eprintln!("{} {}", RunError::Usage(msg.clone()).json(), hint);
             return ExitCode::FAILURE;
         }

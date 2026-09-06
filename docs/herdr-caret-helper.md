@@ -22,6 +22,12 @@ Herdr 本体・動作中の Herdr プロセスには一切変更を加えない�
 接続可否判定（`HerdrAdapter.preflight`）とは独立に、この helper の
 対応判定だけが実験機能の有効性を決める。
 
+対応範囲の定義元は `tools/herdr-protocols.json`。
+変更後は `dart tool/generate_herdr_protocols.dart` で Dart と Rust の定数を
+再生成する。CI は `--check` で生成物の更新漏れを検出する。
+caret 対応版を追加するときは Rust の対応する wire codec と runner、
+結合テストも追加し、以下の手順で配布バイナリと manifest を更新する。
+
 ## 使い方
 
 ```sh

@@ -1,6 +1,7 @@
 //! Connection + observe runner shared by the CLI and loopback tests.
 
 use crate::wire::*;
+use crate::is_caret_protocol_supported;
 use serde::{Deserialize, Serialize};
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
@@ -81,8 +82,8 @@ impl RunError {
 
 /// Connects to the socket and observes, returning the first cursor.
 pub fn run(params: &Params) -> Result<CaretOutput, RunError> {
-    if params.protocol != 17 && params.protocol != 20 {
-        return Err(RunError::Usage("unsupported protocol; expected 17 or 20".to_owned()));
+    if !is_caret_protocol_supported(params.protocol) {
+        return Err(RunError::Usage("unsupported protocol".to_owned()));
     }
     let stream = UnixStream::connect(&params.socket).map_err(|_| RunError::Connect)?;
     let base = Duration::from_millis(params.timeout_ms);
