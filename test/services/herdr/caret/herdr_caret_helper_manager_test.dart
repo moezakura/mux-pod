@@ -54,6 +54,33 @@ class _StatAwareSftpClient extends FakeSftpClient {
   }
 }
 
+class _StrictDirectorySftpClient extends _StatAwareSftpClient {
+  final Set<String> directories = {'/'};
+
+  @override
+  Future<SftpFileAttrs> stat(String path, {bool followLink = true}) async {
+    final fileSize = fileSizes[path];
+    if (fileSize != null) {
+      return SftpFileAttrs(mode: SftpFileMode.value(0x81A4), size: fileSize);
+    }
+    if (!directories.contains(path)) {
+      throw SftpStatusError(SftpStatusCode.noSuchFile, 'No such file');
+    }
+    return SftpFileAttrs(mode: SftpFileMode.value(0x41ED));
+  }
+
+  @override
+  Future<void> mkdir(String path, [SftpFileAttrs? attrs]) async {
+    final parent = path.substring(0, path.lastIndexOf('/')).isEmpty
+        ? '/'
+        : path.substring(0, path.lastIndexOf('/'));
+    if (!directories.contains(parent)) {
+      throw SftpStatusError(SftpStatusCode.noSuchFile, 'Parent missing');
+    }
+    directories.add(path);
+  }
+}
+
 Uint8List _helperBytes() =>
     Uint8List.fromList(List.generate(256, (i) => i & 0xFF));
 
@@ -266,6 +293,18 @@ void main() {
   });
 
   group('install（upload 経路）', () {
+    test('cache base 自体がない初回配置でも親ディレクトリから作成する', () async {
+      final env = _Env()..setUpInstall();
+      final strict = _StrictDirectorySftpClient();
+      env.ssh.sftpClient = strict;
+      env.ssh.execOutputs['.herdr-caret-helper.tmp'] =
+          '$helperSha  ${env.tempPath}\n';
+      strict.fileSizes[env.tempPath] = helperBytes.length;
+      await env.run();
+      expect(strict.directories, contains('/cache/mux-pod/herdr-caret'));
+      expect(strict.directories, contains(env.remoteDir));
+    });
+
     test('sha256sum 不一致なら upload → 検証 → rename → chmod 0700 する', () async {
       final env = _Env()..setUpInstall();
       final result = await env.run();

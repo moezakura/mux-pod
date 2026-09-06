@@ -370,6 +370,7 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     await _installRemote(
       sftpBytes: bytes,
       platform: platform,
+      cacheBase: base,
       remoteDir: remoteDir,
       tempPath: tempPath,
       remotePath: remotePath,
@@ -395,6 +396,7 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   Future<void> _installRemote({
     required Uint8List sftpBytes,
     required HerdrCaretHelperPlatform platform,
+    required String cacheBase,
     required String remoteDir,
     required String tempPath,
     required String remotePath,
@@ -412,6 +414,14 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
     }
 
     try {
+      // SFTP mkdir is not recursive. Create the cache base and helper install
+      // hierarchy in order, including when the cache base itself is absent.
+      final cacheRoot = p.posix.normalize(cacheBase);
+      final installRoot = p.posix.join(cacheRoot, remoteInstallDir);
+      final parentRoot = p.posix.dirname(installRoot);
+      await _sftpService.ensureDirectory(sftp, cacheRoot);
+      await _sftpService.ensureDirectory(sftp, parentRoot);
+      await _sftpService.ensureDirectory(sftp, installRoot);
       await _sftpService.ensureDirectory(sftp, remoteDir);
     } catch (e) {
       _fail(
