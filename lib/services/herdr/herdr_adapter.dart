@@ -69,10 +69,10 @@ class HerdrAdapter {
   // inventory: HERDR-ADAPTER-034
   /// `herdr status --json` の生結果を返す（protocol 検証なし）。
   ///
-  /// [preflight] は protocol 17 固定を検証して例外を投げるため、caret helper
-  /// （Phase 4。protocol 17 / 20 の両方に対応）のように「対応 protocol かは
-  /// 呼び出し側が判定する」用途には使えない。このメソッドは検証せずにパース
-  /// した [HerdrStatus] を返す（protocol 判定・socket 導出は呼び出し側）。
+  /// [preflight] は client/server の最小対応 protocol と稼働状態を検証する。
+  /// caret helper は server protocol を専用の対応一覧で判定するため、
+  /// このメソッドで検証前の [HerdrStatus] を取得する。
+  /// protocol 判定・socket 導出は呼び出し側が行う。
   Future<HerdrStatus> status({Duration? timeout}) async {
     final stdout = await _execChecked(
       HerdrCommands.preflightCommand(),
