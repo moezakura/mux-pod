@@ -144,19 +144,27 @@ base64 -i AuthKey_XXXXXXXXXX.p8 | tr -d '\n' | gh secret set ASC_KEY_P8_BASE64 -
 
 ## バージョンとビルド番号
 
-タグ `vX.Y.Z` から算出する。既存の `release-ios.yml` と同じ規則。
+タグ `vX.Y.Z[-suffix]` から算出する。
 
 ```
-build_name   = X.Y.Z
-build_number = X * 10000 + Y * 100 + Z
+build_name   = タグの v 接頭辞と -suffix を除いた X.Y.Z
+build_number = GitHub Actions の run_number（リポジトリ全体で単調増加する連番）
 ```
 
-例: `v0.2.1` → build_name `0.2.1` / build_number `201`。
+- Apple に提出するバージョン (CFBundleShortVersionString) は常に
+  `X.Y.Z` のみ。プレリリースタグの `-suffix`（例: `v0.7.0-pre1` の
+  `-pre1`）は取り除かれる。
+- プレリリースと正式版の区別はビルド番号（run_number）で行う。
+  ビルド番号が重複しないため、同じ `0.7.0` のビルドが TestFlight 上で共存できる。
+
+例: タグ `v0.7.0-pre1` / run_number `350` → build_name `0.7.0` /
+build_number `350`。
 
 ## 手動実行
 
 `workflow_dispatch` に対応している。`version` を省略すると
-`pubspec.yaml` の値を使う。
+`pubspec.yaml` の値を使う。`version` にプレリリース形式
+（例: `0.8.0-rc1`）を指定した場合も `-suffix` は取り除かれる。
 
 ```bash
 gh workflow run testflight.yml -R moezakura/mux-pod -f version=0.2.2
