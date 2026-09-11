@@ -4,7 +4,9 @@ on:
   push:
     tags:
       # release.yml と同じ v* パターン。正式版（v0.7.0）も
-      # プレリリース（v0.7.0-pre1）も発火する
+      # プレリリース（v0.7.0-pre1）も発火する。
+      # Apple への提出バージョンからは -suffix を取り除き、
+      # 区別はビルド番号で行う
       - 'v*'
   workflow_dispatch:
     inputs:
@@ -80,15 +82,19 @@ jobs:
             BUILD_NAME=$(sed -n 's/^version: *\([0-9.]*\)+.*/\1/p' pubspec.yaml)
           fi
 
-          # x.y.z または x.y.z-pre 等のプレリリース形式（-suffix）を許可する。
+          # 入力は x.y.z または x.y.z-pre 等のプレリリース形式（-suffix）を許可する。
           if ! echo "$BUILD_NAME" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+)?$'; then
             echo "::error::バージョン '$BUILD_NAME' が x.y.z[-suffix] 形式ではありません"
             exit 1
           fi
 
+          # Apple に提出するバージョン (CFBundleShortVersionString) は常に
+          # x.y.z のみ。-suffix（例: 0.7.0-pre1 の -pre1）は取り除く。
+          # プレリリースと正式版の区別はビルド番号で行う。
+          BUILD_NAME="${BUILD_NAME%%-*}"
+
           # ビルド番号は GitHub Actions の run_number（リポジトリ全体で単調増加・一意）を使う。
-          # バージョン（x.y.z[-suffix]）から機械算出すると、プレリリースと正式版が
-          # 同じビルド番号になり TestFlight で衝突するため、バージョン非依存の連番とする。
+          # 同じ x.y.z のプレリリースと正式版を区別するため、バージョン非依存の連番とする。
           BUILD_NUMBER="${{ github.run_number }}"
 
           echo "build_name=$BUILD_NAME"     >> "$GITHUB_OUTPUT"
