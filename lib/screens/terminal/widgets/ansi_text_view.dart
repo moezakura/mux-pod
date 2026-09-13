@@ -1472,14 +1472,51 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   }
 
   /// 一番下までスクロール
-  void scrollToBottom() {
+  ///
+  /// 完了（または中断）時に解決される Future を返す。呼び出し側は
+  /// プログラマティックスクロール中の追従抑制解除タイミングに使える
+  /// （fire-and-forget の既存呼び出しは変更なしで動作する）。
+  Future<void> scrollToBottom() {
+    final completer = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_verticalScrollController.hasClients) {
+      if (!mounted || !_verticalScrollController.hasClients) {
+        completer.complete();
+        return;
+      }
+      completer.complete(
         _verticalScrollController.animateTo(
           _verticalScrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
-        );
+        ),
+      );
+    });
+    return completer.future;
+  }
+
+  /// コンテンツ追従で最下部へジャンプする（自動スクロール・Issue #87）。
+  ///
+  /// アニメーションを伴わない即時ジャンプで、ポーリング更新ごとに
+  /// 最下部ピン留め中の位置ズレを補正する。
+  ///
+  /// コンテンツ反映（ValueNotifier → 再構築 → レイアウト）がこの呼び出しの
+  /// 後ろで行われるケースがあるため、maxScrollExtent が伸びている間は
+  /// 数フレームだけ追試する（[jumpToLineFromTop] の遅延ビルド対策と同型）。
+  void followToBottom([int attempt = 0]) {
+    if (!mounted || !_verticalScrollController.hasClients) return;
+    final pos = _verticalScrollController.position;
+    final before = pos.maxScrollExtent;
+    if (before > pos.pixels) {
+      _verticalScrollController.jumpTo(before);
+    }
+    if (attempt >= 8) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_verticalScrollController.hasClients) return;
+      final p = _verticalScrollController.position;
+      // レイアウト遅延で max がまだ伸びた場合だけ追試する
+      //（ユーザースクロールとの競合を避けるため、max 不変時は追試しない）。
+      if (p.maxScrollExtent != before) {
+        followToBottom(attempt + 1);
       }
     });
   }

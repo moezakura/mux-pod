@@ -12,7 +12,18 @@ import '../theme/design_colors.dart';
 class ScrollToBottomButton extends StatefulWidget {
   final VoidCallback onPressed;
 
-  const ScrollToBottomButton({super.key, required this.onPressed});
+  /// 長押し時（最下部ロック）のコールバック。null なら長押しは無効。
+  final VoidCallback? onLongPress;
+
+  /// 最下部ロック中は常時表示・アクティブ表示を維持する。
+  final bool locked;
+
+  const ScrollToBottomButton({
+    super.key,
+    required this.onPressed,
+    this.onLongPress,
+    this.locked = false,
+  });
 
   @override
   State<ScrollToBottomButton> createState() => ScrollToBottomButtonState();
@@ -23,7 +34,8 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
   bool _visible = false;
   Timer? _fadeTimer;
 
-  /// ボタンをアクティブ表示にし、3秒後に非アクティブに遷移する
+  /// ボタンをアクティブ表示にし、3秒後に非アクティブに遷移する。
+  /// ロック中は常時アクティブ表示のためフェードタイマーを予約しない。
   void show() {
     if (!mounted) return;
     _fadeTimer?.cancel();
@@ -31,6 +43,7 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
       _active = true;
       _visible = true;
     });
+    if (widget.locked) return;
     _fadeTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       setState(() {
@@ -50,6 +63,21 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
   }
 
   @override
+  void didUpdateWidget(ScrollToBottomButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // ロック解除後も表示中なら 3 秒フェードを予約する（残留対策）。
+    if (oldWidget.locked && !widget.locked && _visible) {
+      _fadeTimer?.cancel();
+      _fadeTimer = Timer(const Duration(seconds: 3), () {
+        if (!mounted) return;
+        setState(() {
+          _active = false;
+        });
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _fadeTimer?.cancel();
     super.dispose();
@@ -57,22 +85,25 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_visible) return const SizedBox.shrink();
+    final visible = _visible || widget.locked;
+    if (!visible) return const SizedBox.shrink();
+
+    final active = _active || widget.locked;
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
-    final bgColor = _active
+    final bgColor = active
         ? (isDark
               ? DesignColors.keyBackground
               : DesignColors.keyBackgroundLight)
         : Colors.transparent;
 
-    final borderColor = _active
+    final borderColor = active
         ? colorScheme.outline.withValues(alpha: 0.3)
         : Colors.white.withValues(alpha: 0.15);
 
-    final iconColor = _active
+    final iconColor = active
         ? colorScheme.onSurface.withValues(alpha: 0.8)
         : Colors.white.withValues(alpha: 0.15);
 
@@ -81,6 +112,12 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
         HapticFeedback.lightImpact();
         widget.onPressed();
       },
+      onLongPress: widget.onLongPress == null
+          ? null
+          : () {
+              HapticFeedback.mediumImpact();
+              widget.onLongPress!();
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         width: 36,
@@ -89,7 +126,7 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
           color: bgColor,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: borderColor),
-          boxShadow: _active
+          boxShadow: active
               ? [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
@@ -102,8 +139,13 @@ class ScrollToBottomButtonState extends State<ScrollToBottomButton> {
         child: TweenAnimationBuilder<Color?>(
           tween: ColorTween(end: iconColor),
           duration: const Duration(milliseconds: 300),
-          builder: (context, color, _) =>
-              Icon(Icons.keyboard_double_arrow_down, size: 18, color: color),
+          builder: (context, color, _) => Icon(
+            widget.locked
+                ? Icons.vertical_align_bottom
+                : Icons.keyboard_double_arrow_down,
+            size: 18,
+            color: color,
+          ),
         ),
       ),
     );

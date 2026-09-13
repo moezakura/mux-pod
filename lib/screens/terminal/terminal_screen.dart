@@ -541,6 +541,29 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 初回スクロール完了フラグ
   bool _hasInitialScrolled = false;
 
+  // --- 最下部ピン留め / ロック（Issue #87・自動スクロール） ---
+
+  // 最下部との距離がこの値以下なら「最下部表示中」とみなす（float 誤差対策）。
+  static const double _bottomFollowEpsilon = 1.0;
+
+  // 最下部表示中（ピン留め）。true の間はコンテンツ更新に追従する。
+  bool _isPinnedToBottom = true;
+
+  // FAB 長押しによる最下部ロック。ロック中はピン留めに加え、
+  // FAB を常時表示・アクティブ表示にする。
+  bool _isBottomLock = false;
+
+  // ユーザーがドラッグ中かどうか（追従を一時停止する・ドラッグ完了で解除）。
+  bool _isUserScrollDragging = false;
+
+  // FAB タップ等のプログラマティックスクロール（animateTo）中かどうか。
+  // アニメ中間のスクロール通知でピン留め判定が false 化し「タップで以後追従」
+  // が崩れるのを防ぐ（完了時に確定させる）。
+  bool _isProgrammaticScroll = false;
+
+  // コンテンツ更新に追従すべきか（ピン留め or ロック）。
+  bool get _shouldFollowBottom => _isPinnedToBottom || _isBottomLock;
+
   // ターミナルモード
   TerminalMode _terminalMode = TerminalMode.normal;
 
@@ -1018,6 +1041,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _terminalMode = TerminalMode.normal;
       _scrollModeSource = ScrollModeSource.none;
       _isCopyModeDetected = false;
+      _isBottomLock = false;
+      _isUserScrollDragging = false;
+      _isProgrammaticScroll = false;
     });
     _bufferedContent = '';
     _hasBufferedUpdate = false;
@@ -1042,6 +1068,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _terminalMode = TerminalMode.scrollSend;
       _scrollModeSource = ScrollModeSource.none; // C1: 同一 setState
       _isCopyModeDetected = false;
+      _isBottomLock = false;
+      _isUserScrollDragging = false;
+      _isProgrammaticScroll = false;
     });
     _bufferedContent = '';
     _hasBufferedUpdate = false;
@@ -1066,6 +1095,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _terminalMode = TerminalMode.select;
       _scrollModeSource = ScrollModeSource.manual;
       _isCopyModeDetected = false;
+      _isBottomLock = false;
+      _isUserScrollDragging = false;
+      _isProgrammaticScroll = false;
     });
     _bufferedContent = '';
     _hasBufferedUpdate = false;
@@ -2322,6 +2354,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
             if (fromScrollSend) _isCopyModeDetected = true;
             _terminalMode = TerminalMode.select;
             _scrollModeSource = ScrollModeSource.tmux;
+            // select 突入ではロック解除（他の select 経路と整合）。
+            _isBottomLock = false;
+            _isUserScrollDragging = false;
+            _isProgrammaticScroll = false;
           });
           if (fromScrollSend) {
             // 合流バッファクリア（遷移までに積んだティックは送信しない・D2）
@@ -3039,7 +3075,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (!mounted || _isDisposed) return;
     // A3改: スロットリング待ちの間に表示対象が変わっていないか照合。
     // 不一致（切替・再解決・再接続）なら破棄し、次回ポーリングに任せる。
-    if (!_isCurrentHerdrTarget(_pendingTargetIdentity)) return;
+    if (!_isCurrentHerdrTarget(_pendingTargetIdentity)) {
+      return;
+    }
     _lastFrameTime = DateTime.now();
     // ValueNotifier更新（親のsetState()を回避し、ValueListenableBuilderのみリビルド）
     _viewNotifier.value = _viewNotifier.value.copyWith(
@@ -3052,6 +3090,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _hasInitialScrolled = true;
       // inventory: TERM-SCROLL-004
       _scrollToCaret();
+    } else if (_hasInitialScrolled &&
+        _terminalMode == TerminalMode.normal &&
+        !_isUserScrollDragging &&
+        _shouldFollowBottom) {
+      // Issue #87: 最下部ピン留め（またはロック）中のコンテンツ更新に追従する。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isDisposed) {
+          _ansiTextViewKey.currentState?.followToBottom();
+        }
+      });
     }
   }
 
@@ -3117,7 +3165,67 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// スクロール時にスクロールボタンを表示
   void _onTerminalScroll() {
+    // プログラマティックスクロール（FAB タップの animateTo）中は中間通知で
+    // ピン留め判定を false 化しない（完了時に確定させる・Issue #87）。
+    if (_terminalScrollController.hasClients && !_isProgrammaticScroll) {
+      // 最下部表示中（追従ジャンプ中）は FAB を出さない（点滅ノイズ防止）。
+      _isPinnedToBottom =
+          _terminalScrollController.position.extentAfter <=
+          _bottomFollowEpsilon;
+    }
+    if (_isPinnedToBottom) return;
     _scrollToBottomKey.currentState?.show();
+  }
+
+  /// スクロール通知の入口（`NotificationListener<ScrollNotification>`）。
+  ///
+  /// - ユーザードラッグ開始/更新: [_isUserScrollDragging] を立て、ロック中なら
+  ///   ロックを解除する（手動スクロールでロック解除）。
+  /// - ドラッグ終了: [_isUserScrollDragging] を下げる。
+  /// - オーバースクロール: 既存の深い履歴ロード（[_onTerminalOverscroll]）へ委譲。
+  bool _onTerminalScrollNotification(ScrollNotification n) {
+    // 横スクロール（AnsiTextView 内 horizontal ScrollView）は対象外。
+    // ズーム時の横パンでロック解除・ドラッグ判定を汚染しないようにする。
+    if (n.metrics.axis != Axis.vertical) return false;
+    if (n is ScrollStartNotification) {
+      _handleUserScrollDrag(n.dragDetails != null);
+    } else if (n is ScrollUpdateNotification) {
+      _handleUserScrollDrag(n.dragDetails != null);
+    } else if (n is ScrollEndNotification) {
+      _isUserScrollDragging = false;
+    } else if (n is OverscrollNotification) {
+      // inventory: TERM-SCROLL-002
+      return _onTerminalOverscroll(n);
+    }
+    return false;
+  }
+
+  /// ユーザードラッグ開始/更新通知の共通処理。
+  ///
+  /// [isUserDrag] が true（ユーザー操作由来）のときだけドラッグ中フラグを
+  /// 立て、ロック中ならロックを解除する（手動スクロールでロック解除）。
+  void _handleUserScrollDrag(bool isUserDrag) {
+    if (!isUserDrag) return;
+    _isUserScrollDragging = true;
+    if (_isBottomLock) {
+      setState(() => _isBottomLock = false);
+    }
+  }
+
+  /// FAB 操作由来の最下部スクロール（タップ・長押し共用）。
+  ///
+  /// animateTo 完了までは [_isProgrammaticScroll] を立てて中間通知による
+  /// ピン留め false 化を防ぎ、完了（または jumpTo 等による中断）後に
+  /// ピン留めを確定させる。これにより「タップ後も最下部追従が有効」になる。
+  void _scrollToBottomFollowing() {
+    _isPinnedToBottom = true;
+    _isProgrammaticScroll = true;
+    unawaited(
+      _ansiTextViewKey.currentState?.scrollToBottom().then((_) {
+        _isProgrammaticScroll = false;
+        _isPinnedToBottom = true;
+      }),
+    );
   }
 
   /// 上端でのオーバースクロール（さらに上へ引っ張る操作）を検出して深い履歴を
@@ -3147,6 +3255,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       setState(() {
         _terminalMode = TerminalMode.select;
         _scrollModeSource = ScrollModeSource.manual;
+        // select 突入でもロックは解除する（モード遷移 = 追従意図のリセット）。
+        _isBottomLock = false;
+        _isUserScrollDragging = false;
+        _isProgrammaticScroll = false;
       });
     }
     try {
@@ -3298,11 +3410,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                                     ),
                                   ),
                                 );
-                                return NotificationListener<
-                                  OverscrollNotification
-                                >(
+                                return NotificationListener<ScrollNotification>(
                                   // inventory: TERM-SCROLL-002
-                                  onNotification: _onTerminalOverscroll,
+                                  onNotification: _onTerminalScrollNotification,
                                   child: AnsiTextView(
                                     key: _ansiTextViewKey,
                                     text: viewData.content,
@@ -3395,8 +3505,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         right: 16,
                         child: ScrollToBottomButton(
                           key: _scrollToBottomKey,
+                          locked: _isBottomLock,
                           onPressed: () {
-                            _ansiTextViewKey.currentState?.scrollToBottom();
+                            if (_isBottomLock) {
+                              // ロック中タップ: 解除のみ（スクロール位置は変えない）。
+                              setState(() => _isBottomLock = false);
+                              return;
+                            }
+                            // タップ: 最下部へ戻り以後追従
+                            _scrollToBottomFollowing();
+                          },
+                          onLongPress: () {
+                            // 長押し: 最下部ロック（常時追従 + FAB 常時表示）
+                            setState(() => _isBottomLock = true);
+                            _scrollToBottomFollowing();
                           },
                         ),
                       ),
