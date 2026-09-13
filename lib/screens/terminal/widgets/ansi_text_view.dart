@@ -1235,6 +1235,21 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
         // 通常文字
         data = event.character!;
 
+        // Alt/Meta(Cmd)押下時: OS が合成した非 ASCII 文字
+        // (例: iPadOS の Option+O → 'ø' U+00F8) をそのまま使うと ESC+ø (1b c3 b8)
+        // になりリモートの Meta キー(ESC+o)として解釈されない (Issue #116)。
+        // logicalKey から ASCII 文字を導出する。ASCII 文字の場合は従来どおり
+        // character を使用（Linux/Windows/通常キーは挙動不変）。
+        if ((_altPressed || _metaPressed) && !isAsciiPrintable(data)) {
+          final derived = deriveBaseChar(
+            event.logicalKey.keyLabel,
+            shiftPressed: _shiftPressed,
+          );
+          if (derived != null) {
+            data = derived;
+          }
+        }
+
         // Ctrl+文字の処理
         if (_ctrlPressed && data.length == 1) {
           final code = data.codeUnitAt(0);
@@ -1285,6 +1300,45 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     }
 
     return KeyEventResult.ignored;
+  }
+
+  /// 単一の ASCII 印字可能文字 (0x20-0x7E) かどうか
+  ///
+  /// テストから直接参照するため公開している（@visibleForTesting）。
+  @visibleForTesting
+  static bool isAsciiPrintable(String s) {
+    if (s.length != 1) return false;
+    final c = s.codeUnitAt(0);
+    return c >= 0x20 && c <= 0x7e;
+  }
+
+  /// event.character が非 ASCII（OS 合成文字）の場合に logicalKey から
+  /// ASCII 文字を導出する。
+  ///
+  /// Flutter 3.44.9 の keyLabel は標準印字キーで
+  /// `String.fromCharCode(keyId).toUpperCase()`（keyboard_key.g.dart:111-115,
+  /// keyId < 2^32）。keyO=0x6f→'O' / comma=0x2c→',' / digit1=0x31→'1' が保証される。
+  /// 例外（'Intl Yen' 等の複数文字名・空・非 ASCII ラベルキー'Ù' 等）は
+  /// 導出不能として null を返し、呼び出し元は従来動作（character 使用）を維持する (R3)。
+  ///
+  /// [keyLabel] は `event.logicalKey.keyLabel`。[shiftPressed] は呼び出し側の
+  /// Shift 状態（テスト注入可能）。英字 (A-Z) かつ Shift なしの場合のみ
+  /// 小文字化する (R1: M-o と M-O を区別)。
+  /// テストから直接参照するため公開している（@visibleForTesting）。
+  @visibleForTesting
+  String? deriveBaseChar(
+    String keyLabel, {
+    bool shiftPressed = false,
+  }) {
+    if (!isAsciiPrintable(keyLabel)) {
+      return null; // length==1 かつ ASCII 印字のみ
+    }
+    var code = keyLabel.codeUnitAt(0);
+    // keyLabel は常に大文字。Shift なしの英字のみ小文字化する (R1: M-o と M-O を区別)
+    if (!shiftPressed && code >= 0x41 && code <= 0x5a) {
+      code += 0x20;
+    }
+    return String.fromCharCode(code);
   }
 
   /// 矢印キーのシーケンスを取得
