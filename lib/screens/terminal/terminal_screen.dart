@@ -2351,17 +2351,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       _updatePollingInterval();
     } catch (e) {
       // A2: herdr は例外種別で分岐（target-not-found 再解決 / server-down
-      // 停止+通知 / その他再接続）。tmux パスは従来挙動を維持する（回帰防止）。
+      // 停止+通知 / その他再接続）。tmux パスは切断検知を Path B（ポーリング
+      // 冒頭の接続確認）へ集約したため、ここでは再接続を試みない（#118）。
       if (_backendKind == MultiplexerBackendKind.herdr) {
         await _handleHerdrPollError(e);
-      } else {
-        // 通信エラーの場合は自動再接続を試みる
-        if (!_isDisposed) {
-          final currentState = ref.read(sshProvider);
-          if (!currentState.isReconnecting) {
-            _attemptReconnect();
-          }
-        }
       }
     } finally {
       _isPolling = false;
@@ -2384,13 +2377,8 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       await _handleHerdrServerDown(e);
     } else {
       _recordHerdrSwitchEvent('poll error (${e.runtimeType})');
-      // その他の通信エラーは従来どおり自動再接続を試みる
-      if (!_isDisposed) {
-        final currentState = ref.read(sshProvider);
-        if (!currentState.isReconnecting) {
-          _attemptReconnect();
-        }
-      }
+      // その他通信エラー: 切断検知は Path B（ポーリング冒頭の接続確認）へ
+      // 集約したため、ここでは再接続を試みない（#118）。
     }
   }
 
@@ -2896,20 +2884,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       );
       await _handleHerdrServerDown(e);
     } else {
-      // その他通信エラー: 接続断系は既存の自動再接続、それ以外はエラー通知。
+      // その他通信エラー: 接続断系も含め一律エラー通知へ一本化（再接続は
+      // Path B のポーリング検知に集約。空分岐を残さないため条件を削除、#118）。
       _recordHerdrSwitchEvent(
         'mutation $operationLabel: error (${e.runtimeType})',
       );
-      if (e is SshConnectionError) {
-        final currentState = ref.read(sshProvider);
-        if (!currentState.isReconnecting) {
-          _attemptReconnect();
-        }
-      } else {
-        _showHerdrMutationSnackBar(
-          context.l10n.termOperationFailed(operationLabel, e.toString()),
-        );
-      }
+      _showHerdrMutationSnackBar(
+        context.l10n.termOperationFailed(operationLabel, e.toString()),
+      );
     }
   }
 
@@ -3056,21 +3038,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// 自動再接続を試みる
+  ///
+  /// 切断検知は Path B（ポーリング冒頭の接続確認）に集約されており、
+  /// ここはそのラッパー（TERM-LIFE-021 依存）。
   Future<void> _attemptReconnect() async {
     if (_isDisposed) return;
 
     final sshNotifier = ref.read(sshProvider.notifier);
-    final success = await sshNotifier.reconnect();
+    await sshNotifier.reconnect();
 
     if (!mounted || _isDisposed) return;
-
-    if (!success) {
-      // 再接続失敗時は再試行（最大回数に達するまで）
-      final currentState = ref.read(sshProvider);
-      if (currentState.reconnectAttempt < 5) {
-        // 次のポーリングで再試行される
-      }
-    }
   }
 
   // inventory: TERM-LIFE-024
