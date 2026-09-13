@@ -538,7 +538,6 @@
   "homeAttached": "接続中",
   "homeDetached": "未接続",
   "termInputQueueFull": "入力キューがいっぱいです。一部のキー操作が失われる可能性があります。",
-  "termRetryNow": "今すぐ再試行",
   "termRetry": "再試行",
   "termSshNotAvailable": "SSH接続を利用できません",
   "termWindowCreatedCommandNotSent": "ウィンドウを作成しましたが、コマンドを送信できませんでした",
@@ -644,15 +643,6 @@
   },
   "termMultilineNeedsConnection": "複数行の送信にはライブ接続が必要です。接続後に再試行してください。",
   "termWaitingForNetwork": "ネットワークを待機中...",
-  "termConnectionError": "接続エラー",
-  "termCharsQueued": "{count} 文字をキューに保存しました",
-  "@termCharsQueued": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "termChars": "{count} 文字",
   "@termChars": {
     "placeholders": {
@@ -663,6 +653,8 @@
   },
   "termOffline": "オフライン",
   "termReconnecting": "再接続中",
+  "termDisconnected": "未接続",
+  "termReconnectNow": "今すぐ再接続",
   "termFileBrowser": "ファイルブラウザ",
   "termResizeTerminal": "ターミナルをリサイズ",
   "termNewTab": "新規タブ",

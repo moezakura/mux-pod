@@ -538,7 +538,6 @@
   "homeAttached": "Attached",
   "homeDetached": "Detached",
   "termInputQueueFull": "Input queue is full; some keystrokes may be lost.",
-  "termRetryNow": "Retry Now",
   "termRetry": "Retry",
   "termSshNotAvailable": "SSH connection is not available",
   "termWindowCreatedCommandNotSent": "Window created, but the command could not be sent",
@@ -644,15 +643,6 @@
   },
   "termMultilineNeedsConnection": "Multi-line send requires a live connection; please retry.",
   "termWaitingForNetwork": "Waiting for network...",
-  "termConnectionError": "Connection error",
-  "termCharsQueued": "{count} chars queued",
-  "@termCharsQueued": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "termChars": "{count} chars",
   "@termChars": {
     "placeholders": {
@@ -663,6 +653,8 @@
   },
   "termOffline": "Offline",
   "termReconnecting": "Reconnecting",
+  "termDisconnected": "Disconnected",
+  "termReconnectNow": "Reconnect now",
   "termFileBrowser": "File Browser",
   "termResizeTerminal": "Resize Terminal",
   "termNewTab": "New Tab",
