@@ -1326,10 +1326,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
   /// 小文字化する (R1: M-o と M-O を区別)。
   /// テストから直接参照するため公開している（@visibleForTesting）。
   @visibleForTesting
-  String? deriveBaseChar(
-    String keyLabel, {
-    bool shiftPressed = false,
-  }) {
+  String? deriveBaseChar(String keyLabel, {bool shiftPressed = false}) {
     if (!isAsciiPrintable(keyLabel)) {
       return null; // length==1 かつ ASCII 印字のみ
     }

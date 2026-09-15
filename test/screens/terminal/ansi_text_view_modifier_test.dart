@@ -51,7 +51,10 @@ void main() {
       });
 
       test("keyO ('O') → O (Shift あり)", () {
-        expect(AnsiTextViewState().deriveBaseChar('O', shiftPressed: true), 'O');
+        expect(
+          AnsiTextViewState().deriveBaseChar('O', shiftPressed: true),
+          'O',
+        );
       });
 
       test("keyA〜keyZ ('A'〜'Z') の全26字を網羅 (Shift なし → 小文字)", () {
@@ -93,19 +96,21 @@ void main() {
       });
 
       test("keyA / keyZ (Shift あり → 大文字のまま)", () {
-        expect(AnsiTextViewState().deriveBaseChar('A', shiftPressed: true), 'A');
-        expect(AnsiTextViewState().deriveBaseChar('Z', shiftPressed: true), 'Z');
+        expect(
+          AnsiTextViewState().deriveBaseChar('A', shiftPressed: true),
+          'A',
+        );
+        expect(
+          AnsiTextViewState().deriveBaseChar('Z', shiftPressed: true),
+          'Z',
+        );
       });
     });
 
     group('数字 (0-9)', () {
       test("'0'〜'9' → 同一文字 (Shift 有無で不変)", () {
         for (final c in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) {
-          expect(
-            AnsiTextViewState().deriveBaseChar(c),
-            c,
-            reason: 'label=$c',
-          );
+          expect(AnsiTextViewState().deriveBaseChar(c), c, reason: 'label=$c');
           expect(
             AnsiTextViewState().deriveBaseChar(c, shiftPressed: true),
             c,
@@ -117,12 +122,20 @@ void main() {
 
     group('記号', () {
       test('主要記号 → 同一 ASCII 記号', () {
-        for (final c in [',', '.', '/', ';', '-', '=', '`', '[', ']', '\\', "'"]) {
-          expect(
-            AnsiTextViewState().deriveBaseChar(c),
-            c,
-            reason: 'label=$c',
-          );
+        for (final c in [
+          ',',
+          '.',
+          '/',
+          ';',
+          '-',
+          '=',
+          '`',
+          '[',
+          ']',
+          '\\',
+          "'",
+        ]) {
+          expect(AnsiTextViewState().deriveBaseChar(c), c, reason: 'label=$c');
         }
       });
 
@@ -133,10 +146,7 @@ void main() {
 
     group('導出不能キーは null (従来動作へフォールバック R3)', () {
       test("keyLabel が複数文字 ('Intl Yen' = JIS ¥ キー相当) は null", () {
-        expect(
-          AnsiTextViewState().deriveBaseChar('Intl Yen'),
-          isNull,
-        );
+        expect(AnsiTextViewState().deriveBaseChar('Intl Yen'), isNull);
       });
 
       test('keyLabel が空文字列は null', () {

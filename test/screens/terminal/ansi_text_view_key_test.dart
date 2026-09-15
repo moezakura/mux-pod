@@ -171,11 +171,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await pressKey(tester, LogicalKeyboardKey.altLeft);
-      await pressKey(
-        tester,
-        LogicalKeyboardKey.space,
-        character: '\u00A0',
-      );
+      await pressKey(tester, LogicalKeyboardKey.space, character: '\u00A0');
 
       expect(lastData(), '\x1b ');
       await releaseKey(tester, LogicalKeyboardKey.space);
@@ -225,11 +221,7 @@ void main() {
         await pressKey(tester, LogicalKeyboardKey.altLeft);
         // 極端な IME 状態等で複数文字 character が来ても、
         // 導出結果は必ず単一 ASCII 文字になる契約。
-        await pressKey(
-          tester,
-          LogicalKeyboardKey.keyO,
-          character: 'øø',
-        );
+        await pressKey(tester, LogicalKeyboardKey.keyO, character: 'øø');
 
         expect(lastData(), '\x1bo');
         await releaseKey(tester, LogicalKeyboardKey.keyO);
@@ -329,17 +321,11 @@ void main() {
       await tester.pumpAndSettle();
 
       await pressKey(tester, LogicalKeyboardKey.altLeft);
-      await tester.sendKeyRepeatEvent(
-        LogicalKeyboardKey.keyO,
-        character: 'ø',
-      );
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyO, character: 'ø');
       await tester.pump();
       expect(lastData(), '\x1bo');
 
-      await tester.sendKeyRepeatEvent(
-        LogicalKeyboardKey.keyO,
-        character: 'ø',
-      );
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyO, character: 'ø');
       await tester.pump();
       expect(lastData(), '\x1bo');
 
