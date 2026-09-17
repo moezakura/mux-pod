@@ -32,9 +32,8 @@ void main() {
         final container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
-        final notifier = container.read(
-          sshProvider.notifier,
-        ) as FakeSshNotifier;
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
 
         // 切断状態へ遷移（isReconnecting = false / isConnected = false）
         notifier.state = notifier.state.copyWith(
@@ -60,9 +59,8 @@ void main() {
         final container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
-        final notifier = container.read(
-          sshProvider.notifier,
-        ) as FakeSshNotifier;
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
 
         // 初回の error 遷移（接続中 → エラー、再接続ループ相当）で 1 回表示
         notifier.state = notifier.state.copyWith(
@@ -114,9 +112,8 @@ void main() {
         final container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
-        final notifier = container.read(
-          sshProvider.notifier,
-        ) as FakeSshNotifier;
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
 
         // 再接続ループ 1 サイクル目: 失敗（error 設定）→ Toast 1 回
         notifier.state = notifier.state.copyWith(
@@ -205,9 +202,8 @@ void main() {
         final container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
-        final notifier = container.read(
-          sshProvider.notifier,
-        ) as FakeSshNotifier;
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
         notifier.state = notifier.state.copyWith(
           connectionState: SshConnectionState.connecting,
           error: null,
@@ -234,9 +230,8 @@ void main() {
         final container = ProviderScope.containerOf(
           tester.element(find.byType(TerminalScreen)),
         );
-        final notifier = container.read(
-          sshProvider.notifier,
-        ) as FakeSshNotifier;
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
 
         // 初期接続失敗の状態遷移（connecting → error, isReconnecting=false）
         notifier.state = notifier.state.copyWith(
