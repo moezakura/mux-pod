@@ -1513,9 +1513,10 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_verticalScrollController.hasClients) return;
       final p = _verticalScrollController.position;
-      // レイアウト遅延で max がまだ伸びた場合だけ追試する
-      //（ユーザースクロールとの競合を避けるため、max 不変時は追試しない）。
-      if (p.maxScrollExtent != before) {
+      // レイアウト遅延で max がまだ伸びている間、またはまだ最下部に
+      // 届いていない間は追試する（バースト出力で追従が取りこぼされる
+      // 事態を防ぐ・上限 6 フレーム）。
+      if (p.maxScrollExtent != before || p.maxScrollExtent > p.pixels) {
         followToBottom(attempt + 1);
       }
     });
