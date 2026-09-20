@@ -3528,7 +3528,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         overlayState: _keyOverlayState,
                         position: _keyOverlayPosition,
                       ),
-                      // 通信エラーパネル（画面下部固定・fade in/out）。
+                      // 通信エラーパネル（下からスライドしてフェードイン）。
                       // 切断検知・初期接続エラー時に [_showCommErrorPanel] で表示し、
                       // × 押下または接続復帰で閉じるまで表示し続ける。
                       Positioned(
@@ -3541,6 +3541,27 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                           ),
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 250),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            layoutBuilder: (currentChild, previousChildren) =>
+                                Stack(
+                                  alignment: Alignment.bottomCenter,
+                                  children: [
+                                    ...previousChildren,
+                                    ?currentChild,
+                                  ],
+                                ),
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, 0.3),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
                             child: _commErrorPanelBody != null
                                 ? CommErrorPanel(
                                     title: _commErrorPanelTitle ?? '',
@@ -3628,24 +3649,44 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               color: isDark ? Colors.black54 : Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
-          if (_reconnectPanelVisible && _sshState.isReconnecting)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: CompositedTransformFollower(
-                link: _headerLink,
-                targetAnchor: Alignment.bottomRight,
-                followerAnchor: Alignment.topRight,
-                offset: const Offset(-16, 2),
-                child: ReconnectDetailPanel(
-                  countdown: _reconnectCountdown.remaining,
-                  attempt: _sshState.reconnectAttempt,
-                  visible: true,
-                  arrowRight: _reconnectArrowRight,
-                  width: (MediaQuery.sizeOf(context).width - 32).clamp(0, 264),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: CompositedTransformFollower(
+              link: _headerLink,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(-16, 2),
+              child: IgnorePointer(
+                ignoring: !_reconnectPanelVisible || !_sshState.isReconnecting,
+                child: AnimatedSwitcher(
+                  key: const ValueKey('reconnect_tooltip_transition'),
+                  duration: const Duration(milliseconds: 250),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  layoutBuilder: (currentChild, previousChildren) => Stack(
+                    alignment: Alignment.topRight,
+                    children: [...previousChildren, ?currentChild],
+                  ),
+                  child: _reconnectPanelVisible && _sshState.isReconnecting
+                      ? ReconnectDetailPanel(
+                          key: const ValueKey('reconnect_details'),
+                          countdown: _reconnectCountdown.remaining,
+                          attempt: _sshState.reconnectAttempt,
+                          visible: true,
+                          arrowRight: _reconnectArrowRight,
+                          width: (MediaQuery.sizeOf(context).width - 32).clamp(
+                            0,
+                            264,
+                          ),
+                        )
+                      : const SizedBox.shrink(
+                          key: ValueKey('reconnect_details_hidden'),
+                        ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );

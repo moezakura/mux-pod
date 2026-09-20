@@ -339,6 +339,85 @@ void main() {
       },
     );
 
+    testWidgets('error panel fades and slides up, then slides down on close', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(tester);
+      final notifier =
+          ProviderScope.containerOf(
+                tester.element(find.byType(TerminalScreen)),
+              ).read(sshProvider.notifier)
+              as FakeSshNotifier;
+      notifier.state = notifier.state.copyWith(
+        connectionState: SshConnectionState.error,
+        error: 'SocketException: test failure',
+        isReconnecting: true,
+      );
+      await tester.pump();
+      final panel = _commErrorPanelFinder();
+      final fade = find
+          .ancestor(of: panel, matching: find.byType(FadeTransition))
+          .first;
+      double opacity() => tester.widget<FadeTransition>(fade).opacity.value;
+      final startingY = tester.getTopLeft(panel).dy;
+      expect(opacity(), 0);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(opacity(), inExclusiveRange(0, 1));
+      expect(tester.getTopLeft(panel).dy, lessThan(startingY));
+      await tester.pump(const Duration(milliseconds: 200));
+      final settledY = tester.getTopLeft(panel).dy;
+      expect(opacity(), 1);
+      await tester.tap(
+        find.descendant(of: panel, matching: find.byIcon(Icons.close)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(panel, findsOneWidget);
+      expect(tester.getTopLeft(panel).dy, greaterThan(settledY));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(panel, findsNothing);
+    });
+
+    testWidgets('reconnect tooltip fades in and out without sliding', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(tester);
+      final notifier =
+          ProviderScope.containerOf(
+                tester.element(find.byType(TerminalScreen)),
+              ).read(sshProvider.notifier)
+              as FakeSshNotifier;
+      notifier.state = notifier.state.copyWith(
+        isReconnecting: true,
+        reconnectAttempt: 2,
+        nextRetryAt: DateTime.now().add(const Duration(seconds: 30)),
+      );
+      await tester.pump();
+      final indicator = find.text('30s (2)');
+      await tester.tap(indicator);
+      await tester.pump();
+      final label = find.text('Next reconnect');
+      final fade = find
+          .ancestor(of: label, matching: find.byType(FadeTransition))
+          .first;
+      double opacity() => tester.widget<FadeTransition>(fade).opacity.value;
+      expect(opacity(), 0);
+      final position = tester.getTopLeft(label);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(opacity(), inExclusiveRange(0, 1));
+      expect(tester.getTopLeft(label), position);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(opacity(), 1);
+      await tester.tap(indicator);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(label, findsOneWidget);
+      expect(opacity(), inExclusiveRange(0, 1));
+      expect(tester.getTopLeft(label), position);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(label, findsNothing);
+    });
+
     testWidgets(
       'comm error panel auto-closes when auto-reconnect restores connection',
       (tester) async {
