@@ -473,9 +473,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   String? _connectionError;
   SshState _sshState = const SshState();
 
-  // 切断/再接続失敗の Toast スパム対策（同一文言抑制 + 5秒レート制限）
-  String? _lastDisconnectToastText;
-  DateTime? _lastDisconnectToastAt;
+  // 切断/再接続失敗の Toast スパム対策。初回の切断検知で 1 回だけ通知し、
+  // 真の再接続成功（isConnected）まで再表示しない。リトライサイクルでは
+  // SshState.error が null↔文言 を交互に遷移し、例外種別で文言も変わるため、
+  // 「文言比較 + レート制限」の抑制では同一文言スキップをすり抜けて
+  // 何度も再表示されてしまう（実機検証で確認）。
+  bool _disconnectToastShown = false;
 
   // 表示中の切断 Toast のコントローラー。真の再接続成功（isConnected）時に
   // 自動で閉じるために保持する（手動で閉じた後の hide() は no-op）。
@@ -963,10 +966,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // ため、error == null でリセットすると同一文言の Toast が毎サイクル再表示
       // されてしまう（reviewer 第1回-1）。
       if (next.isConnected) {
-        _lastDisconnectToastText = null;
-        _lastDisconnectToastAt = null;
-        // 自動再接続で復帰した場合、表示中の切断 Toast は役目を終えたため
-        // 自動で閉じる（既に手動で閉じられている場合は no-op）。
+        // 抑止フラグを解除し（次回切断で再度 1 回通知する）、表示中の切断
+        // Toast は役目を終えたため自動で閉じる（既に消滅済みなら no-op）。
+        _disconnectToastShown = false;
         _disconnectSnackBarController?.close();
         _disconnectSnackBarController = null;
       }
@@ -3139,31 +3141,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// 切断/再接続失敗の理由を Toast（SnackBar）で通知する。
   ///
-  /// 再接続ループは 1s→60s の無制限バックオフでリトライするため、失敗のたびに
-  /// 表示すると連続表示になる。以下のスパム対策を適用する。
-  /// 1) 同一文言は初回のみ表示（[_lastDisconnectToastText]）
-  /// 2) 文言が変わる場合でも前回表示から 5 秒以内はスキップ（[_lastDisconnectToastAt]）
+  /// 再接続ループは 1s→60s の無制限バックオフでリトライし、その間
+  /// [SshState.error] は reconnect() の copyWith で null クリア→失敗で再設定
+  /// を繰り返す。さらに例外種別が変わると文言も変わる。文言や経過時間で
+  /// 抑制するとこの遷移をすり抜けて連続表示になるため、
+  /// **真の再接続成功まで初回 1 回のみ通知**する（[_disconnectToastShown]）。
   ///
   /// アクション文言は専用の `termReconnectNow` を使う（`termRetry` を流用すると
   /// TERM-DIALOG-010 の `find.text('Retry')` findsOneWidget と衝突するため）。
   void _showDisconnectSnackBar(String message) {
     if (!mounted || _isDisposed) return;
 
-    // 同一文言の再表示を抑制（リトライループ中の毎回表示を初回 1 回に抑える）
-    if (_lastDisconnectToastText == message) return;
+    // 初回表示以降、真の再接続成功（isConnected 遷移）まで再表示しない
+    if (_disconnectToastShown) return;
+    _disconnectToastShown = true;
 
-    // 文言が変わった場合でも 5 秒以内の再表示はスキップ（タイマー不要・比較のみ）
-    final now = DateTime.now();
-    final last = _lastDisconnectToastAt;
-    if (last != null && now.difference(last).inMilliseconds < 5000) return;
-
-    _lastDisconnectToastText = message;
-    _lastDisconnectToastAt = now;
-
+    // Flutter 3.44+ では action 付き SnackBar はデフォルトで persist=true
+    // （タイムアウトで消えない）になるため、明示的に false を指定する。
+    // 継続状態は右上インジケーターと赤バーが示し、再接続成功時は
+    // [_disconnectSnackBarController] 経由で自動的に閉じる。
     _disconnectSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
+        persist: false,
         action: SnackBarAction(
           label: context.l10n.termReconnectNow,
           textColor: Colors.white,

@@ -276,6 +276,33 @@ void main() {
       expect(_disconnectBarFinder(), findsNothing);
     });
 
+    testWidgets('disconnect snackbar does not persist beyond timeout', (
+      tester,
+    ) async {
+      await TerminalTestScaffold.pumpTerminalScreen(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(TerminalScreen)),
+      );
+      final notifier = container.read(sshProvider.notifier) as FakeSshNotifier;
+
+      // 切断検知 → 切断 Toast 表示
+      notifier.state = notifier.state.copyWith(
+        connectionState: SshConnectionState.error,
+        error: 'Reconnect failed: first',
+        isReconnecting: true,
+      );
+      await tester.pump();
+      expect(find.byType(SnackBar), findsOneWidget);
+
+      // Flutter 3.44+ では action 付き SnackBar はデフォルトで persist=true
+      // （タイムアウトで消えない）になる。切断 Toast は 4 秒のタイムアウトで
+      // 自然消滅し、復帰時の自動クローズ（close）と二重で担保するため
+      // persist: false を明示する。
+      final snackBar = tester.widget<SnackBar>(find.byType(SnackBar));
+      expect(snackBar.persist, isFalse);
+      expect(snackBar.duration, const Duration(milliseconds: 4000));
+    });
+
     testWidgets(
       'reconnect countdown shows compact Ns (C) and updates every second',
       (tester) async {
