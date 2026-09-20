@@ -656,14 +656,20 @@
   "termReconnectIn": "{seconds}秒後に再接続 ({attempt}回目)",
   "@termReconnectIn": {
     "placeholders": {
-      "seconds": {"type": "int"},
-      "attempt": {"type": "int"}
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
     }
   },
   "termReconnectAttempt": "再接続中 ({attempt}回目)",
   "@termReconnectAttempt": {
     "placeholders": {
-      "attempt": {"type": "int"}
+      "attempt": {
+        "type": "int"
+      }
     }
   },
   "termDisconnected": "未接続",
@@ -889,8 +895,7 @@
   "settingsShowCursor": "カーソルを表示",
   "settingsShowCursorDescription": "ターミナルのカーソルインジケーターを表示",
   "settingsExperimentalHerdrCaretPositionTitle": "実験的: Herdrカーソル位置",
-  "settingsExperimentalHerdrCaretPositionDescription":
-      "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
+  "settingsExperimentalHerdrCaretPositionDescription": "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
   "settingsAdjustMode": "調整モード",
   "settingsAdjustModeNone": "なし",
   "settingsAdjustModeAutoFit": "自動フィット",
@@ -1583,28 +1588,42 @@
   "fileUploadSuccessSingle": "{path} にアップロードしました",
   "@fileUploadSuccessSingle": {
     "placeholders": {
-      "path": {"type": "String"}
+      "path": {
+        "type": "String"
+      }
     }
   },
   "fileUploadSuccessMulti": "{count} 件を {dir} にアップロードしました",
   "@fileUploadSuccessMulti": {
     "placeholders": {
-      "count": {"type": "int"},
-      "dir": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "dir": {
+        "type": "String"
+      }
     }
   },
   "fileUploadPartialFailure": "{total} 件中 {failed} 件が失敗しました",
   "@fileUploadPartialFailure": {
     "placeholders": {
-      "failed": {"type": "int"},
-      "total": {"type": "int"}
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCount": "アップロード中（{done} / {total}）",
   "@fileUploadCount": {
     "placeholders": {
-      "done": {"type": "int"},
-      "total": {"type": "int"}
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCancelAll": "すべてキャンセル",
