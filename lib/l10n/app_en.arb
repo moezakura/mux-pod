@@ -1632,5 +1632,28 @@
   "settingsUploadConflictPrompt": "Ask (overwrite / rename)",
   "settingsUploadConflictAutoRename": "Rename automatically",
   "settingsUploadConcurrency": "Parallel uploads",
-  "settingsUploadChunkSize": "Upload chunk size (KB)"
+  "settingsUploadChunkSize": "Upload chunk size (KB)",
+  "termNextReconnectLabel": "Next reconnect",
+  "termAttemptsLabel": "Reconnect attempts",
+  "termAutoRetryNote": "Will retry automatically until the connection is restored",
+  "termCommErrorTitle": "Comm error",
+  "termConnectionLostBody": "Connection to the server was lost.",
+  "termReconnectFailedBody": "Reconnection was attempted but failed.",
+  "termReconnectingPanelTitle": "Reconnecting",
+  "termSecondsValue": "{seconds}s",
+  "@termSecondsValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "termAttemptsValue": "{count}",
+  "@termAttemptsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

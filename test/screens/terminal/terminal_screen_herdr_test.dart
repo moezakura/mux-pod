@@ -651,6 +651,9 @@ void main() {
         );
 
         // エラーオーバーレイに「No herdr pane found for this workspace」
+        expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
+        await tester.tap(find.text('Comm error'));
+        await tester.pump();
         expect(find.textContaining('No herdr pane found'), findsWidgets);
 
         // 診断ログがリングバッファ（[HerdrSwitch]）に記録される。
@@ -686,6 +689,9 @@ void main() {
         );
 
         // エラーオーバーレイに「No herdr pane found for this workspace」
+        expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
+        await tester.tap(find.text('Comm error'));
+        await tester.pump();
         expect(find.textContaining('No herdr pane found'), findsWidgets);
 
         // catch 経路の診断ログ（例外種別 + errorCode + exitCode）が記録される。
@@ -728,6 +734,9 @@ void main() {
         settle: false,
       );
 
+      expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
+      await tester.tap(find.text('Comm error'));
+      await tester.pump();
       expect(find.textContaining('No herdr pane found'), findsWidgets);
 
       final events = herdrSwitchEvents(tester);

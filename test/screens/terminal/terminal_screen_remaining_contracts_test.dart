@@ -149,18 +149,18 @@ void main() {
       notifier.state = notifier.state.copyWith(
         isReconnecting: true,
         reconnectAttempt: 2,
+        nextRetryAt: DateTime.now().add(const Duration(seconds: 2)),
       );
       await tester.pump();
-      expect(find.text('Reconnecting (2)'), findsOneWidget);
+      expect(find.text('2s (2)'), findsOneWidget);
       // 再接続中インジケーターはコンパクト化され、Retry ボタンは廃止。
-      // タップで詳細を Tooltip で表示する代替導線を持つ。
+      // タップで詳細パネル（再接続中・次の再接続まで・試行回数）を開ける。
       expect(find.text('Retry'), findsNothing);
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is Tooltip && w.message == 'Reconnecting (Attempt 2)',
-        ),
-        findsOneWidget,
-      );
+      await tester.tap(find.text('2s (2)'));
+      await tester.pump();
+      expect(find.text('Reconnecting'), findsOneWidget);
+      expect(find.text('Next reconnect'), findsOneWidget);
+      expect(find.text('2s'), findsOneWidget);
     });
 
     testWidgets('TERM-DIALOG-011 confirms disconnect before closing SSH', (

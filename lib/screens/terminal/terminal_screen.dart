@@ -77,6 +77,11 @@ import '../file_browser/file_browser_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import '../settings/settings_screen.dart';
 import 'widgets/ansi_text_view.dart';
+import 'widgets/comm_error_panel.dart';
+import 'widgets/disconnect_bar.dart';
+import 'widgets/reconnect_countdown.dart';
+import 'widgets/reconnect_detail_panel.dart';
+import 'widgets/reconnect_indicators.dart';
 import 'widgets/terminal_zoom.dart';
 import '../../providers/custom_keys_provider.dart';
 import '../../services/custom_keys/custom_key_button.dart';
@@ -473,23 +478,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   String? _connectionError;
   SshState _sshState = const SshState();
 
-  // 切断/再接続失敗の Toast スパム対策。初回の切断検知で 1 回だけ通知し、
+  // 切断/再接続失敗の通知抑制フラグ。初回の切断検知で 1 回だけ通知し、
   // 真の再接続成功（isConnected）まで再表示しない。リトライサイクルでは
   // SshState.error が null↔文言 を交互に遷移し、例外種別で文言も変わるため、
   // 「文言比較 + レート制限」の抑制では同一文言スキップをすり抜けて
   // 何度も再表示されてしまう（実機検証で確認）。
   bool _disconnectToastShown = false;
 
-  // 表示中の切断 Toast のコントローラー。真の再接続成功（isConnected）時に
-  // 自動で閉じるために保持する（手動で閉じた後の hide() は no-op）。
-  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>?
-  _disconnectSnackBarController;
-
   // 自動再接続待機中のカウントダウン（残り秒・null = 非表示）。待機中は
   // state 遷移がないため、1 秒周期の Timer でNotifierのみ更新し、
   // インジケーター部品だけを再構築する（親build()は走らない）。
-  final _reconnectCountdownNotifier = ValueNotifier<int?>(null);
-  Timer? _reconnectCountdownTimer;
+  final _reconnectCountdown = ReconnectCountdown();
+
+  // 再接続中パネル（カウントダウン表示タップで開く詳細パネル）。
+  // Fade-in/out で表示し、開いたまま一定時間で自動的に閉じる。
+  bool _reconnectPanelVisible = false;
+  Timer? _reconnectPanelHideTimer;
+
+  // 通信エラーパネル（切断検知・初期接続エラーで画面下部に表示）。
+  // body は折りたたみ時の本文、detail は「▾」で展開したときの例外詳細。
+  // パネルは × を押すか接続が復帰するまで表示され続ける。
+  String? _commErrorPanelBody;
+  String? _commErrorPanelDetail;
+  bool _commErrorPanelExpanded = false;
+  Future<void> Function()? _commErrorPanelOnRetry;
 
   // ポーリングで頻繁に更新されるターミナル表示データ（ValueNotifierで管理）
   // 親のsetState()を回避し、ValueListenableBuilderでサブツリーのみリビルドする
@@ -959,21 +971,28 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           previous.error != next.error &&
           next.error != null &&
           (previous.isConnected || next.isReconnecting || previous.hasError)) {
-        _showDisconnectSnackBar(next.error!);
+        _showCommErrorPanel(
+          body: context.l10n.termConnectionLostBody,
+          detail: next.error!,
+          onRetry: () => ref.read(sshProvider.notifier).reconnectNow(),
+        );
       }
       // 真の接続回復時（isConnected）のみ抑止状態をリセットする。再接続ループ中は
       // reconnect() が copyWith の無条件 error 書き込みで error を null クリアする
       // ため、error == null でリセットすると同一文言の Toast が毎サイクル再表示
       // されてしまう（reviewer 第1回-1）。
       if (next.isConnected) {
-        // 抑止フラグを解除し（次回切断で再度 1 回通知する）、表示中の切断
-        // Toast は役目を終えたため自動で閉じる（既に消滅済みなら no-op）。
+        // 抑止フラグを解除し（次回切断で再度 1 回通知する）、表示中の
+        // 通信エラーパネルは役目を終えたため自動で閉じる。
         _disconnectToastShown = false;
-        _disconnectSnackBarController?.close();
-        _disconnectSnackBarController = null;
+        _closeCommErrorPanel();
       }
       // 再接続待機中のカウントダウン表示を同期する。
-      _updateReconnectCountdown(next);
+      _reconnectCountdown.sync(
+        isReconnecting: next.isReconnecting,
+        isWaitingForNetwork: next.isWaitingForNetwork,
+        nextRetryAt: next.nextRetryAt,
+      );
     }, fireImmediately: true);
 
     // Tmux状態の変化を監視
@@ -3124,29 +3143,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// エラーSnackBar表示
   void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      // inventory: LEGACY-0073
-      // デザインは切断 Toast と統一: 画面下端に密着したフラットな帯。
-      // action 付き SnackBar は Flutter 3.44+ でデフォルト persist=true
-      // （タイムアウトで消えない）になるため、明示的に false を指定する。
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
-        ),
-        backgroundColor: const Color(0xFF991B1B),
-        behavior: SnackBarBehavior.fixed,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        shape: const RoundedRectangleBorder(),
-        persist: false,
-        action: SnackBarAction(
-          label: context.l10n.termRetry,
-          textColor: Colors.white,
-          // inventory: TERM-LIFE-011
-          onPressed: _connectAndSetup,
-        ),
-      ),
+    _showCommErrorPanel(
+      body: context.l10n.termConnectionLostBody,
+      detail: message,
+      onRetry: _connectAndSetup,
     );
   }
 
@@ -3160,97 +3160,41 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   ///
   /// アクション文言は専用の `termReconnectNow` を使う（`termRetry` を流用すると
   /// TERM-DIALOG-010 の `find.text('Retry')` findsOneWidget と衝突するため）。
-  void _showDisconnectSnackBar(String message) {
+  /// 通信エラーパネルを表示する。
+  ///
+  /// 画面下部に赤枠のパネルとして表示し、× を押すか接続が復帰するまで
+  /// 表示し続ける（「▾」で例外詳細を展開できる）。リトライサイクル中の
+  /// error null↔文言 遷移や文言ローテーションで連続表示にならないよう、
+  /// **真の再接続成功まで初回 1 回のみ通知**する（[_disconnectToastShown]）。
+  ///
+  /// [body] は折りたたみ時の本文、[detail] は展開時に表示する例外詳細、
+  /// [onRetry] は「今すぐ再接続」アクションの処理。
+  void _showCommErrorPanel({
+    required String body,
+    required String detail,
+    required Future<void> Function() onRetry,
+  }) {
     if (!mounted || _isDisposed) return;
 
     // 初回表示以降、真の再接続成功（isConnected 遷移）まで再表示しない
     if (_disconnectToastShown) return;
     _disconnectToastShown = true;
 
-    // Flutter 3.44+ では action 付き SnackBar はデフォルトで persist=true
-    // （タイムアウトで消えない）になるため、明示的に false を指定する。
-    // 継続状態は右上インジケーターと赤バーが示し、再接続成功時は
-    // [_disconnectSnackBarController] 経由で自動的に閉じる。
-    // デザイン: 画面下端に密着したフラットな帯（ターミナルアプリの切断バー）。
-    // デフォルトの浮いたカード（余白・高承認の elevation・角丸）ではなく、
-    // ヘッダー直下の赤バーと同じく状態帯として一貫させ、余白を最小限に抑える。
-    _disconnectSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white, fontSize: 13),
-        ),
-        backgroundColor: const Color(0xFF991B1B),
-        behavior: SnackBarBehavior.fixed,
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        shape: const RoundedRectangleBorder(),
-        persist: false,
-        action: SnackBarAction(
-          label: context.l10n.termReconnectNow,
-          textColor: Colors.white,
-          onPressed: () {
-            ref.read(sshProvider.notifier).reconnectNow();
-          },
-        ),
-      ),
-    );
+    setState(() {
+      _commErrorPanelBody = body;
+      _commErrorPanelDetail = detail;
+      _commErrorPanelExpanded = false;
+      _commErrorPanelOnRetry = onRetry;
+    });
   }
 
-  /// 次回リトライ時刻までの残り秒（切り上げ）。
-  ///
-  /// 待機開始直後は `now + 5s` でも差分が 4.99s になるため、切り捨てる
-  /// （inSeconds）と「4s」表示から始まってしまう。カウントダウンとしては
-  /// 「5s → 4s → …」と減っていくべきため切り上げで丸める。
-  int _remainingSecondsUntil(DateTime until) {
-    final ms = until.difference(DateTime.now()).inMilliseconds;
-    if (ms <= 0) return 0;
-    return (ms / 1000).ceil();
-  }
-
-  /// 再接続待機中のカウントダウン（残り秒）を state 遷移と同期する。
-  ///
-  /// 自動再接続はバックオフ待機（[SshState.nextRetryAt] が未来）と実際の
-  /// 接続処理（待機終了後）に分かれる。待機中は残り秒を 1 秒周期で
-  /// [_reconnectCountdownNotifier] へ流し、待機終了・再接続完了・停止時に
-  /// null に戻す（表示が接続処理中の Reconnecting に戻る）。待機中は
-  /// state が変わらないため、Notifier 更新だけでインジケーター部品のみ
-  /// 再構築する（親 build() は走らない）。
-  void _updateReconnectCountdown(SshState next) {
-    final nextRetryAt = next.nextRetryAt;
-    final waitingForRetry =
-        next.isReconnecting &&
-        !next.isWaitingForNetwork &&
-        nextRetryAt != null &&
-        nextRetryAt.isAfter(DateTime.now());
-
-    void stopTimer() {
-      _reconnectCountdownTimer?.cancel();
-      _reconnectCountdownTimer = null;
-      _reconnectCountdownNotifier.value = null;
-    }
-
-    if (!waitingForRetry) {
-      stopTimer();
-      return;
-    }
-
-    // 待機開始時の残り秒を初期値にしたデクリメントカウンタ方式。tick ごとに
-    // DateTime.now() を読み直すとタイマー発火と実壁時計のズレで表示が飛んだり
-    // 更新されなくなったりするため、Timer の 1 秒周期に同期して減らす。待機の
-    // 実スケジュールは ssh_provider 側のタイマーが管理するため、表示用の
-    // カウンタとして十分。state 変化（次の nextRetryAt 設定等）で再同期される。
-    _reconnectCountdownTimer?.cancel();
-    _reconnectCountdownNotifier.value = _remainingSecondsUntil(nextRetryAt);
-    _reconnectCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_isDisposed) return;
-      final remaining = _reconnectCountdownNotifier.value;
-      if (remaining == null || remaining <= 1) {
-        // 待機終了 → 接続処理中の表示へ戻す
-        stopTimer();
-        return;
-      }
-      _reconnectCountdownNotifier.value = remaining - 1;
+  /// 通信エラーパネルを閉じる（× 押下・接続復帰時）。
+  void _closeCommErrorPanel() {
+    if (!mounted) return;
+    setState(() {
+      _commErrorPanelBody = null;
+      _commErrorPanelDetail = null;
+      _commErrorPanelExpanded = false;
     });
   }
 
@@ -3363,12 +3307,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 最小監視（A8）リングバッファを解放
     _herdrSwitchEvents.clear();
     // ValueNotifierを破棄
-    _reconnectCountdownTimer?.cancel();
+    _reconnectPanelHideTimer?.cancel();
+    _reconnectCountdown.dispose();
     _viewNotifier.dispose();
     _herdrDisplayNotifier.dispose();
     _herdrPaneIndicatorNotifier.dispose();
     _latencyNotifier.dispose();
-    _reconnectCountdownNotifier.dispose();
     // スクロールコントローラーのリスナーを削除して破棄
     _terminalScrollController.removeListener(_onTerminalScroll);
     _terminalScrollController.dispose();
@@ -3399,21 +3343,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               if (_backendKind == MultiplexerBackendKind.herdr)
                 ValueListenableBuilder<_HerdrDisplayData?>(
                   valueListenable: _herdrDisplayNotifier,
-                  builder: (context, display, _) =>
-                      _buildBreadcrumbHeader(_herdrToBreadcrumb(display)),
+                  builder: (context, display, _) => _wrapWithReconnectPanel(
+                    _buildBreadcrumbHeader(_herdrToBreadcrumb(display)),
+                  ),
                 )
               else
                 Consumer(
                   builder: (context, ref, _) {
                     final tmuxState = ref.watch(tmuxProvider);
-                    return _buildBreadcrumbHeader(_tmuxToBreadcrumb(tmuxState));
+                    return _wrapWithReconnectPanel(
+                      _buildBreadcrumbHeader(_tmuxToBreadcrumb(tmuxState)),
+                    );
                   },
                 ),
               // 切断/再接続/エラー状態をヘッダー直下の赤バーで示す（タップ不可・状態表示専用）。
               if (_sshState.isReconnecting ||
                   _sshState.isDisconnected ||
                   _sshState.hasError)
-                _buildDisconnectBar(),
+                const DisconnectBar(),
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -3620,6 +3567,30 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               color: isDark ? Colors.black54 : Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
+          // 通信エラーパネル（画面下部固定・fade in/out）。
+          // 切断検知・初期接続エラー時に [_showCommErrorPanel] で表示し、
+          // × 押下または接続復帰で閉じるまで表示し続ける。
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _commErrorPanelBody != null
+                  ? CommErrorPanel(
+                      body: _commErrorPanelBody ?? '',
+                      detail: _commErrorPanelDetail ?? '',
+                      expanded: _commErrorPanelExpanded,
+                      onToggleExpanded: () => setState(
+                        () =>
+                            _commErrorPanelExpanded = !_commErrorPanelExpanded,
+                      ),
+                      onRetry: () => _commErrorPanelOnRetry?.call(),
+                      onClose: _closeCommErrorPanel,
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ),
         ],
       ),
     );
@@ -4359,14 +4330,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         a.frameHeight == b.frameHeight;
   }
 
-  /// 切断/再接続/エラー状態を示すヘッダー直下の 2px 赤バー。
-  ///
-  /// タップ不可（状態表示専用）。強制再接続は右上インジケーターの
-  /// 「再試行」と Toast の「今すぐ再接続」アクションの 2 経路で行う。
-  Widget _buildDisconnectBar() {
-    return Container(height: 2, color: DesignColors.error);
-  }
-
   /// 上部のパンくずナビゲーションヘッダー（A9）。
   ///
   /// [data] は backend 経路ごとに生成済みの共通データ（`_tmuxToBreadcrumb` /
@@ -4508,7 +4471,6 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                 constraints: const BoxConstraints(),
                 tooltip: context.l10n.termFileBrowser,
               ),
-            // Settings button
             IconButton(
               // inventory: TERM-DIALOG-002
               onPressed: _showTerminalMenu,
@@ -4524,6 +4486,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           ],
         ),
       ),
+    );
+  }
+
+  /// ヘッダーをラップし、再接続詳細パネルをヘッダー直下に重ねる。
+  ///
+  /// パネルはカウントダウン表示タップで開閉し、Fade-in/out で表示される。
+  /// 開いたまま 10 秒で自動的に閉じる（[_reconnectPanelHideTimer]）。
+  Widget _wrapWithReconnectPanel(Widget header) {
+    final topInset = MediaQuery.of(context).padding.top;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        header,
+        Positioned(
+          top: topInset + 46,
+          right: 10,
+          child: IgnorePointer(
+            ignoring: !_reconnectPanelVisible,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _reconnectPanelVisible
+                  ? ReconnectDetailPanel(
+                      countdown: _reconnectCountdown.remaining,
+                      attempt: _sshState.reconnectAttempt,
+                      visible: true,
+                    )
+                  : const SizedBox(width: 1, height: 1),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -7215,83 +7208,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       ),
       child: _sshState.isReconnecting
           // inventory: TERM-DIALOG-010
-          ? _buildReconnectingIndicator()
+          ? ReconnectingIndicator(
+              countdown: _reconnectCountdown.remaining,
+              isWaitingForNetwork: _sshState.isWaitingForNetwork,
+              attempt: _sshState.reconnectAttempt,
+              onTap: _toggleReconnectPanel,
+            )
           : _sshState.isConnected
           ? _buildLatencyIndicator(latency)
-          : _buildDisconnectedIndicator(),
-    );
-  }
-
-  /// 切断中インジケーター（初期接続失敗時などに表示）。
-  ///
-  /// エラー文言は Toast（[_showDisconnectSnackBar]）へ移行したためここには
-  /// 入れない。キュー件数と強制再接続の導線のみをコンパクトに表示する。
-  Widget _buildDisconnectedIndicator() {
-    final queuedCount = _inputQueue.length;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // 切断アイコン
-        Icon(
-          Icons.link_off,
-          size: 12,
-          color: DesignColors.error.withValues(alpha: 0.8),
-        ),
-        const SizedBox(width: 6),
-
-        // ステータステキスト
-        Text(
-          context.l10n.termDisconnected,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 10,
-            color: DesignColors.error.withValues(alpha: 0.8),
-          ),
-        ),
-
-        // キューイング状態
-        if (queuedCount > 0) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: DesignColors.primary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(4),
+          : DisconnectedIndicator(
+              queuedCount: _inputQueue.length,
+              onReconnectNow: () =>
+                  ref.read(sshProvider.notifier).reconnectNow(),
             ),
-            child: Text(
-              context.l10n.termChars(queuedCount),
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 9,
-                color: DesignColors.primary,
-              ),
-            ),
-          ),
-        ],
-
-        // 今すぐ再接続ボタン
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () {
-            ref.read(sshProvider.notifier).reconnectNow();
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: DesignColors.error.withValues(alpha: 0.5),
-              ),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              context.l10n.termRetry,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 9,
-                color: DesignColors.error,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -7331,93 +7260,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// 再接続中インジケーター
-  ///
-  /// ヘッダー右側の空間を圧迫しないよう表示はコンパクトに保つ。
-  /// - 接続処理中: `${スピナー} Reconnecting (N)`（N は試行回数・2 回目から表示）
-  /// - 自動再接続待機中: `${スピナー} Ns (C)`（N は残り秒のカウントダウン、
-  ///   C は試行回数）。毎秒更新は [_reconnectCountdownNotifier] 経由。
-  /// - ネットワーク断: `${圏外アイコン} Offline`
-  /// いずれもタップで詳細（文言 + 試行回数）を Tooltip で表示する。
-  /// 「Reconnecting」の文字は接続処理中のみ出る（待機中はカウントダウンのみ）。
-  Widget _buildReconnectingIndicator() {
-    return ValueListenableBuilder<int?>(
-      valueListenable: _reconnectCountdownNotifier,
-      builder: (context, remainingSeconds, _) {
-        final attempt = _sshState.reconnectAttempt;
-        final isWaitingForNetwork = _sshState.isWaitingForNetwork;
-        final isWaitingForRetry =
-            remainingSeconds != null && !isWaitingForNetwork;
-
-        // ステータステキスト（接続処理中のみ「Reconnecting」を出す）
-        final String statusText;
-        if (isWaitingForNetwork) {
-          statusText = context.l10n.termOffline;
-        } else if (isWaitingForRetry) {
-          statusText = '${remainingSeconds}s ($attempt)';
-        } else {
-          statusText =
-              context.l10n.termReconnecting +
-              (attempt > 1 ? ' ($attempt)' : '');
-        }
-
-        final Widget content = Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // スピナーまたは圏外アイコン
-            if (isWaitingForNetwork)
-              Icon(
-                Icons.signal_wifi_off,
-                size: 12,
-                color: DesignColors.warning.withValues(alpha: 0.8),
-              )
-            else
-              SizedBox(
-                width: 10,
-                height: 10,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: DesignColors.warning.withValues(alpha: 0.8),
-                ),
-              ),
-            const SizedBox(width: 6),
-
-            // ステータステキスト
-            Text(
-              statusText,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                color: DesignColors.warning.withValues(alpha: 0.8),
-              ),
-            ),
-          ],
-        );
-
-        // ネットワーク断中は「Offline」と表示済みのため Tooltip は省略。
-        // タップで詳細（カウントダウン + 試行回数）を表示する。
-        if (isWaitingForNetwork) {
-          return content;
-        }
-        return Tooltip(
-          message: _reconnectTooltipMessage(remainingSeconds),
-          triggerMode: TooltipTriggerMode.tap,
-          // タップで表示した Tooltip の掲載時間(デフォルトは短くカウント
-          // ダウンの進行と重なると見落としやすい)。読める時間を確保する。
-          showDuration: const Duration(seconds: 4),
-          onTriggered: () => debugPrint('TOOLTIP: triggered'),
-          child: content,
-        );
-      },
-    );
-  }
-
-  /// 再接続インジケーターの Tooltip 文言（タップで表示する詳細）。
-  String _reconnectTooltipMessage(int? remainingSeconds) {
-    final attempt = _sshState.reconnectAttempt;
-    if (remainingSeconds != null) {
-      return context.l10n.termReconnectIn(remainingSeconds, attempt);
-    }
-    return context.l10n.termReconnectAttempt(attempt);
+  /// 再接続詳細パネルの開閉トグル。開いたまま 10 秒で自動的に閉じる。
+  void _toggleReconnectPanel() {
+    setState(() {
+      _reconnectPanelVisible = !_reconnectPanelVisible;
+      _reconnectPanelHideTimer?.cancel();
+      if (_reconnectPanelVisible) {
+        _reconnectPanelHideTimer = Timer(const Duration(seconds: 10), () {
+          if (mounted && _reconnectPanelVisible) {
+            setState(() => _reconnectPanelVisible = false);
+          }
+        });
+      }
+    });
   }
 
   /// キーを PaneWriter 経由で送信（T8）

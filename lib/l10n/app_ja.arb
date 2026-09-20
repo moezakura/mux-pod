@@ -1632,5 +1632,28 @@
   "settingsUploadConflictPrompt": "確認する（上書き / リネーム）",
   "settingsUploadConflictAutoRename": "自動でリネーム",
   "settingsUploadConcurrency": "同時アップロード数",
-  "settingsUploadChunkSize": "アップロード チャンクサイズ (KB)"
+  "settingsUploadChunkSize": "アップロード チャンクサイズ (KB)",
+  "termNextReconnectLabel": "次の再接続まで",
+  "termAttemptsLabel": "再接続の試行回数",
+  "termAutoRetryNote": "接続が戻るまで自動で再試行します",
+  "termCommErrorTitle": "通信エラー",
+  "termConnectionLostBody": "サーバーとの接続が切断されました。",
+  "termReconnectFailedBody": "再接続を試みましたが、接続できませんでした。",
+  "termReconnectingPanelTitle": "再接続中",
+  "termSecondsValue": "{seconds}秒",
+  "@termSecondsValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "termAttemptsValue": "{count}回",
+  "@termAttemptsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }
