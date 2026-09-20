@@ -75,7 +75,8 @@ void main() {
         );
         await tester.pump();
         expect(_commErrorPanelFinder(), findsOneWidget);
-        expect(find.text('Connection to the server was lost.'), findsOneWidget);
+        expect(find.text('Connection to the server was lost.'), findsNothing);
+        expect(find.text('Connection lost'), findsOneWidget);
         // アクション文言は termReconnectNow（'Reconnect now'）
         expect(find.text('Reconnect now'), findsOneWidget);
 
@@ -83,12 +84,18 @@ void main() {
         expect(find.text('Reconnect failed: first'), findsNothing);
 
         // 展開トグル（▾）をタップ → 例外詳細（detail）を表示
-        await tester.tap(find.text('Comm error'));
+        await tester.tap(find.byIcon(Icons.expand_more));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 250));
-        expect(find.textContaining('Reconnect failed: first'), findsOneWidget);
         expect(
-          find.textContaining('Reconnection was attempted but failed.'),
+          find.textContaining('Reconnect failed: first', findRichText: true),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining(
+            'Connection to the server was lost.',
+            findRichText: true,
+          ),
           findsOneWidget,
         );
 
@@ -101,7 +108,7 @@ void main() {
         await tester.pump();
         expect(_commErrorPanelFinder(), findsOneWidget);
 
-        // 別文言でも 5 秒以内の再遷移はレート制限で抑制される（積まれない）
+        // 再失敗は表示中の詳細を更新し、パネルを積まない。
         notifier.state = notifier.state.copyWith(
           connectionState: SshConnectionState.error,
           error: 'Reconnect failed: second',
@@ -109,7 +116,14 @@ void main() {
         );
         await tester.pump();
         expect(_commErrorPanelFinder(), findsOneWidget);
-        expect(find.textContaining('Reconnect failed: second'), findsNothing);
+        expect(
+          find.textContaining('Reconnect failed: second', findRichText: true),
+          findsOneWidget,
+        );
+        await tester.tap(find.byIcon(Icons.expand_less));
+        await tester.pump();
+        expect(find.byType(SelectableText), findsNothing);
+        expect(find.byIcon(Icons.expand_more), findsOneWidget);
       },
     );
 
@@ -305,6 +319,17 @@ void main() {
           ),
           findsOneWidget,
         );
+
+        final panel = find.text('Next reconnect');
+        final indicator = find.text('5s (2)');
+        expect(
+          tester.getTopLeft(panel).dy,
+          greaterThan(tester.getBottomLeft(indicator).dy),
+        );
+        // ターミナルの背後に隠れている場合、ヒットテストはパネルに届かない。
+        expect(panel.hitTestable(), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('4s'), findsOneWidget);
 
         // パネルは開いたまま 10 秒で自動的に閉じる
         await tester.pump(const Duration(seconds: 10));

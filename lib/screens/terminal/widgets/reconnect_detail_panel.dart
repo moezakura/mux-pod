@@ -19,17 +19,21 @@ class ReconnectDetailPanel extends StatelessWidget {
   /// 表示中かどうか（非表示時はスピナー静止で構築し、pumpAndSettle が
   /// 永久に完了しないのを防ぐ）。
   final bool visible;
+  final double arrowRight;
+  final double width;
 
   const ReconnectDetailPanel({
     super.key,
     required this.countdown,
     required this.attempt,
     required this.visible,
+    this.arrowRight = 44,
+    this.width = 264,
   });
 
   @override
   Widget build(BuildContext context) {
-    const panelColor = Color(0xFF23242E);
+    const panelColor = Color(0xFF15161C);
     final remaining = countdown.value ?? 0;
     return ValueListenableBuilder<int?>(
       valueListenable: countdown,
@@ -39,11 +43,12 @@ class ReconnectDetailPanel extends StatelessWidget {
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 264,
+              width: width,
               margin: const EdgeInsets.only(top: 10),
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
               decoration: BoxDecoration(
                 color: panelColor,
+                border: Border.all(color: DesignColors.borderDark),
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
@@ -67,7 +72,7 @@ class ReconnectDetailPanel extends StatelessWidget {
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: DesignColors.secondary,
+                            color: DesignColors.warning,
                           ),
                         )
                       else
@@ -111,7 +116,7 @@ class ReconnectDetailPanel extends StatelessWidget {
             ),
             // カウントダウン表示を指す矢印突起
             Positioned(
-              right: 44,
+              right: arrowRight,
               top: 3,
               child: RotationTransition(
                 turns: const AlwaysStoppedAnimation(0.125),

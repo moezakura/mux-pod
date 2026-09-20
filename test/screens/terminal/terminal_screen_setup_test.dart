@@ -271,9 +271,12 @@ void main() {
 
       expect(client.execCommands, isEmpty);
       expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
-      await tester.tap(find.text('Comm error'));
+      await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pump();
-      expect(find.textContaining('Connection not found'), findsWidgets);
+      expect(
+        find.textContaining('Connection not found', findRichText: true),
+        findsWidgets,
+      );
     });
   });
 }

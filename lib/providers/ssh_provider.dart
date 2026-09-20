@@ -220,14 +220,14 @@ class SshNotifier extends Notifier<SshState> {
     } on SshConnectionError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
-        error: e.message,
+        error: e.toString(),
       );
       _client?.dispose();
       _client = null;
     } on SshAuthenticationError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
-        error: e.message,
+        error: e.toString(),
       );
       _client?.dispose();
       _client = null;
@@ -299,14 +299,14 @@ class SshNotifier extends Notifier<SshState> {
     } on SshConnectionError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
-        error: e.message,
+        error: e.toString(),
       );
       _client?.dispose();
       _client = null;
     } on SshAuthenticationError catch (e) {
       state = state.copyWith(
         connectionState: SshConnectionState.error,
-        error: e.message,
+        error: e.toString(),
       );
       _client?.dispose();
       _client = null;
@@ -332,7 +332,7 @@ class SshNotifier extends Notifier<SshState> {
       state = state.copyWith(
         connectionState: newState,
         error: newState == SshConnectionState.error
-            ? _l10n.sshConnectionLost
+            ? (_client?.lastError ?? _l10n.sshConnectionLost)
             : null,
       );
 

@@ -6,16 +6,18 @@ import '../../../theme/design_colors.dart';
 /// 通信エラーパネル（画面下部固定）。
 ///
 /// 赤枠の角丸パネル。ヘッダー行: 「⚠ 通信エラー」+ 詳細展開トグル +
-/// 「今すぐ再接続」+「×」。折りたたみ時は本文 1 行、展開時は再接続失敗の
-/// 詳細（例外文言）を追加表示する。
+/// 「今すぐ再接続」+「×」。折りたたみ時はタイトル行のみ表示し、
+/// 展開すると本文と例外詳細をスクロールして読める。
 ///
 /// 表示/折りたたみの状態は親が保持し（[expanded] / [onToggleExpanded]）、
 /// パネル自身は描画のみを担う。
 class CommErrorPanel extends StatelessWidget {
-  /// 折りたたみ時に表示する本文（例: 「サーバーとの接続が切断されました。」）。
+  /// 展開時に表示する本文（例: 「サーバーとの接続が切断されました。」）。
   final String body;
 
-  /// 「▾」で展開したときに表示する例外詳細。
+  final String title;
+
+  /// 展開したときに表示する例外詳細。
   final String detail;
 
   /// 例外詳細を展開表示しているかどうか。
@@ -33,6 +35,7 @@ class CommErrorPanel extends StatelessWidget {
   const CommErrorPanel({
     super.key,
     required this.body,
+    required this.title,
     required this.detail,
     required this.expanded,
     required this.onToggleExpanded,
@@ -65,42 +68,47 @@ class CommErrorPanel extends StatelessWidget {
           Row(
             children: [
               // タイトル+詳細展開トグル（タップ領域を広めに取る）
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onToggleExpanded,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: DesignColors.error,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        context.l10n.termCommErrorTitle,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onToggleExpanded,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: DesignColors.error,
+                          size: 20,
                         ),
-                      ),
-                      const SizedBox(width: 2),
-                      Icon(
-                        expanded ? Icons.expand_less : Icons.expand_more,
-                        color: DesignColors.textSecondary,
-                        size: 18,
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          expanded ? Icons.expand_less : Icons.expand_more,
+                          color: DesignColors.textSecondary,
+                          size: 18,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const Spacer(),
               // 今すぐ再接続
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -110,7 +118,7 @@ class CommErrorPanel extends StatelessWidget {
                   child: Text(
                     context.l10n.termReconnectNow,
                     style: TextStyle(
-                      color: DesignColors.primary,
+                      color: DesignColors.warning,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -133,26 +141,20 @@ class CommErrorPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          // 折りたたみ本文
-          Text(body, style: const TextStyle(color: Colors.white, fontSize: 13)),
-          // 展開時: 再接続失敗の詳細 + 例外文言
-          AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            alignment: Alignment.topLeft,
-            child: expanded
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '${context.l10n.termReconnectFailedBody}\n$detail',
-                      style: const TextStyle(
-                        color: DesignColors.textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+          if (expanded) ...[
+            const Divider(color: DesignColors.borderDark, height: 20),
+            Flexible(
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  '$body\n$detail',
+                  style: const TextStyle(
+                    color: DesignColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

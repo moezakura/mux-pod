@@ -493,11 +493,15 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   // 再接続中パネル（カウントダウン表示タップで開く詳細パネル）。
   // Fade-in/out で表示し、開いたまま一定時間で自動的に閉じる。
   bool _reconnectPanelVisible = false;
+  final _reconnectIndicatorKey = GlobalKey();
+  double _reconnectArrowRight = 100;
+  final _headerLink = LayerLink();
   Timer? _reconnectPanelHideTimer;
 
   // 通信エラーパネル（切断検知・初期接続エラーで画面下部に表示）。
   // body は折りたたみ時の本文、detail は「▾」で展開したときの例外詳細。
   // パネルは × を押すか接続が復帰するまで表示され続ける。
+  String? _commErrorPanelTitle;
   String? _commErrorPanelBody;
   String? _commErrorPanelDetail;
   bool _commErrorPanelExpanded = false;
@@ -972,6 +976,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
           next.error != null &&
           (previous.isConnected || next.isReconnecting || previous.hasError)) {
         _showCommErrorPanel(
+          title: previous.isConnected
+              ? context.l10n.termConnectionLostTitle
+              : context.l10n.termReconnectFailedTitle,
           body: context.l10n.termConnectionLostBody,
           detail: next.error!,
           onRetry: () => ref.read(sshProvider.notifier).reconnectNow(),
@@ -981,6 +988,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       // reconnect() が copyWith の無条件 error 書き込みで error を null クリアする
       // ため、error == null でリセットすると同一文言の Toast が毎サイクル再表示
       // されてしまう（reviewer 第1回-1）。
+      if (!next.isReconnecting) {
+        _reconnectPanelVisible = false;
+        _reconnectPanelHideTimer?.cancel();
+      }
       if (next.isConnected) {
         // 抑止フラグを解除し（次回切断で再度 1 回通知する）、表示中の
         // 通信エラーパネルは役目を終えたため自動で閉じる。
@@ -1324,7 +1335,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
       final client = sshNotifier.client;
       if (client == null) {
-        throw Exception('SSH client is not available');
+        throw Exception(
+          ref.read(sshProvider).error ?? 'SSH client is not available',
+        );
       }
 
       // モードリセット（接続確立時の scrollSend/select 残留防止・D4）。tmux /
@@ -1524,7 +1537,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         // inventory: TERM-RESIZE-003
         _scheduleInitialAutoResize();
       }
-    } on SshAuthenticationError {
+    } on SshAuthenticationError catch (e) {
       // 注意: SshAuthenticationError 全種をこの文言にマップしている。現在の throw
       // 元は _getAuthOptions の秘密鍵読み取り失敗のみ。将来 throw 元が増える
       // 場合は例外の種別に応じた文言選択が必要。
@@ -1535,7 +1548,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _connectionError = message;
       });
       // inventory: TERM-DIALOG-001
-      _showErrorSnackBar(message);
+      _showErrorSnackBar(
+        e.toString(),
+        title: context.l10n.termAuthenticationFailedTitle,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -3142,9 +3158,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// エラーSnackBar表示
-  void _showErrorSnackBar(String message) {
+  void _showErrorSnackBar(String message, {String? title}) {
     _showCommErrorPanel(
-      body: context.l10n.termConnectionLostBody,
+      title: title ?? context.l10n.termConnectionFailedTitle,
+      body: title ?? context.l10n.termConnectionFailedTitle,
       detail: message,
       onRetry: _connectAndSetup,
     );
@@ -3163,13 +3180,14 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// 通信エラーパネルを表示する。
   ///
   /// 画面下部に赤枠のパネルとして表示し、× を押すか接続が復帰するまで
-  /// 表示し続ける（「▾」で例外詳細を展開できる）。リトライサイクル中の
+  /// 表示し続ける（展開アイコンで例外詳細を開閉できる）。リトライサイクル中の
   /// error null↔文言 遷移や文言ローテーションで連続表示にならないよう、
   /// **真の再接続成功まで初回 1 回のみ通知**する（[_disconnectToastShown]）。
   ///
-  /// [body] は折りたたみ時の本文、[detail] は展開時に表示する例外詳細、
+  /// [body] は展開時の本文、[detail] は展開時に表示する例外詳細、
   /// [onRetry] は「今すぐ再接続」アクションの処理。
   void _showCommErrorPanel({
+    required String title,
     required String body,
     required String detail,
     required Future<void> Function() onRetry,
@@ -3177,10 +3195,22 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     if (!mounted || _isDisposed) return;
 
     // 初回表示以降、真の再接続成功（isConnected 遷移）まで再表示しない
-    if (_disconnectToastShown) return;
+    if (_disconnectToastShown) {
+      // 表示中は最新の失敗を反映する。閉じたパネルは再表示しない。
+      if (_commErrorPanelBody != null) {
+        setState(() {
+          _commErrorPanelTitle = title;
+          _commErrorPanelBody = body;
+          _commErrorPanelDetail = detail;
+          _commErrorPanelOnRetry = onRetry;
+        });
+      }
+      return;
+    }
     _disconnectToastShown = true;
 
     setState(() {
+      _commErrorPanelTitle = title;
       _commErrorPanelBody = body;
       _commErrorPanelDetail = detail;
       _commErrorPanelExpanded = false;
@@ -3498,6 +3528,37 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
                         overlayState: _keyOverlayState,
                         position: _keyOverlayPosition,
                       ),
+                      // 通信エラーパネル（画面下部固定・fade in/out）。
+                      // 切断検知・初期接続エラー時に [_showCommErrorPanel] で表示し、
+                      // × 押下または接続復帰で閉じるまで表示し続ける。
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 64,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            child: _commErrorPanelBody != null
+                                ? CommErrorPanel(
+                                    title: _commErrorPanelTitle ?? '',
+                                    body: _commErrorPanelBody ?? '',
+                                    detail: _commErrorPanelDetail ?? '',
+                                    expanded: _commErrorPanelExpanded,
+                                    onToggleExpanded: () => setState(
+                                      () => _commErrorPanelExpanded =
+                                          !_commErrorPanelExpanded,
+                                    ),
+                                    onRetry: () =>
+                                        _commErrorPanelOnRetry?.call(),
+                                    onClose: _closeCommErrorPanel,
+                                  )
+                                : const SizedBox(width: double.infinity),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -3567,30 +3628,24 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
               color: isDark ? Colors.black54 : Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
-          // 通信エラーパネル（画面下部固定・fade in/out）。
-          // 切断検知・初期接続エラー時に [_showCommErrorPanel] で表示し、
-          // × 押下または接続復帰で閉じるまで表示し続ける。
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              child: _commErrorPanelBody != null
-                  ? CommErrorPanel(
-                      body: _commErrorPanelBody ?? '',
-                      detail: _commErrorPanelDetail ?? '',
-                      expanded: _commErrorPanelExpanded,
-                      onToggleExpanded: () => setState(
-                        () =>
-                            _commErrorPanelExpanded = !_commErrorPanelExpanded,
-                      ),
-                      onRetry: () => _commErrorPanelOnRetry?.call(),
-                      onClose: _closeCommErrorPanel,
-                    )
-                  : const SizedBox(width: double.infinity),
+          if (_reconnectPanelVisible && _sshState.isReconnecting)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: CompositedTransformFollower(
+                link: _headerLink,
+                targetAnchor: Alignment.bottomRight,
+                followerAnchor: Alignment.topRight,
+                offset: const Offset(-16, 2),
+                child: ReconnectDetailPanel(
+                  countdown: _reconnectCountdown.remaining,
+                  attempt: _sshState.reconnectAttempt,
+                  visible: true,
+                  arrowRight: _reconnectArrowRight,
+                  width: (MediaQuery.sizeOf(context).width - 32).clamp(0, 264),
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -4489,35 +4544,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     );
   }
 
-  /// ヘッダーをラップし、再接続詳細パネルをヘッダー直下に重ねる。
-  ///
-  /// パネルはカウントダウン表示タップで開閉し、Fade-in/out で表示される。
-  /// 開いたまま 10 秒で自動的に閉じる（[_reconnectPanelHideTimer]）。
+  /// 画面前面の再接続詳細パネルをヘッダー下端に追従させる。
   Widget _wrapWithReconnectPanel(Widget header) {
-    final topInset = MediaQuery.of(context).padding.top;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        header,
-        Positioned(
-          top: topInset + 46,
-          right: 10,
-          child: IgnorePointer(
-            ignoring: !_reconnectPanelVisible,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              child: _reconnectPanelVisible
-                  ? ReconnectDetailPanel(
-                      countdown: _reconnectCountdown.remaining,
-                      attempt: _sshState.reconnectAttempt,
-                      visible: true,
-                    )
-                  : const SizedBox(width: 1, height: 1),
-            ),
-          ),
-        ),
-      ],
-    );
+    return CompositedTransformTarget(link: _headerLink, child: header);
   }
 
   /// tmux 経路: [TmuxState] をブレッドクラム描画用データへ変換する（A9）。
@@ -7209,6 +7238,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       child: _sshState.isReconnecting
           // inventory: TERM-DIALOG-010
           ? ReconnectingIndicator(
+              key: _reconnectIndicatorKey,
               countdown: _reconnectCountdown.remaining,
               isWaitingForNetwork: _sshState.isWaitingForNetwork,
               attempt: _sshState.reconnectAttempt,
@@ -7262,6 +7292,16 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
 
   /// 再接続詳細パネルの開閉トグル。開いたまま 10 秒で自動的に閉じる。
   void _toggleReconnectPanel() {
+    final box =
+        _reconnectIndicatorKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box != null) {
+      final center = box.localToGlobal(Offset(box.size.width / 2, 0));
+      _reconnectArrowRight =
+          (MediaQuery.sizeOf(context).width - 16 - center.dx - 7).clamp(
+            12,
+            238,
+          );
+    }
     setState(() {
       _reconnectPanelVisible = !_reconnectPanelVisible;
       _reconnectPanelHideTimer?.cancel();
