@@ -653,6 +653,19 @@
   },
   "termOffline": "Offline",
   "termReconnecting": "Reconnecting",
+  "termReconnectIn": "Reconnecting in {seconds}s (Attempt {attempt})",
+  "@termReconnectIn": {
+    "placeholders": {
+      "seconds": {"type": "int"},
+      "attempt": {"type": "int"}
+    }
+  },
+  "termReconnectAttempt": "Reconnecting (Attempt {attempt})",
+  "@termReconnectAttempt": {
+    "placeholders": {
+      "attempt": {"type": "int"}
+    }
+  },
   "termDisconnected": "Disconnected",
   "termReconnectNow": "Reconnect now",
   "termFileBrowser": "File Browser",

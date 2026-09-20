@@ -477,6 +477,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   String? _lastDisconnectToastText;
   DateTime? _lastDisconnectToastAt;
 
+  // 表示中の切断 Toast のコントローラー。真の再接続成功（isConnected）時に
+  // 自動で閉じるために保持する（手動で閉じた後の hide() は no-op）。
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>?
+  _disconnectSnackBarController;
+
+  // 自動再接続待機中のカウントダウン（残り秒・null = 非表示）。待機中は
+  // state 遷移がないため、1 秒周期の Timer でNotifierのみ更新し、
+  // インジケーター部品だけを再構築する（親build()は走らない）。
+  final _reconnectCountdownNotifier = ValueNotifier<int?>(null);
+  Timer? _reconnectCountdownTimer;
+
   // ポーリングで頻繁に更新されるターミナル表示データ（ValueNotifierで管理）
   // 親のsetState()を回避し、ValueListenableBuilderでサブツリーのみリビルドする
   final _viewNotifier = ValueNotifier<_TerminalViewData>(
@@ -954,7 +965,13 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       if (next.isConnected) {
         _lastDisconnectToastText = null;
         _lastDisconnectToastAt = null;
+        // 自動再接続で復帰した場合、表示中の切断 Toast は役目を終えたため
+        // 自動で閉じる（既に手動で閉じられている場合は no-op）。
+        _disconnectSnackBarController?.close();
+        _disconnectSnackBarController = null;
       }
+      // 再接続待機中のカウントダウン表示を同期する。
+      _updateReconnectCountdown(next);
     }, fireImmediately: true);
 
     // Tmux状態の変化を監視
@@ -3143,7 +3160,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     _lastDisconnectToastText = message;
     _lastDisconnectToastAt = now;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    _disconnectSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: Colors.red,
@@ -3156,6 +3173,63 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         ),
       ),
     );
+  }
+
+  /// 次回リトライ時刻までの残り秒（切り上げ）。
+  ///
+  /// 待機開始直後は `now + 5s` でも差分が 4.99s になるため、切り捨てる
+  /// （inSeconds）と「4s」表示から始まってしまう。カウントダウンとしては
+  /// 「5s → 4s → …」と減っていくべきため切り上げで丸める。
+  int _remainingSecondsUntil(DateTime until) {
+    final ms = until.difference(DateTime.now()).inMilliseconds;
+    if (ms <= 0) return 0;
+    return (ms / 1000).ceil();
+  }
+
+  /// 再接続待機中のカウントダウン（残り秒）を state 遷移と同期する。
+  ///
+  /// 自動再接続はバックオフ待機（[SshState.nextRetryAt] が未来）と実際の
+  /// 接続処理（待機終了後）に分かれる。待機中は残り秒を 1 秒周期で
+  /// [_reconnectCountdownNotifier] へ流し、待機終了・再接続完了・停止時に
+  /// null に戻す（表示が接続処理中の Reconnecting に戻る）。待機中は
+  /// state が変わらないため、Notifier 更新だけでインジケーター部品のみ
+  /// 再構築する（親 build() は走らない）。
+  void _updateReconnectCountdown(SshState next) {
+    final nextRetryAt = next.nextRetryAt;
+    final waitingForRetry =
+        next.isReconnecting &&
+        !next.isWaitingForNetwork &&
+        nextRetryAt != null &&
+        nextRetryAt.isAfter(DateTime.now());
+
+    void stopTimer() {
+      _reconnectCountdownTimer?.cancel();
+      _reconnectCountdownTimer = null;
+      _reconnectCountdownNotifier.value = null;
+    }
+
+    if (!waitingForRetry) {
+      stopTimer();
+      return;
+    }
+
+    // 待機開始時の残り秒を初期値にしたデクリメントカウンタ方式。tick ごとに
+    // DateTime.now() を読み直すとタイマー発火と実壁時計のズレで表示が飛んだり
+    // 更新されなくなったりするため、Timer の 1 秒周期に同期して減らす。待機の
+    // 実スケジュールは ssh_provider 側のタイマーが管理するため、表示用の
+    // カウンタとして十分。state 変化（次の nextRetryAt 設定等）で再同期される。
+    _reconnectCountdownTimer?.cancel();
+    _reconnectCountdownNotifier.value = _remainingSecondsUntil(nextRetryAt);
+    _reconnectCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isDisposed) return;
+      final remaining = _reconnectCountdownNotifier.value;
+      if (remaining == null || remaining <= 1) {
+        // 待機終了 → 接続処理中の表示へ戻す
+        stopTimer();
+        return;
+      }
+      _reconnectCountdownNotifier.value = remaining - 1;
+    });
   }
 
   /// スクロール時にスクロールボタンを表示
@@ -3267,10 +3341,12 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // 最小監視（A8）リングバッファを解放
     _herdrSwitchEvents.clear();
     // ValueNotifierを破棄
+    _reconnectCountdownTimer?.cancel();
     _viewNotifier.dispose();
     _herdrDisplayNotifier.dispose();
     _herdrPaneIndicatorNotifier.dispose();
     _latencyNotifier.dispose();
+    _reconnectCountdownNotifier.dispose();
     // スクロールコントローラーのリスナーを削除して破棄
     _terminalScrollController.removeListener(_onTerminalScroll);
     _terminalScrollController.dispose();
@@ -7234,111 +7310,88 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   }
 
   /// 再接続中インジケーター
+  ///
+  /// ヘッダー右側の空間を圧迫しないよう表示はコンパクトに保つ。
+  /// - 接続処理中: `${スピナー} Reconnecting (N)`（N は試行回数・2 回目から表示）
+  /// - 自動再接続待機中: `${スピナー} Ns (C)`（N は残り秒のカウントダウン、
+  ///   C は試行回数）。毎秒更新は [_reconnectCountdownNotifier] 経由。
+  /// - ネットワーク断: `${圏外アイコン} Offline`
+  /// いずれもタップで詳細（文言 + 試行回数）を Tooltip で表示する。
+  /// 「Reconnecting」の文字は接続処理中のみ出る（待機中はカウントダウンのみ）。
   Widget _buildReconnectingIndicator() {
-    final attempt = _sshState.reconnectAttempt;
-    final isWaitingForNetwork = _sshState.isWaitingForNetwork;
-    final nextRetryAt = _sshState.nextRetryAt;
-    final queuedCount = _inputQueue.length;
+    return ValueListenableBuilder<int?>(
+      valueListenable: _reconnectCountdownNotifier,
+      builder: (context, remainingSeconds, _) {
+        final attempt = _sshState.reconnectAttempt;
+        final isWaitingForNetwork = _sshState.isWaitingForNetwork;
+        final isWaitingForRetry =
+            remainingSeconds != null && !isWaitingForNetwork;
 
-    // 次回リトライまでの秒数を計算
-    // inventory: LEGACY-0077
-    String? countdownText;
-    if (nextRetryAt != null && !isWaitingForNetwork) {
-      final remaining = nextRetryAt.difference(DateTime.now()).inSeconds;
-      if (remaining > 0) {
-        countdownText = '${remaining}s';
-      }
-    }
+        // ステータステキスト（接続処理中のみ「Reconnecting」を出す）
+        final String statusText;
+        if (isWaitingForNetwork) {
+          statusText = context.l10n.termOffline;
+        } else if (isWaitingForRetry) {
+          statusText = '${remainingSeconds}s ($attempt)';
+        } else {
+          statusText =
+              context.l10n.termReconnecting +
+              (attempt > 1 ? ' ($attempt)' : '');
+        }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // スピナーまたは圏外アイコン
-        if (isWaitingForNetwork)
-          Icon(
-            Icons.signal_wifi_off,
-            size: 12,
-            color: DesignColors.warning.withValues(alpha: 0.8),
-          )
-        else
-          SizedBox(
-            width: 10,
-            height: 10,
-            child: CircularProgressIndicator(
-              strokeWidth: 1.5,
-              color: DesignColors.warning.withValues(alpha: 0.8),
-            ),
-          ),
-        const SizedBox(width: 6),
+        final Widget content = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // スピナーまたは圏外アイコン
+            if (isWaitingForNetwork)
+              Icon(
+                Icons.signal_wifi_off,
+                size: 12,
+                color: DesignColors.warning.withValues(alpha: 0.8),
+              )
+            else
+              SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: DesignColors.warning.withValues(alpha: 0.8),
+                ),
+              ),
+            const SizedBox(width: 6),
 
-        // ステータステキスト
-        Text(
-          isWaitingForNetwork
-              ? context.l10n.termOffline
-              : context.l10n.termReconnecting +
-                    (attempt > 1 ? ' ($attempt)' : ''),
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 10,
-            color: DesignColors.warning.withValues(alpha: 0.8),
-          ),
-        ),
-
-        // カウントダウン
-        if (countdownText != null) ...[
-          const SizedBox(width: 4),
-          Text(
-            countdownText,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 9,
-              color: DesignColors.textMuted,
-            ),
-          ),
-        ],
-
-        // キューイング状態
-        if (queuedCount > 0) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-            decoration: BoxDecoration(
-              color: DesignColors.primary.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              context.l10n.termChars(queuedCount),
+            // ステータステキスト
+            Text(
+              statusText,
               style: GoogleFonts.jetBrainsMono(
-                fontSize: 9,
-                color: DesignColors.primary,
+                fontSize: 10,
+                color: DesignColors.warning.withValues(alpha: 0.8),
               ),
             ),
-          ),
-        ],
+          ],
+        );
 
-        // 今すぐ再接続ボタン
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () {
-            ref.read(sshProvider.notifier).reconnectNow();
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: DesignColors.warning.withValues(alpha: 0.5),
-              ),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              context.l10n.termRetry,
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 9,
-                color: DesignColors.warning,
-              ),
-            ),
-          ),
-        ),
-      ],
+        // ネットワーク断中は「Offline」と表示済みのため Tooltip は省略。
+        // タップで詳細（カウントダウン + 試行回数）を表示する。
+        if (isWaitingForNetwork) {
+          return content;
+        }
+        return Tooltip(
+          message: _reconnectTooltipMessage(remainingSeconds),
+          triggerMode: TooltipTriggerMode.tap,
+          child: content,
+        );
+      },
     );
+  }
+
+  /// 再接続インジケーターの Tooltip 文言（タップで表示する詳細）。
+  String _reconnectTooltipMessage(int? remainingSeconds) {
+    final attempt = _sshState.reconnectAttempt;
+    if (remainingSeconds != null) {
+      return context.l10n.termReconnectIn(remainingSeconds, attempt);
+    }
+    return context.l10n.termReconnectAttempt(attempt);
   }
 
   /// キーを PaneWriter 経由で送信（T8）

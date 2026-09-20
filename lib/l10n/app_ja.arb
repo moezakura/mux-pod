@@ -653,6 +653,19 @@
   },
   "termOffline": "オフライン",
   "termReconnecting": "再接続中",
+  "termReconnectIn": "{seconds}秒後に再接続 ({attempt}回目)",
+  "@termReconnectIn": {
+    "placeholders": {
+      "seconds": {"type": "int"},
+      "attempt": {"type": "int"}
+    }
+  },
+  "termReconnectAttempt": "再接続中 ({attempt}回目)",
+  "@termReconnectAttempt": {
+    "placeholders": {
+      "attempt": {"type": "int"}
+    }
+  },
   "termDisconnected": "未接続",
   "termReconnectNow": "今すぐ再接続",
   "termFileBrowser": "ファイルブラウザ",
