@@ -3126,9 +3126,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       // inventory: LEGACY-0073
+      // デザインは切断 Toast と統一: 画面下端に密着したフラットな帯。
+      // action 付き SnackBar は Flutter 3.44+ でデフォルト persist=true
+      // （タイムアウトで消えない）になるため、明示的に false を指定する。
       SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+        backgroundColor: const Color(0xFF991B1B),
+        behavior: SnackBarBehavior.fixed,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: const RoundedRectangleBorder(),
+        persist: false,
         action: SnackBarAction(
           label: context.l10n.termRetry,
           textColor: Colors.white,
@@ -3160,10 +3171,20 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // （タイムアウトで消えない）になるため、明示的に false を指定する。
     // 継続状態は右上インジケーターと赤バーが示し、再接続成功時は
     // [_disconnectSnackBarController] 経由で自動的に閉じる。
+    // デザイン: 画面下端に密着したフラットな帯（ターミナルアプリの切断バー）。
+    // デフォルトの浮いたカード（余白・高承認の elevation・角丸）ではなく、
+    // ヘッダー直下の赤バーと同じく状態帯として一貫させ、余白を最小限に抑える。
     _disconnectSnackBarController = ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
+        content: Text(
+          message,
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+        backgroundColor: const Color(0xFF991B1B),
+        behavior: SnackBarBehavior.fixed,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        shape: const RoundedRectangleBorder(),
         persist: false,
         action: SnackBarAction(
           label: context.l10n.termReconnectNow,
@@ -7380,6 +7401,10 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         return Tooltip(
           message: _reconnectTooltipMessage(remainingSeconds),
           triggerMode: TooltipTriggerMode.tap,
+          // タップで表示した Tooltip の掲載時間(デフォルトは短くカウント
+          // ダウンの進行と重なると見落としやすい)。読める時間を確保する。
+          showDuration: const Duration(seconds: 4),
+          onTriggered: () => debugPrint('TOOLTIP: triggered'),
           child: content,
         );
       },
