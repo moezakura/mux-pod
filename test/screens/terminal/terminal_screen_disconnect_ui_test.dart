@@ -144,12 +144,15 @@ void main() {
         await tester.pump();
         expect(find.byType(SnackBar), findsOneWidget);
 
-        // 真の復帰（isConnected）で抑止状態がリセットされる
+        // 真の復帰（isConnected）で抑止状態がリセットされ、表示中の切断
+        // Toast も自動で閉じる（退場アニメーション分の時間を進める）。
         notifier.state = notifier.state.copyWith(
           connectionState: SshConnectionState.connected,
           error: null,
         );
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byType(SnackBar), findsNothing);
 
         // 復帰後の別切断では再度 1 回だけ通知される。旧実装（error == null で
         // リセット）では同一文言にレート制限が残り再通知されないため、
@@ -160,24 +163,9 @@ void main() {
           isReconnecting: true,
         );
         await tester.pump();
-
-        // 先頭 Toast を閉じると 2 件目（復帰後の再通知）が表示される
-        ScaffoldMessenger.of(
-          tester.element(find.byType(TerminalScreen)),
-        ).hideCurrentSnackBar();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 500));
         expect(find.byType(SnackBar), findsOneWidget);
         expect(find.text('Reconnect failed: boom'), findsOneWidget);
         expect(find.text('Reconnect now'), findsOneWidget);
-
-        // 2 件目も閉じると残っていない
-        ScaffoldMessenger.of(
-          tester.element(find.byType(TerminalScreen)),
-        ).hideCurrentSnackBar();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 500));
-        expect(find.byType(SnackBar), findsNothing);
       },
     );
 
@@ -287,5 +275,92 @@ void main() {
       await tester.pump();
       expect(_disconnectBarFinder(), findsNothing);
     });
+
+    testWidgets(
+      'reconnect countdown shows compact Ns (C) and updates every second',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(tester);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
+
+        // 自動再接続の待機中（nextRetryAt が未来）: カウントダウン形式で表示し、
+        // 「Reconnecting」の文字は出ない（接続処理中のみ出る）。
+        notifier.state = notifier.state.copyWith(
+          isReconnecting: true,
+          reconnectAttempt: 3,
+          nextRetryAt: DateTime.now().add(const Duration(seconds: 5)),
+        );
+        await tester.pump();
+        expect(find.text('5s (3)'), findsOneWidget);
+        expect(find.text('Reconnecting'), findsNothing);
+        expect(find.text('Reconnecting (3)'), findsNothing);
+
+        // 1 秒経過でカウントダウンが減る（state 遷移なしで毎秒更新）
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('4s (3)'), findsOneWidget);
+
+        // 待機終了 → 接続処理中の表示に戻る（カウンタが 0 になったら非表示）
+        await tester.pump(const Duration(seconds: 5));
+        expect(find.text('Reconnecting (3)'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping the reconnecting indicator shows a tooltip with details',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(tester);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
+
+        notifier.state = notifier.state.copyWith(
+          isReconnecting: true,
+          reconnectAttempt: 2,
+          nextRetryAt: DateTime.now().add(const Duration(seconds: 5)),
+        );
+        await tester.pump();
+
+        // 待機中インジケーターをタップ → 詳細（カウントダウン + 試行回数）
+        await tester.tap(find.text('5s (2)'));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Reconnecting in 5s (Attempt 2)'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'disconnect toast auto-closes when auto-reconnect restores connection',
+      (tester) async {
+        await TerminalTestScaffold.pumpTerminalScreen(tester);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(TerminalScreen)),
+        );
+        final notifier =
+            container.read(sshProvider.notifier) as FakeSshNotifier;
+
+        // 切断検知 → 切断 Toast 表示
+        notifier.state = notifier.state.copyWith(
+          connectionState: SshConnectionState.error,
+          error: 'Reconnect failed: first',
+          isReconnecting: true,
+        );
+        await tester.pump();
+        expect(find.byType(SnackBar), findsOneWidget);
+
+        // 自動再接続で復帰 → 表示中の Toast が自動で閉じる
+        notifier.state = notifier.state.copyWith(
+          connectionState: SshConnectionState.connected,
+          error: null,
+          isReconnecting: false,
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(find.byType(SnackBar), findsNothing);
+      },
+    );
   });
 }

@@ -152,7 +152,15 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Reconnecting (2)'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      // 再接続中インジケーターはコンパクト化され、Retry ボタンは廃止。
+      // タップで詳細を Tooltip で表示する代替導線を持つ。
+      expect(find.text('Retry'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && w.message == 'Reconnecting (Attempt 2)',
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('TERM-DIALOG-011 confirms disconnect before closing SSH', (
