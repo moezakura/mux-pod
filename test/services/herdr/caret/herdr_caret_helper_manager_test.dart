@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_manager.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_manifest.dart';
+import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_shell_args.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_models.dart';
 import 'package:flutter_muxpod/services/sftp/sftp_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -195,15 +196,15 @@ void main() {
   group('deriveClientSocket', () {
     test('herdr.sock → herdr-client.sock を導出する', () {
       expect(
-        HerdrCaretHelperManager.deriveClientSocket('herdr.sock'),
+        HerdrCaretShellArgs.deriveClientSocket('herdr.sock'),
         'herdr-client.sock',
       );
       expect(
-        HerdrCaretHelperManager.deriveClientSocket('/tmp/x.sock'),
+        HerdrCaretShellArgs.deriveClientSocket('/tmp/x.sock'),
         '/tmp/x-client.sock',
       );
       expect(
-        HerdrCaretHelperManager.deriveClientSocket('/run/user/1000/herdr.sock'),
+        HerdrCaretShellArgs.deriveClientSocket('/run/user/1000/herdr.sock'),
         '/run/user/1000/herdr-client.sock',
       );
     });
@@ -211,19 +212,16 @@ void main() {
 
   group('isValidPaneId / shellQuote', () {
     test('isValidPaneId は 1..64 文字・印字可能 ASCII のみ許可する', () {
-      expect(HerdrCaretHelperManager.isValidPaneId('w1:p1'), isTrue);
-      expect(HerdrCaretHelperManager.isValidPaneId(''), isFalse);
-      expect(HerdrCaretHelperManager.isValidPaneId('a' * 65), isFalse);
-      expect(HerdrCaretHelperManager.isValidPaneId('w1:p\x01'), isFalse);
+      expect(HerdrCaretShellArgs.isValidPaneId('w1:p1'), isTrue);
+      expect(HerdrCaretShellArgs.isValidPaneId(''), isFalse);
+      expect(HerdrCaretShellArgs.isValidPaneId('a' * 65), isFalse);
+      expect(HerdrCaretShellArgs.isValidPaneId('w1:p\x01'), isFalse);
     });
 
     test('shellQuote は single quote を POSIX 形式でエスケープする', () {
-      expect(HerdrCaretHelperManager.shellQuote('plain'), "'plain'");
-      expect(
-        HerdrCaretHelperManager.shellQuote(r"w1:p1'o'"),
-        r"'w1:p1'\''o'\'''",
-      );
-      expect(HerdrCaretHelperManager.shellQuote('a b'), "'a b'");
+      expect(HerdrCaretShellArgs.shellQuote('plain'), "'plain'");
+      expect(HerdrCaretShellArgs.shellQuote(r"w1:p1'o'"), r"'w1:p1'\''o'\'''");
+      expect(HerdrCaretShellArgs.shellQuote('a b'), "'a b'");
     });
   });
 
@@ -268,7 +266,7 @@ void main() {
       expect(helperCmd, contains("--socket '/tmp/herdr-client.sock'"));
       expect(
         helperCmd,
-        contains('--pane ${HerdrCaretHelperManager.shellQuote(r"w1:p1'o'")}'),
+        contains('--pane ${HerdrCaretShellArgs.shellQuote(r"w1:p1'o'")}'),
       );
       expect(helperCmd, contains('--protocol 17'));
       expect(helperCmd, contains('--cols 100'));
