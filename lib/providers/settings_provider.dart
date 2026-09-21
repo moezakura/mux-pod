@@ -1,330 +1,19 @@
-import 'dart:io' show Platform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_displaymode/flutter_displaymode.dart';
 
-import '../services/settings_migration.dart';
 import '../l10n/l10n_lookup.dart';
+import 'settings_persistence.dart';
+import 'settings_platform_applier.dart';
+import 'settings_state.dart';
 
-/// アップロード時のファイル名衝突ポリシー（#41）。
-/// - [prompt]: 既定。衝突時にモーダルで上書き/リネーム/キャンセルを確認
-/// - [autoRename]: 確認なしで自動リネーム（generateUniqueName）
-enum TransferConflictPolicy {
-  prompt,
-  autoRename;
-
-  /// SharedPreferences 永続化値。
-  String get persistedValue =>
-      this == TransferConflictPolicy.autoRename ? 'autoRename' : 'prompt';
-
-  /// 永続化値からの復元（不正値は既定の prompt にフォールバック）。
-  static TransferConflictPolicy fromPersisted(String? value) {
-    return value == 'autoRename'
-        ? TransferConflictPolicy.autoRename
-        : TransferConflictPolicy.prompt;
-  }
-}
-
-/// アプリ設定
-class AppSettings {
-  final bool darkMode;
-  final double fontSize;
-  final String fontFamily;
-  final bool requireBiometricAuth;
-  final bool enableNotifications;
-  final bool keepScreenOn;
-
-  /// 画面の向き: 'auto'（デバイスに追従）/ 'portrait' / 'landscape'
-  final String screenOrientation;
-
-  /// 最大リフレッシュレート: 'auto'（システム任せ/最高）/ '120' / '90' / '60'
-  final String refreshRate;
-  final int scrollbackLines;
-  final double minFontSize;
-
-  /// ピンチズーム倍率（1.0 = 等倍、永続）
-  final double zoomFactor;
-
-  /// 表示調整モード: 'none', 'autoFit', 'autoResize'
-  final String adjustMode;
-
-  /// DirectInputモード（入力した文字を即座にターミナルに送信）
-  final bool directInputEnabled;
-
-  /// CJK Mode: IME確定ごとに全文送信して入力欄をクリアする旧来
-  /// （v0.7.0-pre4）のDirectInput挙動を使うか。
-  /// iOSのCJK系IMEで発生する多重送信回避用（設定UIはiOSのみ表示）。
-  final bool cjkMode;
-
-  /// DirectInput: Enter送信後もソフトウェアキーボードを開いたままにするか。
-  final bool keepKeyboardOnEnter;
-
-  /// ターミナルカーソルの表示設定
-  final bool showTerminalCursor;
-
-  /// 実験的: Herdr接続でカーソル位置スナップショットを取得する
-  /// （Phase 1ではフラグとUIのみ・動作はPhase 2/3で実装）
-  // inventory: SETTINGS-HERDR-CARET-001
-  final bool experimentalHerdrCaretPositionEnabled;
-
-  /// ペインナビゲーション方向の反転
-  final bool invertPaneNavigation;
-
-  /// スクロール送信の送信方式: 'wheel'（マウスホイール SGR 1006）/ 'key'（PgUp/PgDn）
-  // inventory: SETTINGS-SCROLL-SEND-001
-  final String scrollSendInput;
-
-  /// スクロール送信方向の反転（ON でドラッグ上 = 下スクロール送信）
-  // inventory: SETTINGS-INVERT-SCROLL-001
-  final bool invertScrollSendDirection;
-
-  /// スクロール送信モード中にターミナル全体が画面に収まるようズームを一時縮小
-  // inventory: SETTINGS-AUTO-FIT-ZOOM-001
-  final bool autoFitZoomOnScrollSend;
-
-  /// 表示言語: 'system'（端末に従う）/ 'ja' / 'en'
-  final String language;
-
-  // --- キーオーバーレイ設定 ---
-  /// キーオーバーレイ全体ON/OFF
-  final bool showKeyOverlay;
-
-  /// キーオーバーレイ: 修飾キー組み合わせ（Ctrl+x, Alt+x, Shift+x）
-  final bool keyOverlayModifier;
-
-  /// キーオーバーレイ: 単独特殊キー（ESC, TAB, ENTER, S-Enter）
-  final bool keyOverlaySpecial;
-
-  /// キーオーバーレイ: 矢印キー
-  final bool keyOverlayArrow;
-
-  /// キーオーバーレイ: ショートカットキー（/, -, 1-4）
-  final bool keyOverlayShortcut;
-
-  /// キーオーバーレイ: 表示位置
-  final String keyOverlayPosition;
-
-  // --- 画像転送設定 ---
-  final String imageRemotePath;
-  final String imageOutputFormat;
-  final int imageJpegQuality;
-  final String
-  imageResizePreset; // 'original'/'small'/'medium'/'large'/'custom'
-  final int imageMaxWidth;
-  final int imageMaxHeight;
-  final String imagePathFormat;
-  final bool imageAutoEnter;
-  final bool imageBracketedPaste;
-
-  // --- ファイル転送設定（#41） ---
-  /// アップロード時のファイル名衝突ポリシー
-  final TransferConflictPolicy uploadConflictPolicy;
-
-  /// 同時アップロード並列数
-  final int uploadConcurrency;
-
-  /// アップロード書き込みチャンクサイズ（KB）
-  final int uploadChunkKb;
-
-  const AppSettings({
-    this.darkMode = true,
-    this.fontSize = 14.0,
-    this.fontFamily = 'JetBrains Mono',
-    this.requireBiometricAuth = false,
-    this.enableNotifications = true,
-    this.keepScreenOn = true,
-    this.screenOrientation = 'portrait',
-    this.refreshRate = 'auto',
-    this.scrollbackLines = 10000,
-    this.minFontSize = 8.0,
-    this.zoomFactor = 1.0,
-    this.adjustMode = 'autoFit',
-    this.directInputEnabled = false,
-    this.cjkMode = false,
-    this.keepKeyboardOnEnter = false,
-    this.showTerminalCursor = true,
-    // inventory: SETTINGS-HERDR-CARET-002
-    this.experimentalHerdrCaretPositionEnabled = false,
-    this.invertPaneNavigation = false,
-    // inventory: SETTINGS-SCROLL-SEND-002
-    this.scrollSendInput = 'wheel',
-    // inventory: SETTINGS-INVERT-SCROLL-002
-    this.invertScrollSendDirection = false,
-    // inventory: SETTINGS-AUTO-FIT-ZOOM-002
-    this.autoFitZoomOnScrollSend = false,
-    this.language = 'system',
-    this.showKeyOverlay = true,
-    this.keyOverlayModifier = true,
-    this.keyOverlaySpecial = true,
-    this.keyOverlayArrow = true,
-    this.keyOverlayShortcut = true,
-    this.keyOverlayPosition = 'aboveKeyboard',
-    this.imageRemotePath = '/tmp/muxpod/',
-    this.imageOutputFormat = 'original',
-    this.imageJpegQuality = 85,
-    this.imageResizePreset = 'original',
-    this.imageMaxWidth = 1920,
-    this.imageMaxHeight = 1080,
-    this.imagePathFormat = '{path}',
-    this.imageAutoEnter = false,
-    this.imageBracketedPaste = false,
-    this.uploadConflictPolicy = TransferConflictPolicy.prompt,
-    this.uploadConcurrency = 2,
-    this.uploadChunkKb = 256,
-  });
-
-  bool get isAutoFit => adjustMode == 'autoFit';
-  bool get isAutoResize => adjustMode == 'autoResize';
-
-  AppSettings copyWith({
-    bool? darkMode,
-    double? fontSize,
-    String? fontFamily,
-    bool? requireBiometricAuth,
-    bool? enableNotifications,
-    bool? keepScreenOn,
-    String? screenOrientation,
-    String? refreshRate,
-    int? scrollbackLines,
-    double? minFontSize,
-    double? zoomFactor,
-    String? adjustMode,
-    bool? directInputEnabled,
-    bool? cjkMode,
-    bool? keepKeyboardOnEnter,
-    bool? showTerminalCursor,
-    // inventory: SETTINGS-HERDR-CARET-003
-    bool? experimentalHerdrCaretPositionEnabled,
-    bool? invertPaneNavigation,
-    // inventory: SETTINGS-SCROLL-SEND-003
-    String? scrollSendInput,
-    // inventory: SETTINGS-INVERT-SCROLL-003
-    bool? invertScrollSendDirection,
-    // inventory: SETTINGS-AUTO-FIT-ZOOM-003
-    bool? autoFitZoomOnScrollSend,
-    String? language,
-    bool? showKeyOverlay,
-    bool? keyOverlayModifier,
-    bool? keyOverlaySpecial,
-    bool? keyOverlayArrow,
-    bool? keyOverlayShortcut,
-    String? keyOverlayPosition,
-    String? imageRemotePath,
-    String? imageOutputFormat,
-    int? imageJpegQuality,
-    String? imageResizePreset,
-    int? imageMaxWidth,
-    int? imageMaxHeight,
-    String? imagePathFormat,
-    bool? imageAutoEnter,
-    bool? imageBracketedPaste,
-    TransferConflictPolicy? uploadConflictPolicy,
-    int? uploadConcurrency,
-    int? uploadChunkKb,
-  }) {
-    return AppSettings(
-      darkMode: darkMode ?? this.darkMode,
-      fontSize: fontSize ?? this.fontSize,
-      fontFamily: fontFamily ?? this.fontFamily,
-      requireBiometricAuth: requireBiometricAuth ?? this.requireBiometricAuth,
-      enableNotifications: enableNotifications ?? this.enableNotifications,
-      keepScreenOn: keepScreenOn ?? this.keepScreenOn,
-      screenOrientation: screenOrientation ?? this.screenOrientation,
-      refreshRate: refreshRate ?? this.refreshRate,
-      scrollbackLines: scrollbackLines ?? this.scrollbackLines,
-      minFontSize: minFontSize ?? this.minFontSize,
-      zoomFactor: zoomFactor ?? this.zoomFactor,
-      adjustMode: adjustMode ?? this.adjustMode,
-      directInputEnabled: directInputEnabled ?? this.directInputEnabled,
-      cjkMode: cjkMode ?? this.cjkMode,
-      keepKeyboardOnEnter: keepKeyboardOnEnter ?? this.keepKeyboardOnEnter,
-      showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
-      // inventory: SETTINGS-HERDR-CARET-004
-      experimentalHerdrCaretPositionEnabled:
-          experimentalHerdrCaretPositionEnabled ??
-          this.experimentalHerdrCaretPositionEnabled,
-      invertPaneNavigation: invertPaneNavigation ?? this.invertPaneNavigation,
-      scrollSendInput: scrollSendInput ?? this.scrollSendInput,
-      invertScrollSendDirection:
-          invertScrollSendDirection ?? this.invertScrollSendDirection,
-      autoFitZoomOnScrollSend:
-          autoFitZoomOnScrollSend ?? this.autoFitZoomOnScrollSend,
-      language: language ?? this.language,
-      showKeyOverlay: showKeyOverlay ?? this.showKeyOverlay,
-      keyOverlayModifier: keyOverlayModifier ?? this.keyOverlayModifier,
-      keyOverlaySpecial: keyOverlaySpecial ?? this.keyOverlaySpecial,
-      keyOverlayArrow: keyOverlayArrow ?? this.keyOverlayArrow,
-      keyOverlayShortcut: keyOverlayShortcut ?? this.keyOverlayShortcut,
-      keyOverlayPosition: keyOverlayPosition ?? this.keyOverlayPosition,
-      imageRemotePath: imageRemotePath ?? this.imageRemotePath,
-      imageOutputFormat: imageOutputFormat ?? this.imageOutputFormat,
-      imageJpegQuality: imageJpegQuality ?? this.imageJpegQuality,
-      imageResizePreset: imageResizePreset ?? this.imageResizePreset,
-      imageMaxWidth: imageMaxWidth ?? this.imageMaxWidth,
-      imageMaxHeight: imageMaxHeight ?? this.imageMaxHeight,
-      imagePathFormat: imagePathFormat ?? this.imagePathFormat,
-      imageAutoEnter: imageAutoEnter ?? this.imageAutoEnter,
-      imageBracketedPaste: imageBracketedPaste ?? this.imageBracketedPaste,
-      uploadConflictPolicy: uploadConflictPolicy ?? this.uploadConflictPolicy,
-      uploadConcurrency: uploadConcurrency ?? this.uploadConcurrency,
-      uploadChunkKb: uploadChunkKb ?? this.uploadChunkKb,
-    );
-  }
-}
+export 'settings_state.dart';
 
 /// 設定を管理するNotifier
 class SettingsNotifier extends Notifier<AppSettings> {
-  static const String _darkModeKey = 'settings_dark_mode';
-  static const String _fontSizeKey = 'settings_font_size';
-  static const String _fontFamilyKey = 'settings_font_family';
-  static const String _biometricKey = 'settings_biometric_auth';
-  static const String _notificationsKey = 'settings_notifications';
-  static const String _keepScreenOnKey = 'settings_keep_screen_on';
-  static const String _screenOrientationKey = 'settings_screen_orientation';
-  static const String _refreshRateKey = 'settings_refresh_rate';
-  static const String _scrollbackKey = 'settings_scrollback';
-  static const String _minFontSizeKey = 'settings_min_font_size';
-  static const String _zoomFactorKey = 'settings_zoom_factor';
-  static const String _adjustModeKey = 'settings_adjust_mode';
-  static const String _directInputEnabledKey = 'settings_direct_input_enabled';
-  static const String _cjkModeKey = 'settings_cjk_mode';
-  static const String _keepKeyboardOnEnterKey =
-      'settings_keep_keyboard_on_enter';
-  static const String _showTerminalCursorKey = 'settings_show_terminal_cursor';
-  // inventory: SETTINGS-HERDR-CARET-005
-  static const String _experimentalHerdrCaretPositionEnabledKey =
-      'settings_experimental_herdr_caret_position_enabled';
-  static const String _invertPaneNavKey = 'settings_invert_pane_nav';
-  // inventory: SETTINGS-SCROLL-SEND-004
-  static const String _scrollSendInputKey = 'settings_scroll_send_input';
-  // inventory: SETTINGS-INVERT-SCROLL-004
-  static const String _invertScrollSendDirectionKey =
-      'settings_invert_scroll_send_direction';
-  // inventory: SETTINGS-AUTO-FIT-ZOOM-004
-  static const String _autoFitZoomOnScrollSendKey =
-      'settings_auto_fit_zoom_on_scroll_send';
-  static const String _languageKey = 'settings_language';
-  static const String _imageRemotePathKey = 'settings_image_remote_path';
-  static const String _imageOutputFormatKey = 'settings_image_output_format';
-  static const String _imageJpegQualityKey = 'settings_image_jpeg_quality';
-  static const String _imageResizePresetKey = 'settings_image_resize_preset';
-  static const String _imageMaxWidthKey = 'settings_image_max_width';
-  static const String _imageMaxHeightKey = 'settings_image_max_height';
-  static const String _imagePathFormatKey = 'settings_image_path_format';
-  static const String _imageAutoEnterKey = 'settings_image_auto_enter';
-  static const String _imageBracketedPasteKey =
-      'settings_image_bracketed_paste';
-  static const String _showKeyOverlayKey = 'settings_show_key_overlay';
-  static const String _keyOverlayModifierKey = 'settings_key_overlay_modifier';
-  static const String _keyOverlaySpecialKey = 'settings_key_overlay_special';
-  static const String _keyOverlayArrowKey = 'settings_key_overlay_arrow';
-  static const String _keyOverlayShortcutKey = 'settings_key_overlay_shortcut';
-  static const String _keyOverlayPositionKey = 'settings_key_overlay_position';
-  static const String _uploadConflictPolicyKey =
-      'settings_upload_conflict_policy';
-  static const String _uploadConcurrencyKey = 'settings_upload_concurrency';
-  static const String _uploadChunkKbKey = 'settings_upload_chunk_kb';
+  /// SharedPreferences への読込・保存（キー・型マッピング・マイグレーション起動）。
+  final SettingsPersistence _persistence = SettingsPersistence();
+
+  /// 設定値の OS/デバイス適用（向き・リフレッシュレート）。
+  final SettingsPlatformApplier _applier = SettingsPlatformApplier();
 
   @override
   AppSettings build() {
@@ -333,232 +22,98 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   Future<void> _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    await SettingsMigrationRunner.run(prefs);
+    final loaded = await _persistence.load();
 
     // コンテナ破棄後の state 更新を防止する (テスト等で async ギャップ後に破棄されるケース)。
     if (!ref.mounted) return;
 
-    state = AppSettings(
-      darkMode: prefs.getBool(_darkModeKey) ?? true,
-      fontSize: prefs.getDouble(_fontSizeKey) ?? 14.0,
-      fontFamily: prefs.getString(_fontFamilyKey) ?? 'JetBrains Mono',
-      requireBiometricAuth: prefs.getBool(_biometricKey) ?? false,
-      enableNotifications: prefs.getBool(_notificationsKey) ?? true,
-      keepScreenOn: prefs.getBool(_keepScreenOnKey) ?? true,
-      screenOrientation: prefs.getString(_screenOrientationKey) ?? 'portrait',
-      refreshRate: prefs.getString(_refreshRateKey) ?? 'auto',
-      scrollbackLines: prefs.getInt(_scrollbackKey) ?? 10000,
-      minFontSize: prefs.getDouble(_minFontSizeKey) ?? 8.0,
-      zoomFactor: prefs.getDouble(_zoomFactorKey) ?? 1.0,
-      adjustMode: prefs.getString(_adjustModeKey) ?? 'autoFit',
-      directInputEnabled: prefs.getBool(_directInputEnabledKey) ?? false,
-      cjkMode: prefs.getBool(_cjkModeKey) ?? false,
-      keepKeyboardOnEnter: prefs.getBool(_keepKeyboardOnEnterKey) ?? false,
-      showTerminalCursor: prefs.getBool(_showTerminalCursorKey) ?? true,
-      // inventory: SETTINGS-HERDR-CARET-006
-      experimentalHerdrCaretPositionEnabled:
-          prefs.getBool(_experimentalHerdrCaretPositionEnabledKey) ?? false,
-      invertPaneNavigation: prefs.getBool(_invertPaneNavKey) ?? false,
-      // inventory: SETTINGS-SCROLL-SEND-005
-      scrollSendInput: prefs.getString(_scrollSendInputKey) ?? 'wheel',
-      // inventory: SETTINGS-INVERT-SCROLL-005
-      invertScrollSendDirection:
-          prefs.getBool(_invertScrollSendDirectionKey) ?? false,
-      // inventory: SETTINGS-AUTO-FIT-ZOOM-005
-      autoFitZoomOnScrollSend:
-          prefs.getBool(_autoFitZoomOnScrollSendKey) ?? false,
-      language: prefs.getString(_languageKey) ?? 'system',
-      showKeyOverlay: prefs.getBool(_showKeyOverlayKey) ?? true,
-      keyOverlayModifier: prefs.getBool(_keyOverlayModifierKey) ?? true,
-      keyOverlaySpecial: prefs.getBool(_keyOverlaySpecialKey) ?? true,
-      keyOverlayArrow: prefs.getBool(_keyOverlayArrowKey) ?? true,
-      keyOverlayShortcut: prefs.getBool(_keyOverlayShortcutKey) ?? true,
-      keyOverlayPosition:
-          prefs.getString(_keyOverlayPositionKey) ?? 'aboveKeyboard',
-      imageRemotePath: prefs.getString(_imageRemotePathKey) ?? '/tmp/muxpod/',
-      imageOutputFormat: prefs.getString(_imageOutputFormatKey) ?? 'original',
-      imageJpegQuality: prefs.getInt(_imageJpegQualityKey) ?? 85,
-      imageResizePreset: prefs.getString(_imageResizePresetKey) ?? 'original',
-      imageMaxWidth: prefs.getInt(_imageMaxWidthKey) ?? 1920,
-      imageMaxHeight: prefs.getInt(_imageMaxHeightKey) ?? 1080,
-      imagePathFormat: prefs.getString(_imagePathFormatKey) ?? '{path}',
-      imageAutoEnter: prefs.getBool(_imageAutoEnterKey) ?? false,
-      imageBracketedPaste: prefs.getBool(_imageBracketedPasteKey) ?? false,
-      uploadConflictPolicy: TransferConflictPolicy.fromPersisted(
-        prefs.getString(_uploadConflictPolicyKey),
-      ),
-      uploadConcurrency: prefs.getInt(_uploadConcurrencyKey) ?? 2,
-      uploadChunkKb: prefs.getInt(_uploadChunkKbKey) ?? 256,
-    );
+    state = loaded;
 
     // 言語設定を l10n キャッシュへ反映（BuildContext を持たない層用）。
     setCachedLanguage(state.language);
 
-    await _applyScreenOrientation(state.screenOrientation);
-    await _applyRefreshRate(state.refreshRate);
-  }
-
-  Future<void> _saveSetting(String key, dynamic value) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (value is bool) {
-      await prefs.setBool(key, value);
-    } else if (value is double) {
-      await prefs.setDouble(key, value);
-    } else if (value is int) {
-      await prefs.setInt(key, value);
-    } else if (value is String) {
-      await prefs.setString(key, value);
-    }
+    await _applier.applyOrientation(state.screenOrientation);
+    await _applier.applyRefreshRate(state.refreshRate);
   }
 
   /// ダークモードを設定
   Future<void> setDarkMode(bool value) async {
     state = state.copyWith(darkMode: value);
-    await _saveSetting(_darkModeKey, value);
+    await _persistence.save(SettingsPersistence.darkModeKey, value);
   }
 
   /// フォントサイズを設定
   Future<void> setFontSize(double value) async {
     state = state.copyWith(fontSize: value);
-    await _saveSetting(_fontSizeKey, value);
+    await _persistence.save(SettingsPersistence.fontSizeKey, value);
   }
 
   /// ピンチズーム倍率を設定（永続）
   Future<void> setZoomFactor(double value) async {
     state = state.copyWith(zoomFactor: value);
-    await _saveSetting(_zoomFactorKey, value);
+    await _persistence.save(SettingsPersistence.zoomFactorKey, value);
   }
 
   /// フォントファミリーを設定
   Future<void> setFontFamily(String value) async {
     state = state.copyWith(fontFamily: value);
-    await _saveSetting(_fontFamilyKey, value);
+    await _persistence.save(SettingsPersistence.fontFamilyKey, value);
   }
 
   /// 生体認証を設定
   Future<void> setRequireBiometricAuth(bool value) async {
     state = state.copyWith(requireBiometricAuth: value);
-    await _saveSetting(_biometricKey, value);
+    await _persistence.save(SettingsPersistence.biometricKey, value);
   }
 
   /// 通知を設定
   Future<void> setEnableNotifications(bool value) async {
     state = state.copyWith(enableNotifications: value);
-    await _saveSetting(_notificationsKey, value);
+    await _persistence.save(SettingsPersistence.notificationsKey, value);
   }
 
   /// 画面常時オンを設定
   Future<void> setKeepScreenOn(bool value) async {
     state = state.copyWith(keepScreenOn: value);
-    await _saveSetting(_keepScreenOnKey, value);
+    await _persistence.save(SettingsPersistence.keepScreenOnKey, value);
   }
 
   /// 画面の向きを設定（即座に適用）
   Future<void> setScreenOrientation(String value) async {
     state = state.copyWith(screenOrientation: value);
-    await _saveSetting(_screenOrientationKey, value);
-    await _applyScreenOrientation(value);
-  }
-
-  /// 画面の向き設定をプラットフォームへ適用
-  Future<void> _applyScreenOrientation(String value) async {
-    const portrait = [DeviceOrientation.portraitUp];
-    const landscape = [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ];
-    final List<DeviceOrientation> orientations;
-    switch (value) {
-      case 'portrait':
-        // portraitUp のみ: 上下逆さま表示を防ぐ（端末アプリでは逆さUIは望ましくない）。
-        // landscape は左右両方の握りを許可するのに対し、この非対称は意図的。
-        orientations = portrait;
-      case 'landscape':
-        orientations = landscape;
-      default:
-        orientations = const <DeviceOrientation>[]; // すべて許可
-    }
-    // テスト等、binding が未初期化の環境では platform channel が利用できないため無視する。
-    try {
-      await SystemChrome.setPreferredOrientations(orientations);
-    } catch (_) {
-      // no-op: 向き設定の適用に失敗しても設定値自体は保持される
-    }
+    await _persistence.save(SettingsPersistence.screenOrientationKey, value);
+    await _applier.applyOrientation(value);
   }
 
   /// 最大リフレッシュレートを設定（即座に適用）
   Future<void> setRefreshRate(String value) async {
     state = state.copyWith(refreshRate: value);
-    await _saveSetting(_refreshRateKey, value);
-    await _applyRefreshRate(value);
-  }
-
-  /// リフレッシュレート上限をプラットフォームへ適用（Androidのみ）。
-  /// 'auto' は最高レート、数値指定は「その値以下で最高」のモードを選ぶ。
-  /// LTPO/ProMotion パネルや iOS では効果がないことがある（最終判断はシステム）。
-  Future<void> _applyRefreshRate(String value) async {
-    if (!Platform.isAndroid) {
-      return;
-    }
-    try {
-      if (value == 'auto') {
-        await FlutterDisplayMode.setHighRefreshRate();
-        return;
-      }
-      final cap = double.tryParse(value);
-      if (cap == null) {
-        await FlutterDisplayMode.setHighRefreshRate();
-        return;
-      }
-      final modes = await FlutterDisplayMode.supported;
-      if (modes.isEmpty) {
-        return;
-      }
-      final active = await FlutterDisplayMode.active;
-      bool ok(DisplayMode m) => m.refreshRate > 0 && m.refreshRate <= cap + 0.5;
-      // まず同一解像度で上限以下、無ければ全体から上限以下を選ぶ
-      var pool = modes
-          .where(
-            (m) =>
-                m.width == active.width && m.height == active.height && ok(m),
-          )
-          .toList();
-      if (pool.isEmpty) {
-        pool = modes.where(ok).toList();
-      }
-      if (pool.isEmpty) {
-        return; // 上限以下のモードが無ければ現状維持
-      }
-      pool.sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
-      await FlutterDisplayMode.setPreferredMode(pool.first);
-    } catch (_) {
-      // ディスプレイモード制御が使えない端末では無視
-    }
+    await _persistence.save(SettingsPersistence.refreshRateKey, value);
+    await _applier.applyRefreshRate(value);
   }
 
   /// スクロールバック行数を設定
   Future<void> setScrollbackLines(int value) async {
     state = state.copyWith(scrollbackLines: value);
-    await _saveSetting(_scrollbackKey, value);
+    await _persistence.save(SettingsPersistence.scrollbackKey, value);
   }
 
   /// 最小フォントサイズを設定
   Future<void> setMinFontSize(double value) async {
     state = state.copyWith(minFontSize: value);
-    await _saveSetting(_minFontSizeKey, value);
+    await _persistence.save(SettingsPersistence.minFontSizeKey, value);
   }
 
   /// 表示調整モードを設定
   Future<void> setAdjustMode(String value) async {
     state = state.copyWith(adjustMode: value);
-    await _saveSetting(_adjustModeKey, value);
+    await _persistence.save(SettingsPersistence.adjustModeKey, value);
   }
 
   /// DirectInputモードを設定
   Future<void> setDirectInputEnabled(bool value) async {
     state = state.copyWith(directInputEnabled: value);
-    await _saveSetting(_directInputEnabledKey, value);
+    await _persistence.save(SettingsPersistence.directInputEnabledKey, value);
   }
 
   /// DirectInputモードをトグル
@@ -569,158 +124,170 @@ class SettingsNotifier extends Notifier<AppSettings> {
   /// CJK Mode（IME確定ごとに送信してクリアする旧来のDirectInput挙動）を設定
   Future<void> setCjkMode(bool value) async {
     state = state.copyWith(cjkMode: value);
-    await _saveSetting(_cjkModeKey, value);
+    await _persistence.save(SettingsPersistence.cjkModeKey, value);
   }
 
   /// Enter送信後もソフトウェアキーボードを開いたままにする
   Future<void> setKeepKeyboardOnEnter(bool value) async {
     state = state.copyWith(keepKeyboardOnEnter: value);
-    await _saveSetting(_keepKeyboardOnEnterKey, value);
+    await _persistence.save(SettingsPersistence.keepKeyboardOnEnterKey, value);
   }
 
   /// ターミナルカーソル表示設定を設定
   Future<void> setShowTerminalCursor(bool value) async {
     state = state.copyWith(showTerminalCursor: value);
-    await _saveSetting(_showTerminalCursorKey, value);
+    await _persistence.save(SettingsPersistence.showTerminalCursorKey, value);
   }
 
   /// 実験的: Herdrカーソル位置スナップショット取得を設定
   // inventory: SETTINGS-HERDR-CARET-007
   Future<void> setExperimentalHerdrCaretPositionEnabled(bool value) async {
     state = state.copyWith(experimentalHerdrCaretPositionEnabled: value);
-    await _saveSetting(_experimentalHerdrCaretPositionEnabledKey, value);
+    await _persistence.save(
+      SettingsPersistence.experimentalHerdrCaretPositionEnabledKey,
+      value,
+    );
   }
 
   /// ペインナビゲーション方向の反転を設定
   Future<void> setInvertPaneNavigation(bool value) async {
     state = state.copyWith(invertPaneNavigation: value);
-    await _saveSetting(_invertPaneNavKey, value);
+    await _persistence.save(SettingsPersistence.invertPaneNavKey, value);
   }
 
   /// スクロール送信の送信方式を設定（'wheel' / 'key'）
   // inventory: SETTINGS-SCROLL-SEND-006
   Future<void> setScrollSendInput(String value) async {
     state = state.copyWith(scrollSendInput: value);
-    await _saveSetting(_scrollSendInputKey, value);
+    await _persistence.save(SettingsPersistence.scrollSendInputKey, value);
   }
 
   /// スクロール送信方向の反転を設定
   // inventory: SETTINGS-INVERT-SCROLL-006
   Future<void> setInvertScrollSendDirection(bool value) async {
     state = state.copyWith(invertScrollSendDirection: value);
-    await _saveSetting(_invertScrollSendDirectionKey, value);
+    await _persistence.save(
+      SettingsPersistence.invertScrollSendDirectionKey,
+      value,
+    );
   }
 
   /// スクロール送信モード中の自動フィットズームを設定
   // inventory: SETTINGS-AUTO-FIT-ZOOM-006
   Future<void> setAutoFitZoomOnScrollSend(bool value) async {
     state = state.copyWith(autoFitZoomOnScrollSend: value);
-    await _saveSetting(_autoFitZoomOnScrollSendKey, value);
+    await _persistence.save(
+      SettingsPersistence.autoFitZoomOnScrollSendKey,
+      value,
+    );
   }
 
   /// 表示言語を設定（'system' / 'ja' / 'en'）
   Future<void> setLanguage(String value) async {
     state = state.copyWith(language: value);
     setCachedLanguage(value);
-    await _saveSetting(_languageKey, value);
+    await _persistence.save(SettingsPersistence.languageKey, value);
   }
 
   // --- キーオーバーレイ設定のsetter ---
   Future<void> setShowKeyOverlay(bool value) async {
     state = state.copyWith(showKeyOverlay: value);
-    await _saveSetting(_showKeyOverlayKey, value);
+    await _persistence.save(SettingsPersistence.showKeyOverlayKey, value);
   }
 
   Future<void> setKeyOverlayModifier(bool value) async {
     state = state.copyWith(keyOverlayModifier: value);
-    await _saveSetting(_keyOverlayModifierKey, value);
+    await _persistence.save(SettingsPersistence.keyOverlayModifierKey, value);
   }
 
   Future<void> setKeyOverlaySpecial(bool value) async {
     state = state.copyWith(keyOverlaySpecial: value);
-    await _saveSetting(_keyOverlaySpecialKey, value);
+    await _persistence.save(SettingsPersistence.keyOverlaySpecialKey, value);
   }
 
   Future<void> setKeyOverlayArrow(bool value) async {
     state = state.copyWith(keyOverlayArrow: value);
-    await _saveSetting(_keyOverlayArrowKey, value);
+    await _persistence.save(SettingsPersistence.keyOverlayArrowKey, value);
   }
 
   Future<void> setKeyOverlayShortcut(bool value) async {
     state = state.copyWith(keyOverlayShortcut: value);
-    await _saveSetting(_keyOverlayShortcutKey, value);
+    await _persistence.save(SettingsPersistence.keyOverlayShortcutKey, value);
   }
 
   Future<void> setKeyOverlayPosition(String value) async {
     state = state.copyWith(keyOverlayPosition: value);
-    await _saveSetting(_keyOverlayPositionKey, value);
+    await _persistence.save(SettingsPersistence.keyOverlayPositionKey, value);
   }
 
   // --- 画像転送設定のsetter ---
   Future<void> setImageRemotePath(String value) async {
     state = state.copyWith(imageRemotePath: value);
-    await _saveSetting(_imageRemotePathKey, value);
+    await _persistence.save(SettingsPersistence.imageRemotePathKey, value);
   }
 
   Future<void> setImageOutputFormat(String value) async {
     state = state.copyWith(imageOutputFormat: value);
-    await _saveSetting(_imageOutputFormatKey, value);
+    await _persistence.save(SettingsPersistence.imageOutputFormatKey, value);
   }
 
   Future<void> setImageJpegQuality(int value) async {
     state = state.copyWith(imageJpegQuality: value);
-    await _saveSetting(_imageJpegQualityKey, value);
+    await _persistence.save(SettingsPersistence.imageJpegQualityKey, value);
   }
 
   Future<void> setImageResizePreset(String value) async {
     state = state.copyWith(imageResizePreset: value);
-    await _saveSetting(_imageResizePresetKey, value);
+    await _persistence.save(SettingsPersistence.imageResizePresetKey, value);
   }
 
   Future<void> setImageMaxWidth(int value) async {
     state = state.copyWith(imageMaxWidth: value);
-    await _saveSetting(_imageMaxWidthKey, value);
+    await _persistence.save(SettingsPersistence.imageMaxWidthKey, value);
   }
 
   Future<void> setImageMaxHeight(int value) async {
     state = state.copyWith(imageMaxHeight: value);
-    await _saveSetting(_imageMaxHeightKey, value);
+    await _persistence.save(SettingsPersistence.imageMaxHeightKey, value);
   }
 
   Future<void> setImagePathFormat(String value) async {
     state = state.copyWith(imagePathFormat: value);
-    await _saveSetting(_imagePathFormatKey, value);
+    await _persistence.save(SettingsPersistence.imagePathFormatKey, value);
   }
 
   Future<void> setImageAutoEnter(bool value) async {
     state = state.copyWith(imageAutoEnter: value);
-    await _saveSetting(_imageAutoEnterKey, value);
+    await _persistence.save(SettingsPersistence.imageAutoEnterKey, value);
   }
 
   Future<void> setImageBracketedPaste(bool value) async {
     state = state.copyWith(imageBracketedPaste: value);
-    await _saveSetting(_imageBracketedPasteKey, value);
+    await _persistence.save(SettingsPersistence.imageBracketedPasteKey, value);
   }
 
   // --- ファイル転送設定（#41）のsetter ---
   /// ファイル名衝突ポリシーを設定
   Future<void> setUploadConflictPolicy(TransferConflictPolicy value) async {
     state = state.copyWith(uploadConflictPolicy: value);
-    await _saveSetting(_uploadConflictPolicyKey, value.persistedValue);
+    await _persistence.save(
+      SettingsPersistence.uploadConflictPolicyKey,
+      value.persistedValue,
+    );
   }
 
   /// 同時アップロード並列数を設定（1〜8 に制限）
   Future<void> setUploadConcurrency(int value) async {
     final clamped = value.clamp(1, 8);
     state = state.copyWith(uploadConcurrency: clamped);
-    await _saveSetting(_uploadConcurrencyKey, clamped);
+    await _persistence.save(SettingsPersistence.uploadConcurrencyKey, clamped);
   }
 
   /// アップロード書き込みチャンクサイズ（KB）を設定（16〜8192 に制限）
   Future<void> setUploadChunkKb(int value) async {
     final clamped = value.clamp(16, 8192);
     state = state.copyWith(uploadChunkKb: clamped);
-    await _saveSetting(_uploadChunkKbKey, clamped);
+    await _persistence.save(SettingsPersistence.uploadChunkKbKey, clamped);
   }
 
   /// リロード
