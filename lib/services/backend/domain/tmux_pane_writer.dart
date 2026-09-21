@@ -13,7 +13,7 @@
 /// を投げる（Phase 0 の `_Phase0PaneWriter` と同じ失敗ポリシー・R4/R9）。
 library;
 
-import '../../tmux/tmux_command_builder.dart' show SplitDirection;
+import '../../tmux/commands/layout.dart' show SplitDirection;
 import '../../tmux/tmux_command_executor.dart';
 import '../../tmux/tmux_contract.dart';
 import 'pane_writer.dart';

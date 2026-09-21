@@ -8,7 +8,7 @@ import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_commands.dart';
 import 'package:flutter_muxpod/services/tmux/pane_navigator.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/commands/layout.dart';
 
 import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/terminal_test_scaffold.dart';

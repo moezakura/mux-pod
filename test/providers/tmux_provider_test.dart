@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/session_parser.dart';
 
 import '../fixtures/tmux/tmux_parser_fixtures.dart';
 
@@ -27,7 +27,7 @@ void main() {
 
     test('updateSessions sets sessions and clears error', () {
       final notifier = container.read(tmuxProvider.notifier);
-      final sessions = TmuxParser.parseSessions(kSessionOutput);
+      final sessions = TmuxSessionParser.parse(kSessionOutput);
       notifier.updateSessions(sessions);
       expect(container.read(tmuxProvider).sessions, hasLength(2));
       expect(container.read(tmuxProvider).error, isNull);

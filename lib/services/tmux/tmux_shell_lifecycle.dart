@@ -1,6 +1,7 @@
 library;
 
-import 'tmux_command_builder.dart';
+import 'commands/lifecycle_commands.dart';
+import 'commands/window_commands.dart';
 import 'tmux_executable_resolver.dart';
 
 /// tmux セッション・ウィンドウ・ペインのライフサイクルで使用するコマンド文字列を構築する。
@@ -27,18 +28,21 @@ class TmuxShellLifecycle {
     List<String> targets, {
     required String tmuxBin,
   }) {
-    final raw = TmuxCommands.windowRestoreTrap(targets, tmuxBin: tmuxBin);
+    final raw = TmuxLifecycleCommands.windowRestoreTrap(
+      targets,
+      tmuxBin: tmuxBin,
+    );
     return _resolver.resolve(raw);
   }
 
   /// [buildRestoreTrapCommand] で設定した trap を解除するコマンドを構築する。
   String buildClearRestoreTrapCommand() {
-    return TmuxCommands.clearWindowRestoreTrap();
+    return TmuxLifecycleCommands.clearWindowRestoreTrap();
   }
 
   /// ウィンドウを自動サイズ（クライアント追従）に戻すコマンドを構築する。
   String buildResizeAutoCommand(String target, {required String tmuxBin}) {
-    final raw = TmuxCommands.resizeWindowAuto(target);
+    final raw = TmuxWindowCommands.resizeAuto(target);
     final quoted = TmuxExecutableResolver.shQuote(tmuxBin);
     final withBin = raw.replaceAllMapped(
       RegExp(r'(^|;\s*)tmux\b'),

@@ -16,7 +16,7 @@ import '../../services/herdr/herdr_commands.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
 import '../../services/tmux/ssh_tmux_command_executor.dart';
-import '../../services/tmux/tmux_command_builder.dart';
+import '../../services/tmux/commands/session_commands.dart';
 import '../../services/tmux/tmux_version.dart';
 import '../../theme/design_colors.dart';
 
@@ -1201,7 +1201,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         try {
           final result = await sshClient.tmuxExecutor.execute(
             CommandRequest(
-              command: TmuxCommands.version(),
+              command: TmuxSessionCommands.version(),
               transport: CommandTransportPreference.ephemeralOnly,
               output: CommandOutputRequirement.separatedOutput,
             ),

@@ -6,7 +6,7 @@ import 'package:flutter_muxpod/services/command/command_request.dart';
 import 'package:flutter_muxpod/services/command/command_result.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_backend.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/commands/window_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_executable_resolver.dart';
 import 'fake_sftp_client.dart';
@@ -204,7 +204,7 @@ class FakeSshClient extends SshClient
   @override
   Future<void> restoreWindowsNoWait(List<String> targets) async {
     for (final t in targets) {
-      restoreWindowCommands.add(TmuxCommands.resizeWindowAuto(t));
+      restoreWindowCommands.add(TmuxWindowCommands.resizeAuto(t));
     }
   }
 

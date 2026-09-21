@@ -51,7 +51,7 @@ import '../../services/tmux/pane_navigator.dart';
 import '../../services/tmux/tmux_pane_content_reader.dart';
 import '../../services/terminal/font_calculator.dart';
 import '../../services/terminal/adaptive_polling.dart';
-import '../../services/tmux/tmux_command_builder.dart';
+import '../../services/tmux/commands/layout.dart';
 import '../../services/tmux/tmux_contract.dart';
 import '../../services/tmux/tmux_facade.dart';
 import '../../services/tmux/tmux_models.dart';

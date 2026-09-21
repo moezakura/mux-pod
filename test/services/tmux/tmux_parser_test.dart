@@ -1,10 +1,15 @@
 // ignore_for_file: deprecated_member_use_from_same_package
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/commands/layout.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_delimiters.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_models.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_parser_adapter.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/content_parser.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/output_validator.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/pane_parser.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/session_parser.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/tree_parser.dart';
+import 'package:flutter_muxpod/services/tmux/parsers/window_parser.dart';
 
 import '../../fixtures/tmux/tmux_parser_fixtures.dart';
 
@@ -17,7 +22,7 @@ void main() {
         'freshly minted one', () {
       // Output from a MuxPod that still asked tmux for 0x1f/0x1e, and every
       // fixture modelled on it, has to keep parsing.
-      final sessions = TmuxParser.parseSessions(
+      final sessions = TmuxSessionParser.parse(
         kSessionOutput,
         delimiters: TmuxDelimiters.random(),
       );
@@ -36,7 +41,7 @@ void main() {
             r'mysession\0371735689600\0371\0373\037$0\036'
             r'other\0371735689700\0370\0371\037$1\036';
 
-        final sessions = TmuxParser.parseSessions(
+        final sessions = TmuxSessionParser.parse(
           output,
           delimiters: TmuxDelimiters.random(),
         );
@@ -51,15 +56,18 @@ void main() {
       // An empty parse result over output that carried records means the
       // delimiters did not survive; that used to reach the UI as
       // "no sessions" with exit code 0.
-      expect(TmuxParser.hasRecordContent(''), isFalse);
-      expect(TmuxParser.hasRecordContent('  \n '), isFalse);
-      expect(TmuxParser.hasRecordContent(kNoServerOutput), isFalse);
-      expect(TmuxParser.hasRecordContent('claude/monoroll_\$0\n'), isTrue);
+      expect(TmuxOutputValidator.hasRecordContent(''), isFalse);
+      expect(TmuxOutputValidator.hasRecordContent('  \n '), isFalse);
+      expect(TmuxOutputValidator.hasRecordContent(kNoServerOutput), isFalse);
+      expect(
+        TmuxOutputValidator.hasRecordContent('claude/monoroll_\$0\n'),
+        isTrue,
+      );
     });
 
     group('parseSessions', () {
       test('parses detailed session output', () {
-        final sessions = TmuxParser.parseSessions(kSessionOutput);
+        final sessions = TmuxSessionParser.parse(kSessionOutput);
         expect(sessions, hasLength(2));
         expect(sessions[0].name, 'mysession');
         expect(sessions[0].attached, isTrue);
@@ -70,24 +78,24 @@ void main() {
       });
 
       test('ignores no server running output', () {
-        final sessions = TmuxParser.parseSessions(kNoServerOutput);
+        final sessions = TmuxSessionParser.parse(kNoServerOutput);
         expect(sessions, isEmpty);
       });
 
       test('ignores empty output', () {
-        final sessions = TmuxParser.parseSessions(kEmptyOutput);
+        final sessions = TmuxSessionParser.parse(kEmptyOutput);
         expect(sessions, isEmpty);
       });
 
       test('ignores malformed lines with too few fields', () {
-        final sessions = TmuxParser.parseSessions(kMalformedTooFewFields);
+        final sessions = TmuxSessionParser.parse(kMalformedTooFewFields);
         expect(sessions, isEmpty);
       });
 
       test(
         'TMUX-DTO-004 and TMUX-PARSER-014: parses Unix seconds into created',
         () {
-          final session = TmuxParser.parseSessions(kSessionOutput).first;
+          final session = TmuxSessionParser.parse(kSessionOutput).first;
 
           expect(
             session.created,
@@ -99,7 +107,7 @@ void main() {
       test(
         'TMUX-PARSER-014: invalid Unix seconds result in a null created value',
         () {
-          final session = TmuxParser.parseSessionLine(
+          final session = TmuxSessionParser.parseLine(
             'main$_fs'
             'not-a-timestamp$_fs'
             '0$_fs'
@@ -114,20 +122,20 @@ void main() {
 
     group('parseSessionsSimple', () {
       test('parses simple session output', () {
-        final sessions = TmuxParser.parseSessionsSimple(kSessionOutputSimple);
+        final sessions = TmuxSessionParser.parseSimple(kSessionOutputSimple);
         expect(sessions, hasLength(2));
         expect(sessions[0].name, 'mysession');
         expect(sessions[0].windowCount, 3);
       });
 
       test('returns empty for no server running', () {
-        expect(TmuxParser.parseSessionsSimple(kNoServerOutput), isEmpty);
+        expect(TmuxSessionParser.parseSimple(kNoServerOutput), isEmpty);
       });
     });
 
     group('parseWindows', () {
       test('parses detailed window output', () {
-        final windows = TmuxParser.parseWindows(kWindowOutput);
+        final windows = TmuxWindowParser.parse(kWindowOutput);
         expect(windows, hasLength(3));
         expect(windows[0].index, 0);
         expect(windows[0].name, 'shell');
@@ -138,16 +146,16 @@ void main() {
       });
 
       test('ignores no server running', () {
-        expect(TmuxParser.parseWindows(kNoServerOutput), isEmpty);
+        expect(TmuxWindowParser.parse(kNoServerOutput), isEmpty);
       });
 
       test('target formats session:index', () {
-        final windows = TmuxParser.parseWindows(kWindowOutput);
+        final windows = TmuxWindowParser.parse(kWindowOutput);
         expect(windows[0].target('mysession'), 'mysession:0');
       });
 
       test('TMUX-DTO-013 and TMUX-DTO-017: preserves id and parsed flags', () {
-        final windows = TmuxParser.parseWindows(kWindowOutput);
+        final windows = TmuxWindowParser.parse(kWindowOutput);
 
         expect(windows[2].id, '@2');
         expect(windows[2].flags, {
@@ -159,7 +167,7 @@ void main() {
 
     group('parseWindowsSimple', () {
       test('parses simple window output', () {
-        final windows = TmuxParser.parseWindowsSimple(kWindowOutputSimple);
+        final windows = TmuxWindowParser.parseSimple(kWindowOutputSimple);
         expect(windows, hasLength(2));
         expect(windows[0].index, 0);
         expect(windows[0].name, 'shell');
@@ -170,7 +178,7 @@ void main() {
 
     group('parsePanes', () {
       test('parses detailed pane output', () {
-        final panes = TmuxParser.parsePanes(kPaneOutput);
+        final panes = TmuxPaneParser.parse(kPaneOutput);
         expect(panes, hasLength(2));
         expect(panes[0].index, 0);
         expect(panes[0].id, '%0');
@@ -183,7 +191,7 @@ void main() {
       });
 
       test('second pane has cursor and currentCommand', () {
-        final panes = TmuxParser.parsePanes(kPaneOutput);
+        final panes = TmuxPaneParser.parse(kPaneOutput);
         expect(panes[1].id, '%1');
         expect(panes[1].active, isFalse);
         expect(panes[1].currentCommand, 'vim');
@@ -192,7 +200,7 @@ void main() {
       });
 
       test('TMUX-DTO-028: preserves pane title', () {
-        final pane = TmuxParser.parsePanes(kPaneOutput).first;
+        final pane = TmuxPaneParser.parse(kPaneOutput).first;
 
         expect(pane.title, 'shell-title');
       });
@@ -200,7 +208,7 @@ void main() {
 
     group('parsePanesSimple', () {
       test('parses simple pane output', () {
-        final panes = TmuxParser.parsePanesSimple(kPaneOutputSimple);
+        final panes = TmuxPaneParser.parseSimple(kPaneOutputSimple);
         expect(panes, hasLength(2));
         expect(panes[0].id, '%0');
         expect(panes[0].width, 80);
@@ -211,7 +219,7 @@ void main() {
 
     group('parseFullTree', () {
       test('parses full multi-session tree', () {
-        final sessions = TmuxParser.parseFullTree(kFullTreeOutput);
+        final sessions = TmuxTreeParser.parse(kFullTreeOutput);
         expect(sessions, hasLength(2));
 
         final mysession = sessions.firstWhere((s) => s.name == 'mysession');
@@ -229,18 +237,18 @@ void main() {
       });
 
       test('returns empty when no server running', () {
-        expect(TmuxParser.parseFullTree(kNoServerOutput), isEmpty);
+        expect(TmuxTreeParser.parse(kNoServerOutput), isEmpty);
       });
 
       test('skips malformed lines', () {
         expect(
-          TmuxParser.parseFullTree('one${_fs}two$_rs${kFullTreeOutput.trim()}'),
+          TmuxTreeParser.parse('one${_fs}two$_rs${kFullTreeOutput.trim()}'),
           hasLength(2),
         );
       });
 
       test('paneCount is updated from parsed panes', () {
-        final sessions = TmuxParser.parseFullTree(kFullTreeOutput);
+        final sessions = TmuxTreeParser.parse(kFullTreeOutput);
         final mysession = sessions.firstWhere((s) => s.name == 'mysession');
         expect(mysession.windows[0].paneCount, 2);
       });
@@ -248,7 +256,7 @@ void main() {
       test(
         'preserves pane current working directories from full-tree output',
         () {
-          final sessions = TmuxParser.parseFullTree(kFullTreeOutput);
+          final sessions = TmuxTreeParser.parse(kFullTreeOutput);
           final shellPanes = sessions.first.windows.first.panes;
 
           expect(shellPanes[0].currentPath, '/home/user');
@@ -257,7 +265,7 @@ void main() {
       );
 
       test('TMUX-GEOM-003 and TMUX-GEOM-004: preserves pane position', () {
-        final panes = TmuxParser.parseFullTree(
+        final panes = TmuxTreeParser.parse(
           kFullTreeOutput,
         ).first.windows.first.panes;
 
@@ -268,7 +276,7 @@ void main() {
 
     group('parsePaneContent', () {
       test('splits into lines and preserves ANSI', () {
-        final content = TmuxParser.parsePaneContent(kPaneContentWithAnsi);
+        final content = TmuxContentParser.parse(kPaneContentWithAnsi);
         expect(content.lines, hasLength(2));
         expect(content.lines[0], contains('\x1b[32m'));
         expect(content.hasAnsiColors, isTrue);
@@ -276,9 +284,7 @@ void main() {
       });
 
       test('strips trailing empty lines', () {
-        final content = TmuxParser.parsePaneContent(
-          kPaneContentWithTrailingBlank,
-        );
+        final content = TmuxContentParser.parse(kPaneContentWithTrailingBlank);
         expect(content.lines, hasLength(1));
         expect(content.lines[0], 'line1');
       });
@@ -286,48 +292,57 @@ void main() {
 
     group('stripAnsiCodes', () {
       test('removes ANSI color codes', () {
-        final stripped = TmuxParser.stripAnsiCodes('\x1b[32mhello\x1b[0m');
+        final stripped = TmuxContentParser.stripAnsi('\x1b[32mhello\x1b[0m');
         expect(stripped, 'hello');
       });
 
       test('leaves plain text unchanged', () {
-        expect(TmuxParser.stripAnsiCodes('plain'), 'plain');
+        expect(TmuxContentParser.stripAnsi('plain'), 'plain');
       });
     });
 
     group('isServerRunning', () {
       test('returns false for known error strings', () {
-        expect(TmuxParser.isServerRunning(kNoServerOutput), isFalse);
-        expect(TmuxParser.isServerRunning('error connecting'), isFalse);
-        expect(TmuxParser.isServerRunning('command not found'), isFalse);
+        expect(TmuxOutputValidator.isServerRunning(kNoServerOutput), isFalse);
+        expect(
+          TmuxOutputValidator.isServerRunning('error connecting'),
+          isFalse,
+        );
+        expect(
+          TmuxOutputValidator.isServerRunning('command not found'),
+          isFalse,
+        );
       });
 
       test('returns true for normal output', () {
-        expect(TmuxParser.isServerRunning('session:1:0'), isTrue);
+        expect(TmuxOutputValidator.isServerRunning('session:1:0'), isTrue);
       });
     });
 
     group('extractError', () {
       test('extracts no server running', () {
         expect(
-          TmuxParser.extractError(kNoServerOutput),
+          TmuxOutputValidator.extractError(kNoServerOutput),
           'tmux server is not running',
         );
       });
 
       test('extracts session not found', () {
         expect(
-          TmuxParser.extractError(kSessionNotFoundOutput),
+          TmuxOutputValidator.extractError(kSessionNotFoundOutput),
           'Session not found',
         );
       });
 
       test('extracts pane not found', () {
-        expect(TmuxParser.extractError("can't find pane %0"), 'Pane not found');
+        expect(
+          TmuxOutputValidator.extractError("can't find pane %0"),
+          'Pane not found',
+        );
       });
 
       test('returns null for normal output', () {
-        expect(TmuxParser.extractError('session:1:0'), isNull);
+        expect(TmuxOutputValidator.extractError('session:1:0'), isNull);
       });
     });
 
@@ -440,7 +455,7 @@ void main() {
       test('TMUX-PARSER-020: converts literal \\x1f/\\x1e to control chars', () {
         const literal =
             'sess\\x1f123\\x1f0\\x1f2\\x1f\$0\\x1eother\\x1f456\\x1f1\\x1f1\\x1f\$1\\x1e';
-        final normalized = TmuxParser.normalizeDelimiters(
+        final normalized = TmuxOutputValidator.normalizeDelimiters(
           literal,
           TmuxDelimiters.legacy,
         );
@@ -456,7 +471,10 @@ void main() {
             'sess\\037123\\0370\\0372\\037\$0\\036other\\037456\\0371\\0371\\037\$1\\036';
         final delimiters = TmuxDelimiters.random();
 
-        final normalized = TmuxParser.normalizeDelimiters(literal, delimiters);
+        final normalized = TmuxOutputValidator.normalizeDelimiters(
+          literal,
+          delimiters,
+        );
 
         expect(normalized.contains(delimiters.field), isTrue);
         expect(normalized.contains(delimiters.record), isTrue);
@@ -466,7 +484,7 @@ void main() {
 
       test('TMUX-PARSER-020: leaves real control chars untouched', () {
         final literal = 'sess$_fs"123"$_fs"0"$_fs"2"$_fs"\$0"$_rs"other"';
-        final normalized = TmuxParser.normalizeDelimiters(
+        final normalized = TmuxOutputValidator.normalizeDelimiters(
           literal,
           TmuxDelimiters.legacy,
         );
@@ -480,7 +498,7 @@ void main() {
           const literalOutput =
               'mysession\\x1f1735689600\\x1f1\\x1f3\\x1f\$0\\x1e'
               'other\\x1f1735690000\\x1f0\\x1f1\\x1f\$1\\x1e';
-          final sessions = TmuxParser.parseSessions(literalOutput);
+          final sessions = TmuxSessionParser.parse(literalOutput);
           expect(sessions, hasLength(2));
           expect(sessions[0].name, 'mysession');
           expect(sessions[0].attached, isTrue);
@@ -496,7 +514,7 @@ void main() {
           const octalOutput =
               'mysession\\0371735689600\\0371\\0373\\037\$0\\036'
               'other\\0371735690000\\0370\\0371\\037\$1\\036';
-          final sessions = TmuxParser.parseSessions(octalOutput);
+          final sessions = TmuxSessionParser.parse(octalOutput);
           expect(sessions, hasLength(2));
           expect(sessions[0].name, 'mysession');
           expect(sessions[0].windowCount, 3);

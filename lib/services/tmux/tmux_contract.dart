@@ -8,7 +8,7 @@ library;
 import 'dart:async';
 
 import '../connection_error.dart';
-import 'tmux_command_builder.dart';
+import 'commands/layout.dart';
 import 'tmux_command_executor.dart';
 import 'tmux_delimiters.dart';
 import 'tmux_models.dart';

@@ -3,7 +3,7 @@ import 'package:flutter_muxpod/services/backend/domain/tmux_pane_writer.dart';
 import 'package:flutter_muxpod/services/backend/domain/wheel_encoder.dart';
 import 'package:flutter_muxpod/services/command/command_request.dart';
 import 'package:flutter_muxpod/services/command/command_result.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart'
+import 'package:flutter_muxpod/services/tmux/commands/layout.dart'
     show SplitDirection;
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_contract.dart';

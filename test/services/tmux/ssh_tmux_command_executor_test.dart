@@ -3,7 +3,8 @@ import 'package:flutter_muxpod/services/connection_error.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_connection_state.dart';
 import 'package:flutter_muxpod/services/tmux/ssh_tmux_command_executor.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_backend.dart';
-import 'package:flutter_muxpod/services/tmux/tmux_command_builder.dart';
+import 'package:flutter_muxpod/services/tmux/commands/input_commands.dart';
+import 'package:flutter_muxpod/services/tmux/commands/session_commands.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_version.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -47,7 +48,7 @@ void main() {
     test('detects tmux path and resolves commands with it', () async {
       final result = await executor.execute(
         CommandRequest(
-          command: TmuxCommands.version(),
+          command: TmuxSessionCommands.version(),
           transport: CommandTransportPreference.ephemeralOnly,
           output: CommandOutputRequirement.outputOnly,
         ),
@@ -63,7 +64,9 @@ void main() {
     test(
       'sendKeysCommand falls back to exec when input shell is not started',
       () async {
-        await executor.sendKeysCommand(TmuxCommands.sendKeys('target', 'C-c'));
+        await executor.sendKeysCommand(
+          TmuxInputCommands.sendKeys('target', 'C-c'),
+        );
 
         expect(sshClient.execCommands, isNotEmpty);
         final cmd = sshClient.execCommands.last;
@@ -78,7 +81,9 @@ void main() {
         final input = _RecordingInputTransport();
         sshClient.fakeInputTransport = input;
 
-        await executor.sendKeysCommand(TmuxCommands.sendKeys('target', 'C-c'));
+        await executor.sendKeysCommand(
+          TmuxInputCommands.sendKeys('target', 'C-c'),
+        );
 
         expect(input.sent, hasLength(1));
         expect(input.sent.single, contains("'/usr/bin/tmux' -u send-keys"));
@@ -163,7 +168,7 @@ void main() {
       await expectLater(
         retryExecutor.execute(
           CommandRequest(
-            command: TmuxCommands.version(),
+            command: TmuxSessionCommands.version(),
             transport: CommandTransportPreference.ephemeralOnly,
             output: CommandOutputRequirement.outputOnly,
           ),
@@ -177,7 +182,7 @@ void main() {
 
       final result = await retryExecutor.execute(
         CommandRequest(
-          command: TmuxCommands.version(),
+          command: TmuxSessionCommands.version(),
           transport: CommandTransportPreference.ephemeralOnly,
           output: CommandOutputRequirement.outputOnly,
         ),
@@ -191,7 +196,9 @@ void main() {
       () async {
         sshClient.fakeInputTransport = _FailingInputTransport();
 
-        await executor.sendKeysCommand(TmuxCommands.sendKeys('target', 'C-c'));
+        await executor.sendKeysCommand(
+          TmuxInputCommands.sendKeys('target', 'C-c'),
+        );
 
         expect(sshClient.restartInputTransportCount, 1);
         expect(sshClient.execCommands, isNotEmpty);
