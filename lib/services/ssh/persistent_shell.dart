@@ -1,19 +1,31 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../tmux/tmux_backend.dart';
+import 'pending_shell_command.dart';
+import 'persistent_shell_error.dart';
+import 'shell_marker_protocol.dart';
 import 'shell_marker_scanner.dart';
+import 'shell_output_parser.dart';
+
+export 'pending_shell_command.dart';
+export 'persistent_shell_error.dart';
 
 // inventory: SHELL-001
 /// 持続的シェルセッション
 ///
 /// コマンドを書き込み、マーカーで出力終了を検知して結果を返す。
 /// チャネル開閉のオーバーヘッドを排除し、1 RTT程度でコマンド実行可能。
+///
+/// 責務は「シェルセッションのライフサイクル（start/dispose/restart/sendNoWait）
+/// とコマンド実行の調整（exec/execWithExitCode/timeout/poison、PENDING 管理）」。
+/// マーカー構築は [ShellMarkerProtocol]（インスタンス毎 nonce・SHELL-002）、
+/// バイト走査は [ShellMarkerScanner]、出力の意味解釈は [ShellOutputParser] に
+/// 委譲し、ここではそれらを合成する。
 class PersistentShell implements TmuxInputTransport {
   final SSHClient _sshClient;
   SSHSession? _session;
@@ -21,48 +33,11 @@ class PersistentShell implements TmuxInputTransport {
   /// ローカライズ文字列（null 時は英語フォールバック）。
   final AppLocalizations? _l10n;
 
-  // inventory: SHELL-002
-  /// マーカーのコアテキスト（インスタンスごとにランダム生成するnonce）
+  /// マーカーの構築（nonce はこのインスタンスごとに生成）。
   ///
-  /// 静的な定数にすると、ユーザーのtmuxペイン内で動作するプログラムが
-  /// ENDマーカーを正確に出力し、キャプチャ出力を偽装・切り詰めできてしまう。
-  /// セッションごとに予測不能なnonceを生成することでこの偽装を防ぐ。
-  final String _markerId = _generateMarkerId();
-
-  // inventory: SHELL-003
-  /// コマンド開始検知用マーカー（\x01プレフィックス/サフィックス付き）
-  ///
-  /// \x01（SOH制御文字）を含めることで、シェルのエコーバックテキスト内の
-  /// リテラル文字列（`\x01`=4文字）と区別する。
-  /// printfの実出力のみがバイト0x01を含むため、エコーバック内では一致しない。
-  late final String _startMarker = '\x01###START_$_markerId###\x01';
-
-  // inventory: SHELL-004
-  /// コマンド終了検知用マーカー
-  late final String _endMarker = '\x01###END_$_markerId###\x01';
-
-  /// printf用のマーカー文字列（シェルコマンド内で使用）
-  late final String _printfStartMarker =
-      r'\x01###START_'
-      '$_markerId'
-      r'###\x01';
-  late final String _printfEndMarker =
-      r'\x01###END_'
-      '$_markerId'
-      r'###\x01';
-
-  /// RC（終了コード）エコーのマーカー（printf用・文字列版）。
-  ///
-  /// `\x01###RC_<markerId>###:<code>\n` の形で出力される。マーカー内に
-  /// ランダムな [markerId] を含めることで、コマンド出力に偶然現れる
-  /// リテラル文字列との衝突を防ぐ（START/END マーカーと同じ方針）。
-  late final String _printfRcMarker =
-      r'\x01###RC_'
-      '$_markerId'
-      r'###:';
-
-  /// RC エコーを出力から抽出するための文字列版マーカー。
-  late final String _rcMarker = '\x01###RC_$_markerId###:';
+  /// シングルトン・static 共有は禁止（共有するとユーザーのペイン内プログラム
+  /// が END マーカーを予測してキャプチャ出力を偽装できてしまう）。
+  final ShellMarkerProtocol _markerProtocol = ShellMarkerProtocol();
 
   /// マーカー間出力を O(n) で抽出するインクリメンタルスキャナ
   ///
@@ -71,8 +46,8 @@ class PersistentShell implements TmuxInputTransport {
   /// 遅延フレームが届いても、新コマンドの scanner には影響しない（バグ2
   /// 根本対応: stale frame 混入防止）。
   late final ShellMarkerScanner _sharedScanner = ShellMarkerScanner(
-    startMarker: utf8.encode(_startMarker),
-    endMarker: utf8.encode(_endMarker),
+    startMarker: utf8.encode(_markerProtocol.startMarker),
+    endMarker: utf8.encode(_markerProtocol.endMarker),
   );
 
   /// 実行中のコマンド（per-command の状態）。
@@ -101,17 +76,6 @@ class PersistentShell implements TmuxInputTransport {
 
   // inventory: SHELL-006
   PersistentShell(this._sshClient, {AppLocalizations? l10n}) : _l10n = l10n;
-
-  // inventory: SHELL-007
-  /// 予測不能なマーカーID（16進16文字 = 64bit）を生成する。
-  ///
-  /// Random.secureを使い、ユーザーのペイン内プログラムがマーカー文字列を
-  /// 推測してキャプチャ出力を偽装することを防ぐ。
-  static String _generateMarkerId() {
-    final rng = Random.secure();
-    final bytes = List<int>.generate(8, (_) => rng.nextInt(256));
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  }
 
   // inventory: SHELL-008
   // inventory: LEGACY-0052
@@ -203,11 +167,10 @@ class PersistentShell implements TmuxInputTransport {
 
   /// [exec] / [execWithExitCode] の共通実装。
   ///
-  /// [captureExitCode] が true のとき、コマンド直後に
-  /// `; printf '\x01###RC_<markerId>###:%d\n' "$?"` を付与して終了コードを
-  /// マーカー内に埋め込み、[_onData] が出力から抽出する。false のときは
-  /// 従来の [exec] と同じラップ（RC エコーなし）を維持する（tmux の
-  /// 既存 [exec] 利用者に影響を与えない）。
+  /// [captureExitCode] が true のとき、コマンド直後に RC エコーを付与して
+  /// 終了コードをマーカー内に埋め込み、[ShellOutputParser] が出力から抽出する。
+  /// false のときは従来の [exec] と同じラップ（RC エコーなし）を維持する
+  /// （tmux の既存 [exec] 利用者に影響を与えない）。
   ///
   /// **timeout 時は shell を破棄・再起動する**（stale frame 混入防止）:
   /// 遅延して届いた旧コマンドの START/END フレームが、次のコマンド結果として
@@ -239,22 +202,19 @@ class PersistentShell implements TmuxInputTransport {
     final pending = PendingShellCommand(
       captureExitCode: captureExitCode,
       scannerFactory: () => ShellMarkerScanner(
-        startMarker: utf8.encode(_startMarker),
-        endMarker: utf8.encode(_endMarker),
+        startMarker: utf8.encode(_markerProtocol.startMarker),
+        endMarker: utf8.encode(_markerProtocol.endMarker),
       ),
     );
     _pendingCommand = pending;
 
-    // printfでマーカーを出力（\x01バイトを含む）
-    // echoではなくprintfを使用: シェルのエコーバック内ではリテラル'\x01'（4文字）が
-    // 表示されるが、printfの実出力はバイト0x01を含む。
-    // これによりエコーバック内のマーカーと実出力のマーカーを確実に区別できる。
-    final rcEcho = captureExitCode
-        ? "; __muxpod_rc=\$?; printf '$_printfRcMarker%d\\n' \"\$__muxpod_rc\""
-        : '';
-    final commandWithMarkers =
-        "printf '$_printfStartMarker\\n'; $command$rcEcho; printf '$_printfEndMarker\\n'\n";
-    _session!.write(utf8.encode(commandWithMarkers));
+    // マーカーでラップしたコマンド文字列を構築して送信（構築は
+    // ShellMarkerProtocol が担う。printfでマーカーを出力（\x01バイトを含む））
+    _session!.write(
+      utf8.encode(
+        _markerProtocol.buildCommand(command, captureExitCode: captureExitCode),
+      ),
+    );
 
     // タイムアウト付きで結果を待機
     final effectiveTimeout = timeout ?? const Duration(seconds: 5);
@@ -341,6 +301,7 @@ class PersistentShell implements TmuxInputTransport {
     }
 
     // デバッグ: UTF-8境界分割の検出（debugビルドのみ）
+    // （parser の責務外・診断用途のため本体に残す）
     assert(() {
       final chunkDecoded = utf8.decode(data, allowMalformed: true);
       if (chunkDecoded.contains('\uFFFD')) {
@@ -362,43 +323,17 @@ class PersistentShell implements TmuxInputTransport {
       return;
     }
 
-    // マーカー間バイト列をUTF-8デコード（マルチバイト境界分割を防止）
-    var result = utf8.decode(between, allowMalformed: true);
-
-    // PTYの出力変換で\r\nや\rが使われる場合があるため正規化
-    // 事実: macOS PTYではnewlines=0, CRs=19（\nが\rに変換されている）
-    result = result.replaceAll(RegExp(r'\r\n?'), '\n');
-
-    // execWithExitCode 用: 末尾の RC エコー（\x01###RC_<id>###:<code>\x01\n）を抽出する。
-    // エコーは必ずコマンド出力の最後に付くため、最後の出現位置から終了コードを
-    // 取り出して出力から除去する（コードは次の \x01 または改行まで）。
-    if (pending.captureExitCode) {
-      final rcIndex = result.lastIndexOf(_rcMarker);
-      if (rcIndex >= 0) {
-        final codeText = result.substring(rcIndex + _rcMarker.length);
-        final terminator = codeText.indexOf('\x01');
-        final codeEnd = terminator >= 0 ? terminator : codeText.indexOf('\n');
-        final code = codeEnd >= 0 ? codeText.substring(0, codeEnd) : codeText;
-        pending.exitCode = int.tryParse(code.trim());
-        // RC エコー行を除去（\x01 終端と直前の改行も含める）
-        result = result.substring(0, rcIndex);
-        if (result.endsWith('\n')) {
-          result = result.substring(0, result.length - 1);
-        }
-      }
-    }
-
-    // 先頭と末尾の改行を削除
-    if (result.startsWith('\n')) {
-      result = result.substring(1);
-    }
-    if (result.endsWith('\n')) {
-      result = result.substring(0, result.length - 1);
-    }
+    // 抽出結果の意味解釈（UTF8デコード・CR正規化・RCエコー抽出・trim）
+    final parsed = ShellOutputParser.parse(
+      between,
+      rcMarker: _markerProtocol.rcMarker,
+      captureExitCode: pending.captureExitCode,
+    );
+    pending.exitCode = parsed.exitCode;
 
     // Completerを先にnullにしてから完了（再入防止）
     _pendingCommand = null;
-    pending.completer.complete(result);
+    pending.completer.complete(parsed.output);
   }
 
   /// セッション終了時の処理
@@ -457,44 +392,4 @@ class PersistentShell implements TmuxInputTransport {
 
     _sharedScanner.reset();
   }
-}
-
-/// 実行中のコマンドの状態（per-command・immutable な設定 + 可変の進捗）。
-///
-/// 従来 shell 全体で持っていた `_pendingCommand` / `_captureExitCode` /
-/// `_lastExitCode` / `_scanner` を実行単位に集約する（Codex 根本設計レビュー・
-/// バグ2 根本対応）。[scanner] はコマンドごとに新しく生成し、timeout 後に
-/// 旧コマンドの遅延フレームが新コマンドに混入するのを防ぐ。
-final class PendingShellCommand {
-  PendingShellCommand({
-    required this.captureExitCode,
-    required ShellMarkerScanner Function() scannerFactory,
-  }) : scanner = scannerFactory();
-
-  /// 終了コードを捕捉するか（RC エコーを付与したか）。
-  final bool captureExitCode;
-
-  /// このコマンドの結果を待つ completer。
-  final Completer<String> completer = Completer<String>();
-
-  /// このコマンド用のマーカースキャナ。
-  final ShellMarkerScanner scanner;
-
-  /// 捕捉した終了コード（未捕捉なら null）。
-  int? exitCode;
-
-  bool get isCompleted => completer.isCompleted;
-}
-
-// inventory: SHELL-016
-/// PersistentShellのエラー
-class PersistentShellError implements Exception {
-  // inventory: LEGACY-0057
-  final String message;
-
-  PersistentShellError(this.message);
-
-  @override
-  // inventory: LEGACY-0058
-  String toString() => 'PersistentShellError: $message';
 }
