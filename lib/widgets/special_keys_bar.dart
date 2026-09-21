@@ -1,17 +1,29 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../theme/design_colors.dart';
 import '../services/custom_keys/custom_key_button.dart';
-import 'custom_key_button_widget.dart';
-import '../l10n/l10n_ext.dart';
+import '../theme/design_colors.dart';
+import 'special_keys_bar_rows.dart';
+import 'special_keys_direct_input_engine.dart';
+import 'special_keys_modifier_state.dart';
+import 'special_keys_row_scrollers.dart';
+import 'special_keys_token_view.dart';
+import 'special_keys_tmux_composer.dart';
 
 /// 特殊キーバー（HTMLデザイン仕様準拠）
 ///
 /// tmuxコマンド方式でキーを送信するため、
 /// tmux send-keys形式のキー名を使用する。
+///
+/// 責務ベース再設計（P2）の合成ルート: 協調クラス群・子Widget群を配線するだけ。
+/// - DirectInput/IME 状態機械: [SpecialKeysDirectInputEngine]
+/// - ソフトウェア修飾子状態: [SpecialKeysModifierState]
+/// - tmuxキー名合成: [SpecialKeysTmuxComposer]
+/// - 行スクロール制御: [SpecialKeysRowScrollers]
+/// - トークン→ボタン解決: [SpecialKeysTokenView]
+/// - 行レイアウト・行Widget: [SpecialKeysBarLayout] / 行Widget群
+/// - ボタンWidget群: [SpecialKeysBarButtons] 配下
 class SpecialKeysBar extends StatefulWidget {
   /// リテラルキー送信（通常の文字）
   final void Function(String key) onKeyPressed;
@@ -76,524 +88,132 @@ class SpecialKeysBar extends StatefulWidget {
 }
 
 class _SpecialKeysBarState extends State<SpecialKeysBar> {
-  bool _ctrlPressed = false;
-  bool _altPressed = false;
-  bool _shiftPressed = false;
-  final TextEditingController _directInputController = TextEditingController();
-  final FocusNode _directInputFocusNode = FocusNode();
+  /// ソフトウェア修飾子（CTRL/ALT/SHIFT）押下状態の唯一の所有者。
+  final SpecialKeysModifierState _modifiers = SpecialKeysModifierState();
 
-  /// DirectInput: 端末へ送信済みの可視テキスト（デルタ送信用）
-  /// 入力欄にテキストを残したまま追加分のみ送信するために保持する
-  String _sentText = '';
+  /// 行水平スクロール制御の所有者。
+  late final SpecialKeysRowScrollers _scrollers;
 
-  /// 行ごとの水平スクロール制御（新規ボタン追加時にその位置へ自動スクロール）。
-  /// 行数は可変なので、行数の変化に合わせて作成・破棄する。
-  final List<ScrollController> _rowScrollControllers = [];
+  /// DirectInput/IME 状態機械の唯一の所有者。
+  late final SpecialKeysDirectInputEngine _engine;
 
-  /// 現在IME変換中かどうか
-  bool _isComposing = false;
+  /// tmuxキー名合成（送信オーケストから使用）。
+  final SpecialKeysTmuxComposer _composer = const SpecialKeysTmuxComposer();
 
-  /// IME composing中の最新テキスト（iOS重複検出用）
-  /// iOSが自動確定時にcomposingテキストより長い確定テキストを返す場合、
-  /// composingテキストを正とし余分な重複を除去する
-  String? _lastComposingText;
-
-  /// DirectInputモードでBackspace検出のためのsentinel文字（ゼロ幅スペース）
-  /// iOS/iPadOSではTextField空の状態でBackspace押下時にKeyDownEventが
-  /// 生成されないため、常にsentinelを保持して削除検出でBackspaceを検知する
-  static const String _sentinel = '\u200B';
-
-  /// sentinel リセット中の再入防止フラグ
-  bool _isResettingController = false;
-
-  /// 二重入力防止: _handleKeyEventで処理した最終時刻
-  /// iPad外付けキーボードではFlutter KeyEventとiOSテキスト入力が
-  /// 同一キーを二重に処理するため、タイムスタンプで抑制する
-  DateTime? _lastKeyEventHandledAt;
+  /// widget の実行時 prop からコールバック値オブジェクトを生成する。
+  /// コールバック関数のみ（状態を含めない。状態はエンジンが唯一所有）。
+  SpecialKeysBarCallbacks _callbacksFor(SpecialKeysBar w) =>
+      SpecialKeysBarCallbacks(
+        onKeyPressed: w.onKeyPressed,
+        onSpecialKeyPressed: w.onSpecialKeyPressed,
+        hapticFeedback: w.hapticFeedback,
+      );
 
   @override
   void initState() {
     super.initState();
-    _syncRowControllers(widget.rows.length);
-    if (widget.directInputEnabled) {
-      _directInputController.value = TextEditingValue(
-        text: _sentinel,
-        selection: TextSelection.collapsed(offset: _sentinel.length),
-      );
-    }
-    _directInputController.addListener(_onDirectInputChanged);
+    _scrollers = SpecialKeysRowScrollers(isActive: () => mounted);
+    _engine = SpecialKeysDirectInputEngine(
+      modifiers: _modifiers,
+      callbacks: _callbacksFor(widget),
+      isActive: () => mounted,
+    )..attach(directInputEnabled: widget.directInputEnabled);
+    _engine
+      ..setCjkMode(widget.cjkMode)
+      ..setKeepKeyboardOnEnter(widget.keepKeyboardOnEnter);
+    _scrollers.sync(widget.rows.length);
+    _modifiers.addListener(_onModifiersChanged);
   }
+
+  /// 修飾子状態の変更を画面へ反映する（ChangeNotifier → setState）。
+  void _onModifiersChanged() => setState(() {});
 
   @override
   void didUpdateWidget(SpecialKeysBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // 【実行時 prop 伝播（設計書 v2-1）】無条件で毎回、最新の widget 値を
+    // エンジンへ伝播する。送信時点での widget.keepKeyboardOnEnter /
+    // widget.cjkMode / widget.hapticFeedback のライブ参照の意味論を維持する
+    // ための必須配線（初期値固定・初回のみ注入は禁止）。
+    _engine.setCallbacks(_callbacksFor(widget));
+    _engine.setCjkMode(widget.cjkMode);
+    _engine.setKeepKeyboardOnEnter(widget.keepKeyboardOnEnter);
+    // これとは別に、従来どおりの分岐駆動の副作用（伝播と役割が異なる）。
     if (widget.directInputEnabled && !oldWidget.directInputEnabled) {
-      _resetToSentinel();
+      _engine.resetToSentinel();
     } else if (!widget.directInputEnabled && oldWidget.directInputEnabled) {
-      _isResettingController = true;
-      _directInputController.clear();
-      _isResettingController = false;
-      _sentText = '';
+      _engine.clearForDeactivation();
     }
     // CJKモード切替時は入力欄をリセットし、旧モードのdelta状態を残さない
     if (widget.cjkMode != oldWidget.cjkMode && widget.directInputEnabled) {
-      _resetToSentinel();
+      _engine.resetToSentinel();
     }
-    _syncRowControllers(widget.rows.length);
+    _scrollers.sync(widget.rows.length);
     // 新規トークンが追加された行を、その位置（先頭/末尾）まで自動スクロールする
     final shared = widget.rows.length < oldWidget.rows.length
         ? widget.rows.length
         : oldWidget.rows.length;
     for (var row = 0; row < shared; row++) {
       if (widget.rows[row].length > oldWidget.rows[row].length) {
-        _scheduleScrollToNewToken(
-          _rowScrollControllers[row],
-          atStart: _grewAtStart(oldWidget.rows[row], widget.rows[row]),
+        _scrollers.scheduleScrollToNewToken(
+          row,
+          atStart: SpecialKeysRowScrollers.grewAtStart(
+            oldWidget.rows[row],
+            widget.rows[row],
+          ),
         );
       }
     }
-  }
-
-  /// スクロール制御の本数を行数に合わせる（余った分は破棄する）。
-  void _syncRowControllers(int rowCount) {
-    while (_rowScrollControllers.length < rowCount) {
-      _rowScrollControllers.add(ScrollController());
-    }
-    while (_rowScrollControllers.length > rowCount) {
-      _rowScrollControllers.removeLast().dispose();
-    }
-  }
-
-  /// 追加されたトークンが行の先頭かどうか（先頭挿入なら true）
-  static bool _grewAtStart(List<String> before, List<String> after) {
-    if (before.isEmpty) return false;
-    return after.first != before.first;
-  }
-
-  /// 行の水平スクロールを新規ボタンの位置まで移動する
-  void _scheduleScrollToNewToken(
-    ScrollController controller, {
-    required bool atStart,
-  }) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !controller.hasClients) return;
-      final position = controller.position;
-      if (position.maxScrollExtent > 0) {
-        controller.animateTo(
-          atStart ? 0 : position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   @override
   void dispose() {
-    _directInputController.removeListener(_onDirectInputChanged);
-    _directInputController.dispose();
-    _directInputFocusNode.dispose();
-    for (final controller in _rowScrollControllers) {
-      controller.dispose();
-    }
+    _modifiers.removeListener(_onModifiersChanged);
+    _modifiers.dispose();
+    _engine.dispose();
+    _scrollers.dispose();
     super.dispose();
   }
 
-  /// DirectInput: テキスト変更時の処理
-  /// sentinelアプローチでBackspaceを検出（iOS/iPadOS対応）
-  void _onDirectInputChanged() {
-    if (_isResettingController) return;
-
-    final text = _directInputController.text;
-    final value = _directInputController.value;
-
-    // composingが空でない = IME変換中
-    _isComposing = value.composing.isValid && !value.composing.isCollapsed;
-
-    if (_isComposing) {
-      // Record composing text for iOS duplicate detection
-      _lastComposingText = text.replaceAll(_sentinel, '');
-
-      // Samsung IME composing workaround:
-      // Samsung (and some Android IMEs) treat English letters as composing,
-      // so composing=false may NEVER arrive while the user keeps typing.
-      // When a modifier (CTRL/ALT) is active, intercept the first composing
-      // character immediately instead of waiting for composing to end.
-      // Guards:
-      //   - length == 1: only the first composing char (avoids accumulated repeats)
-      //   - ASCII letter regex: don't intercept Korean (ㅊ) or other non-ASCII composing
-      if ((_ctrlPressed || _altPressed) && _lastComposingText!.length == 1) {
-        final char = _lastComposingText!;
-        if (RegExp(r'^[A-Za-z]$').hasMatch(char)) {
-          if (widget.hapticFeedback) {
-            HapticFeedback.lightImpact();
-          }
-          final List<String> modifiers = [];
-          if (_ctrlPressed) {
-            modifiers.add('C');
-            setState(() => _ctrlPressed = false);
-          }
-          if (_altPressed) {
-            modifiers.add('M');
-            setState(() => _altPressed = false);
-          }
-          final prefix = modifiers.join('-');
-          widget.onSpecialKeyPressed('$prefix-${char.toLowerCase()}');
-          _lastComposingText = null;
-          _resetToSentinel();
-          return;
-        }
-      }
-
-      return;
-    }
-
-    // Sentinelが削除された = 全テキスト削除（iOS/iPadOS対応のBackspace検出）
-    if (text.isEmpty) {
-      _lastComposingText = null;
-      _sendDirectBackspace();
-      _resetToSentinel();
-      return;
-    }
-
-    // Sentinelを除去して実際の入力テキストを取得
-    final actualText = text.replaceAll(_sentinel, '');
-
-    // CJK Mode（v0.7.0-pre4挙動）: 確定テキストを全文送信してからsentinelへ
-    // リセットする。入力欄にテキストを残さないためiOSの自動補正（".."→"‥"
-    // 等）が働かず、IME確定時の重複挿入もcomposingテキストとの比較で除去される。
-    if (widget.cjkMode) {
-      if (actualText.isEmpty) return;
-
-      // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-      if (_isRecentKeyEventHandled()) {
-        _lastComposingText = null;
-        _resetToSentinel();
-        return;
-      }
-
-      // iOS重複検出: 確定テキストがcomposingテキストより長く、
-      // composingテキストで始まる場合、iOSの重複挿入とみなしcomposingテキストを使用
-      String textToSend = actualText;
-      if (_lastComposingText != null &&
-          actualText.length > _lastComposingText!.length &&
-          actualText.startsWith(_lastComposingText!)) {
-        textToSend = _lastComposingText!;
-      }
-      _lastComposingText = null;
-
-      // Send modifier+key when CTRL/ALT is active (non-composing path)
-      // This handles IMEs that commit without composing (e.g. Gboard English)
-      // tmux format: C-c (Ctrl+C), M-a (Alt+A), C-M-x (Ctrl+Alt+X)
-      if ((_ctrlPressed || _altPressed) &&
-          textToSend.length == 1 &&
-          RegExp(r'^[A-Za-z]$').hasMatch(textToSend)) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-        final List<String> modifiers = [];
-        if (_ctrlPressed) {
-          modifiers.add('C');
-          setState(() => _ctrlPressed = false);
-        }
-        if (_altPressed) {
-          modifiers.add('M');
-          setState(() => _altPressed = false);
-        }
-        final prefix = modifiers.join('-');
-        widget.onSpecialKeyPressed('$prefix-${textToSend.toLowerCase()}');
-      } else {
-        widget.onKeyPressed(textToSend);
-      }
-
-      // 送信後にsentinelにリセット
-      _resetToSentinel();
-      return;
-    }
-
-    // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-    if (_isRecentKeyEventHandled()) {
-      _lastComposingText = null;
-      // キーイベント側で送信済みなので、欄のテキストは残したまま送信済みとして記録
-      _sentText = actualText;
-      return;
-    }
-
-    // 変化なし（IMEノイズ）なら何もしない
-    if (actualText == _sentText) return;
-    _lastComposingText = null;
-
-    // デルタ送信: 送信済みテキストとの共通接頭辞を除いた差分のみを送信する。
-    // 入力欄にテキストを残して可視化しつつ、追加分は逐次送信、
-    // 削除分はBSpaceを送信する。
-    var common = 0;
-    final minLen = _sentText.length < actualText.length
-        ? _sentText.length
-        : actualText.length;
-    while (common < minLen && _sentText[common] == actualText[common]) {
-      common++;
-    }
-    final removed = _sentText.length - common;
-    final appended = actualText.substring(common);
-
-    if (removed > 0) {
-      for (var r = 0; r < removed; r++) {
-        _sendDirectBackspace();
-      }
-    }
-
-    if (appended.isNotEmpty) {
-      // Send modifier+key when CTRL/ALT is active (non-composing path)
-      // This handles IMEs that commit without composing (e.g. Gboard English)
-      // tmux format: C-c (Ctrl+C), M-a (Alt+A), C-M-x (Ctrl+Alt+X)
-      if ((_ctrlPressed || _altPressed) &&
-          appended.length == 1 &&
-          RegExp(r'^[A-Za-z]$').hasMatch(appended)) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-        final List<String> modifiers = [];
-        if (_ctrlPressed) {
-          modifiers.add('C');
-          setState(() => _ctrlPressed = false);
-        }
-        if (_altPressed) {
-          modifiers.add('M');
-          setState(() => _altPressed = false);
-        }
-        final prefix = modifiers.join('-');
-        widget.onSpecialKeyPressed('$prefix-${appended.toLowerCase()}');
-
-        // 修飾キーとして消費した文字を入力欄から除去し、可視テキストと整合させる
-        final kept = actualText.substring(0, common);
-        _isResettingController = true;
-        _directInputController.value = TextEditingValue(
-          text: _sentinel + kept,
-          selection: TextSelection.collapsed(offset: kept.length + 1),
-        );
-        _isResettingController = false;
-        _sentText = kept;
-        return;
-      }
-
-      widget.onKeyPressed(appended);
-    }
-
-    _sentText = actualText;
-  }
-
-  /// DirectInput: ソフトウェアキーボードのEnter（送信）で呼ばれる
-  void _onDirectInputSubmitted(String value) {
-    // 外付けキーボードの二重入力防止: _handleKeyEventで処理済みならスキップ
-    if (_isRecentKeyEventHandled()) return;
-
+  /// 特殊キーを送信（tmux形式）。
+  /// haptic → 修飾子消費 → 合成（composer 委譲）→ コールバック発火の順序のみ保持。
+  void _sendSpecialKey(String tmuxKey) {
     if (widget.hapticFeedback) {
       HapticFeedback.lightImpact();
     }
-    widget.onSpecialKeyPressed('Enter');
-    _resetToSentinel();
 
-    // 「Enterでキーボードを閉じない」設定:
-    // unfocus() はマイクロタスク適用（focus_manager._markNextFocus）のため、
-    // onSubmitted 内の同期 requestFocus() で実質キャンセルでき、フィールドは
-    // フォーカスを一切失わない。フレームワークはこのパターンを明示サポート
-    // （editable_text.dart L3899-3906: onSubmitted内でフォーカスを戻した場合は
-    // _restartConnectionIfNeeded が接続を張り直してキーボードを開いたままリセット）。
-    if (widget.keepKeyboardOnEnter) {
-      _directInputFocusNode.requestFocus();
-    }
-  }
-
-  /// DirectInput: Backspaceキー送信
-  void _sendDirectBackspace() {
-    if (widget.hapticFeedback) {
-      HapticFeedback.lightImpact();
-    }
-    widget.onSpecialKeyPressed('BSpace');
-  }
-
-  /// DirectInput: sentinelにリセット（Backspace検出用）
-  ///
-  /// _isResettingControllerの解除を次フレームまで遅延することで、
-  /// iOSプラットフォームがIME確定時に送る遅延テキスト更新を吸収する。
-  /// PostFrameCallbackでcontrollerが上書きされていれば再度sentinelにリセットする。
-  void _resetToSentinel() {
-    _sentText = '';
-    _isResettingController = true;
-    _directInputController.value = TextEditingValue(
-      text: _sentinel,
-      selection: TextSelection.collapsed(offset: _sentinel.length),
+    final consumed = _modifiers.consumeAll();
+    widget.onSpecialKeyPressed(
+      _composer.composeSpecial(
+        tmuxKey,
+        shift: consumed.contains('S'),
+        ctrl: consumed.contains('C'),
+        alt: consumed.contains('M'),
+      ),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final currentValue = _directInputController.value;
-      final hasActiveComposing =
-          currentValue.composing.isValid && !currentValue.composing.isCollapsed;
-      // composing進行中ならiOSの入力を尊重して再リセットしない
-      if (!hasActiveComposing && _directInputController.text != _sentinel) {
-        _directInputController.value = TextEditingValue(
-          text: _sentinel,
-          selection: TextSelection.collapsed(offset: _sentinel.length),
-        );
-      }
-      _isResettingController = false;
-    });
   }
 
-  /// 二重入力防止: _handleKeyEventで処理したことをマーク
-  void _markKeyEventHandled() {
-    _lastKeyEventHandledAt = DateTime.now();
-  }
-
-  /// 二重入力防止: 直近100ms以内に_handleKeyEventで処理されたか
-  bool _isRecentKeyEventHandled() {
-    if (_lastKeyEventHandledAt == null) return false;
-    return DateTime.now().difference(_lastKeyEventHandledAt!) <
-        const Duration(milliseconds: 100);
-  }
-
-  /// 外付けキーボードの修飾子を検出してtmux形式キー名に変換
-  String _applyHardwareModifiers(String baseKey) {
-    final isShift = HardwareKeyboard.instance.isShiftPressed;
-    final isCtrl = HardwareKeyboard.instance.isControlPressed;
-    final isAlt = HardwareKeyboard.instance.isAltPressed;
-    final isMeta = HardwareKeyboard.instance.isMetaPressed;
-
-    // 特殊ケース: Shift+Tab → BTab
-    if (isShift && baseKey == 'Tab') return 'BTab';
-
-    final mods = <String>[];
-    if (isShift) mods.add('S');
-    if (isCtrl) mods.add('C');
-    if (isAlt) mods.add('M');
-    if (isMeta) mods.add('M');
-    if (mods.isEmpty) return baseKey;
-    return '${mods.join('-')}-$baseKey';
-  }
-
-  /// 外付けキーボード → tmuxキー名マッピング
-  static final _hwSpecialKeyMap = <LogicalKeyboardKey, String>{
-    LogicalKeyboardKey.escape: 'Escape',
-    LogicalKeyboardKey.tab: 'Tab',
-    LogicalKeyboardKey.arrowUp: 'Up',
-    LogicalKeyboardKey.arrowDown: 'Down',
-    LogicalKeyboardKey.arrowLeft: 'Left',
-    LogicalKeyboardKey.arrowRight: 'Right',
-    LogicalKeyboardKey.home: 'Home',
-    LogicalKeyboardKey.end: 'End',
-    LogicalKeyboardKey.pageUp: 'PPage',
-    LogicalKeyboardKey.pageDown: 'NPage',
-    LogicalKeyboardKey.delete: 'DC',
-    LogicalKeyboardKey.f1: 'F1',
-    LogicalKeyboardKey.f2: 'F2',
-    LogicalKeyboardKey.f3: 'F3',
-    LogicalKeyboardKey.f4: 'F4',
-    LogicalKeyboardKey.f5: 'F5',
-    LogicalKeyboardKey.f6: 'F6',
-    LogicalKeyboardKey.f7: 'F7',
-    LogicalKeyboardKey.f8: 'F8',
-    LogicalKeyboardKey.f9: 'F9',
-    LogicalKeyboardKey.f10: 'F10',
-    LogicalKeyboardKey.f11: 'F11',
-    LogicalKeyboardKey.f12: 'F12',
-  };
-
-  /// 外付けキーボード用の特殊キー送信（デバウンス付き）
-  void _sendHwSpecialKey(String baseKey) {
-    _markKeyEventHandled();
+  /// リテラルキーを送信（文字そのまま）。
+  /// 修飾子付き単文字は tmux 形式（composer 委譲）、それ以外はリテラル送信。
+  void _sendLiteralKey(String key) {
     if (widget.hapticFeedback) {
       HapticFeedback.lightImpact();
     }
-    widget.onSpecialKeyPressed(_applyHardwareModifiers(baseKey));
-    // 外付けキーボード使用時はソフトウェア修飾子トグルをリセット
-    _resetSoftwareModifiers();
-  }
 
-  /// ソフトウェア修飾子ボタンの状態をリセット
-  void _resetSoftwareModifiers() {
-    if (_shiftPressed || _ctrlPressed || _altPressed) {
-      setState(() {
-        _shiftPressed = false;
-        _ctrlPressed = false;
-        _altPressed = false;
-      });
-    }
-  }
-
-  /// キーイベントハンドラ（外付けキーボード用: 全特殊キーをキャプチャ）
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
+    final consumed = _modifiers.consumeAll();
+    final composed = _composer.composeLiteral(
+      key,
+      shift: consumed.contains('S'),
+      ctrl: consumed.contains('C'),
+      alt: consumed.contains('M'),
+    );
+    if (composed != null) {
+      widget.onSpecialKeyPressed(composed);
+      return;
     }
 
-    // IME変換中はキーイベントを処理しない
-    if (_isComposing) {
-      return KeyEventResult.ignored;
-    }
-
-    final key = event.logicalKey;
-
-    // Ctrl + A-Z のショートカット処理（Cmd/Meta は Ctrl として扱わない）
-    final isCtrlPressed = HardwareKeyboard.instance.isControlPressed;
-    if (isCtrlPressed) {
-      final keyLabel = key.keyLabel;
-      if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
-        _markKeyEventHandled();
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-        widget.onSpecialKeyPressed('C-${keyLabel.toLowerCase()}');
-        _resetSoftwareModifiers();
-        return KeyEventResult.handled;
-      }
-    }
-
-    // Cmd/Meta + A-Z は M- として送信（ユーザー要望: Meta/Super として伝える）
-    final isMetaPressed = HardwareKeyboard.instance.isMetaPressed;
-    if (isMetaPressed) {
-      final keyLabel = key.keyLabel;
-      if (keyLabel.length == 1 && RegExp(r'^[A-Za-z]$').hasMatch(keyLabel)) {
-        _markKeyEventHandled();
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-        widget.onSpecialKeyPressed('M-${keyLabel.toLowerCase()}');
-        _resetSoftwareModifiers();
-        return KeyEventResult.handled;
-      }
-    }
-
-    // Enterキー
-    if (key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter) {
-      _markKeyEventHandled();
-      _sendDirectEnterAndClear();
-      _resetSoftwareModifiers();
-      return KeyEventResult.handled;
-    }
-
-    // Backspaceキー: sentinelアプローチで_onDirectInputChangedにて処理
-    if (key == LogicalKeyboardKey.backspace) {
-      return KeyEventResult.ignored;
-    }
-
-    // マップに登録された特殊キー（Escape/Tab/矢印/Nav/F1-F12）
-    final tmuxKey = _hwSpecialKeyMap[key];
-    if (tmuxKey != null) {
-      _sendHwSpecialKey(tmuxKey);
-      return KeyEventResult.handled;
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  /// DirectInput: Enterキー送信して入力欄をリセット
-  void _sendDirectEnterAndClear() {
-    if (widget.hapticFeedback) {
-      HapticFeedback.lightImpact();
-    }
-    widget.onSpecialKeyPressed('Enter');
-    _resetToSentinel();
+    // 修飾子なしの場合はリテラル送信
+    widget.onKeyPressed(key);
   }
 
   @override
@@ -601,14 +221,25 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
-    // Rows render exactly the tokens they hold, subject to mode skips.
-    final visibleRows = [for (final row in widget.rows) _visibleTokens(row)];
-
-    // The manage (pencil) button is pinned to the end of the first row that
-    // renders anything — the top row is the custom row, so it lands next to
-    // the user's own buttons. When no row renders (every row empty, or no rows
-    // at all) a pencil-only strip keeps the editor reachable.
-    final pencilHost = visibleRows.indexWhere((row) => row.isNotEmpty);
+    final layout = SpecialKeysBarLayout.compute(
+      widget.rows,
+      directInputEnabled: widget.directInputEnabled,
+      hasImage: widget.onImagePickRequested != null,
+    );
+    final tokenView = SpecialKeysTokenView(
+      modifiers: _modifiers,
+      callbacks: _callbacksFor(widget),
+      customButtons: widget.customButtons,
+      directInputEnabled: widget.directInputEnabled,
+      onInputTap: widget.onInputTap,
+      onDirectInputToggle: widget.onDirectInputToggle,
+      onImagePickRequested: widget.onImagePickRequested,
+      onCustomButtonEdit: widget.onCustomButtonEdit,
+      sendSpecialKey: _sendSpecialKey,
+      sendLiteralKey: _sendLiteralKey,
+    );
+    final visibleRows = layout.visibleRows;
+    final pencilHost = layout.pencilHost;
 
     return Container(
       decoration: BoxDecoration(
@@ -623,9 +254,14 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var row = 0; row < visibleRows.length; row++)
-              _buildRow(row, visibleRows[row], hostsPencil: row == pencilHost),
-            if (pencilHost < 0) _buildPencilOnlyRow(),
-            if (widget.directInputEnabled) _buildDirectInputRow(),
+              _buildRow(
+                row,
+                visibleRows[row],
+                hostsPencil: row == pencilHost,
+                tokenView: tokenView,
+              ),
+            if (pencilHost < 0) _buildPencilOnlyRow(tokenView: tokenView),
+            if (widget.directInputEnabled) DirectInputRow(engine: _engine),
             const SizedBox(height: 4),
           ],
         ),
@@ -635,943 +271,69 @@ class _SpecialKeysBarState extends State<SpecialKeysBar> {
 
   /// 1行を描画する。既定と完全一致する行だけ従来の固定描画を使い、それ以外は
   /// 汎用の水平スクロール行で描く（判定は行の内容だけで、行番号には依らない）。
-  Widget _buildRow(int row, List<String> tokens, {required bool hostsPencil}) {
+  Widget _buildRow(
+    int row,
+    List<String> tokens, {
+    required bool hostsPencil,
+    required SpecialKeysTokenView tokenView,
+  }) {
     final stored = widget.rows[row];
     if (listEquals(stored, CustomKeyRows.standardRow1)) {
-      return _buildLegacyModifierKeysRow(withManageButton: hostsPencil);
+      return LegacyModifierRow(
+        withManageButton: hostsPencil,
+        modifiers: _modifiers,
+        onManage: widget.onManageButtons,
+        hapticFeedback: widget.hapticFeedback,
+        sendSpecialKey: _sendSpecialKey,
+        sendLiteralKey: _sendLiteralKey,
+      );
     }
     if (listEquals(stored, CustomKeyRows.standardRow2) && !hostsPencil) {
-      return _buildLegacyArrowKeysRow();
+      return LegacyNavigationRow(
+        directInputEnabled: widget.directInputEnabled,
+        onImagePickRequested: widget.onImagePickRequested,
+        onDirectInputToggle: widget.onDirectInputToggle,
+        onInputTap: widget.onInputTap,
+        hapticFeedback: widget.hapticFeedback,
+        sendSpecialKey: _sendSpecialKey,
+        sendLiteralKey: _sendLiteralKey,
+      );
     }
     return _buildGenericTokenRow(
       tokens: tokens,
       height: 32,
-      scrollController: _rowScrollControllers[row],
+      scrollController: _scrollers.controllerAt(row),
       showManageButton: hostsPencil,
+      tokenView: tokenView,
     );
   }
 
   /// トークンを描く行が1つも無いときの受け皿（鉛筆ボタンのみ）。
-  Widget _buildPencilOnlyRow() => _buildGenericTokenRow(
-    tokens: const <String>[],
-    height: 32,
-    scrollController: null,
-    showManageButton: true,
-  );
-
-  /// 行1の従来レイアウト（ESC…dash、必要なら鉛筆ボタン）。既定レイアウト専用。
-  Widget _buildLegacyModifierKeysRow({required bool withManageButton}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
-      // Plain Row on purpose: these builders return Expanded, so they share the
-      // width. Wrapping this in a horizontal scroll view makes the row
-      // unbounded and every flex child an error — the backspace key is just a
-      // tenth flex child, and they all get slightly narrower.
-      child: Row(
-        children: [
-          _buildSpecialKeyButton('ESC', 'Escape'),
-          _buildSpecialKeyButton('TAB', 'Tab'),
-          _buildModifierButton('CTRL', _ctrlPressed, () {
-            setState(() => _ctrlPressed = !_ctrlPressed);
-          }),
-          _buildModifierButton('ALT', _altPressed, () {
-            setState(() => _altPressed = !_altPressed);
-          }),
-          _buildModifierButton('SHIFT', _shiftPressed, () {
-            setState(() => _shiftPressed = !_shiftPressed);
-          }),
-          _buildEnterKeyButton(),
-          _buildShiftEnterKeyButton(),
-          _buildLiteralKeyButton('/', '/'),
-          _buildLiteralKeyButton('-', '-'),
-          _buildSpecialKeyButton('\u232b', 'BSpace'),
-          if (withManageButton) _buildManageButton(),
-        ],
-      ),
-    );
-  }
-
-  /// 行2の従来レイアウト（ナビゲーション + 数字/Input）。既定レイアウト専用。
-  Widget _buildLegacyArrowKeysRow() {
-    if (widget.directInputEnabled) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
-            children: [
-              ..._buildNavigationControls(),
-              const SizedBox(width: 8),
-              _buildNumberKeyButton('1'),
-              const SizedBox(width: 2),
-              _buildNumberKeyButton('2'),
-              const SizedBox(width: 2),
-              _buildNumberKeyButton('3'),
-              const SizedBox(width: 2),
-              _buildNumberKeyButton('4'),
-            ],
-          ),
-        ),
+  Widget _buildPencilOnlyRow({required SpecialKeysTokenView tokenView}) =>
+      _buildGenericTokenRow(
+        tokens: const <String>[],
+        height: 32,
+        scrollController: null,
+        showManageButton: true,
+        tokenView: tokenView,
       );
-    }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: Row(
-        children: [
-          ..._buildNavigationControls(),
-          const SizedBox(width: 4),
-          Expanded(child: _buildInputButton()),
-        ],
-      ),
-    );
-  }
-
-  /// 汎用の水平スクロール行：保持トークンを順に描画し、必要なら
-  /// 鉛筆ボタンをスクロールの外に固定する。
+  /// 汎用の水平スクロール行（トークン列を [SpecialKeysTokenView] で描画）。
   Widget _buildGenericTokenRow({
     required List<String> tokens,
     required double height,
     ScrollController? scrollController,
     required bool showManageButton,
+    required SpecialKeysTokenView tokenView,
   }) {
-    if (tokens.isEmpty && !showManageButton) {
-      return const SizedBox.shrink();
-    }
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      color: isDark ? DesignColors.surfaceDark : DesignColors.surfaceLight,
-      child: Row(
-        children: [
-          if (tokens.isNotEmpty)
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollController,
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final token in tokens) ...[
-                      _buildToken(token, height: height),
-                      const SizedBox(width: 2),
-                    ],
-                  ],
-                ),
-              ),
-            )
-          else
-            const Spacer(),
-          if (showManageButton) _buildManageButton(),
-        ],
-      ),
-    );
-  }
-
-  /// モード依存のスキップを適用した可視トークン列。
-  List<String> _visibleTokens(List<String> tokens) =>
-      tokens.where(_shouldRenderToken).toList();
-
-  /// 標準トークン・カスタムトークンを問わず単一トークンを描画する。
-  /// [height] はカスタムボタンの高さ（行0/行1=32、行2=36）。
-  Widget _buildToken(String token, {required double height}) {
-    switch (token) {
-      case 'esc':
-        return _buildSpecialKeyButton('ESC', 'Escape', width: 40);
-      case 'tab':
-        return _buildSpecialKeyButton('TAB', 'Tab', width: 40);
-      case 'ctrl':
-        return _buildModifierButton('CTRL', _ctrlPressed, () {
-          setState(() => _ctrlPressed = !_ctrlPressed);
-        }, width: 44);
-      case 'alt':
-        return _buildModifierButton('ALT', _altPressed, () {
-          setState(() => _altPressed = !_altPressed);
-        }, width: 44);
-      case 'shift':
-        return _buildModifierButton('SHIFT', _shiftPressed, () {
-          setState(() => _shiftPressed = !_shiftPressed);
-        }, width: 48);
-      case 'enter':
-        return _buildEnterKeyButton(width: 56);
-      case 'senter':
-        return _buildShiftEnterKeyButton(width: 56);
-      case 'slash':
-        return _buildLiteralKeyButton('/', '/', width: 32);
-      case 'dash':
-        return _buildLiteralKeyButton('-', '-', width: 32);
-      // Without this there is no way to erase anything typed from this bar:
-      // its literal keys go straight into the pane, and the phone keyboard is
-      // only reachable in Direct Input mode.
-      case 'bspace':
-        return _buildNavigationKeyButton('\u232b', 'BSpace');
-      case 'pgup':
-        return _buildNavigationKeyButton('PgUp', 'PPage');
-      case 'pgdn':
-        return _buildNavigationKeyButton('PgDn', 'NPage');
-      case 'left':
-        return _buildArrowButton(Icons.arrow_left, 'Left');
-      case 'up':
-        return _buildArrowButton(Icons.arrow_drop_up, 'Up');
-      case 'down':
-        return _buildArrowButton(Icons.arrow_drop_down, 'Down');
-      case 'right':
-        return _buildArrowButton(Icons.arrow_right, 'Right');
-      case 'image':
-        return _buildImageTransferButton();
-      case 'di_toggle':
-        return _buildDirectInputToggle();
-      case 'input':
-        return SizedBox(width: 64, child: _buildInputButton());
-      case 'num1':
-        return _buildNumberKeyButton('1');
-      case 'num2':
-        return _buildNumberKeyButton('2');
-      case 'num3':
-        return _buildNumberKeyButton('3');
-      case 'num4':
-        return _buildNumberKeyButton('4');
-      default:
-        final button = _buttonForToken(token);
-        if (button == null) return const SizedBox.shrink();
-        return SizedBox(
-          width: _labelWidth(button.label),
-          child: _buildCustomKeyButton(button, height: height),
-        );
-    }
-  }
-
-  /// モード依存のトークンスキップ（input / num1..num4 / image）
-  bool _shouldRenderToken(String token) {
-    if (token == 'input') return !widget.directInputEnabled;
-    if (CustomKeyRows.directInputExtras.contains(token)) {
-      return widget.directInputEnabled;
-    }
-    if (token == 'image') return widget.onImagePickRequested != null;
-    return true;
-  }
-
-  /// カスタムボタンのトークン解決（`ck:<id-suffix>` → CustomKeyButton）
-  CustomKeyButton? _buttonForToken(String token) {
-    if (!CustomKeyRows.isCustomToken(token)) return null;
-    final id = 'ck_${token.substring(3)}';
-    for (final b in widget.customButtons) {
-      if (b.id == id) return b;
-    }
-    return null;
-  }
-
-  /// ラベル長に応じたカスタムボタン幅（44〜96px）
-  double _labelWidth(String label) =>
-      (label.length * 7.0 + 14.0).clamp(44.0, 96.0).toDouble();
-
-  /// カスタムボタン：タップ時にソフトウェア修飾子をリセットしてから送信
-  Widget _buildCustomKeyButton(CustomKeyButton button, {double height = 32}) {
-    return CustomKeyButtonWidget(
-      button: button,
+    return GenericTokenRow(
+      tokens: tokens,
       height: height,
-      onKeyPressed: (key) {
-        _resetSoftwareModifiers();
-        widget.onKeyPressed(key);
-      },
-      onSpecialKeyPressed: (key) {
-        _resetSoftwareModifiers();
-        widget.onSpecialKeyPressed(key);
-      },
-      onEdit: (b) => widget.onCustomButtonEdit?.call(b),
+      scrollController: scrollController,
+      showManageButton: showManageButton,
+      onManage: widget.onManageButtons,
       hapticFeedback: widget.hapticFeedback,
+      tokenView: tokenView,
     );
-  }
-
-  /// Shift+Enterキーボタン（Claude CodeのAcceptEdits等用）
-  Widget _buildShiftEnterKeyButton({double? width}) {
-    final button = GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendSpecialKey('S-Enter'),
-      child: Container(
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: DesignColors.secondary.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(4),
-          border: Border(
-            bottom: BorderSide(
-              color: DesignColors.secondary.withValues(alpha: 0.5),
-              width: 2,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            'S-RET',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 8,
-              fontWeight: FontWeight.w700,
-              color: DesignColors.secondary,
-            ),
-          ),
-        ),
-      ),
-    );
-    return width == null
-        ? Expanded(child: button)
-        : SizedBox(width: width, child: button);
-  }
-
-  /// ENTERキーボタン（単体でEnterを送信）
-  Widget _buildEnterKeyButton({double? width}) {
-    final button = GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendSpecialKey('Enter'),
-      child: Container(
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: DesignColors.primary.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(4),
-          border: Border(
-            bottom: BorderSide(
-              color: DesignColors.primary.withValues(alpha: 0.5),
-              width: 2,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.keyboard_return,
-                  size: 12,
-                  color: DesignColors.primary,
-                ),
-                const SizedBox(width: 2),
-                Text(
-                  'RET',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: DesignColors.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    return width == null
-        ? Expanded(child: button)
-        : SizedBox(width: width, child: button);
-  }
-
-  /// ボタン管理画面を開く鉛筆ボタン（32×32、行1末尾・スクロール外に固定）
-  Widget _buildManageButton() {
-    return GestureDetector(
-      onTap: () {
-        if (widget.hapticFeedback) {
-          HapticFeedback.selectionClick();
-        }
-        widget.onManageButtons?.call();
-      },
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: DesignColors.keyBackground,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-        ),
-        child: const Center(
-          child: Icon(Icons.edit_outlined, size: 18, color: Colors.white70),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildNavigationControls() {
-    return [
-      _buildNavigationKeyButton('PgUp', 'PPage'),
-      const SizedBox(width: 2),
-      _buildNavigationKeyButton('PgDn', 'NPage'),
-      const SizedBox(width: 2),
-      _buildArrowButton(Icons.arrow_left, 'Left'),
-      const SizedBox(width: 2),
-      _buildArrowButton(Icons.arrow_drop_up, 'Up'),
-      const SizedBox(width: 2),
-      _buildArrowButton(Icons.arrow_drop_down, 'Down'),
-      const SizedBox(width: 2),
-      _buildArrowButton(Icons.arrow_right, 'Right'),
-      const SizedBox(width: 8),
-      if (widget.onImagePickRequested != null) ...[
-        _buildImageTransferButton(),
-        const SizedBox(width: 2),
-      ],
-      _buildDirectInputToggle(),
-    ];
-  }
-
-  /// DirectInput専用行（入力フィールドのみ）
-  /// RET/BSはネイティブキーボードのものを使用
-  Widget _buildDirectInputRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      child: _buildDirectInputField(),
-    );
-  }
-
-  /// DirectInputモードのトグルボタン
-  Widget _buildDirectInputToggle() {
-    final isEnabled = widget.directInputEnabled;
-    return GestureDetector(
-      onTap: () {
-        if (widget.hapticFeedback) {
-          HapticFeedback.selectionClick();
-        }
-        widget.onDirectInputToggle?.call();
-      },
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: isEnabled
-              ? DesignColors.success.withValues(alpha: 0.3)
-              : DesignColors.keyBackground,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: isEnabled
-                ? DesignColors.success.withValues(alpha: 0.5)
-                : Colors.white.withValues(alpha: 0.05),
-          ),
-        ),
-        child: Center(
-          child: Icon(
-            isEnabled ? Icons.flash_on : Icons.flash_off,
-            size: 18,
-            color: isEnabled ? DesignColors.success : Colors.white70,
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// DirectInput用テキストフィールド（リアルタイム送信）
-  Widget _buildDirectInputField() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Focus(
-      onKeyEvent: _handleKeyEvent,
-      child: Container(
-        height: 40,
-        decoration: BoxDecoration(
-          color: DesignColors.success.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: DesignColors.success.withValues(alpha: 0.4),
-          ),
-        ),
-        child: Row(
-          children: [
-            // LIVEインジケーター（左側に配置）
-            Container(
-              margin: const EdgeInsets.only(left: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              decoration: BoxDecoration(
-                color: DesignColors.success.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: DesignColors.success,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: DesignColors.success.withValues(alpha: 0.5),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'LIVE',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: DesignColors.success,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 入力フィールド
-            Expanded(
-              child: TextField(
-                controller: _directInputController,
-                focusNode: _directInputFocusNode,
-                autofocus: true,
-                textInputAction: TextInputAction.send,
-                // ターミナルへのパススルー入力のため、OSによるテキスト書き換えを
-                // 無効化する（iOS自動補正の ".."→"‥" 置換、Smart Dashes /
-                // Smart Quotes、スペルチェックによる確定も防止）。
-                // ※ enableSuggestions: false は設定しないこと:
-                //   Androidエンジン（TextInputPlugin.inputTypeFromTextInputType）が
-                //   inputType に TYPE_TEXT_VARIATION_VISIBLE_PASSWORD を付加し、
-                //   IME変換（日本語入力）が不可能になるため。
-                autocorrect: false,
-                smartDashesType: SmartDashesType.disabled,
-                smartQuotesType: SmartQuotesType.disabled,
-                onSubmitted: _onDirectInputSubmitted,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 14,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                decoration: InputDecoration(
-                  hintText: context.l10n.keyBarTypeHere,
-                  hintStyle: GoogleFonts.jetBrainsMono(
-                    fontSize: 14,
-                    color: DesignColors.success.withValues(alpha: 0.5),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 10,
-                  ),
-                  isDense: true,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 特殊キーボタン（tmux形式で送信）
-  Widget _buildSpecialKeyButton(String label, String tmuxKey, {double? width}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    final button = GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendSpecialKey(tmuxKey),
-      child: Container(
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border(
-            bottom: BorderSide(
-              color: isDark ? Colors.black : Colors.grey.shade400,
-              width: 2,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface.withValues(alpha: 0.9),
-            ),
-          ),
-        ),
-      ),
-    );
-    return width == null
-        ? Expanded(child: button)
-        : SizedBox(width: width, child: button);
-  }
-
-  /// リテラルキーボタン（そのまま文字として送信）
-  Widget _buildLiteralKeyButton(String label, String key, {double? width}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    final button = GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendLiteralKey(key),
-      child: Container(
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border(
-            bottom: BorderSide(
-              color: isDark ? Colors.black : Colors.grey.shade400,
-              width: 2,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface.withValues(alpha: 0.9),
-            ),
-          ),
-        ),
-      ),
-    );
-    return width == null
-        ? Expanded(child: button)
-        : SizedBox(width: width, child: button);
-  }
-
-  Widget _buildModifierButton(
-    String label,
-    bool isPressed,
-    VoidCallback onPressed, {
-    double? width,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    final button = GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: onPressed,
-      child: Container(
-        height: 32,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        decoration: BoxDecoration(
-          color: isPressed
-              ? colorScheme.primary
-              : (isDark
-                    ? DesignColors.keyBackground
-                    : DesignColors.keyBackgroundLight),
-          borderRadius: BorderRadius.circular(4),
-          border: Border(
-            bottom: BorderSide(
-              color: isPressed
-                  ? colorScheme.primary
-                  : (isDark ? Colors.black : Colors.grey.shade400),
-              width: 2,
-            ),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.15),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: isPressed ? colorScheme.onPrimary : colorScheme.primary,
-            ),
-          ),
-        ),
-      ),
-    );
-    return width == null
-        ? Expanded(child: button)
-        : SizedBox(width: width, child: button);
-  }
-
-  Widget _buildArrowButton(IconData icon, String tmuxKey) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendSpecialKey(tmuxKey),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-        ),
-        child: Icon(icon, size: 16, color: colorScheme.onSurface),
-      ),
-    );
-  }
-
-  Widget _buildNavigationKeyButton(String label, String tmuxKey) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendSpecialKey(tmuxKey),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 8,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 画像転送ボタン
-  Widget _buildImageTransferButton() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: widget.onImagePickRequested,
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-        ),
-        child: Icon(
-          Icons.image_outlined,
-          size: 16,
-          color: colorScheme.onSurface,
-        ),
-      ),
-    );
-  }
-
-  /// 数字キーボタン（DirectInput有効時に矢印キー行に表示）
-  Widget _buildNumberKeyButton(String label) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTapDown: (_) {
-        if (widget.hapticFeedback) {
-          HapticFeedback.lightImpact();
-        }
-      },
-      onTap: () => _sendLiteralKey(label),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: isDark
-              ? DesignColors.keyBackground
-              : DesignColors.keyBackgroundLight,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: colorScheme.outline.withValues(alpha: 0.2)),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInputButton() {
-    return GestureDetector(
-      onTap: widget.onInputTap,
-      child: Container(
-        height: 36,
-        decoration: BoxDecoration(
-          color: DesignColors.primary.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: DesignColors.primary.withValues(alpha: 0.2),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Center(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.keyboard,
-                  size: 15,
-                  color: DesignColors.primary.withValues(alpha: 0.7),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  // "Cmd" keeps the non-direct toolbar compact enough for fixed nav keys.
-                  'Cmd',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 12,
-                    color: DesignColors.primary.withValues(alpha: 0.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 特殊キーを送信（tmux形式）
-  void _sendSpecialKey(String tmuxKey) {
-    if (widget.hapticFeedback) {
-      HapticFeedback.lightImpact();
-    }
-
-    String key = tmuxKey;
-
-    // 特殊なケース: Shift+Tab → BTab (Back Tab)
-    if (_shiftPressed && tmuxKey == 'Tab') {
-      setState(() => _shiftPressed = false);
-      // Ctrl/Altの状態もリセット
-      if (_ctrlPressed) setState(() => _ctrlPressed = false);
-      if (_altPressed) setState(() => _altPressed = false);
-      widget.onSpecialKeyPressed('BTab');
-      return;
-    }
-
-    // 修飾子を組み合わせる（Shift, Ctrl, Alt順）
-    final List<String> modifiers = [];
-    if (_shiftPressed) {
-      modifiers.add('S');
-      setState(() => _shiftPressed = false);
-    }
-    if (_ctrlPressed) {
-      modifiers.add('C');
-      setState(() => _ctrlPressed = false);
-    }
-    if (_altPressed) {
-      modifiers.add('M');
-      setState(() => _altPressed = false);
-    }
-
-    // tmux形式で修飾子を適用
-    if (modifiers.isNotEmpty) {
-      // 例: S-Enter, C-M-a など
-      final prefix = modifiers.join('-');
-      key = '$prefix-$tmuxKey';
-    }
-
-    widget.onSpecialKeyPressed(key);
-  }
-
-  /// リテラルキーを送信（文字そのまま）
-  void _sendLiteralKey(String key) {
-    if (widget.hapticFeedback) {
-      HapticFeedback.lightImpact();
-    }
-
-    // 修飾子を組み合わせる
-    final List<String> modifiers = [];
-    if (_shiftPressed) {
-      modifiers.add('S');
-      setState(() => _shiftPressed = false);
-    }
-    if (_ctrlPressed) {
-      modifiers.add('C');
-      setState(() => _ctrlPressed = false);
-    }
-    if (_altPressed) {
-      modifiers.add('M');
-      setState(() => _altPressed = false);
-    }
-
-    // 修飾子がある場合はtmux形式で送信
-    if (modifiers.isNotEmpty && key.length == 1) {
-      final prefix = modifiers.join('-');
-      widget.onSpecialKeyPressed('$prefix-$key');
-      return;
-    }
-
-    // 修飾子なしの場合はリテラル送信
-    widget.onKeyPressed(key);
   }
 }

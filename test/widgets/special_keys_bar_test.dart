@@ -433,6 +433,35 @@ void main() {
       expect(keys, contains('/'));
       expect(specials, isNot(contains('C-/')));
     });
+
+    testWidgets('custom button key step dispatches onSpecialKeyPressed', (
+      tester,
+    ) async {
+      final keys = <String>[];
+      final specials = <String>[];
+      final enterButton = CustomKeyButton(
+        id: 'ck_1_enter',
+        label: 'Enter',
+        steps: const [
+          CustomKeyStep(type: CustomKeyStepType.key, value: 'Enter'),
+        ],
+      );
+      await tester.pumpWidget(
+        customHarness(
+          customButtons: [enterButton],
+          row1Tokens: [ckToken(enterButton.id)],
+          onKeyPressed: keys.add,
+          onSpecialKeyPressed: specials.add,
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('Enter'));
+      await tester.pump();
+
+      expect(specials, ['Enter']);
+      expect(keys, isEmpty);
+    });
     testWidgets('row-0 custom button renders above the modifier row', (
       tester,
     ) async {
