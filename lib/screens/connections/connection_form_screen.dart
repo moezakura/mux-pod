@@ -5,29 +5,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../l10n/app_localizations.dart';
+import '../../l10n/l10n_ext.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
-import '../../l10n/l10n_ext.dart';
 import '../../services/backend/backend_type.dart';
-import '../../services/backend/multiplexer_config.dart';
-import '../../services/command/command_request.dart';
-import '../../services/herdr/herdr_adapter.dart';
-import '../../services/herdr/herdr_commands.dart';
-import '../../services/keychain/secure_storage.dart';
-import '../../services/ssh/ssh_client.dart';
-import '../../services/tmux/ssh_tmux_command_executor.dart';
-import '../../services/tmux/commands/session_commands.dart';
-import '../../services/tmux/tmux_version.dart';
 import '../../theme/design_colors.dart';
+import 'connection_form_auth_section.dart';
+import 'connection_form_saver.dart';
+import 'connection_form_server_section.dart';
+import 'connection_form_tester.dart';
+import 'connection_form_values.dart';
 
-/// [ConnectionFormScreen] の接続テストで使用する [SshClient] のファクトリ。
+export 'connection_form_tester.dart'
+    show connectionFormSshClientFactoryProvider;
+
+/// 接続編集画面（composition root）。
 ///
-/// テスト時に fake client を差し込めるよう Provider として公開する。
-final connectionFormSshClientFactoryProvider = Provider<SshClient Function()>(
-  (ref) => createSshClient,
-);
-
-/// 接続編集画面
+/// フォーム状態（controller・選択値）の単一所有者として、入力値の
+/// 収集・接続テスト・保存をオーケストレーションする。
+/// セクション表示は [ConnectionServerSection] / [ConnectionAuthSection] へ、
+/// 接続テスト実行は [ConnectionTester] へ、保存は [ConnectionSaver] へ委譲する。
 class ConnectionFormScreen extends ConsumerStatefulWidget {
   final String? connectionId;
 
@@ -126,9 +124,33 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
               children: [
-                _buildServerSection(),
+                ConnectionServerSection(
+                  nameController: _nameController,
+                  hostController: _hostController,
+                  portController: _portController,
+                  usernameController: _usernameController,
+                  multiplexerPathController: _multiplexerPathController,
+                  deepLinkIdController: _deepLinkIdController,
+                  backend: _backend,
+                  onBackendChanged: (backend) =>
+                      setState(() => _backend = backend),
+                  onHostChanged: () => setState(() {}),
+                ),
                 const SizedBox(height: 24),
-                _buildAuthSection(keysState),
+                ConnectionAuthSection(
+                  keysState: keysState,
+                  isEditing: widget.isEditing,
+                  authMethod: _authMethod,
+                  selectedKeyId: _selectedKeyId,
+                  obscurePassword: _obscurePassword,
+                  passwordController: _passwordController,
+                  onAuthMethodChanged: (method) =>
+                      setState(() => _authMethod = method),
+                  onObscurePasswordChanged: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  onKeySelected: (keyId) =>
+                      setState(() => _selectedKeyId = keyId),
+                ),
               ],
             ),
           ),
@@ -186,866 +208,6 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         ),
         const SizedBox(width: 8),
       ],
-    );
-  }
-
-  Widget _buildSectionHeader(String title) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(
-        title.toUpperCase(),
-        style: GoogleFonts.spaceGrotesk(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.5,
-          color: mutedColor,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildServerSection() {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader(context.l10n.connSectionServer),
-        Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: colorScheme.outline.withValues(alpha: 0.2),
-            ),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Connection name
-              _buildFieldLabel(context.l10n.connFieldConnectionName),
-              const SizedBox(height: 8),
-              _buildNameInput(),
-              const SizedBox(height: 16),
-              // Host field
-              _buildFieldLabel(context.l10n.connFieldHost),
-              const SizedBox(height: 8),
-              _buildHostInput(),
-              const SizedBox(height: 16),
-              // Port & Username row
-              Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildFieldLabel(context.l10n.connFieldPort),
-                        const SizedBox(height: 8),
-                        _buildPortInput(),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildFieldLabel(context.l10n.connFieldUsername),
-                        const SizedBox(height: 8),
-                        _buildUsernameInput(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // backend toggle
-              _buildFieldLabel(context.l10n.connFieldBackend),
-              const SizedBox(height: 8),
-              _buildBackendToggle(),
-              const SizedBox(height: 16),
-              // multiplexer path
-              _buildFieldLabel(
-                _backend == BackendType.herdr
-                    ? context.l10n.connFieldHerdrPath
-                    : context.l10n.connFieldMultiplexerPath,
-              ),
-              const SizedBox(height: 8),
-              _buildMultiplexerPathInput(),
-              const SizedBox(height: 16),
-              // Deep Link ID
-              _buildFieldLabel(context.l10n.connFieldDeepLinkId),
-              const SizedBox(height: 4),
-              Text(
-                context.l10n.connDeepLinkIdDescription,
-                style: GoogleFonts.spaceGrotesk(
-                  fontSize: 10,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? DesignColors.textMuted
-                      : DesignColors.textMutedLight,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildDeepLinkIdInput(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAuthSection(KeysState keysState) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader(context.l10n.connSectionAuth),
-        Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: colorScheme.outline.withValues(alpha: 0.2),
-            ),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              _buildAuthMethodToggle(),
-              const SizedBox(height: 16),
-              if (_authMethod == 'password')
-                _buildPasswordInput()
-              else
-                _buildKeyDropdown(keysState),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFieldLabel(String label) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Text(
-      label.toUpperCase(),
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 10,
-        fontWeight: FontWeight.w500,
-        letterSpacing: 1,
-        color: isDark ? DesignColors.textMuted : DesignColors.textMutedLight,
-      ),
-    );
-  }
-
-  Widget _buildNameInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _nameController,
-      style: GoogleFonts.spaceGrotesk(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: context.l10n.connNameHint,
-        hintStyle: GoogleFonts.spaceGrotesk(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        prefixIcon: Icon(Icons.label_outline, color: mutedColor, size: 20),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return context.l10n.connNameRequired;
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildHostInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _hostController,
-      keyboardType: TextInputType.url,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: context.l10n.connHostHint,
-        hintStyle: GoogleFonts.jetBrainsMono(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        suffixIcon: Container(
-          padding: const EdgeInsets.all(12),
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: _hostController.text.isNotEmpty
-                  ? DesignColors.success
-                  : mutedColor,
-              shape: BoxShape.circle,
-              boxShadow: _hostController.text.isNotEmpty
-                  ? [
-                      BoxShadow(
-                        color: DesignColors.success.withValues(alpha: 0.6),
-                        blurRadius: 8,
-                      ),
-                    ]
-                  : null,
-            ),
-          ),
-        ),
-      ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return context.l10n.connHostRequired;
-        }
-        return null;
-      },
-      onChanged: (_) => setState(() {}),
-    );
-  }
-
-  Widget _buildPortInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _portController,
-      keyboardType: TextInputType.number,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: '22',
-        hintStyle: GoogleFonts.jetBrainsMono(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return context.l10n.connPortRequired;
-        }
-        final port = int.tryParse(value);
-        if (port == null || port < 1 || port > 65535) {
-          return context.l10n.connPortInvalid;
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildUsernameInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _usernameController,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: 'root',
-        hintStyle: GoogleFonts.jetBrainsMono(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        prefixIcon: Icon(Icons.person_outline, color: mutedColor, size: 20),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return context.l10n.connUsernameRequired;
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildMultiplexerPathInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    final isHerdr = _backend == BackendType.herdr;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextFormField(
-          controller: _multiplexerPathController,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 14,
-            color: colorScheme.onSurface,
-          ),
-          decoration: InputDecoration(
-            hintText: isHerdr
-                ? context.l10n.connMultiplexerPathHint('/usr/local/bin/herdr')
-                : context.l10n.connMultiplexerPathHint('/usr/bin/tmux'),
-            hintStyle: GoogleFonts.jetBrainsMono(
-              color: mutedColor.withValues(alpha: 0.5),
-            ),
-            prefixIcon: Icon(
-              Icons.terminal_outlined,
-              color: mutedColor,
-              size: 20,
-            ),
-            filled: true,
-            fillColor: inputColor,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: colorScheme.outline.withValues(alpha: 0.2),
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: colorScheme.outline.withValues(alpha: 0.2),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: colorScheme.primary),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-          ),
-          validator: (value) {
-            if (value != null && value.isNotEmpty && !value.startsWith('/')) {
-              return isHerdr
-                  ? context.l10n.connAbsolutePathRequired(
-                      '/usr/local/bin/herdr',
-                    )
-                  : context.l10n.connAbsolutePathRequired('/usr/bin/tmux');
-            }
-            return null;
-          },
-        ),
-        const SizedBox(height: 6),
-        Text(
-          context.l10n.connLeaveEmptyForAutoDetect,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 11,
-            color: mutedColor.withValues(alpha: 0.7),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDeepLinkIdInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _deepLinkIdController,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: context.l10n.connDeepLinkIdHint,
-        hintStyle: GoogleFonts.jetBrainsMono(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        prefixIcon: Icon(Icons.link, color: mutedColor, size: 20),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.2),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (value) {
-        if (value != null && value.isNotEmpty && value.contains(' ')) {
-          return context.l10n.connDeepLinkIdNoSpaces;
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildBackendToggle() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _backend = BackendType.tmux),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _backend == BackendType.tmux
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: _backend == BackendType.tmux
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  'Tmux',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: _backend == BackendType.tmux
-                        ? colorScheme.onPrimary
-                        : mutedColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _backend = BackendType.herdr),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _backend == BackendType.herdr
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: _backend == BackendType.herdr
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  'Herdr',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: _backend == BackendType.herdr
-                        ? colorScheme.onPrimary
-                        : mutedColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAuthMethodToggle() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.onSurface.withValues(alpha: isDark ? 0.1 : 0.05),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _authMethod = 'password'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _authMethod == 'password'
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: _authMethod == 'password'
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  context.l10n.connAuthPassword,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: _authMethod == 'password'
-                        ? colorScheme.onPrimary
-                        : mutedColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _authMethod = 'key'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: _authMethod == 'key'
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: _authMethod == 'key'
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(
-                  context.l10n.connAuthPrivateKey,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: _authMethod == 'key'
-                        ? colorScheme.onPrimary
-                        : mutedColor,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPasswordInput() {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return TextFormField(
-      controller: _passwordController,
-      obscureText: _obscurePassword,
-      style: GoogleFonts.jetBrainsMono(
-        fontSize: 14,
-        color: colorScheme.onSurface,
-      ),
-      decoration: InputDecoration(
-        hintText: '••••••••••••',
-        hintStyle: GoogleFonts.jetBrainsMono(
-          color: mutedColor.withValues(alpha: 0.5),
-        ),
-        prefixIcon: Icon(Icons.key, color: mutedColor, size: 20),
-        suffixIcon: IconButton(
-          icon: Icon(
-            _obscurePassword ? Icons.visibility_off : Icons.visibility,
-            color: mutedColor,
-            size: 20,
-          ),
-          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-        ),
-        filled: true,
-        fillColor: inputColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: colorScheme.primary),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
-      validator: (value) {
-        if (!widget.isEditing && (value == null || value.isEmpty)) {
-          return context.l10n.connPasswordRequired;
-        }
-        return null;
-      },
-    );
-  }
-
-  Widget _buildKeyDropdown(KeysState keysState) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark
-        ? DesignColors.textMuted
-        : DesignColors.textMutedLight;
-    final inputColor = isDark
-        ? DesignColors.inputDark
-        : DesignColors.inputLight;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: _selectedKeyId,
-          decoration: InputDecoration(
-            prefixIcon: Icon(
-              Icons.vpn_key_outlined,
-              color: mutedColor,
-              size: 20,
-            ),
-            filled: true,
-            fillColor: inputColor,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
-            ),
-          ),
-          dropdownColor: colorScheme.surface,
-          style: GoogleFonts.spaceGrotesk(
-            fontSize: 14,
-            color: colorScheme.onSurface,
-          ),
-          items: keysState.keys.map((key) {
-            final damaged = !key.isAvailable;
-            return DropdownMenuItem(
-              value: key.id,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(key.name),
-                  if (damaged) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.warning_amber,
-                      size: 14,
-                      color: colorScheme.error,
-                    ),
-                  ],
-                ],
-              ),
-            );
-          }).toList(),
-          onChanged: (value) => setState(() => _selectedKeyId = value),
-          validator: (value) {
-            if (_authMethod == 'key' && value == null) {
-              return context.l10n.connSelectKeyRequired;
-            }
-            return null;
-          },
-          hint: Text(
-            keysState.keys.isEmpty
-                ? context.l10n.connNoKeysAvailable
-                : context.l10n.connSelectKey,
-            style: GoogleFonts.spaceGrotesk(color: mutedColor),
-          ),
-        ),
-        if (_authMethod == 'key' && keysState.keys.isEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            context.l10n.connNoKeysFoundAddInKeys,
-            style: GoogleFonts.spaceGrotesk(
-              fontSize: 12,
-              color: colorScheme.error,
-            ),
-          ),
-        ],
-        if (_authMethod == 'key' &&
-            _selectedKeyId != null &&
-            isKeyDamaged(keysState, _selectedKeyId)) ...[
-          const SizedBox(height: 8),
-          _buildDamagedKeyWarning(context),
-        ],
-      ],
-    );
-  }
-
-  /// 破損キー選択中の警告表示
-  Widget _buildDamagedKeyWarning(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        context.l10n.connDamagedKeyWarning,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontSize: 12,
-          color: colorScheme.onErrorContainer,
-        ),
-      ),
     );
   }
 
@@ -1121,165 +283,75 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
 
     setState(() => _isTesting = true);
 
-    SshClient? sshClient;
-    String? errorMessage;
-    bool tmuxInstalled = false;
-    String? tmuxWarning;
-    bool herdrReady = false;
-    String? herdrWarning;
+    final values = ConnectionFormValues.fromControllers(
+      nameController: _nameController,
+      hostController: _hostController,
+      portController: _portController,
+      usernameController: _usernameController,
+      passwordController: _passwordController,
+      multiplexerPathController: _multiplexerPathController,
+      deepLinkIdController: _deepLinkIdController,
+      authMethod: _authMethod,
+      keyId: _selectedKeyId,
+      backend: _backend,
+    );
 
-    try {
-      // 認証情報を準備
-      String? password;
-      String? privateKey;
-      String? passphrase;
-
-      if (_authMethod == 'password') {
-        password = _passwordController.text;
-        if (password.isEmpty) {
-          throw SshAuthenticationError(l10n.connPasswordRequiredForTest);
-        }
-      } else if (_authMethod == 'key') {
-        if (_selectedKeyId == null) {
-          throw SshAuthenticationError(l10n.connKeyRequiredForTest);
-        }
-        final storage = SecureStorageService();
-        privateKey = await storage.getPrivateKey(_selectedKeyId!);
-        passphrase = await storage.getPassphrase(_selectedKeyId!);
-        if (privateKey == null) {
-          throw SshAuthenticationError(l10n.connPrivateKeyUnreadable);
-        }
-      }
-
-      // SSH接続テスト
-      final customPath = _multiplexerPathController.text.trim();
-      final isHerdr = _backend == BackendType.herdr;
-      sshClient = ref.read(connectionFormSshClientFactoryProvider)();
-      await sshClient.connect(
-        host: _hostController.text.trim(),
-        port: int.tryParse(_portController.text) ?? 22,
-        username: _usernameController.text.trim(),
-        options: SshConnectOptions(
-          password: password,
-          privateKey: privateKey,
-          passphrase: passphrase,
-          multiplexer: isHerdr
-              ? MultiplexerConfig(
-                  backend: BackendType.herdr,
-                  executablePath: customPath.isNotEmpty ? customPath : null,
-                )
-              : MultiplexerConfig.tmux(
-                  customPath.isNotEmpty ? customPath : null,
-                ),
-        ),
-        l10n: l10n,
-      );
-
-      if (isHerdr) {
-        // Herdr preflight: `herdr status --json` で protocol（最小 17）を確認
-        try {
-          final adapter = HerdrAdapter(sshClient);
-          await adapter.preflight();
-          herdrReady = true;
-        } on HerdrProtocolMismatchException catch (e) {
-          herdrReady = false;
-          herdrWarning = l10n.connHerdrProtocolMismatch(
-            '${e.actual}',
-            '${e.supported}',
-          );
-        } on HerdrCommandException catch (_) {
-          herdrReady = false;
-          herdrWarning = customPath.isNotEmpty
-              ? l10n.connHerdrPathNotFound(customPath)
-              : l10n.connHerdrNotFound;
-        } catch (e) {
-          herdrReady = false;
-          herdrWarning = l10n.connHerdrCheckFailed('$e');
-        }
-      } else {
-        // SSH接続後に tmux の実体を検出（version 取得ができれば利用可能）
-        try {
-          final result = await sshClient.tmuxExecutor.execute(
-            CommandRequest(
-              command: TmuxSessionCommands.version(),
-              transport: CommandTransportPreference.ephemeralOnly,
-              output: CommandOutputRequirement.separatedOutput,
-            ),
-          );
-          if (result.exitCode != null && result.exitCode != 0) {
-            tmuxInstalled = false;
-            tmuxWarning = customPath.isNotEmpty
-                ? l10n.connTmuxPathNotFound(customPath)
-                : l10n.connTmuxNotFound;
-          } else {
-            final version = TmuxVersionInfo.parse(result.stdout);
-            if (version != null) {
-              tmuxInstalled = true;
-            } else {
-              tmuxInstalled = false;
-              tmuxWarning = l10n.connTmuxVersionUnrecognized;
-            }
-          }
-        } on SshConnectionError catch (_) {
-          tmuxInstalled = false;
-          tmuxWarning = customPath.isNotEmpty
-              ? l10n.connTmuxPathNotFound(customPath)
-              : l10n.connTmuxNotFound;
-        } catch (e) {
-          tmuxInstalled = false;
-          tmuxWarning = l10n.connTmuxCheckFailed('$e');
-        }
-      }
-    } on SshAuthenticationError catch (e) {
-      errorMessage = l10n.connTestAuthFailed(e.message);
-    } on SshConnectionError catch (e) {
-      errorMessage = l10n.connTestConnectionFailed(e.message);
-    } catch (e) {
-      errorMessage = l10n.connTestError('$e');
-    } finally {
-      await sshClient?.dispose();
-    }
+    final sshClientFactory = ref.read(connectionFormSshClientFactoryProvider);
+    final result = await const ConnectionTester().run(
+      sshClientFactory: sshClientFactory,
+      values: values,
+      l10n: l10n,
+    );
 
     if (mounted) {
       setState(() => _isTesting = false);
+      _showConnectionTestResult(result, l10n);
+    }
+  }
 
-      if (errorMessage != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: DesignColors.error,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else if (_backend == BackendType.herdr) {
-        final message = herdrReady
-            ? l10n.connTestSuccessHerdr
-            : l10n.connTestSuccessWarning(
-                herdrWarning ?? l10n.connHerdrNotFound,
-              );
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: herdrReady
-                ? DesignColors.success
-                : DesignColors.warning,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else {
-        final message = tmuxInstalled
-            ? l10n.connTestSuccessTmux
-            : l10n.connTestSuccessWarning(tmuxWarning ?? l10n.connTmuxNotFound);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: tmuxInstalled
-                ? DesignColors.success
-                : DesignColors.warning,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+  /// 接続テスト結果の SnackBar 表示（文言・色・duration は HEAD と同一）。
+  void _showConnectionTestResult(
+    ConnectionTestResult result,
+    AppLocalizations l10n,
+  ) {
+    if (result.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage!),
+          backgroundColor: DesignColors.error,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } else if (_backend == BackendType.herdr) {
+      final message = result.herdrReady
+          ? l10n.connTestSuccessHerdr
+          : l10n.connTestSuccessWarning(
+              result.herdrWarning ?? l10n.connHerdrNotFound,
+            );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: result.herdrReady
+              ? DesignColors.success
+              : DesignColors.warning,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else {
+      final message = result.tmuxInstalled
+          ? l10n.connTestSuccessTmux
+          : l10n.connTestSuccessWarning(
+              result.tmuxWarning ?? l10n.connTmuxNotFound,
+            );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: result.tmuxInstalled
+              ? DesignColors.success
+              : DesignColors.warning,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -1301,62 +373,26 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         name: 'ConnectionForm',
       );
 
-      if (_authMethod == 'password' && _passwordController.text.isNotEmpty) {
-        developer.log(
-          'Saving password to secure storage...',
-          name: 'ConnectionForm',
-        );
-        final storage = SecureStorageService();
-        await storage.savePassword(connectionId, _passwordController.text);
-        developer.log('Password saved successfully', name: 'ConnectionForm');
-      }
-
-      final savePath = _multiplexerPathController.text.trim();
-      final saveDeepLinkId = _deepLinkIdController.text.trim();
-      final multiplexer = _backend == BackendType.herdr
-          ? MultiplexerConfig(
-              backend: BackendType.herdr,
-              executablePath: savePath.isNotEmpty ? savePath : null,
-            )
-          : MultiplexerConfig.tmux(savePath.isNotEmpty ? savePath : null);
-      final connection = Connection(
-        id: connectionId,
-        name: _nameController.text.trim(),
-        host: _hostController.text.trim(),
-        port: int.parse(_portController.text),
-        username: _usernameController.text.trim(),
+      final values = ConnectionFormValues.fromControllers(
+        nameController: _nameController,
+        hostController: _hostController,
+        portController: _portController,
+        usernameController: _usernameController,
+        passwordController: _passwordController,
+        multiplexerPathController: _multiplexerPathController,
+        deepLinkIdController: _deepLinkIdController,
         authMethod: _authMethod,
-        keyId: _authMethod == 'key' ? _selectedKeyId : null,
-        multiplexer: multiplexer,
-        deepLinkId: saveDeepLinkId.isNotEmpty ? saveDeepLinkId : null,
-        createdAt: widget.isEditing
-            ? ref
-                      .read(connectionsProvider.notifier)
-                      .getById(connectionId)
-                      ?.createdAt ??
-                  DateTime.now()
-            : DateTime.now(),
-      );
-      developer.log(
-        'Connection object created: ${connection.name}',
-        name: 'ConnectionForm',
+        keyId: _selectedKeyId,
+        backend: _backend,
       );
 
-      if (widget.isEditing) {
-        developer.log(
-          'Updating existing connection...',
-          name: 'ConnectionForm',
-        );
-        await ref.read(connectionsProvider.notifier).update(connection);
-        developer.log(
-          'Connection updated successfully',
-          name: 'ConnectionForm',
-        );
-      } else {
-        developer.log('Adding new connection...', name: 'ConnectionForm');
-        await ref.read(connectionsProvider.notifier).add(connection);
-        developer.log('Connection added successfully', name: 'ConnectionForm');
-      }
+      final notifier = ref.read(connectionsProvider.notifier);
+      await const ConnectionSaver().save(
+        connectionId: connectionId,
+        isEditing: widget.isEditing,
+        values: values,
+        notifier: notifier,
+      );
 
       developer.log(
         'Save completed, popping navigator...',
