@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../l10n/l10n_ext.dart';
+import '../../navigation/current_tab_provider.dart';
 import '../../providers/key_provider.dart';
 import '../../theme/design_colors.dart';
-import '../home_screen.dart';
 import 'key_generate_screen.dart';
 import 'key_import_screen.dart';
 import 'widgets/key_tile.dart';

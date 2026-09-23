@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n_ext.dart';
+import '../../../navigation/current_tab_provider.dart';
 import '../../../theme/design_colors.dart';
-import '../../home_screen.dart';
 import '../search/settings_search_provider.dart';
 
 /// 設定検索フィールド。
