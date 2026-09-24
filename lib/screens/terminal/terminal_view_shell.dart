@@ -284,8 +284,7 @@ class TerminalViewShell extends ConsumerWidget {
                                     body: commErrorPanelBody ?? '',
                                     detail: commErrorPanelDetail ?? '',
                                     expanded: commErrorPanelExpanded,
-                                    onToggleExpanded:
-                                        onToggleCommErrorExpanded,
+                                    onToggleExpanded: onToggleCommErrorExpanded,
                                     onRetry: onRetryCommError,
                                     onClose: onCloseCommError,
                                   )

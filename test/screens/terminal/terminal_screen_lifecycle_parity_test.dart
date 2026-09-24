@@ -180,9 +180,7 @@ void main() {
   });
 
   group('P4 parity: エラー Retry（NG-5）', () {
-    testWidgets('認証エラーは通信エラーパネルを出し、Reconnect now で接続フローを再実行する', (
-      tester,
-    ) async {
+    testWidgets('認証エラーは通信エラーパネルを出し、Reconnect now で接続フローを再実行する', (tester) async {
       // 認証エラー（connect 段で SshAuthenticationError）→ 通信エラーパネル
       final keyConnection = Connection(
         id: 'test-conn',
@@ -208,10 +206,7 @@ void main() {
       await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pump();
       expect(
-        find.textContaining(
-          'Private key is not readable',
-          findRichText: true,
-        ),
+        find.textContaining('Private key is not readable', findRichText: true),
         findsWidgets,
       );
 
