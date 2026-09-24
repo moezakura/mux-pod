@@ -120,7 +120,17 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   /// adapter へ渡すアクセサ（root から切り出し・値のみ）。
   late final TerminalScreenAccessImpl _access = TerminalScreenAccessImpl(
     ref: ref,
-    screen: widget,
+    connectionId: widget.connectionId,
+    sessionNameOf: () => widget.sessionName,
+    sessionIdOf: () => widget.sessionId,
+    lastWindowIndexOf: () => widget.lastWindowIndex,
+    lastPaneIdOf: () => widget.lastPaneId,
+    deepLinkWindowNameOf: () => widget.deepLinkWindowName,
+    deepLinkPaneIndexOf: () => widget.deepLinkPaneIndex,
+    initialPaneIdOf: () => widget.initialPaneId,
+    injectedPaneContentReaderOf: () => widget.paneContentReader,
+    herdrCacheClockOf: () => widget.herdrCacheClock,
+    herdrCaretReaderOf: () => widget.herdrCaretReader,
     contextOf: () => context,
     isMountedFn: () => mounted,
     isDisposedFn: () => _isDisposed,

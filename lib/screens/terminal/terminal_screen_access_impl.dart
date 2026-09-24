@@ -11,14 +11,23 @@ import '../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
 import '../../widgets/scroll_to_bottom_button.dart'
     show ScrollToBottomButtonState;
 import 'terminal_reconnect_panel.dart';
-import 'terminal_screen.dart' show TerminalScreen;
 import 'terminal_screen_access.dart';
 import 'widgets/ansi_text_view.dart' show AnsiTextViewState;
 
 class TerminalScreenAccessImpl implements TerminalScreenAccess {
   TerminalScreenAccessImpl({
     required this.ref,
-    required TerminalScreen screen,
+    required this.connectionId,
+    required this.sessionNameOf,
+    required this.sessionIdOf,
+    required this.lastWindowIndexOf,
+    required this.lastPaneIdOf,
+    required this.deepLinkWindowNameOf,
+    required this.deepLinkPaneIndexOf,
+    required this.initialPaneIdOf,
+    required this.injectedPaneContentReaderOf,
+    required this.herdrCacheClockOf,
+    required this.herdrCaretReaderOf,
     required BuildContext Function() contextOf,
     required bool Function() isMountedFn,
     required bool Function() isDisposedFn,
@@ -26,8 +35,7 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
     required this.ansiTextViewKey,
     required this.scrollToBottomKey,
     required this.reconnectUi,
-  }) : _screen = screen,
-       _contextOf = contextOf,
+  }) : _contextOf = contextOf,
        _isMounted = isMountedFn,
        _isDisposed = isDisposedFn,
        _markNeedsBuild = markNeedsBuildFn;
@@ -35,7 +43,18 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
   @override
   final WidgetRef ref;
 
-  final TerminalScreen _screen;
+  @override
+  final String connectionId;
+  final String? Function() sessionNameOf;
+  final String? Function() sessionIdOf;
+  final int? Function() lastWindowIndexOf;
+  final String? Function() lastPaneIdOf;
+  final String? Function() deepLinkWindowNameOf;
+  final int? Function() deepLinkPaneIndexOf;
+  final String? Function() initialPaneIdOf;
+  final PaneContentReader? Function() injectedPaneContentReaderOf;
+  final DateTime Function()? Function() herdrCacheClockOf;
+  final HerdrCaretSnapshotReader? Function() herdrCaretReaderOf;
   final BuildContext Function() _contextOf;
   final bool Function() _isMounted;
   final bool Function() _isDisposed;
@@ -63,37 +82,35 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
   BuildContext get context => _contextOf();
 
   @override
-  String get connectionId => _screen.connectionId;
+  String? get sessionName => sessionNameOf();
 
   @override
-  String? get sessionName => _screen.sessionName;
+  String? get sessionId => sessionIdOf();
 
   @override
-  String? get sessionId => _screen.sessionId;
+  int? get lastWindowIndex => lastWindowIndexOf();
 
   @override
-  int? get lastWindowIndex => _screen.lastWindowIndex;
+  String? get lastPaneId => lastPaneIdOf();
 
   @override
-  String? get lastPaneId => _screen.lastPaneId;
+  String? get deepLinkWindowName => deepLinkWindowNameOf();
 
   @override
-  String? get deepLinkWindowName => _screen.deepLinkWindowName;
+  int? get deepLinkPaneIndex => deepLinkPaneIndexOf();
 
   @override
-  int? get deepLinkPaneIndex => _screen.deepLinkPaneIndex;
+  String? get initialPaneId => initialPaneIdOf();
 
   @override
-  String? get initialPaneId => _screen.initialPaneId;
+  PaneContentReader? get injectedPaneContentReader =>
+      injectedPaneContentReaderOf();
 
   @override
-  PaneContentReader? get injectedPaneContentReader => _screen.paneContentReader;
+  DateTime Function()? get herdrCacheClock => herdrCacheClockOf();
 
   @override
-  DateTime Function()? get herdrCacheClock => _screen.herdrCacheClock;
-
-  @override
-  HerdrCaretSnapshotReader? get herdrCaretReader => _screen.herdrCaretReader;
+  HerdrCaretSnapshotReader? get herdrCaretReader => herdrCaretReaderOf();
 
   // ---- #125 切断UX（状態所有者へ委譲）----
 
