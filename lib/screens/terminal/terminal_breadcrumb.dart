@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'widgets/reconnect_indicators.dart'
+    show DisconnectedIndicator, ReconnectingIndicator;
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -258,6 +260,11 @@ class TerminalBreadcrumbHeader extends StatelessWidget {
   /// 今すぐ再接続（エラー/再接続インジケータ）。
   final VoidCallback onRetryNow;
 
+  /// #125: 再接続インジケーター用（カウントダウン・key・タップトグル）。
+  final ValueListenable<int?> reconnectCountdown;
+  final GlobalKey reconnectIndicatorKey;
+  final VoidCallback onToggleReconnectPanel;
+
   /// 特殊キー送信可能（未接続時はファイルブラウザボタンを隠す）。
   final bool canSendSpecialKey;
 
@@ -278,6 +285,9 @@ class TerminalBreadcrumbHeader extends StatelessWidget {
     required this.sshState,
     required this.queuedCount,
     required this.onRetryNow,
+    required this.reconnectCountdown,
+    required this.reconnectIndicatorKey,
+    required this.onToggleReconnectPanel,
     required this.canSendSpecialKey,
     this.onFileBrowser,
     required this.onMenuOpen,
@@ -398,12 +408,20 @@ class TerminalBreadcrumbHeader extends StatelessWidget {
             // Latency / Reconnect indicator（ValueListenableBuilderでポーリング更新をスコープ）
             ValueListenableBuilder<int>(
               valueListenable: latencyNotifier,
-              builder: (context, latency, _) => ConnectionIndicator(
-                sshState: sshState,
-                queuedCount: queuedCount,
-                latency: latency,
-                onRetryNow: onRetryNow,
-              ),
+              builder: (context, latency, _) => sshState.isReconnecting
+                  ? ReconnectingIndicator(
+                      key: reconnectIndicatorKey,
+                      countdown: reconnectCountdown,
+                      isWaitingForNetwork: sshState.isWaitingForNetwork,
+                      attempt: sshState.reconnectAttempt,
+                      onTap: onToggleReconnectPanel,
+                    )
+                  : sshState.isConnected
+                  ? LatencyIndicator(latency: latency)
+                  : DisconnectedIndicator(
+                      queuedCount: queuedCount,
+                      onReconnectNow: onRetryNow,
+                    ),
             ),
             // File browser button（normal 以外・未接続（特殊キー送信不可）は
             // 場所を空けるため非表示。H2: scrollSend 中も非表示 = `== normal` のみ表示）

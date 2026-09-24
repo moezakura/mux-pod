@@ -122,7 +122,7 @@ class SshConnectionOrchestrator {
       _updateState(
         (s) => s.copyWith(
           connectionState: SshConnectionState.error,
-          error: e.message,
+          error: e.toString(),
         ),
       );
       _client?.dispose();
@@ -131,7 +131,7 @@ class SshConnectionOrchestrator {
       _updateState(
         (s) => s.copyWith(
           connectionState: SshConnectionState.error,
-          error: e.message,
+          error: e.toString(),
         ),
       );
       _client?.dispose();
@@ -207,7 +207,7 @@ class SshConnectionOrchestrator {
       _updateState(
         (s) => s.copyWith(
           connectionState: SshConnectionState.error,
-          error: e.message,
+          error: e.toString(),
         ),
       );
       _client?.dispose();
@@ -216,7 +216,7 @@ class SshConnectionOrchestrator {
       _updateState(
         (s) => s.copyWith(
           connectionState: SshConnectionState.error,
-          error: e.message,
+          error: e.toString(),
         ),
       );
       _client?.dispose();
@@ -246,7 +246,7 @@ class SshConnectionOrchestrator {
         (s) => s.copyWith(
           connectionState: newState,
           error: newState == SshConnectionState.error
-              ? _l10n.sshConnectionLost
+              ? (_client?.lastError ?? _l10n.sshConnectionLost)
               : null,
         ),
       );

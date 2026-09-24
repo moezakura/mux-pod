@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../../l10n/l10n_ext.dart';
 import '../../../../services/backend/domain/multiplexer_backend.dart';
 import '../../../../services/network/network_monitor.dart';
 import '../../../../providers/settings_provider.dart';
@@ -40,6 +41,33 @@ class SessionLifecycle {
       if (!env.host.isMounted || env.host.isDisposed) return;
       runtime.sshState = next;
       env.host.markNeedsBuild();
+
+      // #125: 切断検知 / 再接続失敗の error 遷移で通信エラーパネルを表示する。
+      // 初期接続失敗（previous 未接続 かつ isReconnecting=false）は
+      // connectAndSetup 側のエラー処理がカバーするため対象外。
+      if (previous != null &&
+          previous.error != next.error &&
+          next.error != null &&
+          (previous.isConnected || next.isReconnecting || previous.hasError)) {
+        env.host.showCommErrorPanel(
+          title: previous.isConnected
+              ? env.host.context.l10n.termConnectionLostTitle
+              : env.host.context.l10n.termReconnectFailedTitle,
+          body: env.host.context.l10n.termConnectionLostBody,
+          detail: next.error!,
+          onRetry: () => env.ref.read(sshProvider.notifier).reconnectNow(),
+        );
+      }
+      // 真の接続回復時（isConnected）のみ抑止状態をリセットしてパネルを閉じる。
+      if (next.isConnected) {
+        env.host.onConnectionRestored();
+      }
+      // 再接続待機中のカウントダウン表示を同期する（非再接続時はパネルを閉じる）。
+      env.host.syncReconnectCountdown(
+        isReconnecting: next.isReconnecting,
+        isWaitingForNetwork: next.isWaitingForNetwork,
+        nextRetryAt: next.nextRetryAt,
+      );
     }, fireImmediately: true);
 
     // Tmux 状態変化（親 setState 不要・Consumer widget が watch）

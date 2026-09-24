@@ -538,7 +538,6 @@
   "homeAttached": "接続中",
   "homeDetached": "未接続",
   "termInputQueueFull": "入力キューがいっぱいです。一部のキー操作が失われる可能性があります。",
-  "termRetryNow": "今すぐ再試行",
   "termRetry": "再試行",
   "termSshNotAvailable": "SSH接続を利用できません",
   "termWindowCreatedCommandNotSent": "ウィンドウを作成しましたが、コマンドを送信できませんでした",
@@ -644,15 +643,6 @@
   },
   "termMultilineNeedsConnection": "複数行の送信にはライブ接続が必要です。接続後に再試行してください。",
   "termWaitingForNetwork": "ネットワークを待機中...",
-  "termConnectionError": "接続エラー",
-  "termCharsQueued": "{count} 文字をキューに保存しました",
-  "@termCharsQueued": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "termChars": "{count} 文字",
   "@termChars": {
     "placeholders": {
@@ -663,6 +653,27 @@
   },
   "termOffline": "オフライン",
   "termReconnecting": "再接続中",
+  "termReconnectIn": "{seconds}秒後に再接続 ({attempt}回目)",
+  "@termReconnectIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "termReconnectAttempt": "再接続中 ({attempt}回目)",
+  "@termReconnectAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "termDisconnected": "未接続",
+  "termReconnectNow": "今すぐ再接続",
   "termFileBrowser": "ファイルブラウザ",
   "termResizeTerminal": "ターミナルをリサイズ",
   "termNewTab": "新規タブ",
@@ -884,8 +895,7 @@
   "settingsShowCursor": "カーソルを表示",
   "settingsShowCursorDescription": "ターミナルのカーソルインジケーターを表示",
   "settingsExperimentalHerdrCaretPositionTitle": "実験的: Herdrカーソル位置",
-  "settingsExperimentalHerdrCaretPositionDescription":
-      "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
+  "settingsExperimentalHerdrCaretPositionDescription": "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
   "settingsAdjustMode": "調整モード",
   "settingsAdjustModeNone": "なし",
   "settingsAdjustModeAutoFit": "自動フィット",
@@ -1578,28 +1588,42 @@
   "fileUploadSuccessSingle": "{path} にアップロードしました",
   "@fileUploadSuccessSingle": {
     "placeholders": {
-      "path": {"type": "String"}
+      "path": {
+        "type": "String"
+      }
     }
   },
   "fileUploadSuccessMulti": "{count} 件を {dir} にアップロードしました",
   "@fileUploadSuccessMulti": {
     "placeholders": {
-      "count": {"type": "int"},
-      "dir": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "dir": {
+        "type": "String"
+      }
     }
   },
   "fileUploadPartialFailure": "{total} 件中 {failed} 件が失敗しました",
   "@fileUploadPartialFailure": {
     "placeholders": {
-      "failed": {"type": "int"},
-      "total": {"type": "int"}
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCount": "アップロード中（{done} / {total}）",
   "@fileUploadCount": {
     "placeholders": {
-      "done": {"type": "int"},
-      "total": {"type": "int"}
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCancelAll": "すべてキャンセル",
@@ -1608,5 +1632,32 @@
   "settingsUploadConflictPrompt": "確認する（上書き / リネーム）",
   "settingsUploadConflictAutoRename": "自動でリネーム",
   "settingsUploadConcurrency": "同時アップロード数",
-  "settingsUploadChunkSize": "アップロード チャンクサイズ (KB)"
+  "settingsUploadChunkSize": "アップロード チャンクサイズ (KB)",
+  "termNextReconnectLabel": "次の再接続まで",
+  "termAttemptsLabel": "再接続の試行回数",
+  "termAutoRetryNote": "接続が戻るまで自動で再試行します",
+  "termConnectionLostTitle": "接続が切断されました",
+  "termConnectionFailedTitle": "接続に失敗しました",
+  "termReconnectFailedTitle": "再接続に失敗しました",
+  "termAuthenticationFailedTitle": "認証に失敗しました",
+  "termCommErrorTitle": "通信エラー",
+  "termConnectionLostBody": "サーバーとの接続が切断されました。",
+  "termReconnectFailedBody": "再接続を試みましたが、接続できませんでした。",
+  "termReconnectingPanelTitle": "再接続中",
+  "termSecondsValue": "{seconds}秒",
+  "@termSecondsValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "termAttemptsValue": "{count}回",
+  "@termAttemptsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -85,6 +85,32 @@ class TerminalScreenPorts
   @override
   void markNeedsBuild() => access.markNeedsBuild();
   @override
+  void showCommErrorPanel({
+    required String title,
+    required String body,
+    required String detail,
+    required Future<void> Function() onRetry,
+  }) => access.showCommErrorPanel(
+    title: title,
+    body: body,
+    detail: detail,
+    onRetry: onRetry,
+  );
+  @override
+  void closeCommErrorPanel() => access.closeCommErrorPanel();
+  @override
+  void onConnectionRestored() => access.onConnectionRestored();
+  @override
+  void syncReconnectCountdown({
+    required bool isReconnecting,
+    required bool isWaitingForNetwork,
+    DateTime? nextRetryAt,
+  }) => access.syncReconnectCountdown(
+    isReconnecting: isReconnecting,
+    isWaitingForNetwork: isWaitingForNetwork,
+    nextRetryAt: nextRetryAt,
+  );
+  @override
   BuildContext get context => access.context;
   @override
   String get connectionId => access.connectionId;

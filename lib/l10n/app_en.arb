@@ -538,7 +538,6 @@
   "homeAttached": "Attached",
   "homeDetached": "Detached",
   "termInputQueueFull": "Input queue is full; some keystrokes may be lost.",
-  "termRetryNow": "Retry Now",
   "termRetry": "Retry",
   "termSshNotAvailable": "SSH connection is not available",
   "termWindowCreatedCommandNotSent": "Window created, but the command could not be sent",
@@ -644,15 +643,6 @@
   },
   "termMultilineNeedsConnection": "Multi-line send requires a live connection; please retry.",
   "termWaitingForNetwork": "Waiting for network...",
-  "termConnectionError": "Connection error",
-  "termCharsQueued": "{count} chars queued",
-  "@termCharsQueued": {
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "termChars": "{count} chars",
   "@termChars": {
     "placeholders": {
@@ -663,6 +653,27 @@
   },
   "termOffline": "Offline",
   "termReconnecting": "Reconnecting",
+  "termReconnectIn": "Reconnecting in {seconds}s (Attempt {attempt})",
+  "@termReconnectIn": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      },
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "termReconnectAttempt": "Reconnecting (Attempt {attempt})",
+  "@termReconnectAttempt": {
+    "placeholders": {
+      "attempt": {
+        "type": "int"
+      }
+    }
+  },
+  "termDisconnected": "Disconnected",
+  "termReconnectNow": "Reconnect now",
   "termFileBrowser": "File Browser",
   "termResizeTerminal": "Resize Terminal",
   "termNewTab": "New Tab",
@@ -883,10 +894,8 @@
   "commonSave": "Save",
   "settingsShowCursor": "Show Cursor",
   "settingsShowCursorDescription": "Show terminal cursor indicator",
-  "settingsExperimentalHerdrCaretPositionTitle":
-      "Experimental: Herdr caret position",
-  "settingsExperimentalHerdrCaretPositionDescription":
-      "Experimental. Herdr connections only, best-effort (falls back to the current view on failure). Installs a small helper client on the SSH host.",
+  "settingsExperimentalHerdrCaretPositionTitle": "Experimental: Herdr caret position",
+  "settingsExperimentalHerdrCaretPositionDescription": "Experimental. Herdr connections only, best-effort (falls back to the current view on failure). Installs a small helper client on the SSH host.",
   "settingsAdjustMode": "Adjust Mode",
   "settingsAdjustModeNone": "None",
   "settingsAdjustModeAutoFit": "Auto Fit",
@@ -1579,28 +1588,42 @@
   "fileUploadSuccessSingle": "Uploaded to {path}",
   "@fileUploadSuccessSingle": {
     "placeholders": {
-      "path": {"type": "String"}
+      "path": {
+        "type": "String"
+      }
     }
   },
   "fileUploadSuccessMulti": "Uploaded {count} files to {dir}",
   "@fileUploadSuccessMulti": {
     "placeholders": {
-      "count": {"type": "int"},
-      "dir": {"type": "String"}
+      "count": {
+        "type": "int"
+      },
+      "dir": {
+        "type": "String"
+      }
     }
   },
   "fileUploadPartialFailure": "{failed} of {total} files failed to upload",
   "@fileUploadPartialFailure": {
     "placeholders": {
-      "failed": {"type": "int"},
-      "total": {"type": "int"}
+      "failed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCount": "Uploading files ({done} / {total})",
   "@fileUploadCount": {
     "placeholders": {
-      "done": {"type": "int"},
-      "total": {"type": "int"}
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "fileUploadCancelAll": "Cancel all",
@@ -1609,5 +1632,32 @@
   "settingsUploadConflictPrompt": "Ask (overwrite / rename)",
   "settingsUploadConflictAutoRename": "Rename automatically",
   "settingsUploadConcurrency": "Parallel uploads",
-  "settingsUploadChunkSize": "Upload chunk size (KB)"
+  "settingsUploadChunkSize": "Upload chunk size (KB)",
+  "termNextReconnectLabel": "Next reconnect",
+  "termAttemptsLabel": "Reconnect attempts",
+  "termAutoRetryNote": "Will retry automatically until the connection is restored",
+  "termConnectionLostTitle": "Connection lost",
+  "termConnectionFailedTitle": "Connection failed",
+  "termReconnectFailedTitle": "Reconnect failed",
+  "termAuthenticationFailedTitle": "Authentication failed",
+  "termCommErrorTitle": "Comm error",
+  "termConnectionLostBody": "Connection to the server was lost.",
+  "termReconnectFailedBody": "Reconnection was attempted but failed.",
+  "termReconnectingPanelTitle": "Reconnecting",
+  "termSecondsValue": "{seconds}s",
+  "@termSecondsValue": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "termAttemptsValue": "{count}",
+  "@termAttemptsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

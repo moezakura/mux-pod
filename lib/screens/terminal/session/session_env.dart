@@ -25,6 +25,29 @@ abstract interface class SessionHost {
   void markNeedsBuild();
   BuildContext get context;
 
+  // ---- #125 切断UX: root 所有の表示状態へのブリッジ ----
+
+  /// 通信エラーパネルを表示する（切断検知・再接続失敗）。
+  void showCommErrorPanel({
+    required String title,
+    required String body,
+    required String detail,
+    required Future<void> Function() onRetry,
+  });
+
+  /// 通信エラーパネルを閉じる（× 押下・接続復帰時）。
+  void closeCommErrorPanel();
+
+  /// 真の接続回復時のリセット（抑止フラグ解除 + パネルを閉じる）。
+  void onConnectionRestored();
+
+  /// 再接続待機中カウントダウンの同期。
+  void syncReconnectCountdown({
+    required bool isReconnecting,
+    required bool isWaitingForNetwork,
+    DateTime? nextRetryAt,
+  });
+
   // widget パラメータ（props）
   String get connectionId;
   String? get sessionName;

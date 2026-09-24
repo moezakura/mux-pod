@@ -3,7 +3,6 @@ import '../../../services/backend/domain/multiplexer_pane.dart';
 import '../../../services/backend/domain/multiplexer_session.dart';
 import '../../../services/backend/domain/multiplexer_window.dart';
 import '../../../services/backend/domain/pane_writer.dart';
-import '../../../services/connection_error.dart';
 import '../../../services/herdr/herdr_errors.dart';
 import '../../../services/herdr/herdr_models.dart';
 import '../../../services/herdr/herdr_to_domain.dart';
@@ -426,31 +425,16 @@ class HerdrSyncFlow {
         );
         await handleServerDown(e);
       case HerdrMutationClass.sshDisconnected:
-        _host.recordSwitchEvent(
-          'mutation $operationLabel: error (${e.runtimeType})',
-        );
-        final currentState = _host.ref.read(sshProvider);
-        if (!currentState.isReconnecting) {
-          _host.attemptReconnect();
-        }
       case HerdrMutationClass.other:
         _host.recordSwitchEvent(
           'mutation $operationLabel: error (${e.runtimeType})',
         );
-        if (e is SshConnectionError) {
-          final currentState = _host.ref.read(sshProvider);
-          if (!currentState.isReconnecting) {
-            _host.attemptReconnect();
-          }
-        } else {
-          herdrShowMutation(
-            _host.context,
-            _host.context.l10n.termOperationFailed(
-              operationLabel,
-              e.toString(),
-            ),
-          );
-        }
+        // #125: 接続断系も含め一律エラー通知へ一本化する（再接続は Path B の
+        // ポーリング検知へ集約し、ここでは試みない）。
+        herdrShowMutation(
+          _host.context,
+          _host.context.l10n.termOperationFailed(operationLabel, e.toString()),
+        );
     }
   }
 }

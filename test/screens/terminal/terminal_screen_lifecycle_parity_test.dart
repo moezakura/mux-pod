@@ -5,14 +5,16 @@
 // - NG-2: deactivate で SSH を切断（popUntil 等で pop された場合も）
 // - NG-4: inactive → 600ms 猶予の背景復元 / paused・hidden → 即時復元 /
 //         resumed → 背景復元フラグがある場合に force 再フィット（TERM-RESIZE-001）
-// - NG-5: エラー SnackBar の Retry は接続フロー（connectAndSetup）を再実行する
+// - NG-5: エラー表示の Retry は接続フロー（connectAndSetup）を再実行する
+//   （#125 の切断UX統合後は通信エラーパネルの「Reconnect now」が同等の導線）
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_muxpod/providers/connection.dart';
 import 'package:flutter_muxpod/providers/settings_provider.dart';
+import 'package:flutter_muxpod/services/ssh/ssh_authentication_error.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart'
-    show SshConnectionState;
+    show SshConnectOptions, SshConnectionState;
 
 import '../../helpers/fake_ssh_client.dart';
 import '../../helpers/fake_ssh_notifier.dart';
@@ -24,6 +26,20 @@ class _CountingSshNotifier extends FakeSshNotifier {
 
   int checkConnectionCalls = 0;
   int disconnectCalls = 0;
+  int connectCalls = 0;
+
+  @override
+  Future<void> connectWithoutShell(
+    Connection connection,
+    SshConnectOptions options,
+  ) async {
+    connectCalls++;
+    // 認証エラー: SSH 接続段で失敗するケースを再現する（鍵読取段ではなく）ため、
+    // Retry の再実行が接続呼出回数として観測できる。
+    throw SshAuthenticationError(
+      'Private key is not readable. Please re-import the key.',
+    );
+  }
 
   @override
   bool checkConnection() {
@@ -164,48 +180,52 @@ void main() {
   });
 
   group('P4 parity: エラー Retry（NG-5）', () {
-    testWidgets('認証エラー SnackBar の Retry は接続フローを再実行する', (tester) async {
-      // key 認証 + 鍵が読めない接続 → SshAuthenticationError → エラー SnackBar
+    testWidgets('認証エラーは通信エラーパネルを出し、Reconnect now で接続フローを再実行する', (
+      tester,
+    ) async {
+      // 認証エラー（connect 段で SshAuthenticationError）→ 通信エラーパネル
       final keyConnection = Connection(
         id: 'test-conn',
         name: 'KeyAuth',
         host: 'testhost',
         port: 22,
         username: 'user',
-        authMethod: 'key',
-        keyId: 'k1',
+        authMethod: 'password',
         createdAt: DateTime(2025, 1, 1),
       );
+      final notifier = _CountingSshNotifier();
       await TerminalParityPump.pumpTerminalScreen(
         tester,
         connection: keyConnection,
         settings: const AppSettings(keepScreenOn: false),
+        sshNotifierFactory: (_) => notifier,
       );
 
-      // 1 度目の認証失敗 → エラー SnackBar 表示（画面のエラー表現とは別に SnackBar が出る）
-      Finder snackError() => find.descendant(
-        of: find.byType(SnackBar),
-        matching: find.textContaining('Private key is not readable'),
-      );
-      expect(snackError(), findsOneWidget);
-      final retry = find.descendant(
-        of: find.byType(SnackBar),
-        matching: find.text('Retry'),
-      );
-      expect(retry, findsOneWidget);
+      // #125: SnackBar ではなく画面下部の通信エラーパネルで通知する。
+      expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
 
-      // Retry → connectAndSetup の再実行 → 再度認証失敗（= 新しい試行が起きた）
-      await tester.tap(retry);
+      // パネルの展開で例外詳細（鍵が読めない）を確認できる。
+      await tester.tap(find.byIcon(Icons.expand_more));
       await tester.pump();
-      // 1 つ目を dismiss させて 2 つ目（再試行の結果）を表示状態にする
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pump(const Duration(milliseconds: 500));
-
       expect(
-        snackError(),
+        find.textContaining(
+          'Private key is not readable',
+          findRichText: true,
+        ),
         findsWidgets,
-        reason: 'Retry が接続フローを再実行して再度エラーを表示する（ポーリング再開のみではない）',
       );
+
+      // Reconnect now → connectAndSetup の再実行（ポーリング再開のみではない）。
+      final before = notifier.connectCalls;
+      await tester.tap(find.text('Reconnect now'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        notifier.connectCalls,
+        greaterThan(before),
+        reason: 'Reconnect now が接続フローを再実行する',
+      );
+      expect(find.byKey(const Key('comm_error_panel')), findsOneWidget);
     });
   });
 }

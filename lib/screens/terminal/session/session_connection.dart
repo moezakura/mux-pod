@@ -72,7 +72,9 @@ class SessionConnectionFlow {
 
       final client = sshNotifier.client;
       if (client == null) {
-        throw Exception('SSH client is not available');
+        throw Exception(
+          env.ref.read(sshProvider).error ?? 'SSH client is not available',
+        );
       }
 
       // モードリセット
@@ -206,13 +208,16 @@ class SessionConnectionFlow {
       if (env.ref.read(settingsProvider).isAutoResize) {
         runtime.scheduleInitialAutoResize?.call();
       }
-    } on SshAuthenticationError {
+    } on SshAuthenticationError catch (e) {
       if (!env.host.isMounted) return;
       final message = env.host.context.l10n.connPrivateKeyUnreadable;
       env.host.markNeedsBuild();
       runtime.isConnecting = false;
       runtime.connectionError = message;
-      _showErrorSnackBar(message);
+      _showErrorSnackBar(
+        e.toString(),
+        title: env.host.context.l10n.termAuthenticationFailedTitle,
+      );
     } catch (e) {
       if (!env.host.isMounted) return;
       env.host.markNeedsBuild();
@@ -412,21 +417,17 @@ class SessionConnectionFlow {
     }
   }
 
-  /// エラー SnackBar（移設元 L3150・Retry=再 setup）。
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(env.host.context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        action: SnackBarAction(
-          label: env.host.context.l10n.termRetry,
-          textColor: Colors.white,
-          // HEAD 同等: Retry は接続情報取得〜SSH 接続のフル再接続。
-          onPressed: () {
-            unawaited(connectAndSetup());
-          },
-        ),
-      ),
+  /// 通信エラーパネル表示（#125・Retry=再 setup）。
+  ///
+  /// 旧 SnackBar から画面下部の赤枠パネルへ置き換えた。パネルは root が所有し、
+  /// × 押下または接続復帰まで表示される。
+  void _showErrorSnackBar(String message, {String? title}) {
+    final label = title ?? env.host.context.l10n.termConnectionFailedTitle;
+    env.host.showCommErrorPanel(
+      title: label,
+      body: label,
+      detail: message,
+      onRetry: connectAndSetup,
     );
   }
 }

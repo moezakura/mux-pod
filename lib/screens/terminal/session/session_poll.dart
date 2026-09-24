@@ -157,16 +157,10 @@ class SessionPollEngine {
             env.input.isCopyModeActive || env.input.isScrollSendActive,
       );
     } catch (e) {
-      // A2: herdr は例外種別で分岐。tmux パスは従来挙動。
+      // A2: herdr は例外種別で分岐。tmux パスは切断検知を Path B（ポーリング
+      // 冒頭の接続確認）へ集約したため、ここでは再接続を試みない（#125）。
       if (runtime.backendKind == MultiplexerBackendKind.herdr) {
         await env.herdr.handlePollError(e);
-      } else {
-        if (!env.host.isDisposed) {
-          final currentState = env.ref.read(sshProvider);
-          if (!currentState.isReconnecting) {
-            await _connection.attemptReconnect();
-          }
-        }
       }
     } finally {
       runtime.isPolling = false;

@@ -22,6 +22,9 @@ import 'selector_launch.dart';
 import 'session/session_models.dart';
 import 'terminal_breadcrumb.dart';
 import 'terminal_overlays.dart';
+import 'widgets/comm_error_panel.dart';
+import 'widgets/disconnect_bar.dart';
+import 'widgets/reconnect_detail_panel.dart';
 import 'widgets/ansi_text_view.dart';
 
 /// ターミナル画面の表示ツリー合成ウィジェット。
@@ -97,6 +100,21 @@ class TerminalViewShell extends ConsumerWidget {
   final VoidCallback onRetryNow;
   final VoidCallback onClearQueue;
 
+  // ---- #125 切断UX（root 所有状態の注入）----
+  final LayerLink headerLink;
+  final GlobalKey reconnectIndicatorKey;
+  final ValueListenable<int?> reconnectCountdown;
+  final bool reconnectPanelVisible;
+  final double reconnectArrowRight;
+  final VoidCallback onToggleReconnectPanel;
+  final String? commErrorPanelTitle;
+  final String? commErrorPanelBody;
+  final String? commErrorPanelDetail;
+  final bool commErrorPanelExpanded;
+  final VoidCallback onToggleCommErrorExpanded;
+  final VoidCallback onRetryCommError;
+  final VoidCallback onCloseCommError;
+
   // ---- 特殊キーバー ----
   final VoidCallback? onInputDialog;
   final VoidCallback onToggleDirectInput;
@@ -152,6 +170,19 @@ class TerminalViewShell extends ConsumerWidget {
     required this.onMenuOpen,
     this.onFileBrowser,
     required this.onRetryNow,
+    required this.headerLink,
+    required this.reconnectIndicatorKey,
+    required this.reconnectCountdown,
+    required this.reconnectPanelVisible,
+    required this.reconnectArrowRight,
+    required this.onToggleReconnectPanel,
+    this.commErrorPanelTitle,
+    this.commErrorPanelBody,
+    this.commErrorPanelDetail,
+    required this.commErrorPanelExpanded,
+    required this.onToggleCommErrorExpanded,
+    required this.onRetryCommError,
+    required this.onCloseCommError,
     required this.onClearQueue,
     this.onInputDialog,
     required this.onToggleDirectInput,
@@ -173,7 +204,16 @@ class TerminalViewShell extends ConsumerWidget {
         children: [
           Column(
             children: [
-              _buildBreadcrumbRow(context, ref),
+              CompositedTransformTarget(
+                link: headerLink,
+                child: _buildBreadcrumbRow(context, ref),
+              ),
+              // 切断/再接続/エラー状態をヘッダー直下の赤バーで示す
+              // （タップ不可・状態表示専用）。
+              if (sshState.isReconnecting ||
+                  sshState.isDisconnected ||
+                  sshState.hasError)
+                const DisconnectBar(),
               Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -205,6 +245,53 @@ class TerminalViewShell extends ConsumerWidget {
                       KeyOverlayWidget(
                         overlayState: keyOverlayState,
                         position: keyOverlayPosition,
+                      ),
+                      // 通信エラーパネル（下からスライドしてフェードイン）。
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 64,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 250),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            layoutBuilder: (currentChild, previousChildren) =>
+                                Stack(
+                                  alignment: Alignment.bottomCenter,
+                                  children: [
+                                    ...previousChildren,
+                                    ?currentChild,
+                                  ],
+                                ),
+                            transitionBuilder: (child, animation) =>
+                                FadeTransition(
+                                  opacity: animation,
+                                  child: SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0, 0.3),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: child,
+                                  ),
+                                ),
+                            child: commErrorPanelBody != null
+                                ? CommErrorPanel(
+                                    title: commErrorPanelTitle ?? '',
+                                    body: commErrorPanelBody ?? '',
+                                    detail: commErrorPanelDetail ?? '',
+                                    expanded: commErrorPanelExpanded,
+                                    onToggleExpanded:
+                                        onToggleCommErrorExpanded,
+                                    onRetry: onRetryCommError,
+                                    onClose: onCloseCommError,
+                                  )
+                                : const SizedBox(width: double.infinity),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -241,17 +328,45 @@ class TerminalViewShell extends ConsumerWidget {
               color: isDark ? Colors.black54 : Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
-          // エラーオーバーレイ
-          if (connectionError != null || sshState.hasError)
-            // inventory: TERM-DIALOG-007
-            ErrorOverlay(
-              error: sshState.error ?? connectionError,
-              queuedCount: queuedCount,
-              isWaitingForNetwork: sshState.isWaitingForNetwork,
-              isReconnecting: sshState.isReconnecting,
-              onRetryNow: onRetryNow,
-              onClearQueue: onClearQueue,
+          // 再接続詳細パネル（ヘッダーの
+          // ReconnectingIndicator タップで開閉）。
+          Positioned(
+            top: 0,
+            right: 0,
+            child: CompositedTransformFollower(
+              link: headerLink,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(-16, 2),
+              child: IgnorePointer(
+                ignoring: !reconnectPanelVisible || !sshState.isReconnecting,
+                child: AnimatedSwitcher(
+                  key: const ValueKey('reconnect_tooltip_transition'),
+                  duration: const Duration(milliseconds: 250),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  layoutBuilder: (currentChild, previousChildren) => Stack(
+                    alignment: Alignment.topRight,
+                    children: [...previousChildren, ?currentChild],
+                  ),
+                  child: reconnectPanelVisible && sshState.isReconnecting
+                      ? ReconnectDetailPanel(
+                          key: const ValueKey('reconnect_details'),
+                          countdown: reconnectCountdown,
+                          attempt: sshState.reconnectAttempt,
+                          visible: true,
+                          arrowRight: reconnectArrowRight,
+                          width: (MediaQuery.sizeOf(context).width - 32)
+                              .clamp(0, 264)
+                              .toDouble(),
+                        )
+                      : const SizedBox.shrink(
+                          key: ValueKey('reconnect_details_hidden'),
+                        ),
+                ),
+              ),
             ),
+          ),
         ],
       ),
     );
@@ -274,6 +389,9 @@ class TerminalViewShell extends ConsumerWidget {
             sshState: sshState,
             queuedCount: queuedCount,
             onRetryNow: onRetryNow,
+            reconnectCountdown: reconnectCountdown,
+            reconnectIndicatorKey: reconnectIndicatorKey,
+            onToggleReconnectPanel: onToggleReconnectPanel,
             canSendSpecialKey: canSendSpecialKey,
             onFileBrowser: onFileBrowser,
             onMenuOpen: onMenuOpen,
@@ -315,6 +433,9 @@ class TerminalViewShell extends ConsumerWidget {
           sshState: sshState,
           queuedCount: queuedCount,
           onRetryNow: onRetryNow,
+          reconnectCountdown: reconnectCountdown,
+          reconnectIndicatorKey: reconnectIndicatorKey,
+          onToggleReconnectPanel: onToggleReconnectPanel,
           canSendSpecialKey: canSendSpecialKey,
           onFileBrowser: onFileBrowser,
           onMenuOpen: onMenuOpen,
