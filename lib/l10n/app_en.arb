@@ -894,6 +894,8 @@
   "commonSave": "Save",
   "settingsShowCursor": "Show Cursor",
   "settingsShowCursorDescription": "Show terminal cursor indicator",
+  "settingsOpenLinksDirectly": "Open Links Directly",
+  "settingsOpenLinksDirectlyDescription": "Open https/http links in the terminal without confirmation. When off, a confirmation dialog shows the URL before opening.",
   "settingsExperimentalHerdrCaretPositionTitle": "Experimental: Herdr caret position",
   "settingsExperimentalHerdrCaretPositionDescription": "Experimental. Herdr connections only, best-effort (falls back to the current view on failure). Installs a small helper client on the SSH host.",
   "settingsAdjustMode": "Adjust Mode",

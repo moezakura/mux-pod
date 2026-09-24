@@ -118,19 +118,19 @@ void main() {
       final systemIndex = container.read(settingsSearchIndexProvider);
       expect(
         systemIndex.items.length,
-        40,
-      ); // Display11+Behavior13+Connection13+About3
+        41,
+      ); // Display12+Behavior13+Connection13+About3
       expect(systemIndex.current, isNotNull);
       expect(systemIndex.other, isNotNull);
 
       await setLanguage('ja');
       final jaIndex = container.read(settingsSearchIndexProvider);
-      expect(jaIndex.items.length, 40);
+      expect(jaIndex.items.length, 41);
       expect(jaIndex.other, isNotNull); // en 側も並置
 
       await setLanguage('en');
       final enIndex = container.read(settingsSearchIndexProvider);
-      expect(enIndex.items.length, 40);
+      expect(enIndex.items.length, 41);
       expect(enIndex.other, isNotNull); // ja 側も並置
     });
   });
@@ -275,11 +275,11 @@ void main() {
     });
   });
 
-  group('検索対象の完全性（全39項目）', () {
-    test('39項目すべてが descriptor に存在しカテゴリと order が一意', () {
+  group('検索対象の完全性（全41項目）', () {
+    test('41項目すべてが descriptor に存在しカテゴリと order が一意', () {
       final index = container.read(settingsSearchIndexProvider);
       final ids = index.items.map((e) => e.id).toList();
-      expect(ids.toSet().length, 40);
+      expect(ids.toSet().length, 41);
       // カテゴリ内 order が一意（0..n-1 の重複なし）
       for (final category in SettingsCategory.values) {
         final perCategory =
@@ -290,7 +290,7 @@ void main() {
       }
       expect(
         index.items.where((e) => e.category == SettingsCategory.display).length,
-        11,
+        12,
       );
       expect(
         index.items

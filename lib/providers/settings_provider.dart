@@ -139,6 +139,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _persistence.save(SettingsPersistence.showTerminalCursorKey, value);
   }
 
+  /// OSC 8 リンクの直接起動設定（default false = 確認モーダル表示）
+  Future<void> setOpenLinksDirectly(bool value) async {
+    state = state.copyWith(openLinksDirectly: value);
+    await _persistence.save(SettingsPersistence.openLinksDirectlyKey, value);
+  }
+
   /// 実験的: Herdrカーソル位置スナップショット取得を設定
   // inventory: SETTINGS-HERDR-CARET-007
   Future<void> setExperimentalHerdrCaretPositionEnabled(bool value) async {
