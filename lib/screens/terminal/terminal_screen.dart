@@ -41,10 +41,10 @@ import '../settings/settings_screen.dart' show SettingsScreen;
 import 'input/terminal_input_mode.dart' show ScrollModeSource;
 import 'selector_launch.dart' show SelectorLaunchActions;
 import 'selector_sheet.dart' show SelectorContext;
-import 'widgets/reconnect_countdown.dart' show ReconnectCountdown;
+import 'terminal_reconnect_panel.dart' show TerminalReconnectPanel;
+import 'terminal_screen_access_impl.dart' show TerminalScreenAccessImpl;
 import 'terminal_menu.dart' show TerminalMenu;
-import 'terminal_root_bindings.dart'
-    show TerminalScreenAccess, TerminalScreenAdapter;
+import 'terminal_root_bindings.dart' show TerminalScreenAdapter;
 import 'terminal_view_shell.dart' show TerminalViewShell;
 import 'widgets/ansi_text_view.dart' show AnsiTextViewState;
 
@@ -103,178 +103,35 @@ class TerminalScreen extends ConsumerStatefulWidget {
 /// root State（仲裁 §2 の限定スコープ）: keys / subscription / ライフサイクル /
 /// dispose P0-P9 統括 / テストフック forwarding / build 合成のみ。
 class _TerminalScreenState extends ConsumerState<TerminalScreen>
-    with WidgetsBindingObserver
-    implements TerminalScreenAccess {
+    with WidgetsBindingObserver {
   // ---- 鍵・root 所有の表示状態 ----
   final _ansiTextViewKey = GlobalKey<AnsiTextViewState>();
   final _scrollToBottomKey = GlobalKey<ScrollToBottomButtonState>();
   final _terminalScrollController = ScrollController();
   bool _isDisposed = false;
 
-  // ---- #125 切断UX（root 所有）----
-  //
-  // 切断/再接続失敗の通知抑制フラグ。初回の切断検知で 1 回だけ表示し、
-  // 真の再接続成功（isConnected）まで再表示しない。
-  bool _disconnectToastShown = false;
+  /// #125 切断UX（通信エラーパネル・再接続詳細パネル）の状態所有者。
+  late final TerminalReconnectPanel _reconnectUi = TerminalReconnectPanel(
+    markNeedsBuild: () => setState(() {}),
+    contextOf: () => context,
+    isDisposed: () => !mounted || _isDisposed,
+  );
 
-  /// 自動再接続待機中のカウントダウン（残り秒・null = 非表示）。
-  final _reconnectCountdown = ReconnectCountdown();
-
-  /// 再接続中パネル（カウントダウン表示タップで開く詳細パネル）。
-  bool _reconnectPanelVisible = false;
-  final _reconnectIndicatorKey = GlobalKey();
-  double _reconnectArrowRight = 100;
-  final _headerLink = LayerLink();
-  Timer? _reconnectPanelHideTimer;
-
-  /// 通信エラーパネル（切断検知・初期接続エラーで画面下部に表示）。
-  String? _commErrorPanelTitle;
-  String? _commErrorPanelBody;
-  String? _commErrorPanelDetail;
-  bool _commErrorPanelExpanded = false;
-  Future<void> Function()? _commErrorPanelOnRetry;
+  /// adapter へ渡すアクセサ（root から切り出し・値のみ）。
+  late final TerminalScreenAccessImpl _access = TerminalScreenAccessImpl(
+    ref: ref,
+    screen: widget,
+    contextOf: () => context,
+    isMountedFn: () => mounted,
+    isDisposedFn: () => _isDisposed,
+    markNeedsBuildFn: () => setState(() {}),
+    ansiTextViewKey: _ansiTextViewKey,
+    scrollToBottomKey: _scrollToBottomKey,
+    reconnectUi: _reconnectUi,
+  );
 
   /// 合成アダプタ（port 実装 + 協調オブジェクト生成・破棄統括）。
   late TerminalScreenAdapter _adapter;
-
-  // ===================== TerminalScreenAccess =====================
-  @override
-  bool get isMounted => mounted;
-  @override
-  bool get isDisposed => _isDisposed;
-  @override
-  void markNeedsBuild() => setState(() {});
-  @override
-  String get connectionId => widget.connectionId;
-  @override
-  String? get sessionName => widget.sessionName;
-  @override
-  String? get sessionId => widget.sessionId;
-  @override
-  int? get lastWindowIndex => widget.lastWindowIndex;
-  @override
-  String? get lastPaneId => widget.lastPaneId;
-  @override
-  String? get deepLinkWindowName => widget.deepLinkWindowName;
-  @override
-  int? get deepLinkPaneIndex => widget.deepLinkPaneIndex;
-  @override
-  String? get initialPaneId => widget.initialPaneId;
-  @override
-  PaneContentReader? get injectedPaneContentReader => widget.paneContentReader;
-  @override
-  DateTime Function()? get herdrCacheClock => widget.herdrCacheClock;
-  @override
-  HerdrCaretSnapshotReader? get herdrCaretReader => widget.herdrCaretReader;
-  @override
-  GlobalKey<AnsiTextViewState> get ansiTextViewKey => _ansiTextViewKey;
-  @override
-  GlobalKey<ScrollToBottomButtonState> get scrollToBottomKey =>
-      _scrollToBottomKey;
-
-  // ===================== #125 切断UX =====================
-
-  @override
-  void showCommErrorPanel({
-    required String title,
-    required String body,
-    required String detail,
-    required Future<void> Function() onRetry,
-  }) {
-    if (!mounted || _isDisposed) return;
-
-    // 初回表示以降、真の再接続成功（isConnected 遷移）まで再表示しない。
-    if (_disconnectToastShown) {
-      // 表示中は最新の失敗を反映する。閉じたパネルは再表示しない。
-      if (_commErrorPanelBody != null) {
-        setState(() {
-          _commErrorPanelTitle = title;
-          _commErrorPanelBody = body;
-          _commErrorPanelDetail = detail;
-          _commErrorPanelOnRetry = onRetry;
-        });
-      }
-      return;
-    }
-    _disconnectToastShown = true;
-
-    setState(() {
-      _commErrorPanelTitle = title;
-      _commErrorPanelBody = body;
-      _commErrorPanelDetail = detail;
-      _commErrorPanelExpanded = false;
-      _commErrorPanelOnRetry = onRetry;
-    });
-  }
-
-  @override
-  void closeCommErrorPanel() {
-    if (!mounted) return;
-    setState(() {
-      _commErrorPanelBody = null;
-      _commErrorPanelDetail = null;
-      _commErrorPanelExpanded = false;
-    });
-  }
-
-  @override
-  void onConnectionRestored() {
-    // 抑止フラグを解除し（次回切断で再度 1 回表示する）、表示中の
-    // 通信エラーパネルは役目を終えたため自動で閉じる。
-    _disconnectToastShown = false;
-    closeCommErrorPanel();
-  }
-
-  @override
-  void syncReconnectCountdown({
-    required bool isReconnecting,
-    required bool isWaitingForNetwork,
-    DateTime? nextRetryAt,
-  }) {
-    if (!isReconnecting) {
-      _reconnectPanelHideTimer?.cancel();
-      if (_reconnectPanelVisible) {
-        setState(() => _reconnectPanelVisible = false);
-      }
-    }
-    _reconnectCountdown.sync(
-      isReconnecting: isReconnecting,
-      isWaitingForNetwork: isWaitingForNetwork,
-      nextRetryAt: nextRetryAt,
-    );
-  }
-
-  /// 再接続詳細パネルの開閉トグル。開いたまま 10 秒で自動的に閉じる。
-  void _toggleReconnectPanel() {
-    final box =
-        _reconnectIndicatorKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box != null) {
-      final center = box.localToGlobal(Offset(box.size.width / 2, 0));
-      _reconnectArrowRight =
-          (MediaQuery.sizeOf(context).width - 16 - center.dx - 7)
-              .clamp(12, 238)
-              .toDouble();
-    }
-    setState(() {
-      _reconnectPanelVisible = !_reconnectPanelVisible;
-      _reconnectPanelHideTimer?.cancel();
-      if (_reconnectPanelVisible) {
-        _reconnectPanelHideTimer = Timer(const Duration(seconds: 10), () {
-          if (mounted && _reconnectPanelVisible) {
-            setState(() => _reconnectPanelVisible = false);
-          }
-        });
-      }
-    });
-  }
-
-  void _toggleCommErrorExpanded() {
-    setState(() => _commErrorPanelExpanded = !_commErrorPanelExpanded);
-  }
-
-  void _retryCommError() {
-    _commErrorPanelOnRetry?.call();
-  }
 
   // ===================== ライフサイクル =====================
 
@@ -283,7 +140,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     super.initState();
     _isDisposed = false;
     WidgetsBinding.instance.addObserver(this);
-    _adapter = TerminalScreenAdapter(this);
+    _adapter = TerminalScreenAdapter(_access);
     _adapter.initialize();
     // follow-scroll の listener 登録（P9 で detach・HEAD initState L809 相当）。
     _adapter.input.scrollFollow.attach(_terminalScrollController);
@@ -365,8 +222,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     // P8 notifier 群（view → herdrDisplay → herdrPaneIndicator → latency）
     _adapter.disposeP8Notifiers();
     // #125: 再接続詳細パネルのタイマーとカウントダウン
-    _reconnectPanelHideTimer?.cancel();
-    _reconnectCountdown.dispose();
+    _reconnectUi.dispose();
     // P9 ScrollController（listener 解除 → dispose）
     _adapter.disposeP9Detach();
     _terminalScrollController.dispose();
@@ -572,19 +428,19 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       ),
       onFileBrowser: () => _adapter.transfer.handleFileBrowser(),
       onRetryNow: () => ref.read(sshProvider.notifier).reconnectNow(),
-      headerLink: _headerLink,
-      reconnectIndicatorKey: _reconnectIndicatorKey,
-      reconnectCountdown: _reconnectCountdown.remaining,
-      reconnectPanelVisible: _reconnectPanelVisible,
-      reconnectArrowRight: _reconnectArrowRight,
-      onToggleReconnectPanel: _toggleReconnectPanel,
-      commErrorPanelTitle: _commErrorPanelTitle,
-      commErrorPanelBody: _commErrorPanelBody,
-      commErrorPanelDetail: _commErrorPanelDetail,
-      commErrorPanelExpanded: _commErrorPanelExpanded,
-      onToggleCommErrorExpanded: _toggleCommErrorExpanded,
-      onRetryCommError: _retryCommError,
-      onCloseCommError: closeCommErrorPanel,
+      headerLink: _reconnectUi.headerLink,
+      reconnectIndicatorKey: _reconnectUi.indicatorKey,
+      reconnectCountdown: _reconnectUi.countdown.remaining,
+      reconnectPanelVisible: _reconnectUi.panelVisible,
+      reconnectArrowRight: _reconnectUi.arrowRight,
+      onToggleReconnectPanel: _reconnectUi.togglePanel,
+      commErrorPanelTitle: _reconnectUi.title,
+      commErrorPanelBody: _reconnectUi.body,
+      commErrorPanelDetail: _reconnectUi.detail,
+      commErrorPanelExpanded: _reconnectUi.expanded,
+      onToggleCommErrorExpanded: _reconnectUi.toggleExpanded,
+      onRetryCommError: _reconnectUi.retry,
+      onCloseCommError: _reconnectUi.close,
       onClearQueue: input.clearInputQueue,
       onInputDialog: () => input.showInputDialog(context),
       onToggleDirectInput: () =>

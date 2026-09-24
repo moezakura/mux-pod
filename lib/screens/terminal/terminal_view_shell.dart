@@ -2,9 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../providers/custom_keys_provider.dart';
 import '../../providers/image_transfer_provider.dart';
-import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
@@ -14,17 +12,15 @@ import '../../services/tmux/pane_navigator.dart';
 import '../../theme/design_colors.dart';
 import '../../widgets/key_overlay_widget.dart';
 import '../../widgets/scroll_to_bottom_button.dart';
-import '../../widgets/special_keys_bar.dart';
 import '../../l10n/l10n_ext.dart';
 import 'herdr/herdr_types.dart';
-import 'pane_layout_painter.dart';
 import 'selector_launch.dart';
 import 'session/session_models.dart';
 import 'terminal_breadcrumb.dart';
 import 'terminal_overlays.dart';
-import 'widgets/comm_error_panel.dart';
+import 'terminal_reconnect_overlays.dart';
+import 'terminal_shell_areas.dart';
 import 'widgets/disconnect_bar.dart';
-import 'widgets/reconnect_detail_panel.dart';
 import 'widgets/ansi_text_view.dart';
 
 /// ターミナル画面の表示ツリー合成ウィジェット。
@@ -229,7 +225,12 @@ class TerminalViewShell extends ConsumerWidget {
                   child: Stack(
                     children: [
                       _buildTerminalArea(context, ref),
-                      _buildPaneIndicator(context, ref),
+                      TerminalPaneIndicatorArea(
+                        backendKind: backendKind,
+                        herdrPaneIndicatorNotifier: herdrPaneIndicatorNotifier,
+                        onHerdrPaneIndicatorTap: onHerdrPaneIndicatorTap,
+                        tmuxActions: tmuxActions,
+                      ),
                       // スクロールボタン: ターミナルエリア右下
                       Positioned(
                         bottom: 8,
@@ -247,50 +248,14 @@ class TerminalViewShell extends ConsumerWidget {
                         position: keyOverlayPosition,
                       ),
                       // 通信エラーパネル（下からスライドしてフェードイン）。
-                      Positioned(
-                        left: 12,
-                        right: 12,
-                        bottom: 64,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: MediaQuery.sizeOf(context).height * 0.35,
-                          ),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 250),
-                            switchInCurve: Curves.easeOutCubic,
-                            switchOutCurve: Curves.easeInCubic,
-                            layoutBuilder: (currentChild, previousChildren) =>
-                                Stack(
-                                  alignment: Alignment.bottomCenter,
-                                  children: [
-                                    ...previousChildren,
-                                    ?currentChild,
-                                  ],
-                                ),
-                            transitionBuilder: (child, animation) =>
-                                FadeTransition(
-                                  opacity: animation,
-                                  child: SlideTransition(
-                                    position: Tween<Offset>(
-                                      begin: const Offset(0, 0.3),
-                                      end: Offset.zero,
-                                    ).animate(animation),
-                                    child: child,
-                                  ),
-                                ),
-                            child: commErrorPanelBody != null
-                                ? CommErrorPanel(
-                                    title: commErrorPanelTitle ?? '',
-                                    body: commErrorPanelBody ?? '',
-                                    detail: commErrorPanelDetail ?? '',
-                                    expanded: commErrorPanelExpanded,
-                                    onToggleExpanded: onToggleCommErrorExpanded,
-                                    onRetry: onRetryCommError,
-                                    onClose: onCloseCommError,
-                                  )
-                                : const SizedBox(width: double.infinity),
-                          ),
-                        ),
+                      TerminalCommErrorOverlay(
+                        title: commErrorPanelTitle,
+                        body: commErrorPanelBody,
+                        detail: commErrorPanelDetail,
+                        expanded: commErrorPanelExpanded,
+                        onToggleExpanded: onToggleCommErrorExpanded,
+                        onRetry: onRetryCommError,
+                        onClose: onCloseCommError,
                       ),
                     ],
                   ),
@@ -318,7 +283,16 @@ class TerminalViewShell extends ConsumerWidget {
               if (!canSendSpecialKey)
                 DisconnectedBanner(isDark: isDark)
               else
-                _buildSpecialKeysBar(context, ref),
+                TerminalSpecialKeysArea(
+                  onKeyPressed: onKeyPressed,
+                  onSpecialKeyPressed: onSpecialKeyPressed,
+                  onInputDialog: onInputDialog,
+                  directInputEnabled: directInputEnabled,
+                  onToggleDirectInput: onToggleDirectInput,
+                  onImagePickRequested: onImagePickRequested,
+                  onCustomButtonEdit: onCustomButtonEdit,
+                  onManageCustomKeys: onManageCustomKeys,
+                ),
             ],
           ),
           // ローディングオーバーレイ
@@ -327,44 +301,14 @@ class TerminalViewShell extends ConsumerWidget {
               color: isDark ? Colors.black54 : Colors.white70,
               child: const Center(child: CircularProgressIndicator()),
             ),
-          // 再接続詳細パネル（ヘッダーの
-          // ReconnectingIndicator タップで開閉）。
-          Positioned(
-            top: 0,
-            right: 0,
-            child: CompositedTransformFollower(
-              link: headerLink,
-              targetAnchor: Alignment.bottomRight,
-              followerAnchor: Alignment.topRight,
-              offset: const Offset(-16, 2),
-              child: IgnorePointer(
-                ignoring: !reconnectPanelVisible || !sshState.isReconnecting,
-                child: AnimatedSwitcher(
-                  key: const ValueKey('reconnect_tooltip_transition'),
-                  duration: const Duration(milliseconds: 250),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  layoutBuilder: (currentChild, previousChildren) => Stack(
-                    alignment: Alignment.topRight,
-                    children: [...previousChildren, ?currentChild],
-                  ),
-                  child: reconnectPanelVisible && sshState.isReconnecting
-                      ? ReconnectDetailPanel(
-                          key: const ValueKey('reconnect_details'),
-                          countdown: reconnectCountdown,
-                          attempt: sshState.reconnectAttempt,
-                          visible: true,
-                          arrowRight: reconnectArrowRight,
-                          width: (MediaQuery.sizeOf(context).width - 32)
-                              .clamp(0, 264)
-                              .toDouble(),
-                        )
-                      : const SizedBox.shrink(
-                          key: ValueKey('reconnect_details_hidden'),
-                        ),
-                ),
-              ),
-            ),
+          // 再接続詳細パネル（ヘッダーの ReconnectingIndicator タップで開閉）。
+          TerminalReconnectDetailOverlay(
+            headerLink: headerLink,
+            visible: reconnectPanelVisible,
+            isReconnecting: sshState.isReconnecting,
+            countdown: reconnectCountdown,
+            attempt: sshState.reconnectAttempt,
+            arrowRight: reconnectArrowRight,
           ),
         ],
       ),
@@ -533,64 +477,4 @@ class TerminalViewShell extends ConsumerWidget {
   }
 
   /// ペインインジケータ（backend 分岐: herdr = notifier / tmux = Consumer）。
-  Widget _buildPaneIndicator(BuildContext context, WidgetRef ref) {
-    return Positioned(
-      top: 8,
-      right: 8,
-      child: backendKind == MultiplexerBackendKind.herdr
-          ? ValueListenableBuilder<HerdrPaneIndicatorData?>(
-              valueListenable: herdrPaneIndicatorNotifier,
-              builder: (context, data, _) {
-                if (data == null) return const SizedBox.shrink();
-                return PaneIndicatorShell(
-                  panes: data.panes,
-                  activePaneId: data.activePaneId,
-                  onTap: onHerdrPaneIndicatorTap ?? () {},
-                );
-              },
-            )
-          : buildTmuxPaneIndicator(
-              tmuxActions,
-              ref.watch(tmuxProvider),
-              onTap: () => showPaneSelectorTap(
-                context,
-                tmuxActions,
-                ref.watch(tmuxProvider),
-                showResizePaneChooser: () => showResizePaneChooserTap(
-                  context,
-                  tmuxActions,
-                  ref.watch(tmuxProvider),
-                ),
-              ),
-            ),
-    );
-  }
-
-  /// 特殊キー入力バー（Consumer で watch・親 build 再実行を避ける）。
-  Widget _buildSpecialKeysBar(BuildContext context, WidgetRef ref) {
-    final customKeys = ref.watch(customKeysProvider);
-    // cjkMode / keepKeyboardOnEnter のみ select 監視: 親 build を
-    // 再実行させず SpecialKeysBar サブツリーだけ再構築する
-    final cjkMode = ref.watch(settingsProvider.select((s) => s.cjkMode));
-    final keepKeyboardOnEnter = ref.watch(
-      settingsProvider.select((s) => s.keepKeyboardOnEnter),
-    );
-    return SpecialKeysBar(
-      // inventory: TERM-INPUT-006
-      onKeyPressed: onKeyPressed,
-      onSpecialKeyPressed: onSpecialKeyPressed,
-      // inventory: TERM-INPUT-009
-      onInputTap: onInputDialog,
-      directInputEnabled: directInputEnabled,
-      cjkMode: cjkMode,
-      keepKeyboardOnEnter: keepKeyboardOnEnter,
-      onDirectInputToggle: onToggleDirectInput,
-      // inventory: TERM-FILE-002
-      onImagePickRequested: onImagePickRequested,
-      customButtons: customKeys.buttons,
-      rows: customKeys.rows,
-      onCustomButtonEdit: onCustomButtonEdit,
-      onManageButtons: onManageCustomKeys,
-    );
-  }
 }
