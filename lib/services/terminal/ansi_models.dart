@@ -79,7 +79,16 @@ class AnsiSegment {
   final String text;
   final AnsiStyle style;
 
-  const AnsiSegment(this.text, this.style);
+  /// OSC 8 ハイパーリンクの URL。null はリンク外。
+  ///
+  /// AnsiStyle には持たせない: AnsiStyle の ==/hashCode は装飾属性のみを
+  /// 対象とする値オブジェクト等価性であり、URL を混入させるとスタイル
+  /// 等価性の意味論が変わるため（設計 D3）。URL 状態は行キャッシュキーの
+  /// 独立した要素 (開始スタイル, 開始 URL 状態, 行テキスト) として扱う
+  /// （🤝#2 行間 URL carry）。
+  final String? url;
+
+  const AnsiSegment(this.text, this.style, {this.url});
 }
 
 /// パースされた行データ
@@ -90,7 +99,15 @@ class ParsedLine {
   /// この行の終了時のスタイル（次の行に引き継ぐ）
   final AnsiStyle endStyle;
 
-  const ParsedLine({required this.segments, required this.endStyle});
+  /// この行の終了時の OSC 8 リンク状態（次の行に引き継ぐ・🤝#2 行間 carry）。
+  /// null は次の行がリンク外から始まることを意味する。
+  final String? endUrl;
+
+  const ParsedLine({
+    required this.segments,
+    required this.endStyle,
+    this.endUrl,
+  });
 
   /// 空行かどうか
   bool get isEmpty => segments.isEmpty || segments.every((s) => s.text.isEmpty);
