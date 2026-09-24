@@ -6,6 +6,7 @@ import 'ansi_span_renderer.dart';
 import 'ansi_sgr_parser.dart';
 
 export 'ansi_models.dart';
+export 'ansi_span_renderer.dart' show LinkTapResolver;
 
 /// ANSIエスケープシーケンスパーサー
 ///
@@ -67,7 +68,8 @@ class AnsiParser {
 
   /// 行単位でパース（仮想スクロール用）
   ///
-  /// 各行を個別にパースし、スタイルを次の行に引き継ぐ。
+  /// 各行を個別にパースし、スタイルと OSC 8 リンク状態（endUrl）を次の行に
+  /// 引き継ぐ（🤝#2 行間 URL carry）。
   /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
   List<ParsedLine> parseLines(String input) => _lineParser.parseLines(input);
 
@@ -85,10 +87,15 @@ class AnsiParser {
   }
 
   /// ParsedLineをTextSpanに変換
+  ///
+  /// [linkTapResolver] を渡すと recognizer 付き span を都度構築し、
+  /// スパンキャッシュを読みも書きもしない（recognizer の寿命は呼び出し側に
+  /// 閉じる）。null（既定）なら現行どおりキャッシュ経路。
   TextSpan lineToTextSpan(
     ParsedLine line, {
     required double fontSize,
     required String fontFamily,
+    LinkTapResolver? linkTapResolver,
   }) {
     assert(
       _lineParser.contains(line),
@@ -99,6 +106,7 @@ class AnsiParser {
       line,
       fontSize: fontSize,
       fontFamily: fontFamily,
+      linkTapResolver: linkTapResolver,
     );
   }
 
@@ -111,7 +119,10 @@ class AnsiParser {
   ///   セグメント境界・行末・空行のいずれでもよい（クランプされる）。
   /// - [padColumns]: 行テキスト終端よりさらに右のカラムにキャレットを置く場合の
   ///   埋めセル数（No-Break Space で埋める）。
-  /// - [caret]: 挿入するインライン要素。null の場合はキャッシュ済みの通常行スパンを返す。
+  /// - [caret]: 挿入するインライン要素。null の場合は [linkTapResolver] を
+  ///   透過した通常行スパンを返す（blink off 相のリンクタップ対応・H2）。
+  /// - [linkTapResolver]: リンク断片に recognizer を注入する解決器。
+  ///   キャレットの substring 分割でも url は両断片に引き継がれる。
   TextSpan lineToTextSpanWithCaret(
     ParsedLine line, {
     required double fontSize,
@@ -119,6 +130,7 @@ class AnsiParser {
     required int caretCharOffset,
     required int padColumns,
     InlineSpan? caret,
+    LinkTapResolver? linkTapResolver,
   }) {
     assert(
       _lineParser.contains(line),
@@ -132,6 +144,7 @@ class AnsiParser {
       caretCharOffset: caretCharOffset,
       padColumns: padColumns,
       caret: caret,
+      linkTapResolver: linkTapResolver,
     );
   }
 
