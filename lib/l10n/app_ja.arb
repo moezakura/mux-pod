@@ -784,6 +784,9 @@
     }
   },
   "termTapWindowToSelect": "ウィンドウをタップして選択",
+  "termLinkConfirmTitle": "リンクを開きますか？",
+  "termLinkConfirmOpen": "開く",
+  "termLinkConfirmCancel": "キャンセル",
   "newWindowTitle": "新規ウィンドウ",
   "newWindowNameLabel": "ウィンドウ名",
   "newWindowNameHint": "空欄でデフォルト名",

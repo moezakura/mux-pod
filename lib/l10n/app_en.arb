@@ -784,6 +784,9 @@
     }
   },
   "termTapWindowToSelect": "Tap a window to select",
+  "termLinkConfirmTitle": "Open Link?",
+  "termLinkConfirmOpen": "Open",
+  "termLinkConfirmCancel": "Cancel",
   "newWindowTitle": "New Window",
   "newWindowNameLabel": "Window Name",
   "newWindowNameHint": "Leave empty for default",
