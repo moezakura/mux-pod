@@ -14,7 +14,7 @@ import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 
 import '../../helpers/terminal_test_scaffold.dart';
-import 'terminal_screen_herdr_mutation_ui_test.dart'
+import 'helpers/herdr_layout_fixtures.dart'
     show kHerdrTwoPaneLayoutSnapshotFixture;
 
 Connection _herdrConnection() {
