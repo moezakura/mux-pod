@@ -1,6 +1,6 @@
 // テーマ等価性回帰テスト（golden fixture 方式）。
 //
-// 背景: 責務ベース再設計（docs/design/refactor-p1/ansi-herdr-theme.md §2.3）の
+// 背景: 責務ベース再設計の
 // 移行時、HEAD 逐語ビルダーと新ビルダー（AppThemePalette + AppThemeBuilder）の
 // 出力が deep compare で diff ゼロであることを一時テストで確認済み。その
 // 「検証済み状態」を fixture（deep snapshot）として固定し、将来のパレット・
