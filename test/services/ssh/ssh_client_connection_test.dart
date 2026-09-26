@@ -242,5 +242,77 @@ void main() {
         await client.disconnect();
       },
     );
+
+    test(
+      'Issue #56: proxy・keepalive 上書き値は connectionFactory へ透過される（契約不変回帰）',
+      () async {
+        final rawClient = FakeRawSshClient();
+        SshConnectOptions? received;
+        final proxyOptions = SshProxyOptions(
+          hops: const [
+            SshProxyHop(
+              host: 'hop0.test',
+              port: 2222,
+              username: 'j0',
+              password: 'jpw',
+            ),
+          ],
+          forwardHost: 'target.test',
+          forwardPort: 22,
+        );
+        final client = SshClient(
+          connectionFactory: (_, _, _, options, onAuthenticated, _) async {
+            received = options;
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: FakeSocket(), client: rawClient);
+          },
+        );
+        final options = SshConnectOptions(
+          password: 'pw',
+          proxy: proxyOptions,
+          keepAliveTimeoutSeconds: 25,
+        );
+
+        await client.connect(
+          host: 'target.test',
+          port: 22,
+          username: 'user',
+          options: options,
+          lightweight: true,
+        );
+
+        // factory の型契約は不変のまま、options がそのまま届く
+        expect(identical(received, options), isTrue);
+        expect(identical(received!.proxy, proxyOptions), isTrue);
+        expect(received!.keepAliveTimeoutSeconds, 25);
+        await client.disconnect();
+      },
+    );
+
+    test(
+      'Issue #56: 直接接続・未設定時の keepalive probe timeout は 10 のまま（既存不変）',
+      () async {
+        final rawClient = FakeRawSshClient();
+        final client = SshClient(
+          connectionFactory: (_, _, _, _, onAuthenticated, _) async {
+            onAuthenticated();
+            rawClient.authentication.complete();
+            return (socket: FakeSocket(), client: rawClient);
+          },
+          persistentShellFactory: (raw) async => FakePersistentShell(raw),
+        );
+
+        await client.connect(
+          host: 'host',
+          port: 22,
+          username: 'user',
+          options: SshConnectOptions(password: 'pw'),
+        );
+
+        expect(client.keepAliveProbeTimeoutSeconds, 10);
+        await client.disconnect();
+      },
+    );
   });
 }

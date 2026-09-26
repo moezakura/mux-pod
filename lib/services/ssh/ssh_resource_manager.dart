@@ -23,6 +23,7 @@ class SshResourceManager {
   StreamSubscription<Uint8List>? _stderrSubscription;
   PersistentShell? _persistentShell;
   PersistentShell? _inputShell;
+  final List<SSHClient> _jumpClients = <SSHClient>[];
 
   /// SSH トランスポート本体。
   SSHClient? get client => _client;
@@ -50,6 +51,20 @@ class SshResourceManager {
     _socket = socket;
     _client = client;
   }
+
+  /// ジャンプホストの SSHClient 群（チェーン順）を登録する。
+  ///
+  /// facade は attachConnection と同一位置（target 認証待ちの前・M5）で
+  /// 呼ぶ。これにより target 認証失敗時も [disposeAll] が jump を
+  /// 閉じられる（全 disconnect 経路が通る唯一の掃除点）。
+  void attachJumpClients(List<SSHClient> clients) {
+    _jumpClients
+      ..clear()
+      ..addAll(clients);
+  }
+
+  /// 登録済みジャンプホスト SSHClient 群（チェーン順・防御コピー）。
+  List<SSHClient> get jumpClients => List.unmodifiable(_jumpClients);
 
   /// インタラクティブシェルセッションと stream 購読を登録する。
   void attachSession(
@@ -121,5 +136,13 @@ class SshResourceManager {
 
     _socket?.close();
     _socket = null;
+
+    // ジャンプホストを後ろから close（target close 後・MR-2/M5）。
+    // jump client の close は dartssh2 上で transport close → 間の
+    // forward channel も閉じる。
+    for (final jump in _jumpClients.reversed) {
+      jump.close();
+    }
+    _jumpClients.clear();
   }
 }
