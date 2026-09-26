@@ -11,7 +11,7 @@ void main() {
   });
 
   group('SettingsPersistence キー互換', () {
-    test('41 キーの文字列が既存定義と完全互換である', () {
+    test('44 キーの文字列が既存定義と完全互換である', () {
       // テストはキー文字列直書きで検証するため、ここで互換を固定する。
       expect(SettingsPersistence.darkModeKey, 'settings_dark_mode');
       expect(SettingsPersistence.fontSizeKey, 'settings_font_size');

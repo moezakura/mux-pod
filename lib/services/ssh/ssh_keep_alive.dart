@@ -42,6 +42,8 @@ class SshKeepAlive {
 
   /// Keep-aliveタイマー
   Timer? _keepAliveTimer;
+  bool _running = false;
+  int _generation = 0;
 
   /// Keep-alive最小間隔（秒）
   static const int _minKeepAliveIntervalSeconds = 5;
@@ -74,6 +76,7 @@ class SshKeepAlive {
   /// Keep-aliveを開始（HEAD `SshClient._startKeepAlive` 相当）。
   void start() {
     stop();
+    _running = true;
     _currentKeepAliveIntervalSeconds = 10; // 初期値10秒
     _keepAliveSuccessCount = 0;
     _keepAliveFailureCount = 0;
@@ -83,13 +86,16 @@ class SshKeepAlive {
 
   /// 次のKeep-aliveをスケジュール
   void _scheduleNextKeepAlive() {
+    if (!_running) return;
+    final generation = _generation;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = timerFactory(
       Duration(seconds: _currentKeepAliveIntervalSeconds),
       () async {
         // inventory: SSH-LIFE-012
-        await _sendKeepAlive();
-        if (isConnected()) {
+        if (!_running || generation != _generation) return;
+        await _sendKeepAlive(generation);
+        if (_running && generation == _generation && isConnected()) {
           _scheduleNextKeepAlive();
         }
       },
@@ -98,6 +104,8 @@ class SshKeepAlive {
 
   /// Keep-aliveを停止
   void stop() {
+    _running = false;
+    _generation++;
     _keepAliveTimer?.cancel();
     _keepAliveTimer = null;
   }
@@ -124,7 +132,7 @@ class SshKeepAlive {
   }
 
   /// Keep-aliveパケットを送信（HEAD `SshClient._sendKeepAlive` 相当）。
-  Future<void> _sendKeepAlive() async {
+  Future<void> _sendKeepAlive(int generation) async {
     if (!isConnected() || client() == null) {
       return;
     }
@@ -134,9 +142,11 @@ class SshKeepAlive {
       // inventory: SSH-033
       // inventory: LEGACY-0159
       await probe();
+      if (!_running || generation != _generation) return;
       _keepAliveFailureCount = 0;
       _adjustKeepAliveInterval(success: true);
     } catch (e) {
+      if (!_running || generation != _generation) return;
       _adjustKeepAliveInterval(success: false);
       _keepAliveFailureCount++;
       if (_keepAliveFailureCount < _keepAliveFailureThreshold) {

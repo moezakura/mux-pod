@@ -1,3 +1,4 @@
+import '../background/transfer_activity.dart';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../download/download_destination.dart';
@@ -51,6 +52,26 @@ class SftpDownloadService {
   /// 成功時は [DownloadSink.close]（flush 兼 close）を呼び、キャンセル/失敗時は
   /// [DownloadSink.deletePartial] を呼んだ上で例外を rethrow する。
   Future<SftpDownloadResult> download({
+    required SftpClient sftp,
+    required String remotePath,
+    required Future<DownloadSink> Function() openSink,
+    required TransferCancelToken cancellation,
+    void Function(int doneBytes, int totalBytes)? onProgress,
+    int chunkSize = defaultChunkSize,
+    int maxPendingRequests = 128,
+  }) => TransferActivity.shared.run(
+    () => _download(
+      sftp: sftp,
+      remotePath: remotePath,
+      openSink: openSink,
+      cancellation: cancellation,
+      onProgress: onProgress,
+      chunkSize: chunkSize,
+      maxPendingRequests: maxPendingRequests,
+    ),
+  );
+
+  Future<SftpDownloadResult> _download({
     required SftpClient sftp,
     required String remotePath,
     required Future<DownloadSink> Function() openSink,

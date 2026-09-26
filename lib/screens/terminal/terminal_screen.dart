@@ -152,6 +152,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     WidgetsBinding.instance.addObserver(this);
     _adapter = TerminalScreenAdapter(_access);
     _adapter.initialize();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _adapter.runtime.isInBackground =
+        lifecycle != null && lifecycle != AppLifecycleState.resumed;
     // follow-scroll の listener 登録（P9 で detach・HEAD initState L809 相当）。
     _adapter.input.scrollFollow.attach(_terminalScrollController);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -177,6 +180,7 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
         _adapter.resize.onBackgroundNow();
         break;
       case AppLifecycleState.detached:
+        _adapter.lifecycle.pausePolling();
         _adapter.resize.onBackgroundNow();
         break;
     }

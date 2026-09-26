@@ -89,6 +89,35 @@ class SshClient implements BackendAdapter {
 
   /// Keep-alive（カウンタ所有者）。
   late final SshKeepAlive _keepAlive;
+  bool _maintenanceEnabled = true;
+
+  void setMaintenanceEnabled(bool enabled) {
+    if (_maintenanceEnabled == enabled) return;
+    _maintenanceEnabled = enabled;
+    if (enabled && isConnected) {
+      _keepAlive.start();
+    } else {
+      _keepAlive.stop();
+    }
+  }
+
+  /// Validate an idle socket on foreground return instead of trusting its flag.
+  Future<bool> verifyConnection() async {
+    if (!isConnected) return false;
+    try {
+      await _executor.execute(
+        const CommandRequest(
+          command: 'echo ping',
+          transport: CommandTransportPreference.persistentPreferred,
+          output: CommandOutputRequirement.outputOnly,
+          timeout: Duration(seconds: SshKeepAlive.keepAliveTimeoutSeconds),
+        ),
+      );
+      return isConnected;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// インタラクティブシェル。
   late final SshInteractiveShell _interactiveShell;
@@ -317,7 +346,7 @@ class SshClient implements BackendAdapter {
         await _shellManager.startShells();
         // Keep-aliveを開始
         // inventory: SSH-LIFE-008
-        _keepAlive.start();
+        if (_maintenanceEnabled) _keepAlive.start();
       }
     } on SocketException catch (e) {
       _stateController.setState(SshConnectionState.error);
@@ -344,10 +373,7 @@ class SshClient implements BackendAdapter {
     }
   }
 
-  /// 認証完了コールバック
-  void _onAuthenticated() {
-    // 認証成功
-  }
+  void _onAuthenticated() {}
 
   // inventory: SSH-027
   // inventory: LEGACY-0151

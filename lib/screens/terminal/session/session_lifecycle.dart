@@ -131,7 +131,7 @@ class SessionLifecycle {
   /// `_applyKeepScreenOn`（移設元 L933-942）。
   void applyKeepScreenOn() {
     final settings = env.ref.read(settingsProvider);
-    if (settings.keepScreenOn) {
+    if (settings.keepScreenOn && !runtime.isInBackground) {
       WakelockPlus.enable();
     } else {
       WakelockPlus.disable();

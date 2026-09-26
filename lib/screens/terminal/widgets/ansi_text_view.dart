@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'caret_blink_controller.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -143,8 +143,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   /// キャレット点滅用（離散トグル）。連続アニメだと毎 vsync 再描画され、
   /// 待機中も 60-120fps を消費するため、500ms ごとに ON/OFF を切り替える。
-  Timer? _caretBlinkTimer;
-  final ValueNotifier<bool> _caretVisible = ValueNotifier<bool>(true);
+  late final CaretBlinkController _caretVisible;
 
   /// 表示モデル（parser・キャッシュ・行高の所有）。
   late final AnsiDisplayModel _content;
@@ -177,6 +176,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   @override
   void initState() {
     super.initState();
+    _caretVisible = CaretBlinkController();
     // 協調オブジェクトは initState / late final で生成する（フィールド
     // 初期化子にしない）。`AnsiTextViewState()` を直接 new するテストが
     // LateInitializationError を起こさないための規約（v2・critique §2.3）。
@@ -190,13 +190,12 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
     // 外部からScrollControllerが渡されていない場合は内部で作成
     _scrollDriver.attach();
+  }
 
-    // 500ms ごとにキャレット表示を反転（離散点滅）。ValueNotifier のみ更新するため、
-    // 連続アニメと違い待機中は再描画されない（idle 時 0fps を維持）。
-    _caretBlinkTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => _caretVisible.value = !_caretVisible.value,
-    );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _caretVisible.setVisible(TickerMode.valuesOf(context).enabled);
   }
 
   @override
@@ -215,7 +214,6 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   @override
   void dispose() {
-    _caretBlinkTimer?.cancel();
     _caretVisible.dispose();
     _focusNode.dispose();
     _horizontalScrollController.dispose();

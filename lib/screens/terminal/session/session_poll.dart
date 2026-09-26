@@ -28,7 +28,7 @@ class SessionPollEngine {
 
   /// `_pollPaneContent` の移設（C1/C7 は port 呼出）。
   Future<void> pollPaneContent() async {
-    if (runtime.isPolling || env.host.isDisposed) return;
+    if (!runtime.canPoll || runtime.isPolling || env.host.isDisposed) return;
     runtime.isPolling = true;
 
     try {

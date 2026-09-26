@@ -29,6 +29,45 @@ class SshForegroundTaskService implements TransferNotificationService {
   factory SshForegroundTaskService() => _instance;
   SshForegroundTaskService._internal();
 
+  bool _cpu = false;
+  bool _wifi = false;
+  ({bool cpu, bool wifi})? _appliedLocks;
+  ({bool cpu, bool wifi})? _initialLocks;
+  Future<void> _lockQueue = Future.value();
+
+  ForegroundTaskOptions get _taskOptions => ForegroundTaskOptions(
+    eventAction: ForegroundTaskEventAction.nothing(),
+    autoRunOnBoot: false,
+    autoRunOnMyPackageReplaced: false,
+    allowWakeLock: _cpu,
+    allowWifiLock: _wifi,
+  );
+
+  /// 8.17.0 only reacquires native locks on service (re)start, not API_UPDATE.
+  /// The task isolate owns no SSH/SFTP resources; those stay in the main isolate.
+  Future<void> setPowerLocks({required bool cpu, required bool wifi}) {
+    _cpu = cpu;
+    _wifi = wifi;
+    _lockQueue = _lockQueue.catchError((Object _) {}).then((_) async {
+      if (!Platform.isAndroid || !_isRunning) return;
+      final target = (cpu: _cpu, wifi: _wifi);
+      if (_appliedLocks == target) return;
+      final update = await FlutterForegroundTask.updateService(
+        foregroundTaskOptions: _taskOptions,
+      );
+      if (update is! ServiceRequestSuccess) {
+        throw StateError('Power options update failed: $update');
+      }
+      if (!_isRunning) return;
+      final restart = await FlutterForegroundTask.restartService();
+      if (restart is! ServiceRequestSuccess) {
+        throw StateError('Power lock restart failed: $restart');
+      }
+      _appliedLocks = target;
+    });
+    return _lockQueue;
+  }
+
   bool _isInitialized = false;
   bool _isRunning = false;
   String? _currentConnectionName;
@@ -51,6 +90,7 @@ class SshForegroundTaskService implements TransferNotificationService {
       return;
     }
 
+    _initialLocks = (cpu: _cpu, wifi: _wifi);
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: 'muxpod_ssh_foreground',
@@ -65,13 +105,7 @@ class SshForegroundTaskService implements TransferNotificationService {
         showNotification: false,
         playSound: false,
       ),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.nothing(),
-        autoRunOnBoot: false,
-        autoRunOnMyPackageReplaced: false,
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
+      foregroundTaskOptions: _taskOptions,
     );
 
     _isInitialized = true;
@@ -86,13 +120,6 @@ class SshForegroundTaskService implements TransferNotificationService {
         await FlutterForegroundTask.checkNotificationPermission();
     if (notificationPermission != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
-    }
-
-    // バッテリー最適化の除外をリクエスト（オプション）
-    final batteryOptimization =
-        await FlutterForegroundTask.isIgnoringBatteryOptimizations;
-    if (!batteryOptimization) {
-      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
     }
 
     return await FlutterForegroundTask.checkNotificationPermission() ==
@@ -128,6 +155,8 @@ class SshForegroundTaskService implements TransferNotificationService {
     );
 
     _isRunning = result is ServiceRequestSuccess;
+    _appliedLocks = _initialLocks;
+    await setPowerLocks(cpu: _cpu, wifi: _wifi);
     return _isRunning;
   }
 
@@ -166,8 +195,10 @@ class SshForegroundTaskService implements TransferNotificationService {
   Future<void> stopService() async {
     if (!Platform.isAndroid || !_isRunning) return;
 
-    await FlutterForegroundTask.stopService();
     _isRunning = false;
+    await _lockQueue.catchError((Object _) {});
+    await FlutterForegroundTask.stopService();
+    _appliedLocks = null;
     _currentConnectionName = null;
   }
 

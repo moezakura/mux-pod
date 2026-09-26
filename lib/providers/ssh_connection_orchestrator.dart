@@ -31,6 +31,11 @@ class SshConnectionOrchestrator {
   final Future<void> Function() _stopForeground;
 
   SshClient? _client;
+  bool _maintenanceEnabled = true;
+  void setMaintenanceEnabled(bool enabled) {
+    _maintenanceEnabled = enabled;
+    _client?.setMaintenanceEnabled(enabled);
+  }
 
   // 再接続用のキャッシュ
   Connection? _lastConnection;
@@ -97,7 +102,7 @@ class SshConnectionOrchestrator {
     );
 
     try {
-      _client = SshClient();
+      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
 
       await _client!.connect(
         host: connection.host,
@@ -173,7 +178,7 @@ class SshConnectionOrchestrator {
     );
 
     try {
-      _client = SshClient();
+      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
 
       // 接続状態のストリームを監視（切断検知の高速化）
       _connectionStateSubscription = _client!.connectionStateStream.listen(
@@ -293,7 +298,7 @@ class SshConnectionOrchestrator {
       // 古いクライアントをクリーンアップ（await: 旧 managed PTY / TUI が
       // 閉じる前に新クライアントで起動しないことを保証・Codex B3）。
       await _client?.dispose();
-      _client = SshClient();
+      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
 
       // 接続状態のストリームを監視（切断検知の高速化）
       _connectionStateSubscription = _client!.connectionStateStream.listen(
