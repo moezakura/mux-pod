@@ -109,12 +109,7 @@ class ThrowingTunneler extends SshProxyTunneler {
 
 SshProxyOptions oneHopProxy() => SshProxyOptions(
   hops: const [
-    SshProxyHop(
-      host: 'hop0.test',
-      port: 2222,
-      username: 'j0',
-      password: 'jpw',
-    ),
+    SshProxyHop(host: 'hop0.test', port: 2222, username: 'j0', password: 'jpw'),
   ],
   forwardHost: 'target.test',
   forwardPort: 22,
@@ -158,18 +153,19 @@ void main() {
         final tunneler = SshProxyTunneler(
           l10n: () => null,
           socketDialer: (host, port, {timeout}) async => FakeSocket(),
-          hopClientFactory: (
-            socket,
-            hop, {
-            required handshakeTimeout,
-            required onAuthenticated,
-            required onVerifyHostKey,
-          }) async {
-            final client = BrokenForwardHopClient();
-            hopClients.add(client);
-            client.completeAuthentication();
-            return client;
-          },
+          hopClientFactory:
+              (
+                socket,
+                hop, {
+                required handshakeTimeout,
+                required onAuthenticated,
+                required onVerifyHostKey,
+              }) async {
+                final client = BrokenForwardHopClient();
+                hopClients.add(client);
+                client.completeAuthentication();
+                return client;
+              },
         );
         final client = SshClient(proxyTunneler: tunneler);
 
@@ -208,8 +204,11 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Host key verification for jump host hop0.test:2222 failed')
+              .having(
+                (e) => e.message,
+                'message',
+                'Host key verification for jump host hop0.test:2222 failed',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0)
               .having((e) => e.hopHost, 'hopHost', 'hop0.test')
               .having((e) => e.hopPort, 'hopPort', 2222),

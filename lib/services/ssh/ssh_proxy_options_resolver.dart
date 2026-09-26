@@ -43,9 +43,7 @@ class SshProxyOptionsResolver {
     for (var i = 0; i < proxy.hops.length; i++) {
       final hop = proxy.hops[i];
       if (hop.authMethod == 'key') {
-        resolvedHops.add(
-          await _resolveKeyHop(storage, hop, i, l10n),
-        );
+        resolvedHops.add(await _resolveKeyHop(storage, hop, i, l10n));
       } else {
         resolvedHops.add(
           await _resolvePasswordHop(storage, hop, i, connectionId, l10n),
@@ -92,7 +90,9 @@ class SshProxyOptionsResolver {
     if (privateKey == null) {
       throw _hopError(l10n.connProxyKeyMissing(hop.host), hopIndex, hop);
     }
-    final passphrase = keyId == null ? null : await storage.getPassphrase(keyId);
+    final passphrase = keyId == null
+        ? null
+        : await storage.getPassphrase(keyId);
     return SshProxyHop(
       host: hop.host,
       port: hop.port,

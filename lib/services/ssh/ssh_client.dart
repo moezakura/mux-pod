@@ -347,9 +347,9 @@ class SshClient implements BackendAdapter {
       // なし: 10））。直接接続・未設定時は 10 秒のまま = 既存挙動完全不変。
       _keepAlive.keepAliveProbeTimeoutSeconds =
           SshKeepAlive.resolveKeepAliveTimeoutSeconds(
-        perConnection: options.keepAliveTimeoutSeconds,
-        proxy: options.proxy,
-      );
+            perConnection: options.keepAliveTimeoutSeconds,
+            proxy: options.proxy,
+          );
 
       // 認証完了を待機
       await _resourceManager.client!.authenticated;

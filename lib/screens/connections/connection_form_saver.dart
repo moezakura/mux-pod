@@ -99,9 +99,7 @@ class ConnectionSaver {
     for (var i = 0; i < proxy.hops.length; i++) {
       final hop = proxy.hops[i];
       if (hop.authMethod == 'password') {
-        final password = i < inputHops.length
-            ? inputHops[i].passwordText
-            : '';
+        final password = i < inputHops.length ? inputHops[i].passwordText : '';
         if (password.isNotEmpty) {
           await storage.saveProxyPassword(connectionId, i, password);
         }

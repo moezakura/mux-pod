@@ -242,7 +242,13 @@ class SshProxyTunneler {
     int hopIndex,
     SshProxyHop hop,
   ) {
-    return SshProxyConnectionError(message, cause, hopIndex, hop.host, hop.port);
+    return SshProxyConnectionError(
+      message,
+      cause,
+      hopIndex,
+      hop.host,
+      hop.port,
+    );
   }
 
   String _timeoutMessage(SshProxyHop hop) {

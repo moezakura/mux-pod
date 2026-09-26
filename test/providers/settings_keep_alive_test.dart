@@ -103,10 +103,7 @@ void main() {
 
     test('保存→復元の往復ができる', () async {
       final persistence = SettingsPersistence();
-      await persistence.save(
-        SettingsPersistence.keepAliveTimeoutKey,
-        30,
-      );
+      await persistence.save(SettingsPersistence.keepAliveTimeoutKey, 30);
       final loaded = await persistence.load();
       expect(loaded.keepAliveTimeoutSeconds, 30);
     });

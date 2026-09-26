@@ -31,9 +31,10 @@ class RecordingTunneler extends SshProxyTunneler {
     calls++;
     lastProxy = proxy;
     lastOptions = options;
-    return (socket: FakeSocket(), jumpClients: <SSHClient>[
-      FakeProxyHopClient(),
-    ]);
+    return (
+      socket: FakeSocket(),
+      jumpClients: <SSHClient>[FakeProxyHopClient()],
+    );
   }
 }
 
@@ -59,9 +60,11 @@ void main() {
         connectionFactory: null,
         l10n: () => null,
         setLastError: (_) {},
-        socketDialer: socketDialer ?? (host, port, {timeout}) async {
-          throw StateError('unexpected direct dial');
-        },
+        socketDialer:
+            socketDialer ??
+            (host, port, {timeout}) async {
+              throw StateError('unexpected direct dial');
+            },
       );
     }
 
@@ -156,7 +159,12 @@ void main() {
           () => validate(
             proxy(
               hops: [
-                SshProxyHop(host: 'h.test', port: 0, username: 'u', password: 'p'),
+                SshProxyHop(
+                  host: 'h.test',
+                  port: 0,
+                  username: 'u',
+                  password: 'p',
+                ),
               ],
             ),
           ),
@@ -173,36 +181,38 @@ void main() {
       test('hop without credential is rejected', () {
         expect(
           () => validate(
-            proxy(hops: [SshProxyHop(host: 'h.test', username: 'u')]),
+            proxy(
+              hops: [SshProxyHop(host: 'h.test', username: 'u')],
+            ),
           ),
           throwsA(isA<SshAuthenticationError>()),
         );
       });
 
-      test('forwardPort out of range is rejected when forwardHost set (M6)', () {
-        expect(
-          () => validate(
-            SshProxyOptions(
-              hops: [hop],
-              forwardHost: '10.0.0.5',
-              forwardPort: 0,
+      test(
+        'forwardPort out of range is rejected when forwardHost set (M6)',
+        () {
+          expect(
+            () => validate(
+              SshProxyOptions(
+                hops: [hop],
+                forwardHost: '10.0.0.5',
+                forwardPort: 0,
+              ),
             ),
-          ),
-          throwsA(
-            isA<SshConnectionError>().having(
-              (e) => e.message,
-              'message',
-              'Invalid port number: 0',
+            throwsA(
+              isA<SshConnectionError>().having(
+                (e) => e.message,
+                'message',
+                'Invalid port number: 0',
+              ),
             ),
-          ),
-        );
-      });
+          );
+        },
+      );
 
       test('forwardPort without forwardHost is ignored (M6)', () {
-        expect(
-          () => validate(proxy(forwardPort: 99999)),
-          returnsNormally,
-        );
+        expect(() => validate(proxy(forwardPort: 99999)), returnsNormally);
       });
     });
 
@@ -260,17 +270,18 @@ void main() {
     test('connectionFactory 経路は jumpClients: const []（契約不変）', () async {
       SshConnectOptions? receivedOptions;
       final sut = SshConnector(
-        connectionFactory: (
-          host,
-          port,
-          username,
-          options,
-          onAuthenticated,
-          onVerifyHostKey,
-        ) async {
-          receivedOptions = options;
-          return (socket: FakeSocket(), client: FakeProxyHopClient());
-        },
+        connectionFactory:
+            (
+              host,
+              port,
+              username,
+              options,
+              onAuthenticated,
+              onVerifyHostKey,
+            ) async {
+              receivedOptions = options;
+              return (socket: FakeSocket(), client: FakeProxyHopClient());
+            },
         l10n: () => null,
         setLastError: (_) {},
       );
@@ -301,18 +312,19 @@ void main() {
       final tunneler = SshProxyTunneler(
         l10n: () => null,
         socketDialer: (host, port, {timeout}) async => FakeSocket(),
-        hopClientFactory: (
-          socket,
-          hop, {
-          required handshakeTimeout,
-          required onAuthenticated,
-          required onVerifyHostKey,
-        }) async {
-          final client = FakeProxyHopClient();
-          clients.add(client);
-          client.completeAuthentication();
-          return client;
-        },
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final client = FakeProxyHopClient();
+              clients.add(client);
+              client.completeAuthentication();
+              return client;
+            },
       );
       final sut = SshConnector(
         connectionFactory: null,
@@ -326,10 +338,7 @@ void main() {
           host: 'target.test',
           port: 22,
           username: 'user',
-          options: SshConnectOptions(
-            privateKey: 'not a pem',
-            proxy: proxy(),
-          ),
+          options: SshConnectOptions(privateKey: 'not a pem', proxy: proxy()),
           onAuthenticated: () {},
         ),
         throwsA(isA<SshAuthenticationError>()),

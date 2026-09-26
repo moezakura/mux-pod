@@ -51,10 +51,7 @@ class SecureStorageService {
     int hopIndex,
     String password,
   ) async {
-    await _writeValue(
-      'proxy_password_${connectionId}_$hopIndex',
-      password,
-    );
+    await _writeValue('proxy_password_${connectionId}_$hopIndex', password);
   }
 
   /// ジャンプホストのパスワードを取得。
@@ -70,18 +67,13 @@ class SecureStorageService {
   /// 探すため、hop 数の上限変更や index 歯抜けがあっても残留しない。
   /// 列挙に失敗（復号不能など）した場合は列挙分を諦めて続行する
   /// （[deleteAllHostKeyFingerprints] と同一の方針）。
-  Future<void> deleteProxyPassword(
-    String connectionId, {
-    int? hopIndex,
-  }) async {
+  Future<void> deleteProxyPassword(String connectionId, {int? hopIndex}) async {
     if (hopIndex != null) {
       await _deleteValue('proxy_password_${connectionId}_$hopIndex');
       return;
     }
     try {
-      final keys = await getKeysWithPrefix(
-        'proxy_password_${connectionId}_',
-      );
+      final keys = await getKeysWithPrefix('proxy_password_${connectionId}_');
       for (final key in keys) {
         await _deleteValue(key);
       }

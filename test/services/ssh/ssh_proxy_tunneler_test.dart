@@ -77,9 +77,7 @@ void main() {
 
     test('(a) 単段: forwardLocal に forwardTarget が渡る', () async {
       final clients = <FakeProxyHopClient>[];
-      final tun = tunneler(
-        hopClientFactory: autoAuthFactory(clients),
-      );
+      final tun = tunneler(hopClientFactory: autoAuthFactory(clients));
 
       final result = await tun.tunnel(
         proxy: proxy(forwardHost: '10.0.0.5', forwardPort: 2222),
@@ -88,9 +86,7 @@ void main() {
       );
 
       expect(clients, hasLength(1));
-      expect(clients.single.forwarded, [
-        (host: '10.0.0.5', port: 2222),
-      ]);
+      expect(clients.single.forwarded, [(host: '10.0.0.5', port: 2222)]);
       // forwardLocal の戻り値（SSHForwardChannel は SSHSocket implements 済み）
       expect(result.socket, same(clients.single.lastChannel));
       expect(result.jumpClients, [clients.single]);
@@ -98,9 +94,7 @@ void main() {
 
     test('(b) 2 hop: チェーン順に連鎖する', () async {
       final clients = <FakeProxyHopClient>[];
-      final tun = tunneler(
-        hopClientFactory: autoAuthFactory(clients),
-      );
+      final tun = tunneler(hopClientFactory: autoAuthFactory(clients));
 
       final result = await tun.tunnel(
         proxy: proxy(hopCount: 2, forwardHost: 'target.test'),
@@ -129,9 +123,12 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Failed to connect to jump host hop0.test:22: '
-                  'SocketException: unreachable')
+              .having(
+                (e) => e.message,
+                'message',
+                'Failed to connect to jump host hop0.test:22: '
+                    'SocketException: unreachable',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0)
               .having((e) => e.hopHost, 'hopHost', 'hop0.test')
               .having((e) => e.hopPort, 'hopPort', 22),
@@ -142,15 +139,19 @@ void main() {
     test('(c-2) hop 認証失敗は SSHAuthFailError をそのまま再throwしない', () async {
       final clients = <FakeProxyHopClient>[];
       final tun = tunneler(
-        hopClientFactory: (socket, hop,
-            {required handshakeTimeout,
-            required onAuthenticated,
-            required onVerifyHostKey}) async {
-          final client = FakeProxyHopClient();
-          clients.add(client);
-          client.failAuthentication(SSHAuthFailError('password rejected'));
-          return client;
-        },
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final client = FakeProxyHopClient();
+              clients.add(client);
+              client.failAuthentication(SSHAuthFailError('password rejected'));
+              return client;
+            },
       );
 
       await expectLater(
@@ -161,8 +162,11 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Authentication to jump host hop0.test:22 failed')
+              .having(
+                (e) => e.message,
+                'message',
+                'Authentication to jump host hop0.test:22 failed',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0),
         ),
       );
@@ -174,26 +178,29 @@ void main() {
       final factory = autoAuthFactory(clients);
       // forwardLocal だけ失敗させる
       final tun = tunneler(
-        hopClientFactory: (
-          socket,
-          hop, {
-          required handshakeTimeout,
-          required onAuthenticated,
-          required onVerifyHostKey,
-        }) async {
-          final client = await factory(
-            socket,
-            hop,
-            handshakeTimeout: handshakeTimeout,
-            onAuthenticated: onAuthenticated,
-            onVerifyHostKey: onVerifyHostKey,
-          ) as FakeProxyHopClient;
-          client.forwardError = SSHChannelOpenError(
-            1,
-            'administratively prohibited',
-          );
-          return client;
-        },
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final client =
+                  await factory(
+                        socket,
+                        hop,
+                        handshakeTimeout: handshakeTimeout,
+                        onAuthenticated: onAuthenticated,
+                        onVerifyHostKey: onVerifyHostKey,
+                      )
+                      as FakeProxyHopClient;
+              client.forwardError = SSHChannelOpenError(
+                1,
+                'administratively prohibited',
+              );
+              return client;
+            },
       );
 
       await expectLater(
@@ -204,8 +211,11 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Could not reach target.test:22 via the jump host')
+              .having(
+                (e) => e.message,
+                'message',
+                'Could not reach target.test:22 via the jump host',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0),
         ),
       );
@@ -232,8 +242,11 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Host key verification for jump host hop0.test:22 failed')
+              .having(
+                (e) => e.message,
+                'message',
+                'Host key verification for jump host hop0.test:22 failed',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0)
               .having((e) => e.hopHost, 'hopHost', 'hop0.test'),
         ),
@@ -248,20 +261,21 @@ void main() {
         SshProxyTunneler(
           l10n: () => null,
           socketDialer: (host, port, {timeout}) async => FakeSocket(),
-          hopClientFactory: (
-            socket,
-            hop, {
-            required handshakeTimeout,
-            required onAuthenticated,
-            required onVerifyHostKey,
-          }) async {
-            // ホスト鍵検証のみ行い、認証完了はさせない
-            await onVerifyHostKey('ssh-ed25519', fingerprint);
-            final client = FakeProxyHopClient();
-            clients.clear();
-            clients.add(client);
-            return client;
-          },
+          hopClientFactory:
+              (
+                socket,
+                hop, {
+                required handshakeTimeout,
+                required onAuthenticated,
+                required onVerifyHostKey,
+              }) async {
+                // ホスト鍵検証のみ行い、認証完了はさせない
+                await onVerifyHostKey('ssh-ed25519', fingerprint);
+                final client = FakeProxyHopClient();
+                clients.clear();
+                clients.add(client);
+                return client;
+              },
         ).tunnel(
           proxy: proxy(),
           options: SshConnectOptions(password: 'pw', timeout: 1),
@@ -269,55 +283,61 @@ void main() {
         ),
         throwsA(
           isA<SshProxyConnectionError>()
-              .having((e) => e.message, 'message',
-                  'Timed out connecting to jump host hop0.test:22')
+              .having(
+                (e) => e.message,
+                'message',
+                'Timed out connecting to jump host hop0.test:22',
+              )
               .having((e) => e.hopIndex, 'hopIndex', 0),
         ),
       );
       expect(clients.single.closed, isTrue);
     });
 
-    test(
-      '(f) MR-1: forwardLocal が完了しない hop はタイムアウトして close される',
-      () async {
-        final clients = <FakeProxyHopClient>[];
-        final factory = autoAuthFactory(clients);
-        final tun = tunneler(
-          hopClientFactory: (
-            socket,
-            hop, {
-            required handshakeTimeout,
-            required onAuthenticated,
-            required onVerifyHostKey,
-          }) async {
-            final client = await factory(
+    test('(f) MR-1: forwardLocal が完了しない hop はタイムアウトして close される', () async {
+      final clients = <FakeProxyHopClient>[];
+      final factory = autoAuthFactory(clients);
+      final tun = tunneler(
+        hopClientFactory:
+            (
               socket,
-              hop,
-              handshakeTimeout: handshakeTimeout,
-              onAuthenticated: onAuthenticated,
-              onVerifyHostKey: onVerifyHostKey,
-            ) as FakeProxyHopClient;
-            client.forwardNeverCompletes = true;
-            return client;
-          },
-        );
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final client =
+                  await factory(
+                        socket,
+                        hop,
+                        handshakeTimeout: handshakeTimeout,
+                        onAuthenticated: onAuthenticated,
+                        onVerifyHostKey: onVerifyHostKey,
+                      )
+                      as FakeProxyHopClient;
+              client.forwardNeverCompletes = true;
+              return client;
+            },
+      );
 
-        await expectLater(
-          tun.tunnel(
-            proxy: proxy(),
-            options: SshConnectOptions(password: 'pw', timeout: 1),
-            onVerifyHostKey: (hop, type, fp) async => true,
-          ),
-          throwsA(
-            isA<SshProxyConnectionError>()
-                .having((e) => e.message, 'message',
-                    'Timed out connecting to jump host hop0.test:22')
-                .having((e) => e.hopIndex, 'hopIndex', 0),
-          ),
-        );
-        expect(clients.single.closed, isTrue);
-      },
-    );
+      await expectLater(
+        tun.tunnel(
+          proxy: proxy(),
+          options: SshConnectOptions(password: 'pw', timeout: 1),
+          onVerifyHostKey: (hop, type, fp) async => true,
+        ),
+        throwsA(
+          isA<SshProxyConnectionError>()
+              .having(
+                (e) => e.message,
+                'message',
+                'Timed out connecting to jump host hop0.test:22',
+              )
+              .having((e) => e.hopIndex, 'hopIndex', 0),
+        ),
+      );
+      expect(clients.single.closed, isTrue);
+    });
 
     test('(g) MR-2: hop[1] の失敗で hop[0] が後ろから close される', () async {
       final clients = <FakeProxyHopClient>[];
@@ -329,26 +349,27 @@ void main() {
           sockets.add(socket);
           return socket;
         },
-        hopClientFactory: (
-          socket,
-          hop, {
-          required handshakeTimeout,
-          required onAuthenticated,
-          required onVerifyHostKey,
-        }) async {
-          final index = hopCount++;
-          final client = FakeProxyHopClient();
-          clients.add(client);
-          if (index == 0) {
-            // hop[0] は正常に認証まで完了させる
-            await onVerifyHostKey('ssh-ed25519', fingerprint);
-            client.completeAuthentication();
-          } else {
-            // hop[1] で認証失敗
-            client.failAuthentication(SSHAuthFailError('denied'));
-          }
-          return client;
-        },
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final index = hopCount++;
+              final client = FakeProxyHopClient();
+              clients.add(client);
+              if (index == 0) {
+                // hop[0] は正常に認証まで完了させる
+                await onVerifyHostKey('ssh-ed25519', fingerprint);
+                client.completeAuthentication();
+              } else {
+                // hop[1] で認証失敗
+                client.failAuthentication(SSHAuthFailError('denied'));
+              }
+              return client;
+            },
       );
 
       await expectLater(

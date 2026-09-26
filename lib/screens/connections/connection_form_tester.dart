@@ -263,8 +263,7 @@ class ConnectionTester {
           ),
         );
       } else {
-        var password =
-            i < values.proxyHops.length
+        var password = i < values.proxyHops.length
             ? values.proxyHops[i].passwordText
             : '';
         if (password.isEmpty && connectionId != null) {

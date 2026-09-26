@@ -479,14 +479,8 @@ void main() {
       String username = 'jumpuser',
       String password = 'jumppw',
     }) async {
-      await tester.enterText(
-        find.byKey(Key('proxy_hop_host_$index')),
-        host,
-      );
-      await tester.enterText(
-        find.byKey(Key('proxy_hop_port_$index')),
-        port,
-      );
+      await tester.enterText(find.byKey(Key('proxy_hop_host_$index')), host);
+      await tester.enterText(find.byKey(Key('proxy_hop_port_$index')), port);
       await tester.enterText(
         find.byKey(Key('proxy_hop_username_$index')),
         username,
@@ -576,40 +570,48 @@ void main() {
       expect(find.byKey(const Key('proxy_hop_host_1')), findsOneWidget);
 
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('proxy_hop_host_0')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_host_0')))
+            .controller!
+            .text,
         'jump1.example.com',
       );
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('proxy_hop_port_0')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_port_0')))
+            .controller!
+            .text,
         '2200',
       );
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('proxy_hop_host_1')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_host_1')))
+            .controller!
+            .text,
         'jump2.example.com',
       );
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('proxy_forward_host')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_forward_host')))
+            .controller!
+            .text,
         '10.0.0.5',
       );
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('proxy_forward_port')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_forward_port')))
+            .controller!
+            .text,
         '2222',
       );
       // keepalive の逆流。
       expect(
-        tester.widget<TextFormField>(
-          find.byKey(const Key('keepalive_timeout_field')),
-        ).controller!.text,
+        tester
+            .widget<TextFormField>(
+              find.byKey(const Key('keepalive_timeout_field')),
+            )
+            .controller!
+            .text,
         '60',
       );
     });
@@ -663,10 +665,7 @@ void main() {
         await SecureStorageService().getProxyPassword(saved.id, 0),
         'jumppw',
       );
-      expect(
-        await SecureStorageService().getProxyPassword(saved.id, 1),
-        'pw2',
-      );
+      expect(await SecureStorageService().getProxyPassword(saved.id, 1), 'pw2');
       expect(jsonEncode(saved.toJson()), isNot(contains('jumppw')));
     });
 
@@ -708,53 +707,52 @@ void main() {
       expect(await storage.getProxyPassword('c1', 1), isNull);
     });
 
-    testWidgets(
-      '🤝2: shrinking hops 3 to 1 removes orphan indices 1 and 2',
-      (tester) async {
-        SecureStorageService.setTestValues({
-          'proxy_password_c1_0': 'old0',
-          'proxy_password_c1_1': 'old1',
-          'proxy_password_c1_2': 'old2',
-        });
-        ProxyHop hop(String host) =>
-            ProxyHop(host: host, username: 'u');
-        final existing = Connection(
-          id: 'c1',
-          name: 'Jumped',
-          host: '192.168.1.1',
-          username: 'user',
-          proxy: ProxyConfig(
-            hops: [hop('jump1.example.com'), hop('jump2.example.com'), hop('jump3.example.com')],
-          ),
-          createdAt: DateTime(2025, 1, 1),
-        );
-        final harness = await _pumpForm(
-          tester,
-          connectionId: 'c1',
-          initialConnections: [existing],
-        );
+    testWidgets('🤝2: shrinking hops 3 to 1 removes orphan indices 1 and 2', (
+      tester,
+    ) async {
+      SecureStorageService.setTestValues({
+        'proxy_password_c1_0': 'old0',
+        'proxy_password_c1_1': 'old1',
+        'proxy_password_c1_2': 'old2',
+      });
+      ProxyHop hop(String host) => ProxyHop(host: host, username: 'u');
+      final existing = Connection(
+        id: 'c1',
+        name: 'Jumped',
+        host: '192.168.1.1',
+        username: 'user',
+        proxy: ProxyConfig(
+          hops: [
+            hop('jump1.example.com'),
+            hop('jump2.example.com'),
+            hop('jump3.example.com'),
+          ],
+        ),
+        createdAt: DateTime(2025, 1, 1),
+      );
+      final harness = await _pumpForm(
+        tester,
+        connectionId: 'c1',
+        initialConnections: [existing],
+      );
 
-        // hop 3（index 2）を削除 → hop 2（index 1）を削除。
-        await tester.tap(find.byKey(const Key('proxy_hop_remove_2')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('proxy_hop_remove_1')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Save'));
-        await tester.pumpAndSettle();
+      // hop 3（index 2）を削除 → hop 2（index 1）を削除。
+      await tester.tap(find.byKey(const Key('proxy_hop_remove_2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('proxy_hop_remove_1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
 
-        expect(harness.connections.updated, hasLength(1));
-        expect(
-          harness.connections.updated.first.proxy!.hops,
-          hasLength(1),
-        );
-        final storage = SecureStorageService();
-        // index 0 は維持（空欄 = 既存値維持）。
-        expect(await storage.getProxyPassword('c1', 0), 'old0');
-        // orphan（index 1, 2）は削除される。
-        expect(await storage.getProxyPassword('c1', 1), isNull);
-        expect(await storage.getProxyPassword('c1', 2), isNull);
-      },
-    );
+      expect(harness.connections.updated, hasLength(1));
+      expect(harness.connections.updated.first.proxy!.hops, hasLength(1));
+      final storage = SecureStorageService();
+      // index 0 は維持（空欄 = 既存値維持）。
+      expect(await storage.getProxyPassword('c1', 0), 'old0');
+      // orphan（index 1, 2）は削除される。
+      expect(await storage.getProxyPassword('c1', 1), isNull);
+      expect(await storage.getProxyPassword('c1', 2), isNull);
+    });
 
     testWidgets('limits hop rows to 5 and supports removal', (tester) async {
       await _pumpForm(tester);
@@ -810,9 +808,7 @@ void main() {
 
       // 両方の重複行でエラーが表示される。
       expect(
-        find.textContaining(
-          'jump1.example.com:2200 is already in the chain',
-        ),
+        find.textContaining('jump1.example.com:2200 is already in the chain'),
         findsNWidgets(2),
       );
       expect(harness.connections.added, isEmpty);

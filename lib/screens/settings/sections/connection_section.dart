@@ -183,11 +183,8 @@ class ConnectionSection extends ConsumerWidget {
                 ? l10n.settingsKeepAliveAuto
                 : l10n.settingsKeepAliveSeconds(sshKeepAliveSeconds),
           ),
-          onTap: () => showKeepAliveTimeoutPicker(
-            context,
-            ref,
-            sshKeepAliveSeconds,
-          ),
+          onTap: () =>
+              showKeepAliveTimeoutPicker(context, ref, sshKeepAliveSeconds),
         ),
         const Divider(),
         ListTile(

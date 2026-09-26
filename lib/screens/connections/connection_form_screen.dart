@@ -284,9 +284,7 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                   }),
                 ),
                 const SizedBox(height: 24),
-                ConnectionKeepaliveSection(
-                  controller: _keepaliveController,
-                ),
+                ConnectionKeepaliveSection(controller: _keepaliveController),
               ],
             ),
           ),
@@ -443,8 +441,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       values: values,
       l10n: l10n,
       connectionId: widget.connectionId,
-      globalKeepAliveTimeoutSeconds:
-          ref.read(settingsProvider).keepAliveTimeoutSeconds,
+      globalKeepAliveTimeoutSeconds: ref
+          .read(settingsProvider)
+          .keepAliveTimeoutSeconds,
     );
 
     if (mounted) {

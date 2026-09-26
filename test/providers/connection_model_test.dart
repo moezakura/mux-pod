@@ -349,24 +349,27 @@ void main() {
         expect(json['storageSchemaVersion'], 2);
       });
 
-      test('keepAliveTimeoutSeconds null round trip (v2 record without keys)', () {
-        final now = DateTime(2025, 1, 1);
-        final connection = Connection(
-          id: 'c1',
-          name: 'Server',
-          host: 'h',
-          username: 'u',
-          createdAt: now,
-        );
+      test(
+        'keepAliveTimeoutSeconds null round trip (v2 record without keys)',
+        () {
+          final now = DateTime(2025, 1, 1);
+          final connection = Connection(
+            id: 'c1',
+            name: 'Server',
+            host: 'h',
+            username: 'u',
+            createdAt: now,
+          );
 
-        final json = connection.toJson();
-        final restored = Connection.fromJson(json);
+          final json = connection.toJson();
+          final restored = Connection.fromJson(json);
 
-        expect(restored.proxy, isNull);
-        expect(restored.keepAliveTimeoutSeconds, isNull);
-        expect(json, isNot(contains('proxy')));
-        expect(json, isNot(contains('keepAliveTimeoutSeconds')));
-      });
+          expect(restored.proxy, isNull);
+          expect(restored.keepAliveTimeoutSeconds, isNull);
+          expect(json, isNot(contains('proxy')));
+          expect(json, isNot(contains('keepAliveTimeoutSeconds')));
+        },
+      );
 
       test('existing v2 record without proxy/keepalive keys is readable', () {
         final json = <String, dynamic>{

@@ -307,9 +307,7 @@ void main() {
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([connection]),
             ),
-            settingsProvider.overrideWith(
-              () => _DefaultSettingsNotifier(),
-            ),
+            settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
                 sshClient: sshClient,
@@ -421,9 +419,7 @@ void main() {
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([connection]),
             ),
-            settingsProvider.overrideWith(
-              () => _DefaultSettingsNotifier(),
-            ),
+            settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
                 sshClient: sshClient,
@@ -497,9 +493,7 @@ void main() {
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([brokenProxy, healthy]),
             ),
-            settingsProvider.overrideWith(
-              () => _DefaultSettingsNotifier(),
-            ),
+            settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
                 sshClient: sshClient,
@@ -553,9 +547,7 @@ void main() {
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([connection]),
             ),
-            settingsProvider.overrideWith(
-              () => _DefaultSettingsNotifier(),
-            ),
+            settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
                 sshClient: sshClient,

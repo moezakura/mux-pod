@@ -5,7 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../theme/design_colors.dart';
 import 'connection_form_components.dart';
-import 'connection_form_values.dart' show maxKeepaliveSeconds, minKeepaliveSeconds;
+import 'connection_form_values.dart'
+    show maxKeepaliveSeconds, minKeepaliveSeconds;
 
 /// キープアライブセクションの表示（🤝3: ProxySection 後・index 7+ 配置）。
 ///
@@ -43,9 +44,7 @@ class ConnectionKeepaliveSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ConnectionFieldLabel(
-                label: context.l10n.connKeepaliveTimeout,
-              ),
+              ConnectionFieldLabel(label: context.l10n.connKeepaliveTimeout),
               const SizedBox(height: 8),
               TextFormField(
                 key: const Key('keepalive_timeout_field'),

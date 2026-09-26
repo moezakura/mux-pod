@@ -146,11 +146,7 @@ class ProxyConfig {
   /// copyWith のクリア用センチネル。
   static const _kClearSentinel = Object();
 
-  const ProxyConfig({
-    required this.hops,
-    this.forwardHost,
-    this.forwardPort,
-  });
+  const ProxyConfig({required this.hops, this.forwardHost, this.forwardPort});
 
   /// 部分的に値を更新したコピーを返す。
   ///

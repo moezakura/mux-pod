@@ -160,8 +160,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         factory: widget.sshClientFactory,
         l10n: context.l10n,
         // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
-        globalKeepAliveTimeoutSeconds:
-            ref.read(settingsProvider).keepAliveTimeoutSeconds,
+        globalKeepAliveTimeoutSeconds: ref
+            .read(settingsProvider)
+            .keepAliveTimeoutSeconds,
       );
       if (_backendKind == MultiplexerBackendKind.herdr) {
         // herdr: スナップショットを取得して共通 domain に変換する。
@@ -258,8 +259,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         factory: widget.sshClientFactory,
         l10n: context.l10n,
         // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
-        globalKeepAliveTimeoutSeconds:
-            ref.read(settingsProvider).keepAliveTimeoutSeconds,
+        globalKeepAliveTimeoutSeconds: ref
+            .read(settingsProvider)
+            .keepAliveTimeoutSeconds,
       );
       // 同一接続でそのまま一覧を再取得（kill → reload の await 順序を維持）
       final sessions = await _operations.killSessionAndReload(
@@ -345,8 +347,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         factory: widget.sshClientFactory,
         l10n: context.l10n,
         // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
-        globalKeepAliveTimeoutSeconds:
-            ref.read(settingsProvider).keepAliveTimeoutSeconds,
+        globalKeepAliveTimeoutSeconds: ref
+            .read(settingsProvider)
+            .keepAliveTimeoutSeconds,
       );
       final snapshot = await _operations.closeWorkspace(client, workspaceId);
       if (!mounted) return;
@@ -453,8 +456,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         factory: widget.sshClientFactory,
         l10n: context.l10n,
         // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
-        globalKeepAliveTimeoutSeconds:
-            ref.read(settingsProvider).keepAliveTimeoutSeconds,
+        globalKeepAliveTimeoutSeconds: ref
+            .read(settingsProvider)
+            .keepAliveTimeoutSeconds,
       );
       final snapshot = await _operations.createWorkspace(client, label);
       if (!mounted) return;

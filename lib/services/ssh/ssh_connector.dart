@@ -25,8 +25,8 @@ class SshConnector {
     required this.setLastError,
     SshProxyTunneler? tunneler,
     this.socketDialer = SSHSocket.connect,
-  }) : _tunneler = tunneler ??
-           SshProxyTunneler(l10n: l10n, socketDialer: socketDialer);
+  }) : _tunneler =
+           tunneler ?? SshProxyTunneler(l10n: l10n, socketDialer: socketDialer);
 
   /// 接続確立の注入（テスト用）。
   ///
@@ -111,17 +111,14 @@ class SshConnector {
     }
     if (hops.length > maxProxyHops) {
       throw SshConnectionError(
-        l10n()?.connProxyMaxHops(maxProxyHops) ??
-            'Up to $maxProxyHops hops',
+        l10n()?.connProxyMaxHops(maxProxyHops) ?? 'Up to $maxProxyHops hops',
       );
     }
 
     final seen = <String>{};
     for (final hop in hops) {
       if (hop.host.trim().isEmpty) {
-        throw SshConnectionError(
-          l10n()?.sshHostRequired ?? 'Host is required',
-        );
+        throw SshConnectionError(l10n()?.sshHostRequired ?? 'Host is required');
       }
       if (hop.port < 1 || hop.port > 65535) {
         throw SshConnectionError(
@@ -333,9 +330,12 @@ class SshConnector {
       // jump + target の両方が保留になり得るため List に積む。
       if (acceptNewHostKeys) {
         final pending = _pendingFingerprintMigrations ??= [];
-        pending.add(
-          (host: host, port: port, type: type, fingerprint: formatted),
-        );
+        pending.add((
+          host: host,
+          port: port,
+          type: type,
+          fingerprint: formatted,
+        ));
         return true;
       }
       setLastError('Unknown host key: $host:$port ($type)');
@@ -389,7 +389,11 @@ class SshConnector {
     final pending = _pendingFingerprintMigrations;
     _pendingFingerprintMigrations = null;
     final storage = SecureStorageService();
-    for (final item in pending ?? const <({String host, int port, String type, String fingerprint})>[]) {
+    for (final item
+        in pending ??
+            const <
+              ({String host, int port, String type, String fingerprint})
+            >[]) {
       await storage.saveHostKeyFingerprint(
         item.host,
         item.port,

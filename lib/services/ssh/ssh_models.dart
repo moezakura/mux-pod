@@ -110,7 +110,8 @@ class SshProxyHop {
       Object.hash(host, port, username, password, privateKey, passphrase);
 
   @override
-  String toString() => 'SshProxyHop(host: $host, port: $port, '
+  String toString() =>
+      'SshProxyHop(host: $host, port: $port, '
       'username: $username)';
 }
 
@@ -157,7 +158,8 @@ class SshProxyOptions {
       Object.hash(Object.hashAll(hops), forwardHost, forwardPort);
 
   @override
-  String toString() => 'SshProxyOptions(hops: $hops, '
+  String toString() =>
+      'SshProxyOptions(hops: $hops, '
       'forwardHost: $forwardHost, forwardPort: $forwardPort)';
 }
 

@@ -116,10 +116,9 @@ class ConnectionProxySection extends StatelessWidget {
                 context.l10n.connProxyScopeHint,
                 style: GoogleFonts.spaceGrotesk(
                   fontSize: 11,
-                  color:
-                      Theme.of(context).brightness == Brightness.dark
-                          ? DesignColors.textMuted
-                          : DesignColors.textMutedLight,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? DesignColors.textMuted
+                      : DesignColors.textMutedLight,
                 ),
               ),
               const SizedBox(height: 8),
@@ -215,10 +214,9 @@ class ConnectionProxySection extends StatelessWidget {
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color:
-                        Theme.of(context).brightness == Brightness.dark
-                            ? DesignColors.textMuted
-                            : DesignColors.textMutedLight,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? DesignColors.textMuted
+                        : DesignColors.textMutedLight,
                   ),
                 ),
               ),
@@ -282,7 +280,10 @@ class ConnectionProxySection extends StatelessWidget {
       key: Key('proxy_hop_host_${row.index}'),
       controller: row.hostController,
       keyboardType: TextInputType.url,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: ConnectionInputStyle.decoration(
         hintText: 'bastion.example.com',
         hintStyle: GoogleFonts.jetBrainsMono(
@@ -292,12 +293,8 @@ class ConnectionProxySection extends StatelessWidget {
         outlineColor: colorScheme.outline.withValues(alpha: 0.2),
         primaryColor: colorScheme.primary,
       ),
-      validator: (value) => _validateHopDuplicate(
-        context,
-        hopRows,
-        row.index,
-        value,
-      ),
+      validator: (value) =>
+          _validateHopDuplicate(context, hopRows, row.index, value),
     );
   }
 
@@ -308,7 +305,10 @@ class ConnectionProxySection extends StatelessWidget {
       controller: row.portController,
       keyboardType: TextInputType.number,
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: ConnectionInputStyle.decoration(
         hintText: '22',
         hintStyle: GoogleFonts.jetBrainsMono(
@@ -337,7 +337,10 @@ class ConnectionProxySection extends StatelessWidget {
     return TextFormField(
       key: Key('proxy_hop_username_${row.index}'),
       controller: row.usernameController,
-      style: GoogleFonts.jetBrainsMono(fontSize: 14, color: colorScheme.onSurface),
+      style: GoogleFonts.jetBrainsMono(
+        fontSize: 14,
+        color: colorScheme.onSurface,
+      ),
       decoration: ConnectionInputStyle.decoration(
         hintText: 'root',
         hintStyle: GoogleFonts.jetBrainsMono(
@@ -469,20 +472,14 @@ class ConnectionProxySection extends StatelessWidget {
       ),
       items: availableKeys
           .map(
-            (key) => DropdownMenuItem<String>(
-              value: key.id,
-              child: Text(key.name),
-            ),
+            (key) =>
+                DropdownMenuItem<String>(value: key.id, child: Text(key.name)),
           )
           .toList(),
       onChanged: (keyId) => onHopKeySelected(row.index, keyId),
       decoration: ConnectionInputStyle.borderlessDecoration(
         fillColor: _inputColor(context),
-        prefixIcon: Icon(
-          Icons.vpn_key_outlined,
-          color: mutedColor,
-          size: 20,
-        ),
+        prefixIcon: Icon(Icons.vpn_key_outlined, color: mutedColor, size: 20),
       ),
       validator: (value) {
         if (value == null || value.isEmpty) {
