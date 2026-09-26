@@ -32,6 +32,17 @@ class SshReconnectPolicy {
 
   // 再接続タイマー
   Timer? _reconnectTimer;
+  Completer<bool>? _pending;
+  bool _enabled = true;
+
+  void setEnabled(bool enabled) {
+    if (_enabled == enabled) return;
+    _enabled = enabled;
+    if (!enabled) {
+      cancelTimer();
+      _updateState((s) => s.copyWith(isReconnecting: false, isPaused: false));
+    }
+  }
 
   SshReconnectPolicy({
     required Future<bool> Function() reconnectAction,
@@ -48,8 +59,9 @@ class SshReconnectPolicy {
 
   /// 再接続をスケジュールしてよいか（無制限リトライまたは上限未達）
   bool get shouldScheduleNextAttempt =>
-      _maxReconnectAttempts == 0 ||
-      _getState().reconnectAttempt < _maxReconnectAttempts;
+      _enabled &&
+      (_maxReconnectAttempts == 0 ||
+          _getState().reconnectAttempt < _maxReconnectAttempts);
 
   /// ネットワーク状態の監視を開始
   void startNetworkMonitoring(Stream<NetworkStatus> stream) {
@@ -64,10 +76,10 @@ class SshReconnectPolicy {
 
     if (isOnline) {
       // オフラインからオンラインに復帰した場合
-      if (_getState().isPaused && _getState().isReconnecting) {
+      if (_enabled && _getState().isPaused && _getState().isReconnecting) {
         // 即座に再接続を試みる（遅延なし）
         _updateState((s) => s.copyWith(isPaused: false, reconnectAttempt: 0));
-        _reconnectTimer?.cancel();
+        cancelTimer();
         // 直接reconnectConnectionを呼んで即座に再接続
         _reconnectAction();
       }
@@ -76,7 +88,7 @@ class SshReconnectPolicy {
       if (_getState().isReconnecting) {
         // 再接続を一時停止
         _updateState((s) => s.copyWith(isPaused: true));
-        _reconnectTimer?.cancel();
+        cancelTimer();
       }
     }
   }
@@ -101,7 +113,7 @@ class SshReconnectPolicy {
   /// 自動再接続用。指数バックオフで無制限に試行する。
   /// ネットワークがオフラインの場合は一時停止し、復帰時に自動再開。
   Future<bool> reconnect() async {
-    if (!_hasLastConnection()) {
+    if (!_enabled || !_hasLastConnection()) {
       return false;
     }
 
@@ -144,9 +156,14 @@ class SshReconnectPolicy {
     );
 
     // 遅延後に再接続
+    cancelTimer();
     final completer = Completer<bool>();
-    _reconnectTimer?.cancel();
+    _pending = completer;
     _reconnectTimer = Timer(Duration(milliseconds: delayMs), () async {
+      if (!_enabled) {
+        cancelTimer();
+        return;
+      }
       final result = await _reconnectAction();
       if (!completer.isCompleted) {
         completer.complete(result);
@@ -158,14 +175,15 @@ class SshReconnectPolicy {
 
   /// 今すぐ再接続を試みる（ユーザー操作用）
   Future<bool> reconnectNow() async {
-    _reconnectTimer?.cancel();
+    if (!_enabled) return false;
+    cancelTimer();
     _updateState((s) => s.copyWith(reconnectAttempt: 0, isPaused: false));
     return _reconnectAction();
   }
 
   /// 再接続状態をリセット
   void reset() {
-    _reconnectTimer?.cancel();
+    cancelTimer();
     _updateState(
       (s) => s.copyWith(
         isReconnecting: false,
@@ -181,11 +199,14 @@ class SshReconnectPolicy {
   void cancelTimer() {
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    final pending = _pending;
+    _pending = null;
+    if (pending != null && !pending.isCompleted) pending.complete(false);
   }
 
   /// onDispose 用クリーンアップ（タイマー・ネットワーク監視）
   void stop() {
-    _reconnectTimer?.cancel();
+    cancelTimer();
     _networkStatusSubscription?.cancel();
   }
 }

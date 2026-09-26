@@ -1787,5 +1787,16 @@
         "type": "int"
       }
     }
-  }
+  },
+  "settingsBackgroundPower": "Background connection",
+  "settingsBackgroundMobile": "On mobile data (LTE / 5G)",
+  "settingsBackgroundWifi": "On Wi-Fi / Ethernet",
+  "settingsBackgroundUnknown": "When network type is unknown",
+  "settingsPowerConnection": "Prefer connection",
+  "settingsPowerBalanced": "Balanced",
+  "settingsPowerSaving": "Prefer battery life",
+  "settingsPowerConnectionDescription": "Keep the connection active in the background. Uses more battery.",
+  "settingsPowerBalancedDescription": "Keep the connection active for 1 minute after leaving the app, then save power.",
+  "settingsPowerSavingDescription": "Stop connection maintenance in the background. Check and reconnect when you return.",
+  "settingsBackgroundPowerNote": "Screen updates stop in the background in every mode. Transfers keep running while the OS allows it. Connection priority cannot prevent all disconnections, especially on iOS. Unknown applies when the underlying network cannot be identified, for example with some VPNs."
 }

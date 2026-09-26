@@ -8,6 +8,11 @@ import 'settings_state.dart';
 /// キー文字列は従来の `SettingsNotifier` 定義時から変更しない（40 キー完全互換）。
 /// 値は bool / double / int / String のスカラー型のみで JSON 直列化は行わない。
 class SettingsPersistence {
+  static const String mobileBackgroundModeKey =
+      'settings_mobile_background_mode';
+  static const String wifiBackgroundModeKey = 'settings_wifi_background_mode';
+  static const String unknownBackgroundModeKey =
+      'settings_unknown_background_mode';
   static const String darkModeKey = 'settings_dark_mode';
   static const String fontSizeKey = 'settings_font_size';
   static const String fontFamilyKey = 'settings_font_family';
@@ -69,6 +74,18 @@ class SettingsPersistence {
     await SettingsMigrationRunner.run(prefs);
 
     return AppSettings(
+      mobileBackgroundMode: BackgroundMode.parse(
+        prefs.get(mobileBackgroundModeKey),
+        BackgroundMode.powerSaving,
+      ),
+      wifiBackgroundMode: BackgroundMode.parse(
+        prefs.get(wifiBackgroundModeKey),
+        BackgroundMode.balanced,
+      ),
+      unknownBackgroundMode: BackgroundMode.parse(
+        prefs.get(unknownBackgroundModeKey),
+        BackgroundMode.powerSaving,
+      ),
       darkMode: prefs.getBool(darkModeKey) ?? true,
       fontSize: prefs.getDouble(fontSizeKey) ?? 14.0,
       fontFamily: prefs.getString(fontFamilyKey) ?? 'JetBrains Mono',

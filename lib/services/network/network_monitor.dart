@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../background/power_policy.dart';
+
 /// ネットワーク状態
 enum NetworkStatus {
   /// ネットワーク利用可能
@@ -10,6 +12,15 @@ enum NetworkStatus {
 
   /// ネットワーク利用不可
   offline,
+}
+
+NetworkKind classifyNetwork(List<ConnectivityResult> results) {
+  if (results.contains(ConnectivityResult.wifi) ||
+      results.contains(ConnectivityResult.ethernet)) {
+    return NetworkKind.wifi;
+  }
+  if (results.contains(ConnectivityResult.mobile)) return NetworkKind.mobile;
+  return NetworkKind.unknown;
 }
 
 /// ネットワーク状態を監視するサービス
@@ -21,6 +32,13 @@ class NetworkMonitor {
   StreamSubscription<List<ConnectivityResult>>? _subscription;
 
   final _statusController = StreamController<NetworkStatus>.broadcast();
+
+  final _changes =
+      StreamController<({NetworkStatus status, NetworkKind kind})>.broadcast();
+  NetworkKind _kind = NetworkKind.unknown;
+  NetworkKind get kind => _kind;
+  Stream<({NetworkStatus status, NetworkKind kind})> get changes =>
+      _changes.stream;
 
   NetworkStatus _currentStatus = NetworkStatus.online;
 
@@ -52,6 +70,11 @@ class NetworkMonitor {
   /// ステータスを更新
   void _updateStatus(List<ConnectivityResult> results) {
     final newStatus = _determineStatus(results);
+    final newKind = classifyNetwork(results);
+    if (newKind != _kind || newStatus != _currentStatus) {
+      _kind = newKind;
+      _changes.add((status: newStatus, kind: newKind));
+    }
 
     if (newStatus != _currentStatus) {
       final oldStatus = _currentStatus;
@@ -81,6 +104,7 @@ class NetworkMonitor {
   Future<void> dispose() async {
     await stop();
     await _statusController.close();
+    await _changes.close();
   }
 }
 

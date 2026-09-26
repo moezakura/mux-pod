@@ -273,6 +273,7 @@ class SshConnector {
       return SSHClient(
         socket,
         username: username,
+        keepAliveInterval: null,
         identities: _parsePrivateKey(options.privateKey!, options.passphrase),
         // inventory: SSH-LIFE-018
         onAuthenticated: onAuthenticated,
@@ -284,6 +285,7 @@ class SshConnector {
       return SSHClient(
         socket,
         username: username,
+        keepAliveInterval: null,
         onPasswordRequest: () => options.password!,
         onAuthenticated: onAuthenticated,
         onVerifyHostKey: onVerifyHostKey,

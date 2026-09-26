@@ -42,6 +42,8 @@ class SessionRuntimeController {
   // ---- poll 制御（P4 で破棄）----
   Timer? pollTimer;
   Timer? treeRefreshTimer;
+  int _pollGeneration = 0;
+  bool get canPoll => !isDisposed && !pollingSuspended && !isInBackground;
   bool isPolling = false;
   bool isDisposed = false;
 
@@ -127,23 +129,27 @@ class SessionRuntimeController {
 
   /// 初回ポーリング開始（`_startPolling`）。
   void startPolling() {
+    _pollGeneration++;
     pollTimer?.cancel();
     scheduleNextPoll();
   }
 
   /// 次のポーリングをスケジュール（`_scheduleNextPoll`）。
   void scheduleNextPoll() {
-    if (isDisposed || pollingSuspended) return;
+    if (!canPoll) return;
     pollTimer?.cancel();
+    final generation = _pollGeneration;
     pollTimer = Timer(Duration(milliseconds: currentPollingInterval), () async {
+      if (!canPoll || generation != _pollGeneration) return;
       await onPollTick();
-      scheduleNextPoll();
+      if (generation == _pollGeneration) scheduleNextPoll();
     });
   }
 
   /// 各 poll 周期の 1 回分。SessionPollEngine が実装を注入する。
   Future<void> Function()? pollTick;
   Future<void> onPollTick() async {
+    if (!canPoll) return;
     final fn = pollTick;
     if (fn != null) {
       await fn();
@@ -187,6 +193,7 @@ class SessionRuntimeController {
 
   /// ポーリング停止（P4）。
   void cancelPollTimers() {
+    _pollGeneration++;
     pollTimer?.cancel();
     pollTimer = null;
     treeRefreshTimer?.cancel();
@@ -196,6 +203,7 @@ class SessionRuntimeController {
   /// suspend / resume（herdr は suspendPolling/resumePolling コールバックで間接操作）。
   void suspendPolling() {
     pollingSuspended = true;
+    cancelPollTimers();
   }
 
   void resumePolling() {

@@ -1,3 +1,4 @@
+import '../background/transfer_activity.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -142,6 +143,30 @@ class SftpService {
   ///
   /// 失敗時（キャンセル・エラー共通）は部分ファイルを削除して rethrow する。
   Future<SftpUploadResult> uploadStream({
+    required SftpClient sftp,
+    required String remoteDir,
+    required String filename,
+    required Stream<Uint8List> source,
+    required int totalBytes,
+    int chunkSize = defaultChunkSize,
+    TransferCancelToken? cancelToken,
+    void Function(TransferProgress progress)? onProgress,
+    Duration progressInterval = const Duration(milliseconds: 100),
+  }) => TransferActivity.shared.run(
+    () => _uploadStream(
+      sftp: sftp,
+      remoteDir: remoteDir,
+      filename: filename,
+      source: source,
+      totalBytes: totalBytes,
+      chunkSize: chunkSize,
+      cancelToken: cancelToken,
+      onProgress: onProgress,
+      progressInterval: progressInterval,
+    ),
+  );
+
+  Future<SftpUploadResult> _uploadStream({
     required SftpClient sftp,
     required String remoteDir,
     required String filename,

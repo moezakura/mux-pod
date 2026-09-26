@@ -108,6 +108,25 @@ class SshNotifier extends Notifier<SshState> {
   /// 今すぐ再接続を試みる（ユーザー操作用）
   Future<bool> reconnectNow() => _reconnectPolicy.reconnectNow();
 
+  void setMaintenanceEnabled(bool enabled) {
+    _orchestrator.setMaintenanceEnabled(enabled);
+    _reconnectPolicy.setEnabled(enabled);
+  }
+
+  Future<void> verifyOrReconnect() async {
+    // A lifecycle resume must not tear down an initial/manual connection.
+    if (state.isConnecting || state.isReconnecting) return;
+    final current = client;
+    if (current != null && await current.verifyConnection()) return;
+    if (!ref.mounted ||
+        current != client ||
+        state.isConnecting ||
+        state.isReconnecting) {
+      return;
+    }
+    await _reconnectPolicy.reconnectNow();
+  }
+
   /// 接続がアクティブかチェック
   bool checkConnection() => _orchestrator.checkConnection();
 

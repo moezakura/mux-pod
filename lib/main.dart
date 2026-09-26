@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'services/background/background_power_scope.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -34,7 +36,7 @@ void main() {
     ),
   );
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(const ProviderScope(child: BackgroundPowerScope(child: MyApp())));
 }
 
 class MyApp extends ConsumerStatefulWidget {

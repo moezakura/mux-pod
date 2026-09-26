@@ -17,7 +17,7 @@ class SessionTreeRefresher {
 
   /// `_refreshSessionTree` の移設。
   Future<void> refreshSessionTree() async {
-    if (env.host.isDisposed) {
+    if (!runtime.canPoll || env.host.isDisposed) {
       return;
     }
     final sshClient = env.ref.read(sshProvider.notifier).client;
@@ -48,6 +48,7 @@ class SessionTreeRefresher {
   /// 10 秒ごとのツリー更新開始（`_startTreeRefresh`）。
   void startTreeRefresh() {
     runtime.treeRefreshTimer?.cancel();
+    if (!runtime.canPoll) return;
     runtime.treeRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!runtime.isPolling) {
         refreshSessionTree();

@@ -1,3 +1,4 @@
+import '../services/background/transfer_activity.dart';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../services/sftp/sftp_download_service.dart';
@@ -71,6 +72,20 @@ class DownloadQueueRunner {
   final SftpDownloadService _service;
 
   Future<void> run({
+    required SshClient sshClient,
+    required DownloadBatchSession session,
+    required DownloadQueueCallbacks callbacks,
+    bool publishCompletion = true,
+  }) => TransferActivity.shared.run(
+    () => _run(
+      sshClient: sshClient,
+      session: session,
+      callbacks: callbacks,
+      publishCompletion: publishCompletion,
+    ),
+  );
+
+  Future<void> _run({
     required SshClient sshClient,
     required DownloadBatchSession session,
     required DownloadQueueCallbacks callbacks,

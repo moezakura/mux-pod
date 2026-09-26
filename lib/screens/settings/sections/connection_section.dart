@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n_ext.dart';
 import '../../../providers/settings_provider.dart';
+import 'background_power_section.dart';
 import '../pickers/clear_host_keys_confirmation.dart';
 import '../pickers/conflict_policy_picker.dart';
 import '../pickers/keep_alive_timeout_picker.dart';
@@ -195,6 +196,8 @@ class ConnectionSection extends ConsumerWidget {
           subtitle: Text(l10n.settingsClearHostKeysDescription),
           onTap: () => confirmClearHostKeys(context),
         ),
+        const Divider(),
+        const BackgroundPowerSection(),
       ],
     );
   }
@@ -206,6 +209,7 @@ class ConnectionSection extends ConsumerWidget {
 /// Clear SSH Host Keys はフラット（1項目グループの階層過剰回避・A2）。
 /// JPEG Quality / Resize はゲート項目ではなく、ピッカー値は静的選択肢のみ。
 final List<SettingsSearchItem> connectionSearchDescriptors = [
+  ...backgroundPowerSearchDescriptors,
   // --- 画像転送（Image Transfer） ---
   SettingsSearchItem(
     category: SettingsCategory.connection,

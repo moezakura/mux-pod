@@ -1,6 +1,10 @@
 /// アプリ設定の不変状態モデル（enum + 41 フィールド値オブジェクト + copyWith）を定義する。
 library;
 
+import '../services/background/power_policy.dart';
+export '../services/background/power_policy.dart'
+    show BackgroundMode, NetworkKind;
+
 /// キープアライブ全体設定のプリセット値（秒）。
 ///
 /// settings 画面の picker（keep_alive_timeout_picker）と永続化検証
@@ -34,6 +38,9 @@ class AppSettings {
   final bool requireBiometricAuth;
   final bool enableNotifications;
   final bool keepScreenOn;
+  final BackgroundMode mobileBackgroundMode;
+  final BackgroundMode wifiBackgroundMode;
+  final BackgroundMode unknownBackgroundMode;
 
   /// 画面の向き: 'auto'（デバイスに追従）/ 'portrait' / 'landscape'
   final String screenOrientation;
@@ -140,6 +147,9 @@ class AppSettings {
     this.requireBiometricAuth = false,
     this.enableNotifications = true,
     this.keepScreenOn = true,
+    this.mobileBackgroundMode = BackgroundMode.powerSaving,
+    this.wifiBackgroundMode = BackgroundMode.balanced,
+    this.unknownBackgroundMode = BackgroundMode.powerSaving,
     this.screenOrientation = 'portrait',
     this.refreshRate = 'auto',
     this.scrollbackLines = 10000,
@@ -181,6 +191,12 @@ class AppSettings {
     this.keepAliveTimeoutSeconds,
   });
 
+  BackgroundMode backgroundModeFor(NetworkKind network) => switch (network) {
+    NetworkKind.mobile => mobileBackgroundMode,
+    NetworkKind.wifi => wifiBackgroundMode,
+    NetworkKind.unknown => unknownBackgroundMode,
+  };
+
   bool get isAutoFit => adjustMode == 'autoFit';
   bool get isAutoResize => adjustMode == 'autoResize';
 
@@ -191,6 +207,9 @@ class AppSettings {
     bool? requireBiometricAuth,
     bool? enableNotifications,
     bool? keepScreenOn,
+    BackgroundMode? mobileBackgroundMode,
+    BackgroundMode? wifiBackgroundMode,
+    BackgroundMode? unknownBackgroundMode,
     String? screenOrientation,
     String? refreshRate,
     int? scrollbackLines,
@@ -239,6 +258,10 @@ class AppSettings {
       requireBiometricAuth: requireBiometricAuth ?? this.requireBiometricAuth,
       enableNotifications: enableNotifications ?? this.enableNotifications,
       keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+      mobileBackgroundMode: mobileBackgroundMode ?? this.mobileBackgroundMode,
+      wifiBackgroundMode: wifiBackgroundMode ?? this.wifiBackgroundMode,
+      unknownBackgroundMode:
+          unknownBackgroundMode ?? this.unknownBackgroundMode,
       screenOrientation: screenOrientation ?? this.screenOrientation,
       refreshRate: refreshRate ?? this.refreshRate,
       scrollbackLines: scrollbackLines ?? this.scrollbackLines,

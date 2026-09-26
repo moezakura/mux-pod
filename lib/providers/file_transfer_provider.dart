@@ -1,3 +1,4 @@
+import '../services/background/transfer_activity.dart';
 import 'dart:async';
 
 import 'package:dartssh2/dartssh2.dart' show SftpClient;
@@ -240,7 +241,9 @@ class FileTransferNotifier extends Notifier<FileTransferState> {
   }
 
   /// 転送を開始する（並列数は設定値・1..8 に制限）。
-  Future<void> start() async {
+  Future<void> start() => TransferActivity.shared.run(_start);
+
+  Future<void> _start() async {
     if (state.phase != FileTransferPhase.confirming) return;
 
     final sshClient = ref.read(sshProvider.notifier).client;

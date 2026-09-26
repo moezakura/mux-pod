@@ -301,6 +301,23 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _persistence.save(SettingsPersistence.keepAliveTimeoutKey, value);
   }
 
+  Future<void> setBackgroundMode(
+    NetworkKind network,
+    BackgroundMode mode,
+  ) async {
+    final key = switch (network) {
+      NetworkKind.mobile => SettingsPersistence.mobileBackgroundModeKey,
+      NetworkKind.wifi => SettingsPersistence.wifiBackgroundModeKey,
+      NetworkKind.unknown => SettingsPersistence.unknownBackgroundModeKey,
+    };
+    state = state.copyWith(
+      mobileBackgroundMode: network == NetworkKind.mobile ? mode : null,
+      wifiBackgroundMode: network == NetworkKind.wifi ? mode : null,
+      unknownBackgroundMode: network == NetworkKind.unknown ? mode : null,
+    );
+    await _persistence.save(key, mode.name);
+  }
+
   /// リロード
   Future<void> reload() async {
     await _loadSettings();

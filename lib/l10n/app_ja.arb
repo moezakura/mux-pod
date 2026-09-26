@@ -1787,5 +1787,16 @@
         "type": "int"
       }
     }
-  }
+  },
+  "settingsBackgroundPower": "バックグラウンド動作",
+  "settingsBackgroundMobile": "モバイル通信時（LTE・5G等）",
+  "settingsBackgroundWifi": "Wi-Fi・有線LAN時",
+  "settingsBackgroundUnknown": "回線不明時",
+  "settingsPowerConnection": "接続優先",
+  "settingsPowerBalanced": "バランス",
+  "settingsPowerSaving": "省電力優先",
+  "settingsPowerConnectionDescription": "背景でも接続維持を優先します。電池消費が増えます。",
+  "settingsPowerBalancedDescription": "背景移行後1分間は接続を維持し、その後は省電力にします。",
+  "settingsPowerSavingDescription": "背景での接続維持処理を止め、復帰時に接続を確認・再接続します。",
+  "settingsBackgroundPowerNote": "どのモードでも背景の画面更新は停止します。転送はOSが許す範囲で継続します。接続優先でも切断を完全には防げず、特にiOSでは背景実行が制限されます。VPNなどで下位の回線を判定できない場合は「回線不明時」を使います。"
 }
