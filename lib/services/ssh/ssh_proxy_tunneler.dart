@@ -112,10 +112,14 @@ class SshProxyTunneler {
     final hops = proxy.hops;
     final timeout = Duration(seconds: options.timeout);
     final built = <({SSHSocket socket, SSHClient client})>[];
+    SshProxyHop? currentHop;
+    int? currentHopIndex;
     try {
       SSHSocket? nextSocket;
       for (var i = 0; i < hops.length; i++) {
         final hop = hops[i];
+        currentHopIndex = i;
+        currentHop = hop;
 
         // 1. hop ソケットの取得（hop 0 は直接ダイヤル・他は前 hop の転送先）
         final SSHSocket socket;
@@ -231,6 +235,20 @@ class SshProxyTunneler {
         entry.socket.close();
       }
       if (e is SshProxyConnectionError) rethrow;
+      if (currentHopIndex != null && currentHop != null) {
+        throw _error(
+          l10n()?.connProxyHopFailed(
+                currentHop.host,
+                currentHop.port,
+                e.toString(),
+              ) ??
+              'Unexpected error while connecting through jump host '
+                  '${currentHop.host}:${currentHop.port}: $e',
+          e,
+          currentHopIndex,
+          currentHop,
+        );
+      }
       throw SshProxyConnectionError(e.toString(), e);
     }
   }

@@ -144,6 +144,20 @@
       }
     }
   },
+  "connProxyHopFailed": "ジャンプホスト {host}:{port} 経由の接続中に予期しないエラーが発生しました: {detail}",
+  "@connProxyHopFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "connProxyCredentialMissing": "{host} のジャンプホストパスワードが保存されていません。再入力して保存してください。",
   "@connProxyCredentialMissing": {
     "placeholders": {

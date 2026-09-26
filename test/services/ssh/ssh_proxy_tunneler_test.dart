@@ -222,6 +222,94 @@ void main() {
       expect(clients.single.closed, isTrue);
     });
 
+    test('(c-4) 未分類例外（hopClientFactory throw）は hop 座標付きで wrap される', () async {
+      final tun = tunneler(
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              throw Exception('handshake setup failed');
+            },
+      );
+
+      await expectLater(
+        tun.tunnel(
+          proxy: proxy(),
+          options: SshConnectOptions(password: 'pw', timeout: 5),
+          onVerifyHostKey: (hop, type, fp) async => true,
+        ),
+        throwsA(
+          isA<SshProxyConnectionError>()
+              .having(
+                (e) => e.message,
+                'message',
+                'Unexpected error while connecting through jump host '
+                    'hop0.test:22: Exception: handshake setup failed',
+              )
+              .having((e) => e.hopIndex, 'hopIndex', 0)
+              .having((e) => e.hopHost, 'hopHost', 'hop0.test')
+              .having((e) => e.hopPort, 'hopPort', 22),
+        ),
+      );
+    });
+
+    test('(c-5) hop[1] の未分類例外（非ホスト鍵拒否 SSHAuthAbortError）は '
+        'hop[1] 座標付きで wrap される', () async {
+      final clients = <FakeProxyHopClient>[];
+      var hopCount = 0;
+      final tun = tunneler(
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final index = hopCount++;
+              final client = FakeProxyHopClient();
+              clients.add(client);
+              // 両 hop とも onVerifyHostKey は受理（hostKeyRejected=false のまま）
+              await onVerifyHostKey('ssh-ed25519', fingerprint);
+              if (index == 0) {
+                client.completeAuthentication();
+              } else {
+                client.failAuthentication(
+                  SSHAuthAbortError('Connection closed before authentication'),
+                );
+              }
+              return client;
+            },
+      );
+
+      await expectLater(
+        tun.tunnel(
+          proxy: proxy(hopCount: 2),
+          options: SshConnectOptions(password: 'pw', timeout: 5),
+          onVerifyHostKey: (hop, type, fp) async => true,
+        ),
+        throwsA(
+          isA<SshProxyConnectionError>()
+              .having(
+                (e) => e.message,
+                'message',
+                'Unexpected error while connecting through jump host '
+                    'hop1.test:22: SSHAuthAbortError'
+                    '(Connection closed before authentication)',
+              )
+              .having((e) => e.hopIndex, 'hopIndex', 1)
+              .having((e) => e.hopHost, 'hopHost', 'hop1.test')
+              .having((e) => e.hopPort, 'hopPort', 22),
+        ),
+      );
+      expect(clients[0].closed, isTrue);
+      expect(clients[1].closed, isTrue);
+    });
+
     test('(d) ホスト鍵拒否は hop 座標付きメッセージに変換される（H1）', () async {
       final clients = <FakeProxyHopClient>[];
       final tun = tunneler(

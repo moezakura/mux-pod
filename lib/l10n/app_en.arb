@@ -144,6 +144,20 @@
       }
     }
   },
+  "connProxyHopFailed": "Unexpected error while connecting through jump host {host}:{port}: {detail}",
+  "@connProxyHopFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
   "connProxyCredentialMissing": "Jump host password for {host} is not saved. Re-enter it and save.",
   "@connProxyCredentialMissing": {
     "placeholders": {
