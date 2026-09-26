@@ -9,13 +9,17 @@ import '../../l10n/app_localizations.dart';
 import '../../l10n/l10n_ext.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/key_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/backend/backend_type.dart';
+import '../../services/connection/proxy_config.dart' show maxProxyHops;
 import '../../theme/design_colors.dart';
 import 'connection_form_auth_section.dart';
 import 'connection_form_saver.dart';
 import 'connection_form_server_section.dart';
 import 'connection_form_tester.dart';
 import 'connection_form_values.dart';
+import 'connection_keepalive_section.dart';
+import 'connection_proxy_section.dart';
 
 export 'connection_form_tester.dart'
     show connectionFormSshClientFactoryProvider;
@@ -38,6 +42,26 @@ class ConnectionFormScreen extends ConsumerStatefulWidget {
       _ConnectionFormScreenState();
 }
 
+class _ProxyHopRow {
+  final hostController = TextEditingController();
+  final portController = TextEditingController(text: '22');
+  final usernameController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  /// 認証方式（`'password'` | `'key'`）。
+  String authMethod = 'password';
+
+  /// 鍵認証時に選択された鍵 ID。
+  String? selectedKeyId;
+
+  void dispose() {
+    hostController.dispose();
+    portController.dispose();
+    usernameController.dispose();
+    passwordController.dispose();
+  }
+}
+
 class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -47,6 +71,16 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
   final _passwordController = TextEditingController();
   final _multiplexerPathController = TextEditingController();
   final _deepLinkIdController = TextEditingController();
+
+  final _forwardHostController = TextEditingController();
+  final _forwardPortController = TextEditingController();
+  final _keepaliveController = TextEditingController();
+
+  /// hop 動的行（チェーン順・上限 [maxProxyHops]）。
+  final List<_ProxyHopRow> _hopRows = [_ProxyHopRow()];
+
+  /// ジャンプホスト経由スイッチ。
+  bool _proxyEnabled = false;
 
   String _authMethod = 'password';
   String? _selectedKeyId;
@@ -80,7 +114,71 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       _multiplexerPathController.text =
           connection.multiplexer.executablePath ?? '';
       _deepLinkIdController.text = connection.deepLinkId ?? '';
+
+      // ジャンプホスト設定の逆流（hop 行の復元含む・🤝2）。
+      final proxy = connection.proxy;
+      if (proxy != null) {
+        _proxyEnabled = true;
+        final rows = proxy.hops
+            .map(
+              (hop) => _ProxyHopRow()
+                ..hostController.text = hop.host
+                ..portController.text = hop.port.toString()
+                ..usernameController.text = hop.username
+                ..authMethod = hop.authMethod
+                ..selectedKeyId = hop.keyId,
+            )
+            .toList();
+        if (rows.isNotEmpty) {
+          _disposeHopRows();
+          _hopRows
+            ..clear()
+            ..addAll(rows);
+        }
+        _forwardHostController.text = proxy.forwardHost ?? '';
+        _forwardPortController.text = proxy.forwardPort?.toString() ?? '';
+      }
+      // keepalive の逆流（🤝3・空欄 = 未設定）。
+      _keepaliveController.text =
+          connection.keepAliveTimeoutSeconds?.toString() ?? '';
     }
+  }
+
+  void _disposeHopRows() {
+    for (final row in _hopRows) {
+      row.dispose();
+    }
+  }
+
+  /// hop 行を追加する（上限 [maxProxyHops]）。
+  void _addHopRow() {
+    if (_hopRows.length >= maxProxyHops) return;
+    setState(() => _hopRows.add(_ProxyHopRow()));
+  }
+
+  /// hop 行を削除する（最小 1 行は維持）。
+  void _removeHopRow(int index) {
+    if (_hopRows.length <= 1) return;
+    setState(() {
+      _hopRows[index].dispose();
+      _hopRows.removeAt(index);
+    });
+  }
+
+  /// hop 全行の生入力を収集する（テスト・保存で共通の集約点）。
+  List<ProxyHopInput> _collectHopInputs() {
+    return _hopRows
+        .map(
+          (row) => ProxyHopInput(
+            hostText: row.hostController.text,
+            portText: row.portController.text,
+            usernameText: row.usernameController.text,
+            authMethod: row.authMethod,
+            passwordText: row.passwordController.text,
+            keyId: row.selectedKeyId,
+          ),
+        )
+        .toList();
   }
 
   @override
@@ -92,6 +190,10 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
     _passwordController.dispose();
     _multiplexerPathController.dispose();
     _deepLinkIdController.dispose();
+    _forwardHostController.dispose();
+    _forwardPortController.dispose();
+    _keepaliveController.dispose();
+    _disposeHopRows();
     super.dispose();
   }
 
@@ -150,6 +252,40 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
                       setState(() => _obscurePassword = !_obscurePassword),
                   onKeySelected: (keyId) =>
                       setState(() => _selectedKeyId = keyId),
+                ),
+                const SizedBox(height: 24),
+                ConnectionProxySection(
+                  keysState: keysState,
+                  isEditing: widget.isEditing,
+                  enabled: _proxyEnabled,
+                  hopRows: List<ProxyHopRowData>.generate(
+                    _hopRows.length,
+                    (i) => ProxyHopRowData(
+                      index: i,
+                      hostController: _hopRows[i].hostController,
+                      portController: _hopRows[i].portController,
+                      usernameController: _hopRows[i].usernameController,
+                      passwordController: _hopRows[i].passwordController,
+                      authMethod: _hopRows[i].authMethod,
+                      selectedKeyId: _hopRows[i].selectedKeyId,
+                    ),
+                  ),
+                  forwardHostController: _forwardHostController,
+                  forwardPortController: _forwardPortController,
+                  onEnabledChanged: (enabled) =>
+                      setState(() => _proxyEnabled = enabled),
+                  onHopAdded: _addHopRow,
+                  onHopRemoved: _removeHopRow,
+                  onHopAuthChanged: (index, method) => setState(() {
+                    _hopRows[index].authMethod = method;
+                  }),
+                  onHopKeySelected: (index, keyId) => setState(() {
+                    _hopRows[index].selectedKeyId = keyId;
+                  }),
+                ),
+                const SizedBox(height: 24),
+                ConnectionKeepaliveSection(
+                  controller: _keepaliveController,
                 ),
               ],
             ),
@@ -294,6 +430,11 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       authMethod: _authMethod,
       keyId: _selectedKeyId,
       backend: _backend,
+      proxyEnabled: _proxyEnabled,
+      proxyHops: _collectHopInputs(),
+      forwardHostText: _forwardHostController.text,
+      forwardPortText: _forwardPortController.text,
+      keepaliveText: _keepaliveController.text,
     );
 
     final sshClientFactory = ref.read(connectionFormSshClientFactoryProvider);
@@ -301,6 +442,9 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
       sshClientFactory: sshClientFactory,
       values: values,
       l10n: l10n,
+      connectionId: widget.connectionId,
+      globalKeepAliveTimeoutSeconds:
+          ref.read(settingsProvider).keepAliveTimeoutSeconds,
     );
 
     if (mounted) {
@@ -384,6 +528,11 @@ class _ConnectionFormScreenState extends ConsumerState<ConnectionFormScreen> {
         authMethod: _authMethod,
         keyId: _selectedKeyId,
         backend: _backend,
+        proxyEnabled: _proxyEnabled,
+        proxyHops: _collectHopInputs(),
+        forwardHostText: _forwardHostController.text,
+        forwardPortText: _forwardPortController.text,
+        keepaliveText: _keepaliveController.text,
       );
 
       final notifier = ref.read(connectionsProvider.notifier);

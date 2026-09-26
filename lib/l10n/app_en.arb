@@ -78,6 +78,122 @@
   },
   "connHerdrNotFound": "herdr not found",
   "connTmuxNotFound": "tmux not found",
+  "connSectionProxy": "Jump Host",
+  "connProxyScopeHint": "Connects via an SSH jump host (bastion). ProxyCommand and SOCKS proxies are not supported.",
+  "connProxyEnable": "Connect via jump host",
+  "connProxyHost": "Host",
+  "connProxyPort": "Port",
+  "connProxyUsername": "Username",
+  "connProxyForwardTarget": "Forward target (optional)",
+  "connProxyForwardHint": "Defaults to the target host above",
+  "connProxyDialFailed": "Failed to connect to jump host {host}:{port}: {detail}",
+  "@connProxyDialFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyAuthFailed": "Authentication to jump host {host}:{port} failed",
+  "@connProxyAuthFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyHostKeyRejected": "Host key verification for jump host {host}:{port} failed",
+  "@connProxyHostKeyRejected": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyTimeout": "Timed out connecting to jump host {host}:{port}",
+  "@connProxyTimeout": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyForwardFailed": "Could not reach {host}:{port} via the jump host",
+  "@connProxyForwardFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyCredentialMissing": "Jump host password for {host} is not saved. Re-enter it and save.",
+  "@connProxyCredentialMissing": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyKeyMissing": "The SSH key selected for jump host {host} is unavailable",
+  "@connProxyKeyMissing": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyPasswordRequiredForTest": "Enter the jump host password to test",
+  "connSectionKeepalive": "Keepalive",
+  "connKeepaliveTimeout": "Probe timeout (seconds)",
+  "connKeepaliveHint": "Empty: use the global setting, or auto (10 s direct; +5 s per hop via jump host)",
+  "connKeepaliveRange": "Enter a value between 5 and 300",
+  "connProxyAddHop": "Add hop",
+  "connProxyRemoveHop": "Remove",
+  "connProxyHopLabel": "Hop {n}",
+  "@connProxyHopLabel": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyDuplicateHop": "Jump host {host}:{port} is already in the chain",
+  "@connProxyDuplicateHop": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyMaxHops": "Up to {max} hops",
+  "@connProxyMaxHops": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
   "connHerdrProtocolMismatch": "Herdr protocol {actual} is not supported (minimum supported: {supported}).",
   "@connHerdrProtocolMismatch": {
     "placeholders": {

@@ -4,10 +4,12 @@ import '../../l10n/app_localizations.dart';
 import '../../services/backend/backend_type.dart';
 import '../../services/backend/multiplexer_config.dart';
 import '../../services/command/command_request.dart';
+import '../../services/connection/proxy_config.dart' show ProxyConfig;
 import '../../services/herdr/herdr_adapter.dart';
 import '../../services/herdr/herdr_commands.dart';
 import '../../services/keychain/secure_storage.dart';
 import '../../services/ssh/ssh_client.dart';
+import '../../services/ssh/ssh_proxy_connection_error.dart';
 import '../../services/tmux/commands/session_commands.dart';
 import '../../services/tmux/ssh_tmux_command_executor.dart';
 import '../../services/tmux/tmux_version.dart';
@@ -50,6 +52,10 @@ class ConnectionTestResult {
 ///
 /// Riverpod には依存しない。[SshClient] ファクトリ・入力値・l10n は
 /// 呼出元（[ConnectionFormScreen] の State）から注入される。
+///
+/// ジャンプホストは resolver を通さずフォーム値から直接 [SshProxyOptions]
+/// を構築する（MR-3: 保存前の jump password でもテスト可能にするため）。
+/// テストは jump チェーン全体を検証する（🤝4: jump 不通ならテスト失敗）。
 class ConnectionTester {
   const ConnectionTester();
 
@@ -57,6 +63,15 @@ class ConnectionTester {
     required SshClient Function() sshClientFactory,
     required ConnectionFormValues values,
     required AppLocalizations l10n,
+
+    /// 編集対象の接続 ID（新規作成時は null）。
+    ///
+    /// hop パスワードが空欄のとき保存済みキーへフォールバックする
+    /// （編集時に再入力不要にするため）。
+    String? connectionId,
+
+    /// keepalive 全体設定（接続個別のフォーム値が空欄のときのフォールバック）。
+    int? globalKeepAliveTimeoutSeconds,
   }) async {
     String? errorMessage;
     bool tmuxInstalled = false;
@@ -67,6 +82,14 @@ class ConnectionTester {
     SshClient? sshClient;
 
     try {
+      // ジャンプホスト経由設定をフォーム値＋target 座標から直接構築する
+      // （MR-3: resolver バイパス・保存前 jump password でテスト可）。
+      final proxy = await _buildProxyOptions(
+        values,
+        l10n: l10n,
+        connectionId: connectionId,
+      );
+
       // 認証情報を準備
       String? password;
       String? privateKey;
@@ -107,6 +130,10 @@ class ConnectionTester {
                   executablePath: customPath,
                 )
               : MultiplexerConfig.tmux(customPath),
+          proxy: proxy,
+          keepAliveTimeoutSeconds:
+              values.keepAliveTimeoutSecondsOrNull ??
+              globalKeepAliveTimeoutSeconds,
         ),
         l10n: l10n,
       );
@@ -166,6 +193,9 @@ class ConnectionTester {
           tmuxWarning = l10n.connTmuxCheckFailed('$e');
         }
       }
+    } on SshProxyConnectionError catch (e) {
+      // hop 座標付きメッセージ（l10n 済み）をそのまま表示する。
+      errorMessage = e.message;
     } on SshAuthenticationError catch (e) {
       errorMessage = l10n.connTestAuthFailed(e.message);
     } on SshConnectionError catch (e) {
@@ -182,6 +212,88 @@ class ConnectionTester {
       tmuxWarning: tmuxWarning,
       herdrReady: herdrReady,
       herdrWarning: herdrWarning,
+    );
+  }
+
+  /// フォーム値から [SshProxyOptions] を直接構築する（MR-3・resolver バイパス）。
+  ///
+  /// - hop パスワードはフォーム入力を優先し、空欄なら保存済みキーへ
+  ///   フォールバック（編集時の再入力不要）。どちらもなければ
+  ///   [connProxyPasswordRequiredForTest] で fail-fast。
+  /// - hop の鍵は既存キー機構から解決し、unavailable なら
+  ///   [connProxyKeyMissing] で fail-fast。
+  /// - 転送先は [values.buildProxy] 済みの形（M6 正規化済み）を使い、
+  ///   未指定なら target 座標で埋める（M3）。
+  Future<SshProxyOptions?> _buildProxyOptions(
+    ConnectionFormValues values, {
+    required AppLocalizations l10n,
+    required String? connectionId,
+  }) async {
+    final ProxyConfig? proxy = values.buildProxy();
+    if (proxy == null) return null;
+
+    final storage = SecureStorageService();
+    final hops = <SshProxyHop>[];
+    for (var i = 0; i < proxy.hops.length; i++) {
+      final hop = proxy.hops[i];
+      if (hop.authMethod == 'key') {
+        final keyId = hop.keyId;
+        final privateKey = keyId == null || keyId.isEmpty
+            ? null
+            : await storage.getPrivateKey(keyId);
+        if (privateKey == null) {
+          throw SshProxyConnectionError(
+            l10n.connProxyKeyMissing(hop.host),
+            null,
+            i,
+            hop.host,
+            hop.port,
+          );
+        }
+        final passphrase = keyId == null
+            ? null
+            : await storage.getPassphrase(keyId);
+        hops.add(
+          SshProxyHop(
+            host: hop.host,
+            port: hop.port,
+            username: hop.username,
+            privateKey: privateKey,
+            passphrase: passphrase,
+          ),
+        );
+      } else {
+        var password =
+            i < values.proxyHops.length
+            ? values.proxyHops[i].passwordText
+            : '';
+        if (password.isEmpty && connectionId != null) {
+          password = await storage.getProxyPassword(connectionId, i) ?? '';
+        }
+        if (password.isEmpty) {
+          throw SshProxyConnectionError(
+            l10n.connProxyPasswordRequiredForTest,
+            null,
+            i,
+            hop.host,
+            hop.port,
+          );
+        }
+        hops.add(
+          SshProxyHop(
+            host: hop.host,
+            port: hop.port,
+            username: hop.username,
+            password: password,
+          ),
+        );
+      }
+    }
+
+    return SshProxyOptions(
+      hops: hops,
+      forwardHost: proxy.forwardHost ?? values.host,
+      forwardPort: proxy.forwardPort ?? values.port,
     );
   }
 }
