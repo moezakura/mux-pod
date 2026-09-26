@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
 import 'package:flutter_muxpod/services/connection/connection_migration.dart';
+import 'package:flutter_muxpod/services/connection/proxy_config.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 
 import 'helpers/connection_test_storage.dart';
@@ -326,6 +327,79 @@ void main() {
         expect(result.json, backupJson);
         expect(result.warning, isNotNull);
         expect(await storage.readValue('connections'), backupJson);
+      });
+    });
+
+    group('proxy / keepalive schema (Issue #56)', () {
+      test('proxy & keepalive record stays v2 and migration is not triggered', () async {
+        final storage = SecureStorageService();
+        final v2Json = jsonEncode([
+          {
+            'id': 'c1',
+            'name': 'Server',
+            'host': 'target.example.com',
+            'username': 'u',
+            'createdAt': '2025-01-01T00:00:00.000Z',
+            'storageSchemaVersion': 2,
+            'multiplexer': {'backend': 'tmux', 'executablePath': null},
+            'proxy': {
+              'hops': [
+                {
+                  'host': 'bastion.example.com',
+                  'port': 2222,
+                  'username': 'jump',
+                  'authMethod': 'password',
+                  'keyId': null,
+                },
+              ],
+              'forwardHost': null,
+              'forwardPort': null,
+            },
+            'keepAliveTimeoutSeconds': 20,
+          },
+        ]);
+
+        final result = await ConnectionMigration.migrate(
+          secure: storage,
+          sourceJson: v2Json,
+        );
+
+        // v2 レコードは migration 不要として source がそのまま返る（bump しない）
+        expect(result.error, isNull);
+        expect(result.json, v2Json);
+        expect(await storage.readValue('connections_backup_v2'), isNull);
+        expect(await storage.readValue('connections'), isNull);
+      });
+
+      test('downgrade round trip drops proxy and keepalive (documented loss)', () {
+        const hop = ProxyHop(
+          host: 'bastion.example.com',
+          username: 'jump',
+        );
+        final connection = Connection(
+          id: 'c1',
+          name: 'Server',
+          host: 'h',
+          username: 'u',
+          createdAt: DateTime(2025, 1, 1),
+          proxy: const ProxyConfig(hops: [hop]),
+          keepAliveTimeoutSeconds: 20,
+        );
+
+        // 新アプリが書いた JSON を旧アプリ（未知キー無視）経由で読み戻すと
+        // 両設定は落ちる（README 既知の制限・scoper C）。新アプリでは
+        // optional キーの不在として寛容に読める（v2 相互運用）。
+        final json = connection.toJson();
+        expect(json.containsKey('proxy'), isTrue);
+        expect(json.containsKey('keepAliveTimeoutSeconds'), isTrue);
+
+        final stripped = Map<String, dynamic>.from(json)
+          ..remove('proxy')
+          ..remove('keepAliveTimeoutSeconds');
+        final restored = Connection.fromJson(stripped);
+        expect(restored.proxy, isNull);
+        expect(restored.keepAliveTimeoutSeconds, isNull);
+        expect(restored.storageSchemaVersion, greaterThanOrEqualTo(2));
       });
     });
 
