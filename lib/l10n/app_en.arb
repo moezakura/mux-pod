@@ -1459,6 +1459,18 @@
   "settingsSearchResults": "Search results",
   "settingsNoResults": "No matching settings",
   "settingsNoResultsHint": "Try a different search term",
+  "settingsGroupSsh": "SSH",
+  "settingsKeepAliveTimeout": "SSH keepalive probe timeout",
+  "settingsKeepAliveTimeoutDescription": "Higher values suit cellular links and jump hosts.",
+  "settingsKeepAliveAuto": "Auto",
+  "settingsKeepAliveSeconds": "{seconds} s",
+  "@settingsKeepAliveSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "fileOverwriteTitle": "File already exists",
   "fileOverwriteAction": "Overwrite",
   "fileRenameAction": "Rename",

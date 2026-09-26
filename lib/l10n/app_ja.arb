@@ -1459,6 +1459,18 @@
   "settingsSearchResults": "検索結果",
   "settingsNoResults": "一致する設定がありません",
   "settingsNoResultsHint": "別のキーワードで検索してください",
+  "settingsGroupSsh": "SSH",
+  "settingsKeepAliveTimeout": "SSHキープアライブのプローブタイムアウト",
+  "settingsKeepAliveTimeoutDescription": "低速回線やジャンプホスト経由では大きい値を推奨します。",
+  "settingsKeepAliveAuto": "自動",
+  "settingsKeepAliveSeconds": "{seconds} 秒",
+  "@settingsKeepAliveSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "fileOverwriteTitle": "ファイルが既に存在します",
   "fileOverwriteAction": "上書き",
   "fileRenameAction": "リネーム",

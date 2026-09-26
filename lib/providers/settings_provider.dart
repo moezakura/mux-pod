@@ -290,6 +290,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
     await _persistence.save(SettingsPersistence.uploadChunkKbKey, clamped);
   }
 
+  /// SSH キープアライブのプローブタイムアウト（秒）を設定（null = 自動）。
+  ///
+  /// null で呼ぶと SharedPreferences のキーを削除し、状態も未設定（自動）へ戻す。
+  Future<void> setKeepAliveTimeoutSeconds(int? value) async {
+    state = state.copyWith(
+      keepAliveTimeoutSeconds: value,
+      clearKeepAliveTimeout: value == null,
+    );
+    await _persistence.save(SettingsPersistence.keepAliveTimeoutKey, value);
+  }
+
   /// リロード
   Future<void> reload() async {
     await _loadSettings();

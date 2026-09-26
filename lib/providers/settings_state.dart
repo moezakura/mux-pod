@@ -1,6 +1,12 @@
 /// アプリ設定の不変状態モデル（enum + 41 フィールド値オブジェクト + copyWith）を定義する。
 library;
 
+/// キープアライブ全体設定のプリセット値（秒）。
+///
+/// settings 画面の picker（keep_alive_timeout_picker）と永続化検証
+/// （[AppSettings.keepAliveTimeoutFromPersisted]）で単一の選択肢集合を共有する。
+const List<int> keepAliveTimeoutPresets = [5, 10, 15, 20, 30, 60];
+
 /// アップロード時のファイル名衝突ポリシー（#41）。
 /// - [prompt]: 既定。衝突時にモーダルで上書き/リネーム/キャンセルを確認
 /// - [autoRename]: 確認なしで自動リネーム（generateUniqueName）
@@ -121,6 +127,12 @@ class AppSettings {
   /// アップロード書き込みチャンクサイズ（KB）
   final int uploadChunkKb;
 
+  /// SSH キープアライブのプローブタイムアウト（秒）。
+  ///
+  /// null = 自動（トランスポート側の自動式に委ねる・既定）。
+  /// 採用可能な値は [keepAliveTimeoutPresets] のみ。
+  final int? keepAliveTimeoutSeconds;
+
   const AppSettings({
     this.darkMode = true,
     this.fontSize = 14.0,
@@ -166,6 +178,7 @@ class AppSettings {
     this.uploadConflictPolicy = TransferConflictPolicy.prompt,
     this.uploadConcurrency = 2,
     this.uploadChunkKb = 256,
+    this.keepAliveTimeoutSeconds,
   });
 
   bool get isAutoFit => adjustMode == 'autoFit';
@@ -216,6 +229,8 @@ class AppSettings {
     TransferConflictPolicy? uploadConflictPolicy,
     int? uploadConcurrency,
     int? uploadChunkKb,
+    int? keepAliveTimeoutSeconds,
+    bool clearKeepAliveTimeout = false,
   }) {
     return AppSettings(
       darkMode: darkMode ?? this.darkMode,
@@ -263,6 +278,18 @@ class AppSettings {
       uploadConflictPolicy: uploadConflictPolicy ?? this.uploadConflictPolicy,
       uploadConcurrency: uploadConcurrency ?? this.uploadConcurrency,
       uploadChunkKb: uploadChunkKb ?? this.uploadChunkKb,
+      keepAliveTimeoutSeconds: clearKeepAliveTimeout
+          ? null
+          : (keepAliveTimeoutSeconds ?? this.keepAliveTimeoutSeconds),
     );
+  }
+
+  /// 永続化値から [AppSettings.keepAliveTimeoutSeconds] を復元する。
+  ///
+  /// プリセット外の値・型不一致はすべて null（自動）へフォールバックする。
+  static int? keepAliveTimeoutFromPersisted(Object? value) {
+    return value is int && keepAliveTimeoutPresets.contains(value)
+        ? value
+        : null;
   }
 }
