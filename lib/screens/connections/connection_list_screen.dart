@@ -331,6 +331,8 @@ class ConnectionsScreen extends ConsumerWidget {
     if (confirmed == true) {
       final storage = SecureStorageService();
       await storage.deletePassword(connection.id);
+      // ジャンプホストの認証情報も全 hop 分削除する（MR-4・🤝2 orphan 対応）。
+      await storage.deleteProxyPassword(connection.id);
       await ref.read(connectionsProvider.notifier).remove(connection.id);
 
       if (context.mounted) {

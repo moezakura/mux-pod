@@ -43,6 +43,48 @@ class SecureStorageService {
     await _deleteValue('password_$connectionId');
   }
 
+  // ===== ジャンプホスト（proxy hop）パスワード管理 =====
+
+  /// ジャンプホストのパスワードを保存（キー: proxy_password_{id}_{hopIndex}）。
+  Future<void> saveProxyPassword(
+    String connectionId,
+    int hopIndex,
+    String password,
+  ) async {
+    await _writeValue('proxy_password_${connectionId}_$hopIndex', password);
+  }
+
+  /// ジャンプホストのパスワードを取得。
+  Future<String?> getProxyPassword(String connectionId, int hopIndex) async {
+    return await _readValue('proxy_password_${connectionId}_$hopIndex');
+  }
+
+  /// ジャンプホストのパスワードを削除。
+  ///
+  /// [hopIndex] を指定すればその hop のみ削除する（hop 縮小時の orphan
+  /// 掃除用）。null の場合は接続に紐づく全 hop を削除する（接続削除・
+  /// proxy 無効化用）。全 hop 削除は接続 ID をプレフィックスに列挙して
+  /// 探すため、hop 数の上限変更や index 歯抜けがあっても残留しない。
+  /// 列挙に失敗（復号不能など）した場合は列挙分を諦めて続行する
+  /// （[deleteAllHostKeyFingerprints] と同一の方針）。
+  Future<void> deleteProxyPassword(String connectionId, {int? hopIndex}) async {
+    if (hopIndex != null) {
+      await _deleteValue('proxy_password_${connectionId}_$hopIndex');
+      return;
+    }
+    try {
+      final keys = await getKeysWithPrefix('proxy_password_${connectionId}_');
+      for (final key in keys) {
+        await _deleteValue(key);
+      }
+    } catch (e) {
+      debugPrint(
+        '[SecureStorage] deleteProxyPassword enumeration failed for '
+        'id=$connectionId: $e',
+      );
+    }
+  }
+
   // ===== SSH鍵管理 =====
 
   /// 秘密鍵を保存

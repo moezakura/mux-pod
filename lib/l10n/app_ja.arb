@@ -78,6 +78,136 @@
   },
   "connHerdrNotFound": "herdr が見つかりません",
   "connTmuxNotFound": "tmux が見つかりません",
+  "connSectionProxy": "ジャンプホスト",
+  "connProxyScopeHint": "SSH 踏み台（ジャンプホスト）経由で接続します。ProxyCommand・SOCKS プロキシには非対応です。",
+  "connProxyEnable": "ジャンプホスト経由で接続",
+  "connProxyHost": "ホスト",
+  "connProxyPort": "ポート",
+  "connProxyUsername": "ユーザー名",
+  "connProxyForwardTarget": "転送先（任意）",
+  "connProxyForwardHint": "未入力の場合は上の接続先へ転送します",
+  "connProxyDialFailed": "ジャンプホスト {host}:{port} に接続できません: {detail}",
+  "@connProxyDialFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyAuthFailed": "ジャンプホスト {host}:{port} の認証に失敗しました",
+  "@connProxyAuthFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyHostKeyRejected": "ジャンプホスト {host}:{port} のホスト鍵の検証に失敗しました",
+  "@connProxyHostKeyRejected": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyTimeout": "ジャンプホスト {host}:{port} への接続がタイムアウトしました",
+  "@connProxyTimeout": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyForwardFailed": "ジャンプホスト経由で {host}:{port} に到達できませんでした",
+  "@connProxyForwardFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyHopFailed": "ジャンプホスト {host}:{port} 経由の接続中に予期しないエラーが発生しました: {detail}",
+  "@connProxyHopFailed": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyCredentialMissing": "{host} のジャンプホストパスワードが保存されていません。再入力して保存してください。",
+  "@connProxyCredentialMissing": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyKeyMissing": "ジャンプホスト {host} に選択された SSH 鍵が利用できません",
+  "@connProxyKeyMissing": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      }
+    }
+  },
+  "connProxyPasswordRequiredForTest": "テストにはジャンプホストのパスワードを入力してください",
+  "connSectionKeepalive": "キープアライブ",
+  "connKeepaliveTimeout": "プローブタイムアウト（秒）",
+  "connKeepaliveHint": "未入力の場合は全体設定（または自動: 直接 10 秒／ジャンプホスト経由はホップ毎 +5 秒）を使用します",
+  "connKeepaliveRange": "5〜300 の範囲で入力してください",
+  "connProxyAddHop": "ホップを追加",
+  "connProxyRemoveHop": "削除",
+  "connProxyHopLabel": "ホップ {n}",
+  "@connProxyHopLabel": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyDuplicateHop": "ジャンプホスト {host}:{port} は既にチェーンに存在します",
+  "@connProxyDuplicateHop": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
+  "connProxyMaxHops": "ホップは最大 {max} までです",
+  "@connProxyMaxHops": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
   "connHerdrProtocolMismatch": "Herdr プロトコル {actual} はサポートされていません（最小対応: {supported}）。",
   "@connHerdrProtocolMismatch": {
     "placeholders": {
@@ -1459,6 +1589,18 @@
   "settingsSearchResults": "検索結果",
   "settingsNoResults": "一致する設定がありません",
   "settingsNoResultsHint": "別のキーワードで検索してください",
+  "settingsGroupSsh": "SSH",
+  "settingsKeepAliveTimeout": "SSHキープアライブのプローブタイムアウト",
+  "settingsKeepAliveTimeoutDescription": "低速回線やジャンプホスト経由では大きい値を推奨します。",
+  "settingsKeepAliveAuto": "自動",
+  "settingsKeepAliveSeconds": "{seconds} 秒",
+  "@settingsKeepAliveSeconds": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "fileOverwriteTitle": "ファイルが既に存在します",
   "fileOverwriteAction": "上書き",
   "fileRenameAction": "リネーム",

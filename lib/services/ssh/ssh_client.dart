@@ -20,6 +20,8 @@ import 'ssh_interactive_shell.dart';
 import 'ssh_keep_alive.dart';
 import 'ssh_managed_pty.dart';
 import 'ssh_models.dart';
+import 'ssh_proxy_connection_error.dart';
+import 'ssh_proxy_tunneler.dart';
 import 'ssh_resource_manager.dart';
 import 'ssh_sftp.dart';
 import 'ssh_shell_manager.dart';
@@ -141,6 +143,7 @@ class SshClient implements BackendAdapter {
     connectionFactory,
     Future<PersistentShell?> Function(SSHClient client)? persistentShellFactory,
     Timer Function(Duration duration, void Function() callback)? timerFactory,
+    SshProxyTunneler? proxyTunneler,
   }) : _connectionFactory = connectionFactory,
        _persistentShellFactory = persistentShellFactory,
        _timerFactory = timerFactory ?? Timer.new {
@@ -151,6 +154,7 @@ class SshClient implements BackendAdapter {
       connectionFactory: _connectionFactory,
       l10n: () => _l10n,
       setLastError: _setLastError,
+      tunneler: proxyTunneler,
     );
     _shellManager = SshShellManager(
       client: () => _resourceManager.client,
@@ -173,11 +177,13 @@ class SshClient implements BackendAdapter {
     _keepAlive = SshKeepAlive(
       timerFactory: _timerFactory,
       probe: () => _executor.execute(
-        const CommandRequest(
+        // 🤝3: probe タイムアウトは接続時に解決されたインスタンス値を参照する
+        // （未接続・未設定時の既定は 10 秒 = 従来の static const と同一）。
+        CommandRequest(
           command: 'echo ping',
           transport: CommandTransportPreference.persistentPreferred,
           output: CommandOutputRequirement.outputOnly,
-          timeout: Duration(seconds: SshKeepAlive.keepAliveTimeoutSeconds),
+          timeout: Duration(seconds: _keepAlive.keepAliveProbeTimeoutSeconds),
         ),
       ),
       onDead: _onKeepAliveDead,
@@ -285,6 +291,13 @@ class SshClient implements BackendAdapter {
   /// 最後のエラーメッセージ
   String? get lastError => _stateController.lastError;
 
+  /// 接続時に解決された keepalive probe タイムアウト（秒・🤝3）。
+  ///
+  /// probe クロージャが CommandRequest の timeout に使う現在値
+  ///（テスト観察用の公開ゲッター）。未接続時は既定値 10。
+  int get keepAliveProbeTimeoutSeconds =>
+      _keepAlive.keepAliveProbeTimeoutSeconds;
+
   // inventory: SSH-025
   // inventory: LEGACY-0149
   /// SFTPクライアントを取得（キャッシュ付き・詳細は [SshSftpAccess.openSftp]）。
@@ -324,6 +337,19 @@ class SshClient implements BackendAdapter {
         socket: connection.socket,
         client: connection.client,
       );
+      // M5: jump clients も attachConnection と同一位置（認証待ちの前）で登録。
+      // これにより target 認証失敗時も _cleanup → disposeAll が jump を閉じられる。
+      _resourceManager.attachJumpClients(connection.jumpClients);
+
+      // 🤝3: keepalive 開始前に probe タイムアウトを解決して適用する
+      //（options.keepAliveTimeoutSeconds は UI が「接続個別 > 全体設定」を
+      // 解決した上書き値。null の場合は自動式（proxy あり: 10 + hops × 5 /
+      // なし: 10））。直接接続・未設定時は 10 秒のまま = 既存挙動完全不変。
+      _keepAlive.keepAliveProbeTimeoutSeconds =
+          SshKeepAlive.resolveKeepAliveTimeoutSeconds(
+            perConnection: options.keepAliveTimeoutSeconds,
+            proxy: options.proxy,
+          );
 
       // 認証完了を待機
       await _resourceManager.client!.authenticated;
@@ -348,6 +374,13 @@ class SshClient implements BackendAdapter {
         // inventory: SSH-LIFE-008
         if (_maintenanceEnabled) _keepAlive.start();
       }
+    } on SshProxyConnectionError catch (e) {
+      // ジャンプ経路エラーは hop 座標付き・l10n 済みメッセージをそのまま
+      // 表示する（wrap 前メッセージを lastError へ・hop 座標を失わせない）。
+      _stateController.setState(SshConnectionState.error);
+      _stateController.lastError = e.message;
+      await _cleanup();
+      rethrow;
     } on SocketException catch (e) {
       _stateController.setState(SshConnectionState.error);
       _stateController.lastError =

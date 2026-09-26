@@ -6,6 +6,7 @@ import '../../../providers/settings_provider.dart';
 import 'background_power_section.dart';
 import '../pickers/clear_host_keys_confirmation.dart';
 import '../pickers/conflict_policy_picker.dart';
+import '../pickers/keep_alive_timeout_picker.dart';
 import '../pickers/output_format_picker.dart';
 import '../pickers/resize_preset_picker.dart';
 import '../pickers/slider_dialog.dart';
@@ -14,7 +15,7 @@ import '../search/settings_search_item.dart';
 import '../settings_category.dart';
 import '../widgets/settings_section_header.dart';
 
-/// Connection（接続と転送）カテゴリ: 画像転送グループ + Clear SSH Host Keys（フラット）。
+/// Connection（接続と転送）カテゴリ: 画像転送グループ + SSH グループ + Clear SSH Host Keys（フラット）。
 class ConnectionSection extends ConsumerWidget {
   const ConnectionSection({super.key});
 
@@ -22,6 +23,7 @@ class ConnectionSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final l10n = context.l10n;
+    final sshKeepAliveSeconds = settings.keepAliveTimeoutSeconds;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -170,6 +172,19 @@ class ConnectionSection extends ConsumerWidget {
             onSave: (v) =>
                 ref.read(settingsProvider.notifier).setUploadChunkKb(v),
           ),
+        ),
+        const Divider(),
+        SettingsSectionHeader(title: l10n.settingsGroupSsh),
+        ListTile(
+          leading: const Icon(Icons.timer_outlined),
+          title: Text(l10n.settingsKeepAliveTimeout),
+          subtitle: Text(
+            sshKeepAliveSeconds == null
+                ? l10n.settingsKeepAliveAuto
+                : l10n.settingsKeepAliveSeconds(sshKeepAliveSeconds),
+          ),
+          onTap: () =>
+              showKeepAliveTimeoutPicker(context, ref, sshKeepAliveSeconds),
         ),
         const Divider(),
         ListTile(

@@ -172,6 +172,31 @@ Works on both **Android** (intent filter) and **iOS** (URL type). Supports cold 
 
 ---
 
+## Jump Host (SSH Bastion)
+
+MuxPod can reach servers that are only accessible through an SSH jump host (bastion). Turn on **Connect via jump host** in the connection form and define up to **5 hops** in chain order — each hop has its own host, port, username, and authentication method (password or SSH key).
+
+- **Forward target (optional)** — defaults to the target host above; set it to reach a different host:port through the chain.
+- **Credentials** — jump passwords are stored only in the device's secure storage (never in the connection JSON). Test the connection with a password that is not saved yet.
+- **Test connection** — the Test Connection button validates the **entire jump chain**, so a failing hop fails the test.
+- **Protocol** — standard SSH only (direct-tcpip forwarding). `ProxyCommand` strings and SOCKS proxies are not supported. The server must allow TCP forwarding (`AllowTcpForwarding`).
+
+### SSH Keepalive
+
+MuxPod keeps connections alive with periodic probes. The probe timeout can be customized at two levels:
+
+1. **Per connection** — set **Probe timeout (seconds)** in the connection form (5–300, empty = unset).
+2. **Global** — Settings → Connection → SSH → **SSH keepalive probe timeout** (Auto / 5 / 10 / 15 / 20 / 30 / 60 s).
+
+Priority: **per connection > global > auto**. When unset, the auto formula applies: **10 s for direct connections, 10 s + 5 s per hop via jump hosts**. The default behavior of existing direct connections is unchanged.
+
+### Known Limitations
+
+- **Downgrade**: connections saved with jump host or per-connection keepalive settings lose those settings when opened with an older app version (the JSON fields are ignored by older releases).
+- Sorting/reordering hops (drag & drop) and per-hop host key override are not available yet.
+
+---
+
 ## Quick Start
 
 ### Install
