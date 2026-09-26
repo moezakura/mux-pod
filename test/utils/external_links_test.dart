@@ -11,20 +11,17 @@ void main() {
       expect(tryParseExternalHttpUri('http://example.com/'), isNotNull);
     });
 
-    test(
-      'C1: scheme の大文字表記ゆれ（HTTPS: / Http:）は正規化により受理される',
-      () {
-        // Uri.tryParse は scheme を小文字正規化するため fail-closed ではなく
-        // 「許可 scheme の大文字表記」として受理する（dart 実測値）。
-        final httpsUpper = tryParseExternalHttpUri('HTTPS://EXAMPLE.com/PATH');
-        expect(httpsUpper, isNotNull);
-        expect(httpsUpper!.scheme, 'https');
+    test('C1: scheme の大文字表記ゆれ（HTTPS: / Http:）は正規化により受理される', () {
+      // Uri.tryParse は scheme を小文字正規化するため fail-closed ではなく
+      // 「許可 scheme の大文字表記」として受理する（dart 実測値）。
+      final httpsUpper = tryParseExternalHttpUri('HTTPS://EXAMPLE.com/PATH');
+      expect(httpsUpper, isNotNull);
+      expect(httpsUpper!.scheme, 'https');
 
-        final httpMixed = tryParseExternalHttpUri('Http://example.com');
-        expect(httpMixed, isNotNull);
-        expect(httpMixed!.scheme, 'http');
-      },
-    );
+      final httpMixed = tryParseExternalHttpUri('Http://example.com');
+      expect(httpMixed, isNotNull);
+      expect(httpMixed!.scheme, 'http');
+    });
 
     test('危険 scheme・非対応 scheme は null（タップ無視）', () {
       expect(tryParseExternalHttpUri('javascript:alert(1)'), isNull);
@@ -45,17 +42,17 @@ void main() {
       // BEL / ESC で始まる生の OSC 8 シーケンス文字列は Uri.tryParse が
       // null を返す（例外は投げない）。
       expect(tryParseExternalHttpUri('\x07https://example.com'), isNull);
-      expect(tryParseExternalHttpUri('\x1b]8;;https://example.com\x07'), isNull);
+      expect(
+        tryParseExternalHttpUri('\x1b]8;;https://example.com\x07'),
+        isNull,
+      );
       expect(tryParseExternalHttpUri('\x00'), isNull);
     });
 
     test('URL 構造が有効ならパス途中の制御文字でも scheme 判定で受理される（dart 実測）', () {
       // scheme ガードは scheme 単位の判定のため、パス中の制御文字は
       // reject 条件にならない（fail-closed 拡張は一字不変契約に含めない）。
-      expect(
-        tryParseExternalHttpUri('https://example.com/\x00'),
-        isNotNull,
-      );
+      expect(tryParseExternalHttpUri('https://example.com/\x00'), isNotNull);
     });
 
     test('極長 URI も受理する（URL 長上限なし・critic 同意）', () {
@@ -71,8 +68,9 @@ void main() {
     /// （markdown_preview_link_guard_test.dart と同一手法）。
     List<MethodCall> mockUrlLauncher(WidgetTester tester, bool canLaunch) {
       final calls = <MethodCall>[];
-      tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
         calls.add(call);
         return canLaunch;
       });

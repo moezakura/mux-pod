@@ -210,11 +210,7 @@ List<(TextSpan, int)> flattenTextSpans(InlineSpan root) {
 
 /// 行テキスト（部分一致）から行の [RenderParagraph] を返す。
 RenderParagraph renderParagraphOfRow(WidgetTester tester, Finder rowFinder) {
-  expect(
-    rowFinder,
-    findsOneWidget,
-    reason: '行テキストが一意であること (partial match)',
-  );
+  expect(rowFinder, findsOneWidget, reason: '行テキストが一意であること (partial match)');
   // find.textContaining は RichText 自身にマッチするため ancestor では
   // 取れない。element の renderObject（subtree の先頭 RenderObject =
   // Text.rich の RenderParagraph）から解決する。

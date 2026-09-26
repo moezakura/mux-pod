@@ -191,7 +191,10 @@ void main() {
       final parser = newParser();
       final linked = parser.parseLines('\x1b]8;;u\x07l1');
       final plain = parser.parseLines('l1');
-      expect(linked.single.segments.single.text, plain.single.segments.single.text);
+      expect(
+        linked.single.segments.single.text,
+        plain.single.segments.single.text,
+      );
       expect(linked.single.segments.single.url, 'u');
       expect(plain.single.segments.single.url, isNull);
       expect(identical(linked.single, plain.single), isFalse);

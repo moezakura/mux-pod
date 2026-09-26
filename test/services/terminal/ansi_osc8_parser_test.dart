@@ -22,8 +22,9 @@ void main() {
   group('OSC 変種', () {
     test('OSC 8 開始 (ST 終端・params 付き) 〜 終了 (空 URI) の区間に url が付く', () {
       final parser = newParser();
-      final segments = parser
-          .parse('\x1b]8;id=x;https://ex.com\x1b\\link\x1b]8;;\x1b\\');
+      final segments = parser.parse(
+        '\x1b]8;id=x;https://ex.com\x1b\\link\x1b]8;;\x1b\\',
+      );
       expect(segments.length, 1);
       expect(segments.single.text, 'link');
       expect(segments.single.url, 'https://ex.com');
@@ -31,8 +32,9 @@ void main() {
 
     test('OSC 8 開始 (BEL 終端) も ST 終端と同結果 (Issue #61 必須要件)', () {
       final parser = newParser();
-      final segments =
-          parser.parse('\x1b]8;;https://ex.com\x07link\x1b]8;;\x07');
+      final segments = parser.parse(
+        '\x1b]8;;https://ex.com\x07link\x1b]8;;\x07',
+      );
       expect(segments.single.text, 'link');
       expect(segments.single.url, 'https://ex.com');
     });
@@ -127,8 +129,9 @@ void main() {
 
     test('parse 経路でも未終端 OSC 8 以降のテキストに url が付く', () {
       final parser = newParser();
-      final segments =
-          parser.parse('\x1b]8;;https://ex.com/partial\x1b[31mRED');
+      final segments = parser.parse(
+        '\x1b]8;;https://ex.com/partial\x1b[31mRED',
+      );
       expect(segments.single.text, 'RED');
       expect(segments.single.url, 'https://ex.com/partial');
       expect(segments.single.style.foreground, const Color(0xFFCD3131));
@@ -170,7 +173,10 @@ void main() {
       // リンク中の SGR で style が変化し、次行にも style と url の両方が引き継がれる
       expect(lines[0].endStyle, const AnsiStyle(foreground: Color(0xFFCD3131)));
       expect(lines[0].endUrl, 'u');
-      expect(lines[1].segments.single.style.foreground, const Color(0xFFCD3131));
+      expect(
+        lines[1].segments.single.style.foreground,
+        const Color(0xFFCD3131),
+      );
       expect(lines[1].segments.single.url, 'u');
     });
   });
@@ -188,7 +194,10 @@ void main() {
       final parser = newParser();
       final linked = parser.parseLines('\x1b]8;;u\x07l1');
       final plain = parser.parseLines('l1');
-      expect(linked.single.segments.single.text, plain.single.segments.single.text);
+      expect(
+        linked.single.segments.single.text,
+        plain.single.segments.single.text,
+      );
       expect(linked.single.segments.single.url, 'u');
       expect(plain.single.segments.single.url, isNull);
       expect(identical(linked.single, plain.single), isFalse);
@@ -211,14 +220,19 @@ void main() {
       expect(joined, 'linktail');
       for (final s in segments) {
         expect(s.text.contains('\x1b'), isFalse, reason: '${s.text} に ESC が混入');
-        expect(s.text.contains(']8;'), isFalse, reason: '${s.text} に OSC 8 が混入');
+        expect(
+          s.text.contains(']8;'),
+          isFalse,
+          reason: '${s.text} に OSC 8 が混入',
+        );
       }
     });
 
     test('リンク中の SGR 変更は url を継続させスタイルのみ変わる', () {
       final parser = newParser();
-      final segments = parser
-          .parse('\x1b]8;;u\x07\x1b[31mred\x1b[0mstill\x1b]8;;\x07tail');
+      final segments = parser.parse(
+        '\x1b]8;;u\x07\x1b[31mred\x1b[0mstill\x1b]8;;\x07tail',
+      );
       expect(segments.length, 3);
       expect(segments[0].text, 'red');
       expect(segments[0].url, 'u');

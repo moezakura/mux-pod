@@ -99,9 +99,7 @@ void main() {
     test('dim + リンクはリンク色に dim の alpha が掛かる (pin 順序の固定)', () {
       final renderer = AnsiSpanRenderer();
       final span = renderer.toTextSpan(
-        const [
-          AnsiSegment('link', AnsiStyle(dim: true), url: 'https://e.com'),
-        ],
+        const [AnsiSegment('link', AnsiStyle(dim: true), url: 'https://e.com')],
         fontSize: fontSize,
         fontFamily: font,
       );
@@ -126,11 +124,7 @@ void main() {
       const bg = Color(0xFF123456);
       final span = renderer.toTextSpan(
         const [
-          AnsiSegment(
-            'link',
-            AnsiStyle(background: bg),
-            url: 'https://e.com',
-          ),
+          AnsiSegment('link', AnsiStyle(background: bg), url: 'https://e.com'),
         ],
         fontSize: fontSize,
         fontFamily: font,
@@ -183,8 +177,16 @@ void main() {
         segments: [AnsiSegment('link', AnsiStyle(), url: 'u')],
         endStyle: AnsiStyle.defaultStyle,
       );
-      final s1 = renderer.lineToTextSpan(line, fontSize: fontSize, fontFamily: font);
-      final s2 = renderer.lineToTextSpan(line, fontSize: fontSize, fontFamily: font);
+      final s1 = renderer.lineToTextSpan(
+        line,
+        fontSize: fontSize,
+        fontFamily: font,
+      );
+      final s2 = renderer.lineToTextSpan(
+        line,
+        fontSize: fontSize,
+        fontFamily: font,
+      );
       expect(identical(s1, s2), isTrue);
       // キャッシュ済み span に recognizer が入らないこと
       expect(leafOf(s1).recognizer, isNull);
@@ -202,7 +204,11 @@ void main() {
         fontFamily: font,
         linkTapResolver: (url) => TapGestureRecognizer(),
       );
-      final without = renderer.lineToTextSpan(line, fontSize: fontSize, fontFamily: font);
+      final without = renderer.lineToTextSpan(
+        line,
+        fontSize: fontSize,
+        fontFamily: font,
+      );
       // withResolver がキャッシュに書き込んでいたら identical になるはず
       expect(identical(withResolver, without), isFalse);
       expect(leafOf(without).recognizer, isNull);

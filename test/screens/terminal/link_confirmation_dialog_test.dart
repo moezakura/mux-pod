@@ -25,10 +25,7 @@ void main() {
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await confirmExternalLink(
-                context,
-                Uri.parse(targetUrl),
-              );
+              result = await confirmExternalLink(context, Uri.parse(targetUrl));
             },
             child: const Text('trigger'),
           ),

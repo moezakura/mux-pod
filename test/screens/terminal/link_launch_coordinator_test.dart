@@ -24,8 +24,9 @@ void main() {
   /// （markdown_preview_link_guard_test.dart と同一手法）。
   List<MethodCall> mockUrlLauncher(WidgetTester tester, bool canLaunch) {
     final calls = <MethodCall>[];
-    tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+      call,
+    ) async {
       calls.add(call);
       return canLaunch;
     });
@@ -93,7 +94,10 @@ void main() {
     expect(calls.where((c) => c.method == 'canLaunch'), hasLength(1));
     final launches = calls.where((c) => c.method == 'launch').toList();
     expect(launches, hasLength(1));
-    expect((launches.single.arguments as Map)['url'], 'https://example.com/page');
+    expect(
+      (launches.single.arguments as Map)['url'],
+      'https://example.com/page',
+    );
   });
 
   testWidgets('設定 OFF: モーダル「キャンセル」→ 外部起動しない', (tester) async {
@@ -123,7 +127,10 @@ void main() {
     expect(find.text('Open Link?'), findsNothing);
     final launches = calls.where((c) => c.method == 'launch').toList();
     expect(launches, hasLength(1));
-    expect((launches.single.arguments as Map)['url'], 'https://example.com/page');
+    expect(
+      (launches.single.arguments as Map)['url'],
+      'https://example.com/page',
+    );
   });
 
   testWidgets('非 https/http URL（javascript:）は無視され無反応', (tester) async {
