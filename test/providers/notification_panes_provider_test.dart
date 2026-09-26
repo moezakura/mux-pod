@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/providers/notification_panes_provider.dart';
+import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/l10n/app_localizations.dart';
+import 'package:flutter_muxpod/services/connection/proxy_config.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 import 'package:flutter_muxpod/services/tmux/tmux_command_executor.dart';
@@ -25,6 +27,15 @@ class _FixedConnectionsNotifier extends ConnectionsNotifier {
 
   @override
   ConnectionsState build() => ConnectionsState(connections: connections);
+}
+
+/// settingsProvider の stub（SharedPreferences 不要・既定値固定）。
+class _DefaultSettingsNotifier extends SettingsNotifier {
+  @override
+  AppSettings build() => const AppSettings();
+
+  @override
+  Future<void> setKeepAliveTimeoutSeconds(int? value) async {}
 }
 
 class _RecordingSshClient extends FakeSshClient {
@@ -154,6 +165,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           connectionsProvider.overrideWith(() => _EmptyConnectionsNotifier()),
+          settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
         ],
       );
       addTearDown(container.dispose);
@@ -168,6 +180,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           connectionsProvider.overrideWith(() => _EmptyConnectionsNotifier()),
+          settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
         ],
       );
       addTearDown(container.dispose);
@@ -200,6 +213,7 @@ void main() {
         final container = ProviderContainer(
           overrides: [
             connectionsProvider.overrideWith(() => _EmptyConnectionsNotifier()),
+            settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
           ],
         );
         addTearDown(container.dispose);
@@ -238,6 +252,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           connectionsProvider.overrideWith(() => _EmptyConnectionsNotifier()),
+          settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
         ],
       );
       addTearDown(container.dispose);
@@ -252,6 +267,7 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           connectionsProvider.overrideWith(() => _EmptyConnectionsNotifier()),
+          settingsProvider.overrideWith(() => _DefaultSettingsNotifier()),
         ],
       );
       addTearDown(container.dispose);
@@ -290,6 +306,9 @@ void main() {
           overrides: [
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([connection]),
+            ),
+            settingsProvider.overrideWith(
+              () => _DefaultSettingsNotifier(),
             ),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
@@ -402,6 +421,9 @@ void main() {
             connectionsProvider.overrideWith(
               () => _FixedConnectionsNotifier([connection]),
             ),
+            settingsProvider.overrideWith(
+              () => _DefaultSettingsNotifier(),
+            ),
             alertPanesProvider.overrideWith(
               () => AlertPanesNotifier(
                 sshClient: sshClient,
@@ -430,6 +452,134 @@ void main() {
         expect(contract.listExecutors, [same(sshClient)]);
         expect(sshClient.connectCalls, 1);
         expect(sshClient.disconnectCalls, 1);
+      },
+    );
+
+    test(
+      'H2: resolver failure on one connection skips it and keeps scanning',
+      () async {
+        // 接続 A: jump パスワード未保存 → resolver が throw。
+        // 接続 B: 正常 → 走査は続行し、アラートは拾われる。
+        final brokenProxy = Connection(
+          id: 'broken',
+          name: 'Broken Jump',
+          host: 'target.example',
+          username: 'ops',
+          proxy: const ProxyConfig(
+            hops: [ProxyHop(host: 'jump1.example.com', username: 'u1')],
+          ),
+          createdAt: DateTime(2025, 1, 1),
+        );
+        final healthy = Connection(
+          id: 'ok',
+          name: 'Healthy',
+          host: 'healthy.example',
+          username: 'ops',
+          createdAt: DateTime(2025, 1, 1),
+        );
+        await SecureStorageService().savePassword('ok', 'pw');
+        final sshClient = _RecordingSshClient();
+        final contract = _FixtureTmuxContract([
+          TmuxSession(
+            name: 'main',
+            windows: [
+              TmuxWindow(
+                index: 0,
+                name: 'alerts',
+                flags: {TmuxWindowFlag.bell},
+                panes: [TmuxPane(index: 0, id: '%0')],
+              ),
+            ],
+          ),
+        ]);
+        final container = ProviderContainer(
+          overrides: [
+            connectionsProvider.overrideWith(
+              () => _FixedConnectionsNotifier([brokenProxy, healthy]),
+            ),
+            settingsProvider.overrideWith(
+              () => _DefaultSettingsNotifier(),
+            ),
+            alertPanesProvider.overrideWith(
+              () => AlertPanesNotifier(
+                sshClient: sshClient,
+                tmuxContract: contract,
+              ),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container.read(alertPanesProvider.notifier).refresh();
+
+        final state = container.read(alertPanesProvider);
+        // isLoading が回復し、正常接続のアラートは拾われている。
+        expect(state.isLoading, isFalse);
+        expect(state.error, isNull);
+        expect(state.alertPanes, hasLength(1));
+        expect(state.alertPanes.first.connectionId, 'ok');
+        // 破損接続は resolver で fail-fast され connect されない
+        // （同一の注入 client が 1 回だけ connect される）。
+        expect(sshClient.connectCalls, 1);
+        expect(sshClient.connectedHost, 'healthy.example');
+        // 破損接続も finally disconnect は走る（生成された client の掃除）。
+        expect(sshClient.disconnectCalls, 2);
+      },
+    );
+
+    test(
+      'proxy connection resolves credentials and passes runtime proxy options',
+      () async {
+        final connection = Connection(
+          id: 'c1',
+          name: 'Jumped',
+          host: 'target.example',
+          username: 'ops',
+          keepAliveTimeoutSeconds: 60,
+          proxy: const ProxyConfig(
+            hops: [
+              ProxyHop(host: 'jump1.example.com', port: 2200, username: 'u1'),
+            ],
+            forwardHost: '10.0.0.5',
+          ),
+          createdAt: DateTime(2025, 1, 1),
+        );
+        await SecureStorageService().savePassword('c1', 'pw');
+        await SecureStorageService().saveProxyPassword('c1', 0, 'jumppw');
+        final sshClient = _RecordingSshClient();
+        final contract = _FixtureTmuxContract(const []);
+        final container = ProviderContainer(
+          overrides: [
+            connectionsProvider.overrideWith(
+              () => _FixedConnectionsNotifier([connection]),
+            ),
+            settingsProvider.overrideWith(
+              () => _DefaultSettingsNotifier(),
+            ),
+            alertPanesProvider.overrideWith(
+              () => AlertPanesNotifier(
+                sshClient: sshClient,
+                tmuxContract: contract,
+              ),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container.read(alertPanesProvider.notifier).refresh();
+
+        final state = container.read(alertPanesProvider);
+        expect(state.isLoading, isFalse);
+        expect(sshClient.connectCalls, 1);
+        final options = sshClient.options!;
+        // resolver が runtime 形に解決している（M3: 転送先非 null）。
+        final proxy = options.proxy!;
+        expect(proxy.hops, hasLength(1));
+        expect(proxy.hops[0].password, 'jumppw');
+        expect(proxy.forwardHost, '10.0.0.5');
+        expect(proxy.forwardPort, connection.port);
+        // keepalive 上書き値（接続個別）が options に載る。
+        expect(options.keepAliveTimeoutSeconds, 60);
       },
     );
 

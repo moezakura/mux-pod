@@ -6,6 +6,7 @@ import '../../providers/active_session_provider.dart'
     show ActiveSession, activeSessionsProvider;
 import '../../providers/connection_provider.dart' show Connection;
 import '../../providers/key_provider.dart' show isKeyDamaged, keysProvider;
+import '../../providers/settings_provider.dart' show settingsProvider;
 import '../../services/backend/backend_type.dart' show BackendType;
 import '../../services/backend/domain/multiplexer_backend.dart'
     show MultiplexerBackendKind;
@@ -158,6 +159,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         connection: widget.connection,
         factory: widget.sshClientFactory,
         l10n: context.l10n,
+        // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
+        globalKeepAliveTimeoutSeconds:
+            ref.read(settingsProvider).keepAliveTimeoutSeconds,
       );
       if (_backendKind == MultiplexerBackendKind.herdr) {
         // herdr: スナップショットを取得して共通 domain に変換する。
@@ -253,6 +257,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         connection: widget.connection,
         factory: widget.sshClientFactory,
         l10n: context.l10n,
+        // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
+        globalKeepAliveTimeoutSeconds:
+            ref.read(settingsProvider).keepAliveTimeoutSeconds,
       );
       // 同一接続でそのまま一覧を再取得（kill → reload の await 順序を維持）
       final sessions = await _operations.killSessionAndReload(
@@ -337,6 +344,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         connection: widget.connection,
         factory: widget.sshClientFactory,
         l10n: context.l10n,
+        // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
+        globalKeepAliveTimeoutSeconds:
+            ref.read(settingsProvider).keepAliveTimeoutSeconds,
       );
       final snapshot = await _operations.closeWorkspace(client, workspaceId);
       if (!mounted) return;
@@ -442,6 +452,9 @@ class ConnectionCardState extends ConsumerState<ConnectionCard> {
         connection: widget.connection,
         factory: widget.sshClientFactory,
         l10n: context.l10n,
+        // 経路②の keepalive 上書き値（接続個別 > 全体設定・🤝3）。
+        globalKeepAliveTimeoutSeconds:
+            ref.read(settingsProvider).keepAliveTimeoutSeconds,
       );
       final snapshot = await _operations.createWorkspace(client, label);
       if (!mounted) return;
