@@ -5,7 +5,7 @@ import 'settings_state.dart';
 
 /// SharedPreferences とのキー・型マッピング（読込・保存）とマイグレーション起動を担当する。
 ///
-/// キー文字列は従来の `SettingsNotifier` 定義時から変更しない（40 キー完全互換）。
+/// キー文字列は従来の `SettingsNotifier` 定義時から変更しない（44 キー完全互換）。
 /// 値は bool / double / int / String のスカラー型のみで JSON 直列化は行わない。
 class SettingsPersistence {
   static const String mobileBackgroundModeKey =
@@ -30,6 +30,7 @@ class SettingsPersistence {
   static const String keepKeyboardOnEnterKey =
       'settings_keep_keyboard_on_enter';
   static const String showTerminalCursorKey = 'settings_show_terminal_cursor';
+  static const String openLinksDirectlyKey = 'settings_open_links_directly';
   // inventory: SETTINGS-HERDR-CARET-005
   static const String experimentalHerdrCaretPositionEnabledKey =
       'settings_experimental_herdr_caret_position_enabled';
@@ -100,6 +101,7 @@ class SettingsPersistence {
       cjkMode: prefs.getBool(cjkModeKey) ?? false,
       keepKeyboardOnEnter: prefs.getBool(keepKeyboardOnEnterKey) ?? false,
       showTerminalCursor: prefs.getBool(showTerminalCursorKey) ?? true,
+      openLinksDirectly: prefs.getBool(openLinksDirectlyKey) ?? false,
       // inventory: SETTINGS-HERDR-CARET-006
       experimentalHerdrCaretPositionEnabled:
           prefs.getBool(experimentalHerdrCaretPositionEnabledKey) ?? false,

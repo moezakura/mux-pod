@@ -11,7 +11,7 @@ void main() {
   });
 
   group('SettingsPersistence キー互換', () {
-    test('40 キーの文字列が既存定義と完全互換である', () {
+    test('44 キーの文字列が既存定義と完全互換である', () {
       // テストはキー文字列直書きで検証するため、ここで互換を固定する。
       expect(SettingsPersistence.darkModeKey, 'settings_dark_mode');
       expect(SettingsPersistence.fontSizeKey, 'settings_font_size');
@@ -40,6 +40,10 @@ void main() {
       expect(
         SettingsPersistence.showTerminalCursorKey,
         'settings_show_terminal_cursor',
+      );
+      expect(
+        SettingsPersistence.openLinksDirectlyKey,
+        'settings_open_links_directly',
       );
       expect(
         SettingsPersistence.experimentalHerdrCaretPositionEnabledKey,
@@ -142,6 +146,8 @@ void main() {
       expect(settings.uploadConflictPolicy, TransferConflictPolicy.prompt);
       expect(settings.uploadConcurrency, 2);
       expect(settings.uploadChunkKb, 256);
+      // Issue #61: default false = 確認モーダル表示（後方互換）。
+      expect(settings.openLinksDirectly, false);
     });
 
     test('保存済みの値（bool/double/int/String）を復元する', () async {
@@ -185,6 +191,15 @@ void main() {
       final settings = await persistence.load();
 
       expect(settings.darkMode, isFalse);
+    });
+
+    test('openLinksDirectly を保存して再読込で復元する（Issue #61）', () async {
+      final persistence = SettingsPersistence();
+
+      await persistence.save(SettingsPersistence.openLinksDirectlyKey, true);
+      final settings = await persistence.load();
+
+      expect(settings.openLinksDirectly, isTrue);
     });
 
     test('double を保存して再読込で復元する', () async {

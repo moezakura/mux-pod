@@ -784,6 +784,9 @@
     }
   },
   "termTapWindowToSelect": "ウィンドウをタップして選択",
+  "termLinkConfirmTitle": "リンクを開きますか？",
+  "termLinkConfirmOpen": "開く",
+  "termLinkConfirmCancel": "キャンセル",
   "newWindowTitle": "新規ウィンドウ",
   "newWindowNameLabel": "ウィンドウ名",
   "newWindowNameHint": "空欄でデフォルト名",
@@ -894,6 +897,8 @@
   "commonSave": "保存",
   "settingsShowCursor": "カーソルを表示",
   "settingsShowCursorDescription": "ターミナルのカーソルインジケーターを表示",
+  "settingsOpenLinksDirectly": "リンクを直接開く",
+  "settingsOpenLinksDirectlyDescription": "ターミナルの https/http リンクを確認なしで開きます。オフの場合、開く前に確認ダイアログで URL を表示します。",
   "settingsExperimentalHerdrCaretPositionTitle": "実験的: Herdrカーソル位置",
   "settingsExperimentalHerdrCaretPositionDescription": "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
   "settingsAdjustMode": "調整モード",

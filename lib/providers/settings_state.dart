@@ -64,6 +64,10 @@ class AppSettings {
   /// ターミナルカーソルの表示設定
   final bool showTerminalCursor;
 
+  /// OSC 8 リンクを確認モーダルなしで直接開く。
+  /// default false = 確認モーダルを表示（Issue #61・後方互換）。
+  final bool openLinksDirectly;
+
   /// 実験的: Herdr接続でカーソル位置スナップショットを取得する
   /// （Phase 1ではフラグとUIのみ・動作はPhase 2/3で実装）
   // inventory: SETTINGS-HERDR-CARET-001
@@ -148,6 +152,7 @@ class AppSettings {
     this.cjkMode = false,
     this.keepKeyboardOnEnter = false,
     this.showTerminalCursor = true,
+    this.openLinksDirectly = false,
     // inventory: SETTINGS-HERDR-CARET-002
     this.experimentalHerdrCaretPositionEnabled = false,
     this.invertPaneNavigation = false,
@@ -207,6 +212,7 @@ class AppSettings {
     bool? cjkMode,
     bool? keepKeyboardOnEnter,
     bool? showTerminalCursor,
+    bool? openLinksDirectly,
     // inventory: SETTINGS-HERDR-CARET-003
     bool? experimentalHerdrCaretPositionEnabled,
     bool? invertPaneNavigation,
@@ -257,6 +263,7 @@ class AppSettings {
       cjkMode: cjkMode ?? this.cjkMode,
       keepKeyboardOnEnter: keepKeyboardOnEnter ?? this.keepKeyboardOnEnter,
       showTerminalCursor: showTerminalCursor ?? this.showTerminalCursor,
+      openLinksDirectly: openLinksDirectly ?? this.openLinksDirectly,
       // inventory: SETTINGS-HERDR-CARET-004
       experimentalHerdrCaretPositionEnabled:
           experimentalHerdrCaretPositionEnabled ??
