@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dartssh2/dartssh2.dart';
 
 import '../../l10n/app_localizations.dart';
+import 'ssh_models.dart';
 
 /// Keep-alive の単一所有者。
 ///
@@ -56,7 +57,16 @@ class SshKeepAlive {
   /// and the phone throttling timers in the background makes it likelier still.
   ///
   /// probe クロージャ（facade 配線）の CommandRequest タイムアウトで使用する。
+  ///
+  /// 🤝3: 接続個別・全体設定での上書きが可能（[keepAliveProbeTimeoutSeconds]）。
+  /// この static const は「自動」時の基準値兼インスタンス値の既定値。
   static const int keepAliveTimeoutSeconds = 10;
+
+  /// 自動式（`10 + hops × 5`）で hop 1 本あたりに加算する秒数。
+  ///
+  /// R7 由来: jump 経由の往復はホップ毎に遅延・ジッタが増えるため、
+  /// 直接接続と同じ 10 秒では誤死判定（R7）が起きやすい。
+  static const int keepAliveTimeoutPerHopSeconds = 5;
 
   /// Consecutive keep-alive failures before the connection is declared dead.
   /// A single lost probe is normal on a mobile link and must not tear down a
@@ -72,6 +82,33 @@ class SshKeepAlive {
 
   /// Keep-alive連続成功回数
   int _keepAliveSuccessCount = 0;
+
+  /// keepalive プローブのタイムアウト（秒・🤝3）。
+  ///
+  /// facade が接続時に解決した値を設定する（[resolveKeepAliveTimeoutSeconds]）。
+  /// 未設定（既定）時は従来どおり [keepAliveTimeoutSeconds]（10 秒）で、
+  /// 直接接続・未設定の既定挙動は不変。probe クロージャはこの現在値を参照する。
+  int keepAliveProbeTimeoutSeconds = keepAliveTimeoutSeconds;
+
+  /// keepalive プローブタイムアウト（秒）を解決する純関数（🤝3）。
+  ///
+  /// 優先順位: perConnection（接続個別） > global（全体設定） > 自動。
+  /// 自動式: proxy あり = [keepAliveTimeoutSeconds] +
+  /// hops × [keepAliveTimeoutPerHopSeconds] / なし = [keepAliveTimeoutSeconds]。
+  ///
+  /// 配置根拠（OQ-3）: 依存方向を models → keep_alive にしないため
+  /// ssh_keep_alive 側に置き、[SshProxyOptions] 型のため ssh_models を
+  /// import する（models は keep_alive を import しない）。
+  static int resolveKeepAliveTimeoutSeconds({
+    int? perConnection,
+    int? global,
+    SshProxyOptions? proxy,
+  }) {
+    if (perConnection != null) return perConnection;
+    if (global != null) return global;
+    return keepAliveTimeoutSeconds +
+        (proxy?.hops.length ?? 0) * keepAliveTimeoutPerHopSeconds;
+  }
 
   /// Keep-aliveを開始（HEAD `SshClient._startKeepAlive` 相当）。
   void start() {

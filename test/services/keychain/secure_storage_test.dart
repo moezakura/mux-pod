@@ -129,4 +129,52 @@ void main() {
       expect(await service.getPassword('conn1'), 'secret');
     });
   });
+
+  group('SecureStorageService proxy passwords', () {
+    test('save, get and delete a single hop password', () async {
+      final service = SecureStorageService();
+
+      expect(await service.getProxyPassword('conn1', 0), isNull);
+
+      await service.saveProxyPassword('conn1', 0, 'hop0secret');
+      await service.saveProxyPassword('conn1', 1, 'hop1secret');
+
+      expect(await service.getProxyPassword('conn1', 0), 'hop0secret');
+      expect(await service.getProxyPassword('conn1', 1), 'hop1secret');
+
+      await service.deleteProxyPassword('conn1', hopIndex: 0);
+
+      expect(await service.getProxyPassword('conn1', 0), isNull);
+      // 別 hop は消えない
+      expect(await service.getProxyPassword('conn1', 1), 'hop1secret');
+    });
+
+    test('deleteProxyPassword without hopIndex removes all hops', () async {
+      final service = SecureStorageService();
+      await service.saveProxyPassword('conn1', 0, 'a');
+      await service.saveProxyPassword('conn1', 2, 'b');
+      await service.saveProxyPassword('conn2', 0, 'c');
+      // 直接キー書き込みで orphan（上限外 index）も用意する
+      await service.writeValue('proxy_password_conn1_7', 'orphan');
+
+      await service.deleteProxyPassword('conn1');
+
+      expect(await service.getProxyPassword('conn1', 0), isNull);
+      expect(await service.getProxyPassword('conn1', 2), isNull);
+      expect(await service.readValue('proxy_password_conn1_7'), isNull);
+      // 別接続は消えない
+      expect(await service.getProxyPassword('conn2', 0), 'c');
+    });
+
+    test(
+      'deleteProxyPassword without hopIndex is a no-op when nothing stored',
+      () async {
+        final service = SecureStorageService();
+
+        await service.deleteProxyPassword('missing');
+
+        expect(await service.getKeysWithPrefix('proxy_password_'), isEmpty);
+      },
+    );
+  });
 }

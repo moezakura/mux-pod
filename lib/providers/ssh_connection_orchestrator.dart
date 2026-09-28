@@ -30,6 +30,9 @@ class SshConnectionOrchestrator {
   _startForeground;
   final Future<void> Function() _stopForeground;
 
+  /// SshClient 生成の注入（テスト用・未注入時は実物）。
+  final SshClient Function() _clientFactory;
+
   SshClient? _client;
   bool _maintenanceEnabled = true;
   void setMaintenanceEnabled(bool enabled) {
@@ -68,13 +71,17 @@ class SshConnectionOrchestrator {
     )
     startForeground,
     required Future<void> Function() stopForeground,
+    SshClient Function()? clientFactory,
   }) : _getState = getState,
        _updateState = updateState,
        _requestReconnect = requestReconnect,
        _shouldScheduleNextAttempt = shouldScheduleNextAttempt,
        _onLastConnected = onLastConnected,
        _startForeground = startForeground,
-       _stopForeground = stopForeground;
+       _stopForeground = stopForeground,
+       // テスト用注入（未注入時は実物。実装計画 §L4 テスト10: 再接続時に
+       // fake SshClient が受ける options の振る舞いで検証するための注入点）。
+       _clientFactory = clientFactory ?? SshClient.new;
 
   /// 設定言語から解決したローカライズ文字列。
   AppLocalizations get _l10n => lookupL10n();
@@ -102,7 +109,7 @@ class SshConnectionOrchestrator {
     );
 
     try {
-      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
+      _client = _clientFactory()..setMaintenanceEnabled(_maintenanceEnabled);
 
       await _client!.connect(
         host: connection.host,
@@ -178,7 +185,7 @@ class SshConnectionOrchestrator {
     );
 
     try {
-      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
+      _client = _clientFactory()..setMaintenanceEnabled(_maintenanceEnabled);
 
       // 接続状態のストリームを監視（切断検知の高速化）
       _connectionStateSubscription = _client!.connectionStateStream.listen(
@@ -298,7 +305,7 @@ class SshConnectionOrchestrator {
       // 古いクライアントをクリーンアップ（await: 旧 managed PTY / TUI が
       // 閉じる前に新クライアントで起動しないことを保証・Codex B3）。
       await _client?.dispose();
-      _client = SshClient()..setMaintenanceEnabled(_maintenanceEnabled);
+      _client = _clientFactory()..setMaintenanceEnabled(_maintenanceEnabled);
 
       // 接続状態のストリームを監視（切断検知の高速化）
       _connectionStateSubscription = _client!.connectionStateStream.listen(

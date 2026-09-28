@@ -1,14 +1,17 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../l10n/app_localizations.dart' show AppLocalizations;
 import '../l10n/l10n_lookup.dart';
 import '../services/keychain/secure_storage.dart';
 import '../services/ssh/ssh_client.dart';
+import '../services/ssh/ssh_proxy_options_resolver.dart';
 import '../services/tmux/tmux_facade.dart';
 import '../services/tmux/tmux_contract.dart';
 import '../services/tmux/tmux_models.dart';
 
 import 'connection_provider.dart';
+import 'settings_provider.dart';
 
 // inventory: NOTIF-001
 /// tmuxウィンドウフラグに基づく通知ペイン情報
@@ -160,44 +163,77 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
 
     final storage = SecureStorageService();
     // inventory: LEGACY-0123
-    SshConnectOptions options;
+    try {
+      final options = await _buildConnectOptions(
+        connection,
+        storage,
+        lookupL10n(),
+      );
+
+      final sshClient = _injectedSshClient ?? SshClient();
+      try {
+        await sshClient.connect(
+          host: connection.host,
+          port: connection.port,
+          username: connection.username,
+          options: options,
+          l10n: lookupL10n(),
+        );
+
+        // 当該ウィンドウを選択してフラグをクリアし、元のウィンドウに戻す
+        await _tmuxContract.selectWindow(
+          sshClient.tmuxExecutor,
+          alert.sessionName,
+          alert.windowIndex,
+        );
+      } finally {
+        await sshClient.disconnect();
+      }
+    } catch (e) {
+      debugPrint('Failed to clear window flag: $e');
+    }
+  }
+
+  /// 接続 1 件分の接続オプションを構築する（経路③）。
+  ///
+  /// ジャンプホストは [SshProxyOptionsResolver] で解決する。解決失敗
+  /// （パスワード欠落・鍵 unavailable）は [SshProxyConnectionError] を
+  /// throw するため、**呼出元は per-connection try 内でこれを呼び、
+  /// 失敗しても走査を継続すること（H2）**。
+  /// keepalive は「接続個別 > 全体設定」で解決する（🤝3）。
+  Future<SshConnectOptions> _buildConnectOptions(
+    Connection connection,
+    SecureStorageService storage,
+    AppLocalizations l10n,
+  ) async {
+    final proxyOptions = await const SshProxyOptionsResolver().resolve(
+      connection.proxy,
+      connectionId: connection.id,
+      targetHost: connection.host,
+      targetPort: connection.port,
+      l10n: l10n,
+    );
+    final keepAliveTimeoutSeconds =
+        connection.keepAliveTimeoutSeconds ??
+        ref.read(settingsProvider).keepAliveTimeoutSeconds;
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await storage.getPrivateKey(connection.keyId!);
       final passphrase = await storage.getPassphrase(connection.keyId!);
-      options = SshConnectOptions(
+      return SshConnectOptions(
         privateKey: privateKey,
         passphrase: passphrase,
         multiplexer: connection.multiplexer,
-      );
-    } else {
-      final password = await storage.getPassword(connection.id);
-      options = SshConnectOptions(
-        password: password,
-        multiplexer: connection.multiplexer,
+        proxy: proxyOptions,
+        keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
       );
     }
-
-    final sshClient = _injectedSshClient ?? SshClient();
-    try {
-      await sshClient.connect(
-        host: connection.host,
-        port: connection.port,
-        username: connection.username,
-        options: options,
-        l10n: lookupL10n(),
-      );
-
-      // 当該ウィンドウを選択してフラグをクリアし、元のウィンドウに戻す
-      await _tmuxContract.selectWindow(
-        sshClient.tmuxExecutor,
-        alert.sessionName,
-        alert.windowIndex,
-      );
-    } catch (e) {
-      debugPrint('Failed to clear window flag: $e');
-    } finally {
-      await sshClient.disconnect();
-    }
+    final password = await storage.getPassword(connection.id);
+    return SshConnectOptions(
+      password: password,
+      multiplexer: connection.multiplexer,
+      proxy: proxyOptions,
+      keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
+    );
   }
 
   // inventory: NOTIF-025
@@ -212,25 +248,16 @@ class AlertPanesNotifier extends Notifier<AlertPanesState> {
     final allAlertPanes = <AlertPane>[];
 
     for (final connection in connections) {
-      SshConnectOptions options;
-      if (connection.authMethod == 'key' && connection.keyId != null) {
-        final privateKey = await storage.getPrivateKey(connection.keyId!);
-        final passphrase = await storage.getPassphrase(connection.keyId!);
-        options = SshConnectOptions(
-          privateKey: privateKey,
-          passphrase: passphrase,
-          multiplexer: connection.multiplexer,
-        );
-      } else {
-        final password = await storage.getPassword(connection.id);
-        options = SshConnectOptions(
-          password: password,
-          multiplexer: connection.multiplexer,
-        );
-      }
-
+      // H2: options 構築（resolver 含む）も per-connection try 内で行う。
+      // 1 接続の設定不備（jump パスワード欠落など）で走査を停止させない。
       final sshClient = _injectedSshClient ?? SshClient();
       try {
+        final options = await _buildConnectOptions(
+          connection,
+          storage,
+          lookupL10n(),
+        );
+
         await sshClient.connect(
           host: connection.host,
           port: connection.port,

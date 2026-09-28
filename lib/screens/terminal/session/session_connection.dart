@@ -12,6 +12,10 @@ import '../../../../services/backend/backend_type.dart';
 import '../../../../services/backend/domain/multiplexer_backend.dart';
 import '../../../../services/keychain/secure_storage.dart';
 import '../../../../services/ssh/ssh_client.dart';
+import '../../../../services/ssh/ssh_proxy_connection_error.dart'
+    show SshProxyConnectionError;
+import '../../../../services/ssh/ssh_proxy_options_resolver.dart'
+    show SshProxyOptionsResolver;
 import '../../../../services/tmux/ssh_tmux_command_executor.dart';
 import '../../../../services/tmux/tmux_models.dart';
 import '../../../../providers/tmux_provider.dart';
@@ -218,6 +222,14 @@ class SessionConnectionFlow {
         e.toString(),
         title: env.host.context.l10n.termAuthenticationFailedTitle,
       );
+    } on SshProxyConnectionError catch (e) {
+      // resolver の fail-fast（認証情報欠落・鍵 unavailable）。
+      // hop 座標付き l10n 済みメッセージをそのまま表示する。
+      if (!env.host.isMounted) return;
+      env.host.markNeedsBuild();
+      runtime.isConnecting = false;
+      runtime.connectionError = e.message;
+      _showErrorSnackBar(e.message);
     } catch (e) {
       if (!env.host.isMounted) return;
       env.host.markNeedsBuild();
@@ -281,7 +293,24 @@ class SessionConnectionFlow {
   // 認証オプション（`_getAuthOptions`・移設元 L3126）
   // ---------------------------------------------------------------------------
 
-  Future<SshConnectOptions> _getAuthOptions(dynamic connection) async {
+  /// 認証情報・ジャンプホスト経路・keepalive 上書き値を解決する（経路①）。
+  ///
+  /// ジャンプホストは [SshProxyOptionsResolver] で解決する（MR-8 契約:
+  /// 解決失敗は [SshProxyConnectionError] throw・呼出元の catch で表示）。
+  /// keepalive は「接続個別 > 全体設定」を UI 側で解決して options に載せる
+  /// （🤝3・null = transport 側の自動式）。
+  Future<SshConnectOptions> _getAuthOptions(Connection connection) async {
+    final proxyOptions = await const SshProxyOptionsResolver().resolve(
+      connection.proxy,
+      connectionId: connection.id,
+      targetHost: connection.host,
+      targetPort: connection.port,
+      l10n: env.host.context.l10n,
+    );
+    final keepAliveTimeoutSeconds =
+        connection.keepAliveTimeoutSeconds ??
+        env.ref.read(settingsProvider).keepAliveTimeoutSeconds;
+
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await _secureStorage.getPrivateKey(connection.keyId!);
       if (privateKey == null) {
@@ -294,12 +323,16 @@ class SessionConnectionFlow {
         privateKey: privateKey,
         passphrase: passphrase,
         multiplexer: connection.multiplexer,
+        proxy: proxyOptions,
+        keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
       );
     } else {
       final password = await _secureStorage.getPassword(connection.id);
       return SshConnectOptions(
         password: password,
         multiplexer: connection.multiplexer,
+        proxy: proxyOptions,
+        keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
       );
     }
   }

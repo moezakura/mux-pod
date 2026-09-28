@@ -62,6 +62,8 @@ class SettingsPersistence {
       'settings_upload_conflict_policy';
   static const String uploadConcurrencyKey = 'settings_upload_concurrency';
   static const String uploadChunkKbKey = 'settings_upload_chunk_kb';
+  // SSH キープアライブ全体設定（未設定 = 自動）。
+  static const String keepAliveTimeoutKey = 'settings_keep_alive_timeout';
 
   /// SharedPreferences から全設定を読み込み [AppSettings] を構築する。
   ///
@@ -134,13 +136,22 @@ class SettingsPersistence {
       ),
       uploadConcurrency: prefs.getInt(uploadConcurrencyKey) ?? 2,
       uploadChunkKb: prefs.getInt(uploadChunkKbKey) ?? 256,
+      // 不正値（プリセット外・型不一致）は null（自動）へフォールバック。
+      keepAliveTimeoutSeconds: AppSettings.keepAliveTimeoutFromPersisted(
+        prefs.get(keepAliveTimeoutKey),
+      ),
     );
   }
 
   /// 設定値を型に応じて SharedPreferences へ保存する（bool/double/int/String のみ）。
+  ///
+  /// null は「未設定へ戻す」扱いでキーを削除する（例: keepalive 全体設定の
+  /// 自動へ戻す）。既存の setter は null を渡さないため影響はない。
   Future<void> save(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
-    if (value is bool) {
+    if (value == null) {
+      await prefs.remove(key);
+    } else if (value is bool) {
       await prefs.setBool(key, value);
     } else if (value is double) {
       await prefs.setDouble(key, value);

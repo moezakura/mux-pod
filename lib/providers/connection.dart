@@ -1,6 +1,7 @@
 import '../services/backend/backend_type.dart';
 import '../services/backend/multiplexer_config.dart';
 import '../services/connection/connection_storage_schema.dart';
+import '../services/connection/proxy_config.dart';
 
 /// 接続設定
 class Connection {
@@ -40,6 +41,15 @@ class Connection {
   /// ディープリンク用の識別子（外部スクリプトと共有可能）
   final String? deepLinkId;
 
+  /// ジャンプホスト経由接続の設定（null なら直接接続）。
+  final ProxyConfig? proxy;
+
+  /// keepalive プローブのタイムアウト秒（null = 未設定・自動）。
+  ///
+  /// null の場合は全体設定（SharedPreferences）→ 自動式
+  /// （10 秒 + proxy hops × 5 秒 / 直接 10 秒）の順で解決される。
+  final int? keepAliveTimeoutSeconds;
+
   Connection({
     required this.id,
     required this.name,
@@ -53,6 +63,8 @@ class Connection {
     required this.createdAt,
     this.lastConnectedAt,
     this.deepLinkId,
+    this.proxy,
+    this.keepAliveTimeoutSeconds,
   }) : storageSchemaVersion =
            storageSchemaVersion ?? currentStorageSchemaVersion,
        multiplexer = multiplexer ?? const MultiplexerConfig.tmux();
@@ -71,6 +83,10 @@ class Connection {
     DateTime? lastConnectedAt,
     String? deepLinkId,
     bool clearDeepLinkId = false,
+    ProxyConfig? proxy,
+    int? keepAliveTimeoutSeconds,
+    bool clearProxy = false,
+    bool clearKeepAliveTimeout = false,
   }) {
     return Connection(
       id: id ?? this.id,
@@ -85,6 +101,10 @@ class Connection {
       createdAt: createdAt ?? this.createdAt,
       lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       deepLinkId: clearDeepLinkId ? null : (deepLinkId ?? this.deepLinkId),
+      proxy: clearProxy ? null : (proxy ?? this.proxy),
+      keepAliveTimeoutSeconds: clearKeepAliveTimeout
+          ? null
+          : (keepAliveTimeoutSeconds ?? this.keepAliveTimeoutSeconds),
     );
   }
 
@@ -108,6 +128,11 @@ class Connection {
       'createdAt': createdAt.toIso8601String(),
       'lastConnectedAt': lastConnectedAt?.toIso8601String(),
       'deepLinkId': deepLinkId,
+      // optional 追加フィールド（schema v2 維持・非 null 時のみ書く）。
+      // 旧アプリは未知キーを無視して読める（OQ-1: bump しない根拠）。
+      if (proxy != null) 'proxy': proxy!.toJson(),
+      if (keepAliveTimeoutSeconds != null)
+        'keepAliveTimeoutSeconds': keepAliveTimeoutSeconds,
     };
   }
 
@@ -140,7 +165,24 @@ class Connection {
           ? DateTime.parse(json['lastConnectedAt'] as String)
           : null,
       deepLinkId: json['deepLinkId'] as String?,
+      proxy: _parseProxy(json['proxy']),
+      keepAliveTimeoutSeconds: json['keepAliveTimeoutSeconds'] as int?,
     );
+  }
+
+  /// proxy JSON をパースする（破損データ耐性 M2）。
+  ///
+  /// proxy は optional フィールドのため、破損時はレコード全体を
+  /// corruptedRecords 行きにするのではなく `null` にフォールバックし、
+  /// レコードは一覧に残す（端末アクセス断を避ける）。
+  static ProxyConfig? _parseProxy(Object? proxyJson) {
+    if (proxyJson == null) return null;
+    if (proxyJson is! Map) return null;
+    try {
+      return ProxyConfig.fromJson(Map<String, dynamic>.from(proxyJson));
+    } on FormatException {
+      return null;
+    }
   }
 }
 

@@ -7,6 +7,8 @@ import '../../services/ssh/ssh_authentication_error.dart'
     show SshAuthenticationError;
 import '../../services/ssh/ssh_client.dart' show SshClient;
 import '../../services/ssh/ssh_models.dart' show SshConnectOptions;
+import '../../services/ssh/ssh_proxy_options_resolver.dart'
+    show SshProxyOptionsResolver;
 import '../../services/tmux/ssh_tmux_command_executor.dart';
 import '../../services/tmux/tmux_facade.dart' show tmuxFacade;
 import '../../services/tmux/tmux_models.dart' show TmuxSession;
@@ -26,13 +28,28 @@ class ConnectionSessionOperations {
   /// 認証情報を取得して SSH 接続し、接続済みクライアントを返す。
   ///
   /// [factory] はテストからの注入用（提供されれば優先使用）。
+  /// ジャンプホストは [SshProxyOptionsResolver] で解決する（MR-8 契約・
+  /// 解決失敗は SshProxyConnectionError throw で呼出元へ伝播）。
+  /// keepalive は「接続個別 > 全体設定」で解決する（🤝3）。本クラスは
+  /// ref に依存しないため、全体設定値は呼出元が [globalKeepAliveTimeoutSeconds]
+  /// で注入する（未注入時は接続個別のみ・null は transport 自動式）。
   Future<SshClient> connect({
     required Connection connection,
     Future<SshClient> Function(Connection connection)? factory,
     required AppLocalizations l10n,
+    int? globalKeepAliveTimeoutSeconds,
   }) async {
     if (factory != null) return factory(connection);
     final storage = SecureStorageService();
+    final proxyOptions = await const SshProxyOptionsResolver().resolve(
+      connection.proxy,
+      connectionId: connection.id,
+      targetHost: connection.host,
+      targetPort: connection.port,
+      l10n: l10n,
+    );
+    final keepAliveTimeoutSeconds =
+        connection.keepAliveTimeoutSeconds ?? globalKeepAliveTimeoutSeconds;
     SshConnectOptions options;
     if (connection.authMethod == 'key' && connection.keyId != null) {
       final privateKey = await storage.getPrivateKey(connection.keyId!);
@@ -44,12 +61,16 @@ class ConnectionSessionOperations {
         privateKey: privateKey,
         passphrase: passphrase,
         multiplexer: connection.multiplexer,
+        proxy: proxyOptions,
+        keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
       );
     } else {
       final password = await storage.getPassword(connection.id);
       options = SshConnectOptions(
         password: password,
         multiplexer: connection.multiplexer,
+        proxy: proxyOptions,
+        keepAliveTimeoutSeconds: keepAliveTimeoutSeconds,
       );
     }
     final sshClient = SshClient();

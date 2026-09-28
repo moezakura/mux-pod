@@ -7,7 +7,10 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
-import 'helpers/ssh_client_fakes.dart';
+import 'package:flutter_muxpod/services/ssh/ssh_connector.dart';
+import 'package:flutter_muxpod/services/ssh/ssh_proxy_tunneler.dart';
+import 'helpers/ssh_client_fakes.dart' show FakeRawSshClient, FakeSocket;
+import 'helpers/ssh_proxy_fakes.dart';
 
 void main() {
   group('SshClient lifecycle contracts', () {
@@ -158,6 +161,82 @@ void main() {
           'ssh-ed25519',
         ),
         '66:5d:56:0b:41:6a:22:c5',
+      );
+    });
+
+    test('SSH-LIFE-017d: 旧形式移行保留は複数件（jump 2 hop）同時に適用される（List 化）', () async {
+      // jump hop0 / hop1 の両方が旧形式（MD5 hex）で保存されている状態をシード
+      SecureStorageService.setTestValues({
+        'hostkey_hop0.test_2222_ssh-ed25519': '66:5d:56:0b:41:6a:22:c5',
+        'hostkey_hop1.test_2200_ssh-ed25519': 'aa:bb:cc:dd:ee:ff:00:11',
+      });
+
+      final tunneler = SshProxyTunneler(
+        l10n: () => null,
+        socketDialer: (host, port, {timeout}) async => FakeSocket(),
+        hopClientFactory:
+            (
+              socket,
+              hop, {
+              required handshakeTimeout,
+              required onAuthenticated,
+              required onVerifyHostKey,
+            }) async {
+              final client = FakeProxyHopClient();
+              // hop 座標で配線された検証コールバックを呼ぶ（本物のハンドシェイク相当）
+              await onVerifyHostKey(
+                'ssh-ed25519',
+                Uint8List.fromList(utf8.encode('SHA256:newformat-${hop.host}')),
+              );
+              client.completeAuthentication();
+              return client;
+            },
+      );
+      final connector = SshConnector(
+        connectionFactory: null,
+        l10n: () => null,
+        setLastError: (_) {},
+        tunneler: tunneler,
+      );
+
+      final result = await connector.connect(
+        host: 'target.test',
+        port: 22,
+        username: 'user',
+        options: SshConnectOptions(
+          password: 'pw',
+          timeout: 5,
+          proxy: SshProxyOptions(
+            hops: const [
+              SshProxyHop(host: 'hop0.test', port: 2222, username: 'j0'),
+              SshProxyHop(host: 'hop1.test', port: 2200, username: 'j1'),
+            ],
+            forwardHost: 'target.test',
+            forwardPort: 22,
+          ),
+        ),
+        onAuthenticated: () {},
+      );
+      expect(result.jumpClients, hasLength(2));
+
+      // facade は target 認証成功後に applyPendingMigrationOnAuthenticated を
+      // 呼ぶ — 2 件とも正規形式で保存される
+      await connector.applyPendingMigrationOnAuthenticated();
+      expect(
+        await SecureStorageService().getHostKeyFingerprint(
+          'hop0.test',
+          2222,
+          'ssh-ed25519',
+        ),
+        'SHA256:newformat-hop0.test',
+      );
+      expect(
+        await SecureStorageService().getHostKeyFingerprint(
+          'hop1.test',
+          2200,
+          'ssh-ed25519',
+        ),
+        'SHA256:newformat-hop1.test',
       );
     });
   });

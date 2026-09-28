@@ -10,6 +10,7 @@ import 'package:flutter_muxpod/providers/connection_provider.dart';
 import 'package:flutter_muxpod/screens/connections/connection_form_screen.dart';
 import 'package:flutter_muxpod/services/backend/backend_type.dart';
 import 'package:flutter_muxpod/services/backend/multiplexer_config.dart';
+import 'package:flutter_muxpod/services/connection/proxy_config.dart';
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 
@@ -451,6 +452,403 @@ void main() {
         find.textContaining('The selected key is damaged'),
         findsOneWidget,
       );
+    });
+  });
+
+  group('ConnectionFormScreen proxy & keepalive', () {
+    Future<_FormHarness> fillBasicTarget(WidgetTester tester) async {
+      final harness = await _pumpForm(tester);
+      await tester.enterText(find.byType(TextFormField).at(0), 'Jumped');
+      await tester.enterText(find.byType(TextFormField).at(1), '192.168.1.1');
+      await tester.enterText(find.byType(TextFormField).at(3), 'user');
+      await tester.enterText(find.byType(TextFormField).at(6), 'secret');
+      await tester.pump();
+      return harness;
+    }
+
+    Future<void> enableProxy(WidgetTester tester) async {
+      await tester.tap(find.byKey(const Key('proxy_enable_switch')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> fillHop(
+      WidgetTester tester,
+      int index, {
+      String host = 'jump1.example.com',
+      String port = '2200',
+      String username = 'jumpuser',
+      String password = 'jumppw',
+    }) async {
+      await tester.enterText(find.byKey(Key('proxy_hop_host_$index')), host);
+      await tester.enterText(find.byKey(Key('proxy_hop_port_$index')), port);
+      await tester.enterText(
+        find.byKey(Key('proxy_hop_username_$index')),
+        username,
+      );
+      if (password.isNotEmpty) {
+        await tester.enterText(
+          find.byKey(Key('proxy_hop_password_$index')),
+          password,
+        );
+      }
+      await tester.pump();
+    }
+
+    testWidgets(
+      'MR-3: tests connection with unsaved jump password via form values',
+      (tester) async {
+        final client = _TestSshClient();
+        await _pumpForm(tester, client: client);
+
+        await tester.enterText(find.byType(TextFormField).at(0), 'Jumped');
+        await tester.enterText(find.byType(TextFormField).at(1), '192.168.1.1');
+        await tester.enterText(find.byType(TextFormField).at(3), 'user');
+        await tester.enterText(find.byType(TextFormField).at(6), 'secret');
+        await tester.pump();
+
+        await enableProxy(tester);
+        await fillHop(tester, 0);
+        await tester.pump();
+
+        await tester.tap(find.text('TEST CONNECTION'));
+        await tester.pumpAndSettle();
+
+        // 未保存の jump password でもテストが通る（MR-3）。
+        expect(
+          find.text('Connection successful! tmux is available.'),
+          findsOneWidget,
+        );
+        final proxy = client.lastOptions!.proxy;
+        expect(proxy, isNotNull);
+        expect(proxy!.hops, hasLength(1));
+        expect(proxy.hops[0].host, 'jump1.example.com');
+        expect(proxy.hops[0].port, 2200);
+        expect(proxy.hops[0].username, 'jumpuser');
+        expect(proxy.hops[0].password, 'jumppw');
+        // M3: 転送先は target 座標で解決済み。
+        expect(proxy.forwardHost, '192.168.1.1');
+        expect(proxy.forwardPort, 22);
+      },
+    );
+
+    testWidgets('restores multi-hop proxy settings when editing', (
+      tester,
+    ) async {
+      final existing = Connection(
+        id: 'c1',
+        name: 'Jumped',
+        host: '192.168.1.1',
+        username: 'user',
+        proxy: const ProxyConfig(
+          hops: [
+            ProxyHop(host: 'jump1.example.com', port: 2200, username: 'u1'),
+            ProxyHop(
+              host: 'jump2.example.com',
+              username: 'u2',
+              authMethod: 'key',
+              keyId: 'k1',
+            ),
+          ],
+          forwardHost: '10.0.0.5',
+          forwardPort: 2222,
+        ),
+        keepAliveTimeoutSeconds: 60,
+        createdAt: DateTime(2025, 1, 1),
+      );
+      await _pumpForm(
+        tester,
+        connectionId: 'c1',
+        initialConnections: [existing],
+      );
+
+      // スイッチが on で hop 2 行が復元される。
+      final switchWidget = tester.widget<Switch>(
+        find.byKey(const Key('proxy_enable_switch')),
+      );
+      expect(switchWidget.value, isTrue);
+      expect(find.byKey(const Key('proxy_hop_host_0')), findsOneWidget);
+      expect(find.byKey(const Key('proxy_hop_host_1')), findsOneWidget);
+
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_host_0')))
+            .controller!
+            .text,
+        'jump1.example.com',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_port_0')))
+            .controller!
+            .text,
+        '2200',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_hop_host_1')))
+            .controller!
+            .text,
+        'jump2.example.com',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_forward_host')))
+            .controller!
+            .text,
+        '10.0.0.5',
+      );
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const Key('proxy_forward_port')))
+            .controller!
+            .text,
+        '2222',
+      );
+      // keepalive の逆流。
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const Key('keepalive_timeout_field')),
+            )
+            .controller!
+            .text,
+        '60',
+      );
+    });
+
+    testWidgets('saves multi-hop proxy with credentials (M6 normalization)', (
+      tester,
+    ) async {
+      final harness = await fillBasicTarget(tester);
+
+      await enableProxy(tester);
+      await fillHop(tester, 0);
+      await tester.tap(find.byKey(const Key('proxy_add_hop')));
+      await tester.pumpAndSettle();
+      await fillHop(
+        tester,
+        1,
+        host: 'jump2.example.com',
+        port: '2222',
+        username: 'u2',
+        password: 'pw2',
+      );
+      // M6: 転送先ホスト空欄のまま転送先ポートのみ入力 쳌 転送先は未指定扱い。
+      await tester.enterText(
+        find.byKey(const Key('proxy_forward_port')),
+        '9090',
+      );
+      await tester.enterText(
+        find.byKey(const Key('keepalive_timeout_field')),
+        '60',
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(harness.connections.added, hasLength(1));
+      final saved = harness.connections.added.first;
+      final proxy = saved.proxy;
+      expect(proxy, isNotNull);
+      expect(proxy!.hops, hasLength(2));
+      expect(proxy.hops[0].host, 'jump1.example.com');
+      expect(proxy.hops[1].host, 'jump2.example.com');
+      expect(proxy.hops[1].port, 2222);
+      // M6: 転送先ホスト未指定なら forwardPort のみ入力は無視。
+      expect(proxy.forwardHost, isNull);
+      expect(proxy.forwardPort, isNull);
+      // keepalive。
+      expect(saved.keepAliveTimeoutSeconds, 60);
+      // 認証情報は secure storage のみ（JSON 混入禁止）。
+      expect(
+        await SecureStorageService().getProxyPassword(saved.id, 0),
+        'jumppw',
+      );
+      expect(await SecureStorageService().getProxyPassword(saved.id, 1), 'pw2');
+      expect(jsonEncode(saved.toJson()), isNot(contains('jumppw')));
+    });
+
+    testWidgets('MR-4: disabling proxy removes all hop keys on save', (
+      tester,
+    ) async {
+      SecureStorageService.setTestValues({
+        'proxy_password_c1_0': 'old0',
+        'proxy_password_c1_1': 'old1',
+      });
+      final existing = Connection(
+        id: 'c1',
+        name: 'Jumped',
+        host: '192.168.1.1',
+        username: 'user',
+        proxy: const ProxyConfig(
+          hops: [
+            ProxyHop(host: 'jump1.example.com', username: 'u1'),
+            ProxyHop(host: 'jump2.example.com', username: 'u2'),
+          ],
+        ),
+        createdAt: DateTime(2025, 1, 1),
+      );
+      final harness = await _pumpForm(
+        tester,
+        connectionId: 'c1',
+        initialConnections: [existing],
+      );
+
+      await tester.tap(find.byKey(const Key('proxy_enable_switch')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(harness.connections.updated, hasLength(1));
+      expect(harness.connections.updated.first.proxy, isNull);
+      final storage = SecureStorageService();
+      expect(await storage.getProxyPassword('c1', 0), isNull);
+      expect(await storage.getProxyPassword('c1', 1), isNull);
+    });
+
+    testWidgets('🤝2: shrinking hops 3 to 1 removes orphan indices 1 and 2', (
+      tester,
+    ) async {
+      SecureStorageService.setTestValues({
+        'proxy_password_c1_0': 'old0',
+        'proxy_password_c1_1': 'old1',
+        'proxy_password_c1_2': 'old2',
+      });
+      ProxyHop hop(String host) => ProxyHop(host: host, username: 'u');
+      final existing = Connection(
+        id: 'c1',
+        name: 'Jumped',
+        host: '192.168.1.1',
+        username: 'user',
+        proxy: ProxyConfig(
+          hops: [
+            hop('jump1.example.com'),
+            hop('jump2.example.com'),
+            hop('jump3.example.com'),
+          ],
+        ),
+        createdAt: DateTime(2025, 1, 1),
+      );
+      final harness = await _pumpForm(
+        tester,
+        connectionId: 'c1',
+        initialConnections: [existing],
+      );
+
+      // hop 3（index 2）を削除 → hop 2（index 1）を削除。
+      await tester.tap(find.byKey(const Key('proxy_hop_remove_2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('proxy_hop_remove_1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(harness.connections.updated, hasLength(1));
+      expect(harness.connections.updated.first.proxy!.hops, hasLength(1));
+      final storage = SecureStorageService();
+      // index 0 は維持（空欄 = 既存値維持）。
+      expect(await storage.getProxyPassword('c1', 0), 'old0');
+      // orphan（index 1, 2）は削除される。
+      expect(await storage.getProxyPassword('c1', 1), isNull);
+      expect(await storage.getProxyPassword('c1', 2), isNull);
+    });
+
+    testWidgets('limits hop rows to 5 and supports removal', (tester) async {
+      await _pumpForm(tester);
+      await enableProxy(tester);
+
+      expect(find.byKey(const Key('proxy_hop_host_0')), findsOneWidget);
+
+      // フォームが長くなるため、追加前にボタンを可視化する。
+      for (var i = 0; i < 4; i++) {
+        await tester.ensureVisible(find.byKey(const Key('proxy_add_hop')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('proxy_add_hop')));
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const Key('proxy_hop_host_4')), findsOneWidget);
+
+      // 上限 5: 追加ボタンは無効化される。
+      final addButton = tester.widget<OutlinedButton>(
+        find.byKey(const Key('proxy_add_hop')),
+      );
+      expect(addButton.onPressed, isNull);
+      expect(find.byKey(const Key('proxy_hop_host_5')), findsNothing);
+
+      // 削除で減る（最小 1 は維持）・残り行は index が詰め直される。
+      await tester.ensureVisible(find.byKey(const Key('proxy_hop_remove_0')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('proxy_hop_remove_0')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('proxy_hop_host_0')), findsOneWidget);
+      expect(find.byKey(const Key('proxy_hop_host_4')), findsNothing);
+    });
+
+    testWidgets('blocks saving when a duplicate host:port exists', (
+      tester,
+    ) async {
+      final harness = await fillBasicTarget(tester);
+
+      await enableProxy(tester);
+      await fillHop(tester, 0);
+      await tester.tap(find.byKey(const Key('proxy_add_hop')));
+      await tester.pumpAndSettle();
+      await fillHop(
+        tester,
+        1,
+        port: '2200',
+        username: 'other',
+        password: 'pw2',
+      );
+      await tester.pump();
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      // 両方の重複行でエラーが表示される。
+      expect(
+        find.textContaining('jump1.example.com:2200 is already in the chain'),
+        findsNWidgets(2),
+      );
+      expect(harness.connections.added, isEmpty);
+    });
+
+    testWidgets('keepalive: empty input saves unset (auto)', (tester) async {
+      final harness = await fillBasicTarget(tester);
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(harness.connections.added, hasLength(1));
+      expect(harness.connections.added.first.keepAliveTimeoutSeconds, isNull);
+    });
+
+    testWidgets('keepalive: out-of-range input blocks saving', (tester) async {
+      final harness = await fillBasicTarget(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('keepalive_timeout_field')),
+        '400',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('between 5 and 300'), findsOneWidget);
+      expect(harness.connections.added, isEmpty);
+    });
+
+    testWidgets('keepalive: in-range boundary value is saved', (tester) async {
+      final harness = await fillBasicTarget(tester);
+
+      await tester.enterText(
+        find.byKey(const Key('keepalive_timeout_field')),
+        '300',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(harness.connections.added, hasLength(1));
+      expect(harness.connections.added.first.keepAliveTimeoutSeconds, 300);
     });
   });
 }
