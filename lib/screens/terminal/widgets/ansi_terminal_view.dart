@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/tmux/pane_navigator.dart';
+import 'ansi_link_probe.dart';
 import 'ansi_terminal_model.dart';
 import 'ansi_terminal_overlays.dart';
 
@@ -49,6 +50,9 @@ class AnsiTerminalView extends StatelessWidget {
     required this.twoFingerSwipeResult,
     required this.twoFingerPanDelta,
     required this.navigableDirections,
+    this.probeRegistry,
+    this.onLinkTap,
+    this.onLinkProbeTap,
   });
 
   final ScrollController verticalController;
@@ -90,6 +94,47 @@ class AnsiTerminalView extends StatelessWidget {
   final SwipeDirection? twoFingerSwipeResult;
   final Offset twoFingerPanDelta;
   final Map<SwipeDirection, bool>? navigableDirections;
+
+  /// 選択モードのリンクタップ解決レジストリ（Issue #61・Phase 5 #15）。
+  ///
+  /// 行ウィジェット（AnsiLineRow）が登録した解決経由でタップ位置の url を
+  /// 得る。null（かつ [onLinkProbeTap] も未結線）ならプローブを配置せず
+  /// 従来挙動のまま。
+  final AnsiLinkProbeRegistry? probeRegistry;
+
+  /// 選択モードのリンク解決後の起動コーディネータ委譲先（#15）。
+  ///
+  /// [probeRegistry] 直結方式（本ウィジェット内で resolveUrl → 委譲）で
+  /// 使用する。引数 url String null 不可・sync（内部で async 実行）・
+  /// 失敗時 throw しない・副作用はコーディネータ側（§L4 コーディネータ行）。
+  final void Function(String url)? onLinkTap;
+
+  /// プローブ検出タップの合成済み委譲先（global 位置・#15）。
+  ///
+  /// 非結線なら本ウィジェット内のレジストリ直結方式へフォールバックする。
+  /// 引数 タップ global 位置 null 不可・sync・失敗時 throw せず url 未解決
+  /// （null）として握りつぶし・副作用なし（解決後のコーディネータ呼び出しを
+  /// 除く）（§L4 プローブ行）。両方式の同時結線は二重起動防止のため行わない。
+  final void Function(Offset globalPosition)? onLinkProbeTap;
+
+  /// プローブ検出タップの解決・委譲（Phase 5 #15）。
+  ///
+  /// [onLinkProbeTap] 結線時は合成済み先へ委譲（解決側は呼び出し元が持つ・
+  /// 二重起動防止）。未結線時は [probeRegistry] から解決し [onLinkTap] へ
+  /// 渡す（url 未解決は握りつぶし・クラッシュしない）。
+  void _handleProbeTap(Offset globalPosition) {
+    if (onLinkProbeTap != null) {
+      onLinkProbeTap!(globalPosition);
+      return;
+    }
+    final registry = probeRegistry;
+    if (registry != null) {
+      final url = registry.resolveUrl(globalPosition);
+      if (url != null) {
+        onLinkTap?.call(url);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -176,9 +221,22 @@ class AnsiTerminalView extends StatelessWidget {
 
     // select モードの場合はテキスト選択を有効化（select 専用・D12）
     if (isSelectMode) {
+      final Widget selectionArea = SelectionArea(child: listWidget);
+      // 選択モードのリンクタッププローブ（🤝#3・Phase 5 #15）: gesture arena
+      // に参加しない生ポインタリスナで「slop 未満・長押し未満の down→up」を
+      // タップと判定し、行ウィジェットが登録した RenderParagraph からヒット
+      // 位置の url を解決して起動コーディネータへ渡す。長押し選択・ドラッグ
+      // 選択は検出対象外＝従来どおりの選択操作。registry / 合成先のいずれも
+      // 未結線ならプローブを配置せず従来挙動のまま。
+      if (probeRegistry == null && onLinkProbeTap == null) {
+        return Container(color: backgroundColor, child: selectionArea);
+      }
       return Container(
         color: backgroundColor,
-        child: SelectionArea(child: listWidget),
+        child: AnsiSelectModeTapProbe(
+          onTapUp: _handleProbeTap,
+          child: selectionArea,
+        ),
       );
     }
 

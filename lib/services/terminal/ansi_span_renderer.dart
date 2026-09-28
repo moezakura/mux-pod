@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_muxpod/theme/terminal_colors.dart';
 
 import 'ansi_models.dart';
 import 'terminal_font_styles.dart';
@@ -10,6 +12,14 @@ class _LineSpan {
   final String fontFamily;
   const _LineSpan(this.span, this.fontSize, this.fontFamily);
 }
+
+/// リンク recognizer 解決器: URL → タップ recognizer。
+///
+/// null を返した URL は recognizer 無し（装飾のみ・タップ不可 — 非識別 URL
+/// の仕様）。recognizer の所有・dispose は解決器を渡した呼び出し側
+/// （行ウィジェットの State）の責務であり、renderer / スパンキャッシュは
+/// recognizer を一切保持しない（resolver 付き構築はキャッシュ迂回）。
+typedef LinkTapResolver = TapGestureRecognizer? Function(String url);
 
 /// ParsedLine / セグメント列から TextSpan を構築する。
 ///
@@ -39,6 +49,7 @@ class AnsiSpanRenderer {
     List<AnsiSegment> segments, {
     required double fontSize,
     required String fontFamily,
+    LinkTapResolver? linkTapResolver,
   }) {
     return TextSpan(
       children: segments
@@ -47,6 +58,7 @@ class AnsiSpanRenderer {
               segment,
               fontSize: fontSize,
               fontFamily: fontFamily,
+              linkTapResolver: linkTapResolver,
             ),
           )
           .toList(),
@@ -67,13 +79,21 @@ class AnsiSpanRenderer {
     AnsiSegment segment, {
     required double fontSize,
     required String fontFamily,
+    LinkTapResolver? linkTapResolver,
   }) {
     final style = segment.style;
+    final url = segment.url;
     final (:foreground, :background, :paintBackground) = resolvePaintColors(
       style,
     );
     var fg = foreground;
     final bg = background;
+
+    // リンク色: SGR で明示前景色がない場合のみ適用（SGR 色を壊さない）。
+    // 適用位置は resolvePaintColors 後・dim 前 に pin（テスト期待値で固定）。
+    if (url != null && style.foreground == null) {
+      fg = TerminalColors.brightBlue;
+    }
 
     // 薄暗い
     if (style.dim) {
@@ -98,8 +118,15 @@ class AnsiSpanRenderer {
         decoration: TextDecoration.combine([
           if (style.underline) TextDecoration.underline,
           if (style.strikethrough) TextDecoration.lineThrough,
+          // リンク下線は SGR 装飾に「追加合成」する（上書きしない）。
+          if (url != null) TextDecoration.underline,
         ]),
       ),
+      // recognizer は resolver があるときのみ付与（resolver == null の
+      // キャッシュ済み span に recognizer が入る経路は存在しない）。
+      recognizer: url != null && linkTapResolver != null
+          ? linkTapResolver(url)
+          : null,
     );
   }
 
@@ -163,11 +190,27 @@ class AnsiSpanRenderer {
   }
 
   /// ParsedLineをTextSpanに変換
+  ///
+  /// [linkTapResolver] が null の場合はキャッシュ経路（既存規約どおり同一
+  /// ParsedLine → 同一 TextSpan）。非 null の場合は recognizer 付き span を
+  /// 都度構築し、スパンキャッシュを**読みも書きもしない**（recognizer を
+  /// キャッシュ済み span の使い回しにしないため・設計 D5）。装飾（下線・色）
+  /// は [ParsedLine] から決定論的に導出されるため、resolver の有無で
+  /// 見た目が変わることはない。
   TextSpan lineToTextSpan(
     ParsedLine line, {
     required double fontSize,
     required String fontFamily,
+    LinkTapResolver? linkTapResolver,
   }) {
+    if (linkTapResolver != null) {
+      return toTextSpan(
+        line.segments,
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        linkTapResolver: linkTapResolver,
+      );
+    }
     final cached = _spanCache[line];
     if (cached != null &&
         cached.fontSize == fontSize &&
@@ -192,7 +235,12 @@ class AnsiSpanRenderer {
   ///   セグメント境界・行末・空行のいずれでもよい（クランプされる）。
   /// - [padColumns]: 行テキスト終端よりさらに右のカラムにキャレットを置く場合の
   ///   埋めセル数（No-Break Space で埋める）。
-  /// - [caret]: 挿入するインライン要素。null の場合はキャッシュ済みの通常行スパンを返す。
+  /// - [caret]: 挿入するインライン要素。null の場合は [linkTapResolver] を
+  ///   透過した通常行スパンを返す（blink off 相のリンクタップ対応・H2）。
+  /// - [linkTapResolver]: リンク断片に recognizer を注入する解決器。
+  ///   キャレットの substring 分割でリンク断片が両断片に分かれても url は
+  ///   引き継がれる。キャレット行はスパンキャッシュ対象外のため
+  ///   キャッシュ迂回の考慮は不要。
   TextSpan lineToTextSpanWithCaret(
     ParsedLine line, {
     required double fontSize,
@@ -200,9 +248,17 @@ class AnsiSpanRenderer {
     required int caretCharOffset,
     required int padColumns,
     InlineSpan? caret,
+    LinkTapResolver? linkTapResolver,
   }) {
     if (caret == null) {
-      return lineToTextSpan(line, fontSize: fontSize, fontFamily: fontFamily);
+      // blink off 相（H2）: 通常行スパン経路にも resolver を透過し、
+      // 点滅の両相でリンクタップが成立するようにする。
+      return lineToTextSpan(
+        line,
+        fontSize: fontSize,
+        fontFamily: fontFamily,
+        linkTapResolver: linkTapResolver,
+      );
     }
 
     final spans = <InlineSpan>[];
@@ -216,9 +272,15 @@ class AnsiSpanRenderer {
         if (local > 0) {
           spans.add(
             _segmentToTextSpan(
-              AnsiSegment(segment.text.substring(0, local), segment.style),
+              AnsiSegment(
+                segment.text.substring(0, local),
+                segment.style,
+                // キャレット分割でも url を落とさない（リンク断片の継続）。
+                url: segment.url,
+              ),
               fontSize: fontSize,
               fontFamily: fontFamily,
+              linkTapResolver: linkTapResolver,
             ),
           );
         }
@@ -226,9 +288,14 @@ class AnsiSpanRenderer {
         if (local < segLen) {
           spans.add(
             _segmentToTextSpan(
-              AnsiSegment(segment.text.substring(local), segment.style),
+              AnsiSegment(
+                segment.text.substring(local),
+                segment.style,
+                url: segment.url,
+              ),
               fontSize: fontSize,
               fontFamily: fontFamily,
+              linkTapResolver: linkTapResolver,
             ),
           );
         }
@@ -239,6 +306,7 @@ class AnsiSpanRenderer {
             segment,
             fontSize: fontSize,
             fontFamily: fontFamily,
+            linkTapResolver: linkTapResolver,
           ),
         );
       }

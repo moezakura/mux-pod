@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../l10n/l10n_ext.dart';
 import '../../../providers/markdown_preview_provider.dart';
+import '../../../utils/external_links.dart';
 
 import '../../../theme/app_theme.dart';
 import '../../../theme/design_colors.dart';
@@ -332,20 +332,12 @@ class MarkdownPreviewBody extends StatelessWidget {
 
 /// リンクタップ時の scheme ガード（計画 §L2-4・L-2）。
 ///
-/// https/http のみ [launchUrl]（OS 外部ブラウザ・about_section.dart パターン）。
-/// `#anchor`（scheme 無し）・`mailto:`・`data:`・`javascript:`・`file:` 等は
-/// 何もしない（タップ無視）。スキーム検証は [Uri.tryParse] で明示する。
+/// 判定と起動は util（lib/utils/external_links.dart・単一ソース）へ委譲する。
+/// https/http のみ外部ブラウザで起動し、`#anchor`（scheme 無し）・`mailto:`・
+/// `data:`・`javascript:`・`file:` 等は何もしない（タップ無視）。
 void markdownOnTapLink(String text, String? href, String title) {
   if (href == null) return;
-  final uri = Uri.tryParse(href);
+  final uri = tryParseExternalHttpUri(href);
   if (uri == null) return;
-  final scheme = uri.scheme.toLowerCase();
-  if (scheme != 'https' && scheme != 'http') return;
-  markdownLaunchExternal(uri);
-}
-
-Future<void> markdownLaunchExternal(Uri uri) async {
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  launchExternalUri(uri);
 }

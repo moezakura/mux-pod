@@ -15,6 +15,7 @@ import 'ansi_gesture_engine.dart';
 import 'ansi_key_composer.dart';
 import 'ansi_key_input_engine.dart';
 import 'ansi_line_row.dart';
+import 'ansi_link_probe.dart';
 import 'ansi_scroll_driver.dart';
 import 'ansi_terminal_model.dart';
 import 'ansi_terminal_view.dart';
@@ -95,6 +96,12 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// ターミナル領域タップ時のコールバック
   final VoidCallback? onTap;
 
+  /// OSC 8 リンクタップ時のコールバック（起動コーディネータへ伝搬・#12）。
+  ///
+  /// 行ウィジェットの recognizer / プローブ（Phase 5 #14・#15）が呼び出す。
+  /// null の場合はリンクタップは無反応。
+  final void Function(String url)? onLinkTap;
+
   const AnsiTextView({
     super.key,
     required this.text,
@@ -114,6 +121,7 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.onTwoFingerSwipe,
     this.navigableDirections,
     this.onTap,
+    this.onLinkTap,
     this.onScrollSendTicks,
   });
 
@@ -148,6 +156,14 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   /// 垂直スクロールの所有と制御命令。
   late final AnsiScrollDriver _scrollDriver;
+
+  /// 選択モードのリンクタップ解決レジストリ（Phase 5 #15・gamma 設計）。
+  ///
+  /// 生成・所有は本 State、登録 / 解除は行ウィジェット（AnsiLineRow の
+  /// State）が行う。解決は AnsiTerminalView 内のプローブ（registry 直結
+  /// 方式）から行われる。`onLinkProbeTap` 合成方式は結線しない（二重起動
+  /// 防止・同時結線禁止）。
+  final AnsiLinkProbeRegistry _linkProbeRegistry = AnsiLinkProbeRegistry();
 
   /// 描画に使う解決済みカーソル位置と描画可否。
   ({int x, int y, bool draw}) get _resolvedCaret =>
@@ -450,6 +466,8 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
             terminalWidth: terminalWidth,
             lineHeight: lineHeight,
             needsHorizontalScroll: needsHorizontalScroll,
+            onLinkTap: widget.onLinkTap,
+            probeRegistry: _linkProbeRegistry,
           ),
           needsHorizontalScroll: needsHorizontalScroll,
           terminalWidth: terminalWidth,
@@ -481,6 +499,10 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
           twoFingerSwipeResult: _gestureEngine.twoFingerSwipeResult,
           twoFingerPanDelta: _gestureEngine.twoFingerPanDelta,
           navigableDirections: widget.navigableDirections,
+          // 選択モードのリンクタップ（registry 直結方式・合成先 onLinkProbeTap
+          // は結線しない＝二重起動防止）。resolveUrl 後の委譲先は onLinkTap。
+          probeRegistry: _linkProbeRegistry,
+          onLinkTap: widget.onLinkTap,
         );
       },
     );
