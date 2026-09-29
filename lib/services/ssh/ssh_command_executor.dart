@@ -158,6 +158,11 @@ class SshCommandExecutor {
   }
 
   /// ephemeral（毎回チャネル開閉 + exec ロック直列化）でコマンドを実行する。
+  ///
+  /// SSH exec はコマンド文字列をログインシェル（fish 等）に `-c` で渡すため、
+  /// bash 構文（`$'...'` の ANSI-C quoting 等）が解釈できない。
+  /// [PersistentShell] と同様に bash へ固定するため、exec では `bash -s` だけを
+  /// 起動し、コマンド本体は stdin から渡す（ログインシェルでのクオート不要）。
   Future<({String stdout, String stderr, int? exitCode})> _executeEphemeral(
     CommandRequest request,
   ) async {
@@ -175,7 +180,9 @@ class SshCommandExecutor {
         final stdoutBytes = <int>[];
         final stderrBytes = <int>[];
         try {
-          session = await client()!.execute(resolvedCommand);
+          session = await client()!.execute('bash -s');
+          session.write(utf8.encode('$resolvedCommand\n'));
+          unawaited(session.stdin.close());
 
           final stdoutCompleter = Completer<void>();
           final stderrCompleter = Completer<void>();
