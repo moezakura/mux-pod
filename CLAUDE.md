@@ -1,72 +1,72 @@
 # MuxPod
 
-AndroidスマートフォンからSSH経由でリモートサーバーのtmuxセッション・ウィンドウ・ペインを閲覧・操作するFlutterアプリ。
+A Flutter app for viewing and controlling tmux sessions, windows, and panes on remote servers over SSH from an Android smartphone.
 
-## 主要機能
+## Key Features
 
-- SSH直接接続（サーバー側はsshdのみで動作）
-- tmuxセッション/ウィンドウ/ペインのナビゲーション
-- ANSIカラー対応ターミナル表示
-- 特殊キー入力（ESC/CTRL/ALT等）
-- 通知ルール（パターンマッチで通知）
-- SSH鍵管理（flutter_secure_storage対応）
-- ディープリンク（muxpod:// URLスキームで外部アプリから直接遷移）
-- 折りたたみデバイス対応
+- Direct SSH connection (server side only needs sshd)
+- tmux session/window/pane navigation
+- ANSI color terminal display
+- Special key input (ESC/CTRL/ALT, etc.)
+- Notification rules (notify on pattern match)
+- SSH key management (flutter_secure_storage)
+- Deep links (navigate directly from external apps via the muxpod:// URL scheme)
+- Foldable device support
 
-## 技術スタック
+## Tech Stack
 
 - Flutter 3.24+ / Dart 3.x
-- flutter_riverpod (状態管理)
-- dartssh2 (SSH接続)
-- xterm (ターミナル表示)
-- flutter_secure_storage (セキュアストレージ)
-- shared_preferences (設定保存)
+- flutter_riverpod (state management)
+- dartssh2 (SSH connection)
+- xterm (terminal display)
+- flutter_secure_storage (secure storage)
+- shared_preferences (settings persistence)
 
-## 開発コマンド
+## Development Commands
 
 ```bash
-flutter run             # 開発実行
-flutter run -d android  # Android実機/エミュレータ
-flutter analyze         # 静的解析
-flutter test            # テスト実行
-flutter build apk       # APKビルド
+flutter run             # Run in development
+flutter run -d android  # Android device/emulator
+flutter analyze         # Static analysis
+flutter test            # Run tests
+flutter build apk       # Build APK
 ```
 
-## ドキュメント
+## Documentation
 
-- @/docs/tmux-mobile-design-v2.md - 詳細設計書
-- @/docs/coding-conventions.md - コーディング規約
-- @/docs/ui-guidelines.md - UI/UXガイドライン
-- @/docs/screens/ - 画面デザイン
-- @/docs/logo/logo.svg - ロゴ
+- @/docs/tmux-mobile-design-v2.md - Detailed design document
+- @/docs/coding-conventions.md - Coding conventions
+- @/docs/ui-guidelines.md - UI/UX guidelines
+- @/docs/screens/ - Screen designs
+- @/docs/logo/logo.svg - Logo
 
-## ディレクトリ構成
+## Directory Structure
 
 ```
 muxpod/
 ├── lib/
-│   ├── main.dart           # エントリーポイント
+│   ├── main.dart           # Entry point
 │   ├── providers/          # Riverpod providers
-│   ├── screens/            # 画面
-│   │   ├── connections/    # 接続管理
-│   │   ├── terminal/       # ターミナル
-│   │   ├── keys/           # SSH鍵管理
-│   │   ├── notifications/  # 通知ルール
-│   │   └── settings/       # 設定
-│   ├── services/           # ビジネスロジック
-│   │   ├── ssh/            # SSH接続
-│   │   ├── tmux/           # tmux操作
-│   │   ├── terminal/       # ターミナル制御
-│   │   ├── keychain/       # 鍵管理
-│   │   └── notification/   # 通知エンジン
-│   ├── theme/              # テーマ・デザイン
-│   └── widgets/            # 共通ウィジェット
-├── android/                # Androidネイティブ設定
-├── ios/                    # iOSネイティブ設定
-└── test/                   # テスト
+│   ├── screens/            # Screens
+│   │   ├── connections/    # Connection management
+│   │   ├── terminal/       # Terminal
+│   │   ├── keys/           # SSH key management
+│   │   ├── notifications/  # Notification rules
+│   │   └── settings/       # Settings
+│   ├── services/           # Business logic
+│   │   ├── ssh/            # SSH connection
+│   │   ├── tmux/           # tmux operations
+│   │   ├── terminal/       # Terminal control
+│   │   ├── keychain/       # Key management
+│   │   └── notification/   # Notification engine
+│   ├── theme/              # Theme/design
+│   └── widgets/            # Shared widgets
+├── android/                # Android native config
+├── ios/                    # iOS native config
+└── test/                   # Tests
 ```
 
-## 主要な型
+## Key Types
 
 ```dart
 class Connection {
@@ -96,20 +96,20 @@ class TmuxPane {
 }
 ```
 
-## セキュリティ
+## Security
 
-- SSH鍵: flutter_secure_storage（暗号化）
-- パスワード: flutter_secure_storage（暗号化）
-- 生体認証対応（local_auth）
+- SSH keys: flutter_secure_storage (encrypted)
+- Passwords: flutter_secure_storage (encrypted)
+- Biometric authentication support (local_auth)
 
 ## Active Technologies
-- Dart 3.10+ / Flutter 3.24+ + dartssh2 (SSH), xterm (ターミナル表示), flutter_riverpod (状態管理)
-- flutter_secure_storage (SSH鍵/パスワード), shared_preferences (接続設定)
-- cryptography, pointycastle (SSH鍵生成)
-- flutter_local_notifications, url_launcher (設定/通知)
-- Dart 3.x / Flutter 3.24+ + flutter_riverpod (状態管理), xterm (ターミナル表示), dartssh2 (SSH接続) (001-terminal-width-resize)
+- Dart 3.10+ / Flutter 3.24+ + dartssh2 (SSH), xterm (terminal display), flutter_riverpod (state management)
+- flutter_secure_storage (SSH keys/passwords), shared_preferences (connection settings)
+- cryptography, pointycastle (SSH key generation)
+- flutter_local_notifications, url_launcher (settings/notifications)
+- Dart 3.x / Flutter 3.24+ + flutter_riverpod (state management), xterm (terminal display), dartssh2 (SSH connection) (001-terminal-width-resize)
 
 ## Recent Changes
-- 001-ssh-terminal-integration: SSH接続・tmuxアタッチ・キー送信の実装
-- 003-ssh-key-management: Ed25519/RSA鍵生成・インポート・管理機能
-- 001-settings-notifications: 設定画面・通知ルールCRUD・テーマ切替
+- 001-ssh-terminal-integration: SSH connection, tmux attach, and key sending implementation
+- 003-ssh-key-management: Ed25519/RSA key generation, import, and management
+- 001-settings-notifications: Settings screen, notification rule CRUD, theme switching
