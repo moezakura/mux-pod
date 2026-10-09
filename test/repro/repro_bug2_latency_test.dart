@@ -19,6 +19,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
@@ -101,6 +102,14 @@ class _FakeInteractiveSession implements SSHSession {
   @override
   void write(Uint8List data) => writes.add(data);
 
+  /// ephemeral exec が stdin 経由で渡したコマンド（末尾改行を除く）。
+  String get script => utf8.decode(writes.expand((w) => w).toList()).trimRight();
+
+  final _stdin = StreamController<Uint8List>();
+
+  @override
+  StreamSink<Uint8List> get stdin => _stdin.sink;
+
   @override
   void close() {
     closed = true;
@@ -115,7 +124,12 @@ class _FakeInteractiveSession implements SSHSession {
 /// execute（= チャネル開設）回数と close（= チャネル閉鎖）回数を記録する fake。
 class _CountingRawSshClient implements SSHClient {
   final Completer<void> authentication = Completer<void>();
-  final List<String> executedCommands = [];
+  final List<String> launchedCommands = [];
+  final List<_FakeInteractiveSession> execSessions = [];
+
+  /// stdin 経由で実行された ephemeral コマンド本体。
+  List<String> get executedCommands =>
+      execSessions.map((s) => s.script).toList();
   final List<_FakeInteractiveSession> openedSessions = [];
   bool closed = false;
 
@@ -136,7 +150,7 @@ class _CountingRawSshClient implements SSHClient {
     SSHX11Config? x11,
     Map<String, String>? environment,
   }) async {
-    executedCommands.add(command);
+    launchedCommands.add(command);
     concurrentExecutes++;
     if (concurrentExecutes > maxConcurrentExecutes) {
       maxConcurrentExecutes = concurrentExecutes;
@@ -146,6 +160,7 @@ class _CountingRawSshClient implements SSHClient {
     }
     final session = _FakeInteractiveSession(output: 'ok'.codeUnits);
     openedSessions.add(session);
+    execSessions.add(session);
     concurrentExecutes--;
     return session;
   }
@@ -231,9 +246,11 @@ void main() {
         'herdr status --json',
         'herdr api snapshot',
       ]);
+      // ログインシェル（fish 等）に依存せず bash で実行する。
+      expect(rawClient.launchedCommands, ['bash -s', 'bash -s']);
       // 毎回 execute() = SSH チャネルを開いている（tmux の persistent は
       // チャネルを再利用するため execute を呼ばない）。
-      expect(rawClient.executedCommands.length, 2);
+      expect(rawClient.launchedCommands.length, 2);
       // 各セッションが close されている（= チャネルを毎回閉じている）。
       expect(
         rawClient.openedSessions.every((s) => s.closed),
@@ -298,7 +315,7 @@ void main() {
       );
 
       expect(
-        rawClient.executedCommands,
+        rawClient.launchedCommands,
         isNotEmpty,
         reason:
             'バグ: lightweight 接続では持続的シェルが無いため、'
