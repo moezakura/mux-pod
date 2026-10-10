@@ -12,12 +12,16 @@
 // 修正方針（ユーザー承認済み）: 旧形式保存値は「接続実績のあるサーバー」として
 // 受理し、**ユーザー認証成功後にのみ**正規の SHA256 形式へ更新する。
 //
-// このテストはローカル sshd（127.0.0.1:22）に対する実接続で検証する。
-// 前提:
-//   - ローカル sshd が ed25519 ホスト鍵で稼働している
-//   - /tmp/bugfix-repro-key の公開鍵が authorized_keys に登録されている
-//   - /tmp/bugfix-repro-key-wrong は authorized_keys に未登録（認証失敗用）
-@Tags(['repro'])
+// このテストは実 sshd への接続で検証する。`make test-live-sshd`
+// （scripts/run-live-sshd-tests.sh）が使い捨ての Docker sshd と鍵を用意し、
+// 以下の環境変数を設定して実行する。未設定時の既定値はローカル sshd 前提。
+//   - REPRO_SSH_HOST / REPRO_SSH_PORT / REPRO_SSH_USER: 接続先
+//     （既定: 127.0.0.1 / 22 / $USER）
+//   - REPRO_SSH_HOST_KEY_PUB: sshd の ed25519 ホスト公開鍵
+//     （既定: /etc/ssh/ssh_host_ed25519_key.pub）
+//   - REPRO_SSH_KEY: authorized_keys 登録済みの秘密鍵（既定: /tmp/bugfix-repro-key）
+//   - REPRO_SSH_WRONG_KEY: 未登録の秘密鍵（既定: /tmp/bugfix-repro-key-wrong）
+@Tags(['repro', 'live-sshd'])
 library;
 
 import 'dart:convert';
@@ -29,11 +33,32 @@ import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/services/ssh/ssh_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// ローカル sshd の ed25519 ホスト鍵 blob（KEX で渡される host key そのもの）。
+// 環境変数から実 sshd フィクスチャ設定を解決する。
+String _env(String name, String fallback) =>
+    Platform.environment[name] ?? fallback;
+final _host = _env('REPRO_SSH_HOST', '127.0.0.1');
+final _port = int.parse(_env('REPRO_SSH_PORT', '22'));
+final _user = _env('REPRO_SSH_USER', Platform.environment['USER'] ?? 'mox');
+final _hostKeyPub = _env(
+  'REPRO_SSH_HOST_KEY_PUB',
+  '/etc/ssh/ssh_host_ed25519_key.pub',
+);
+final _key = _env('REPRO_SSH_KEY', '/tmp/bugfix-repro-key');
+final _wrongKey = _env('REPRO_SSH_WRONG_KEY', '/tmp/bugfix-repro-key-wrong');
+final _storageKey = 'hostkey_${_host}_${_port}_ssh-ed25519';
+
+/// 指定秘密鍵で sshd へ接続する。
+Future<void> _connect(SshClient client, String keyPath) => client.connect(
+  host: _host,
+  port: _port,
+  username: _user,
+  options: SshConnectOptions(privateKey: File(keyPath).readAsStringSync()),
+  lightweight: true,
+);
+
+/// sshd の ed25519 ホスト鍵 blob（KEX で渡される host key そのもの）。
 Uint8List _localHostKeyBlob() {
-  final pubLine = File(
-    '/etc/ssh/ssh_host_ed25519_key.pub',
-  ).readAsLinesSync().first;
+  final pubLine = File(_hostKeyPub).readAsLinesSync().first;
   return base64.decode(pubLine.split(' ')[1]);
 }
 
@@ -47,7 +72,7 @@ String _legacyFingerprint() {
       .join(':');
 }
 
-/// ローカル sshd の正規（SHA256）フィンガープリント。
+/// sshd の正規（SHA256）フィンガープリント。
 String _sha256Fingerprint() {
   final digest = sha256.convert(_localHostKeyBlob()).bytes;
   final encoded = base64Encode(digest).replaceAll('=', '');
@@ -61,15 +86,8 @@ void main() {
   test(
     'REPRO: 対照実験 - 保存済みフィンガープリントなし（新規）なら接続できる',
     () async {
-      final privateKey = File('/tmp/bugfix-repro-key').readAsStringSync();
       final client = SshClient();
-      await client.connect(
-        host: '127.0.0.1',
-        port: 22,
-        username: Platform.environment['USER'] ?? 'mox',
-        options: SshConnectOptions(privateKey: privateKey),
-        lightweight: true,
-      );
+      await _connect(client, _key);
       expect(client.isConnected, isTrue);
       await client.disconnect();
     },
@@ -80,26 +98,17 @@ void main() {
     'REPRO: 旧形式（MD5 hex）保存済みでも接続でき、認証成功後に SHA256 へ更新される',
     () async {
       // 旧バージョンで接続済みのユーザーの保存済みフィンガープリントを再現
-      SecureStorageService.setTestValues({
-        'hostkey_127.0.0.1_22_ssh-ed25519': _legacyFingerprint(),
-      });
+      SecureStorageService.setTestValues({_storageKey: _legacyFingerprint()});
 
-      final privateKey = File('/tmp/bugfix-repro-key').readAsStringSync();
       final client = SshClient();
-      await client.connect(
-        host: '127.0.0.1',
-        port: 22,
-        username: Platform.environment['USER'] ?? 'mox',
-        options: SshConnectOptions(privateKey: privateKey),
-        lightweight: true,
-      );
+      await _connect(client, _key);
       // 修正後: ホスト鍵検証が通って接続できる
       expect(client.isConnected, isTrue);
       // 認証成功後に正規の SHA256 形式へ更新されている
       expect(
         await SecureStorageService().getHostKeyFingerprint(
-          '127.0.0.1',
-          22,
+          _host,
+          _port,
           'ssh-ed25519',
         ),
         _sha256Fingerprint(),
@@ -112,28 +121,19 @@ void main() {
   test(
     'REPRO: 旧形式保存済みでも認証失敗時は SHA256 へ更新されない',
     () async {
-      SecureStorageService.setTestValues({
-        'hostkey_127.0.0.1_22_ssh-ed25519': _legacyFingerprint(),
-      });
+      SecureStorageService.setTestValues({_storageKey: _legacyFingerprint()});
 
       // authorized_keys に未登録の鍵で認証を失敗させる
-      final wrongKey = File('/tmp/bugfix-repro-key-wrong').readAsStringSync();
       final client = SshClient();
       await expectLater(
-        client.connect(
-          host: '127.0.0.1',
-          port: 22,
-          username: Platform.environment['USER'] ?? 'mox',
-          options: SshConnectOptions(privateKey: wrongKey),
-          lightweight: true,
-        ),
+        _connect(client, _wrongKey),
         throwsA(isA<SshAuthenticationError>()),
       );
       // 認証失敗時は保存値が更新されない（旧形式のまま）
       expect(
         await SecureStorageService().getHostKeyFingerprint(
-          '127.0.0.1',
-          22,
+          _host,
+          _port,
           'ssh-ed25519',
         ),
         _legacyFingerprint(),
