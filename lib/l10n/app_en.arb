@@ -1812,5 +1812,104 @@
   "settingsPowerConnectionDescription": "Keep the connection active in the background. Uses more battery.",
   "settingsPowerBalancedDescription": "Keep the connection active for 1 minute after leaving the app, then save power.",
   "settingsPowerSavingDescription": "Stop connection maintenance in the background. Check and reconnect when you return.",
-  "settingsBackgroundPowerNote": "Screen updates stop in the background in every mode. Transfers keep running while the OS allows it. Connection priority cannot prevent all disconnections, especially on iOS. Unknown applies when the underlying network cannot be identified, for example with some VPNs."
+  "settingsBackgroundPowerNote": "Screen updates stop in the background in every mode. Transfers keep running while the OS allows it. Connection priority cannot prevent all disconnections, especially on iOS. Unknown applies when the underlying network cannot be identified, for example with some VPNs.",
+  "updaterTitle": "Software update",
+  "updaterCheckNow": "Check for updates",
+  "updaterChecking": "Checking for updates…",
+  "updaterUpToDate": "MuxPod is up to date",
+  "updaterAvailable": "Version {version} is available",
+  "@updaterAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterDownload": "Download update",
+  "updaterDownloading": "Downloading… {percent}%",
+  "@updaterDownloading": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "updaterVerifying": "Verifying download…",
+  "updaterReady": "{version} downloaded and verified",
+  "@updaterReady": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterInstall": "Install update",
+  "updaterInstalling": "Waiting for the Android installer…",
+  "updaterFailed": "Update failed",
+  "updaterAutoCheck": "Check for updates automatically",
+  "updaterAutoCheckDescription": "At most once a day, when the app opens",
+  "updaterLastChecked": "Last checked: {time}",
+  "@updaterLastChecked": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterNeverChecked": "Not checked yet",
+  "updaterSource": "Source: github.com/{repo}",
+  "@updaterSource": {
+    "placeholders": {
+      "repo": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterReleaseNotes": "What's new in {version}",
+  "@updaterReleaseNotes": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterViewOnGitHub": "View release on GitHub",
+  "updaterDialogTitle": "Update available",
+  "updaterSkipVersion": "Skip this version",
+  "updaterLater": "Later",
+  "updaterView": "View",
+  "updaterRetry": "Try again",
+  "updaterCancel": "Cancel",
+  "updaterCheckSignature": "Signed with the same key as the installed app",
+  "updaterCheckVersion": "Newer than the installed version",
+  "updaterCheckChecksum": "SHA-256 checksum matches",
+  "updaterCheckChecksumMissing": "No checksum published for this release (signature still verified)",
+  "updaterInstallPermission": "Allow MuxPod to install apps in the screen that just opened, then tap Install again.",
+  "updaterErrorNetwork": "Couldn't reach GitHub. Check your connection and try again.",
+  "updaterErrorRateLimited": "GitHub's rate limit was reached. Try again later.",
+  "updaterErrorNoRelease": "No usable release was found.",
+  "updaterErrorNoApk": "This release has no APK to download.",
+  "updaterErrorInvalidApk": "The download isn't a valid APK and was deleted.",
+  "updaterErrorChecksum": "The download didn't match its published checksum and was deleted.",
+  "updaterErrorPackage": "The download is not a MuxPod package and was deleted.",
+  "updaterErrorSignature": "The download isn't signed with the same key as this app, so it can't be installed. If you built MuxPod yourself, update it from source. If the developer changed signing keys, reinstall from the release page.",
+  "updaterErrorNotNewer": "The download is not newer than the installed version.",
+  "updaterErrorInstall": "Installation failed: {message}",
+  "@updaterErrorInstall": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterErrorUnknown": "Update failed: {message}",
+  "@updaterErrorUnknown": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "updaterCheckSignatureRotated": "Signed with a new key authorized by the installed app's key (key rotation)",
+  "updaterErrorSignatureUnreadable": "Android couldn't read this download's signature, so it wasn't installed. Install it from the release page instead."
 }
