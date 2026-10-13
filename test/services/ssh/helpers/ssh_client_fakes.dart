@@ -66,6 +66,11 @@ class FakeInteractiveSession implements SSHSession {
   @override
   void write(Uint8List data) => writes.add(data);
 
+  final _stdin = StreamController<Uint8List>();
+
+  @override
+  StreamSink<Uint8List> get stdin => _stdin.sink;
+
   @override
   void close() {
     if (!_stdout.isClosed) unawaited(_stdout.close());
