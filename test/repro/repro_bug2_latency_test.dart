@@ -103,7 +103,8 @@ class _FakeInteractiveSession implements SSHSession {
   void write(Uint8List data) => writes.add(data);
 
   /// ephemeral exec が stdin 経由で渡したコマンド（末尾改行を除く）。
-  String get script => utf8.decode(writes.expand((w) => w).toList()).trimRight();
+  String get script =>
+      utf8.decode(writes.expand((w) => w).toList()).trimRight();
 
   final _stdin = StreamController<Uint8List>();
 
