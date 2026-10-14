@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/l10n_ext.dart';
+import '../../../features/updater/updater.dart';
 import '../../../services/version_info.dart';
 import '../licenses_screen.dart';
 import '../search/settings_search_item.dart';
@@ -46,6 +47,7 @@ class AboutSection extends ConsumerWidget {
             );
           },
         ),
+        const UpdateSettingsTile(),
       ],
     );
   }
@@ -78,4 +80,5 @@ final List<SettingsSearchItem> aboutSearchDescriptors = [
     description: (l10n) => l10n.settingsLicensesDescription,
     icon: Icons.description,
   ),
+  ...updaterSearchDescriptors(order: 3),
 ];

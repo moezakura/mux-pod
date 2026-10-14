@@ -16,6 +16,7 @@ import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/deep_link/deep_link_service.dart';
 import 'package:flutter_muxpod/services/license_service.dart';
 import 'package:flutter_muxpod/theme/app_theme.dart';
+import 'package:flutter_muxpod/features/updater/updater.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -176,7 +177,7 @@ class _MyAppState extends ConsumerState<MyApp> {
         }
         return const Locale('en');
       },
-      home: const HomeScreen(),
+      home: const UpdateCheckGate(child: HomeScreen()),
       debugShowCheckedModeBanner: false,
     );
   }
