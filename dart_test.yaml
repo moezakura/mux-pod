@@ -4,3 +4,6 @@ tags:
     # ローカル sshd への実接続 (127.0.0.1:22 + /tmp 作業鍵) など
     # CI 環境では成立しない前提に依存するため、CI では
     # `flutter test --exclude-tags=repro` で除外して実行する。
+  live-sshd:
+    # 実 sshd への接続が必要なテスト。`make test` では除外し、
+    # `make test-live-sshd`（使い捨て Docker sshd）で実行する。
