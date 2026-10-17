@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/l10n_ext.dart';
 import '../../../services/version_info.dart';
+import '../../../utils/external_links.dart';
 import '../licenses_screen.dart';
 import '../search/settings_search_item.dart';
 import '../settings_category.dart';
@@ -28,11 +28,12 @@ class AboutSection extends ConsumerWidget {
           leading: const Icon(Icons.code),
           title: Text(l10n.settingsSourceCode),
           subtitle: const Text('github.com/moezakura/mux-pod'),
-          onTap: () async {
-            final url = Uri.parse('https://github.com/moezakura/mux-pod');
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            }
+          onTap: () {
+            // 🤝#5: 起動は util（launchExternalUri）の単一ソースへ最小委譲
+            // （固定 URL の Uri.parse は従来どおり当該箇所に残す・M2）。
+            launchExternalUri(
+              Uri.parse('https://github.com/moezakura/mux-pod'),
+            );
           },
         ),
         ListTile(
