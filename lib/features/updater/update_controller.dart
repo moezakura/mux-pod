@@ -26,8 +26,9 @@ final updaterPlatformProvider = Provider<UpdaterPlatform>(
 );
 final updatePrefsProvider = Provider<UpdatePrefs>((_) => UpdatePrefs());
 final updateDownloadDirProvider = Provider<Future<Directory> Function()>(
-  (_) => () async =>
-      Directory(p.join((await getTemporaryDirectory()).path, 'updates')),
+  (_) =>
+      () async =>
+          Directory(p.join((await getTemporaryDirectory()).path, 'updates')),
 );
 
 final updateControllerProvider =

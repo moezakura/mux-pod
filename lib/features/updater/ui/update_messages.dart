@@ -14,8 +14,6 @@ String updateErrorMessage(AppLocalizations l10n, UpdateException e) =>
       UpdateFailure.signatureMismatch => l10n.updaterErrorSignature,
       UpdateFailure.signatureUnreadable => l10n.updaterErrorSignatureUnreadable,
       UpdateFailure.notNewer => l10n.updaterErrorNotNewer,
-      UpdateFailure.installFailed => l10n.updaterErrorInstall(
-        e.detail ?? '-',
-      ),
+      UpdateFailure.installFailed => l10n.updaterErrorInstall(e.detail ?? '-'),
       UpdateFailure.unknown => l10n.updaterErrorUnknown(e.detail ?? '-'),
     };

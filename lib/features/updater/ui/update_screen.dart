@@ -101,12 +101,13 @@ class _StatusCard extends ConsumerWidget {
     final tag = state.release?.tag ?? '';
 
     final (IconData icon, String title) = switch (state.phase) {
-      UpdatePhase.unsupported || UpdatePhase.idle => (
-        Icons.system_update,
-        l10n.updaterCheckNow,
-      ),
+      UpdatePhase.unsupported ||
+      UpdatePhase.idle => (Icons.system_update, l10n.updaterCheckNow),
       UpdatePhase.checking => (Icons.sync, l10n.updaterChecking),
-      UpdatePhase.upToDate => (Icons.check_circle_outline, l10n.updaterUpToDate),
+      UpdatePhase.upToDate => (
+        Icons.check_circle_outline,
+        l10n.updaterUpToDate,
+      ),
       UpdatePhase.available => (
         Icons.new_releases_outlined,
         l10n.updaterAvailable(tag),
@@ -117,10 +118,7 @@ class _StatusCard extends ConsumerWidget {
       ),
       UpdatePhase.verifying => (Icons.verified_outlined, l10n.updaterVerifying),
       UpdatePhase.ready => (Icons.verified, l10n.updaterReady(tag)),
-      UpdatePhase.installing => (
-        Icons.install_mobile,
-        l10n.updaterInstalling,
-      ),
+      UpdatePhase.installing => (Icons.install_mobile, l10n.updaterInstalling),
       UpdatePhase.failed => (Icons.error_outline, l10n.updaterFailed),
     };
 
@@ -143,7 +141,9 @@ class _StatusCard extends ConsumerWidget {
                       : theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 12),
-                Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+                Expanded(
+                  child: Text(title, style: theme.textTheme.titleMedium),
+                ),
               ],
             ),
             if (state.phase == UpdatePhase.downloading) ...[

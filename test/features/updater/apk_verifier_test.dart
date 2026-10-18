@@ -23,9 +23,8 @@ PackageIdentity _apk({
   signerHistorySha256: history,
 );
 
-Matcher _fails(UpdateFailure f) => throwsA(
-  isA<UpdateException>().having((e) => e.failure, 'failure', f),
-);
+Matcher _fails(UpdateFailure f) =>
+    throwsA(isA<UpdateException>().having((e) => e.failure, 'failure', f));
 
 void main() {
   group('verifyApkIdentity', () {
@@ -42,14 +41,20 @@ void main() {
 
     test('rejects other package', () {
       expect(
-        () => verifyApkIdentity(apk: _apk(pkg: 'evil'), installed: _installed),
+        () => verifyApkIdentity(
+          apk: _apk(pkg: 'evil'),
+          installed: _installed,
+        ),
         _fails(UpdateFailure.wrongPackage),
       );
     });
 
     test('rejects unreadable signature', () {
       expect(
-        () => verifyApkIdentity(apk: _apk(signers: {}), installed: _installed),
+        () => verifyApkIdentity(
+          apk: _apk(signers: {}),
+          installed: _installed,
+        ),
         _fails(UpdateFailure.signatureUnreadable),
       );
     });
@@ -117,7 +122,10 @@ void main() {
     test('rejects same or older version', () {
       for (final code in [201, 200]) {
         expect(
-          () => verifyApkIdentity(apk: _apk(code: code), installed: _installed),
+          () => verifyApkIdentity(
+            apk: _apk(code: code),
+            installed: _installed,
+          ),
           _fails(UpdateFailure.notNewer),
         );
       }

@@ -91,10 +91,9 @@ class MethodChannelUpdaterPlatform implements UpdaterPlatform {
 
   @override
   Future<PackageIdentity?> inspectApk(String path) async {
-    final map = await _channel.invokeMapMethod<Object?, Object?>(
-      'inspectApk',
-      {'path': path},
-    );
+    final map = await _channel.invokeMapMethod<Object?, Object?>('inspectApk', {
+      'path': path,
+    });
     return map == null ? null : PackageIdentity.fromMap(map);
   }
 
