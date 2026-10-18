@@ -3,9 +3,10 @@
 ## Verification Commands
 
 ```bash
-make analyze   # flutter analyze
-make test      # flutter test
-make build-apk # flutter build apk --release --dart-define=GIT_REF=...
+make analyze        # flutter analyze
+make test           # flutter test --exclude-tags=live-sshd
+make test-live-sshd # live-sshd tests against a throwaway Docker sshd (needs docker)
+make build-apk      # flutter build apk --release --dart-define=GIT_REF=...
 ```
 
 ## Notes
