@@ -65,10 +65,18 @@ jobs:
             --build-name=$VERSION_NUM \
             --build-number=$BUILD_NUMBER \
             --dart-define=APP_VERSION=$VERSION \
-            --dart-define=GIT_REF=$GIT_REF
+            --dart-define=GIT_REF=$GIT_REF \
+            --dart-define=UPDATE_REPO=${{ github.repository }}
+
+      # Checksum consumed by the in-app updater (lib/features/updater/).
+      - name: Generate checksum
+        working-directory: build/app/outputs/flutter-apk
+        run: sha256sum app-release.apk > app-release.apk.sha256
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-release.apk.sha256
           generate_release_notes: true
