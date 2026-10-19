@@ -178,4 +178,46 @@ void main() {
       );
     });
   });
+
+  group('URL 次元のキー意味論 (🤝#2 行間 URL carry・既存 4 group の規約拡張)', () {
+    test('同一 (開始スタイル, 開始 URL 状態, テキスト) は identical', () {
+      final parser = newParser();
+      final first = parser.parseLines('\x1b]8;;u\x07l0\nl1');
+      final second = parser.parseLines('\x1b]8;;u\x07l0\nl1');
+      expect(identical(first[1], second[1]), isTrue);
+    });
+
+    test('同一 (開始スタイル, テキスト) でも開始 URL 状態が異なれば非 identical', () {
+      final parser = newParser();
+      final linked = parser.parseLines('\x1b]8;;u\x07l1');
+      final plain = parser.parseLines('l1');
+      expect(
+        linked.single.segments.single.text,
+        plain.single.segments.single.text,
+      );
+      expect(linked.single.segments.single.url, 'u');
+      expect(plain.single.segments.single.url, isNull);
+      expect(identical(linked.single, plain.single), isFalse);
+    });
+
+    test('行跨ぎリンクの 2 行目は同一キーなら独立再パースでも identical', () {
+      final parser = newParser();
+      final x = parser.parseLines('\x1b]8;;u\x07l0\nl1');
+      final y = parser.parseLines('\x1b]8;;u\x07p\nl1');
+      expect(identical(x[1], y[1]), isTrue);
+    });
+
+    test('OSC 8 を含む行もファサード assert を通過する', () {
+      final parser = newParser();
+      final lines = parser.parseLines('\x1b]8;;u\x07l0');
+      expect(
+        () => parser.lineToTextSpan(
+          lines[0],
+          fontSize: 14,
+          fontFamily: 'JetBrains Mono',
+        ),
+        returnsNormally,
+      );
+    });
+  });
 }

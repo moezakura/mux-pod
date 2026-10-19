@@ -1,8 +1,10 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show ValueListenable, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/image_transfer_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
@@ -10,6 +12,7 @@ import '../../services/custom_keys/custom_key_button.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../services/tmux/pane_navigator.dart';
 import '../../theme/design_colors.dart';
+import '../../utils/external_links.dart';
 import '../../widgets/key_overlay_widget.dart';
 import '../../widgets/scroll_to_bottom_button.dart';
 import '../../l10n/l10n_ext.dart';
@@ -22,6 +25,7 @@ import 'terminal_reconnect_overlays.dart';
 import 'terminal_shell_areas.dart';
 import 'widgets/disconnect_bar.dart';
 import 'widgets/ansi_text_view.dart';
+import 'widgets/link_confirmation_dialog.dart';
 
 /// ターミナル画面の表示ツリー合成ウィジェット。
 ///
@@ -460,6 +464,8 @@ class TerminalViewShell extends ConsumerWidget {
                   navigableDirections: canFocusDirection
                       ? navigableDirections
                       : null,
+                  // OSC 8 リンクタップ → 起動コーディネータ（単一ファネル）
+                  onLinkTap: (url) => openExternalLink(context, ref, url),
                 ),
               );
             },
@@ -474,6 +480,28 @@ class TerminalViewShell extends ConsumerWidget {
     // （scrollSend ドラッグが横スクロールへ漏れないようにする・元実装同等）。
     if (mode == TerminalMode.scrollSend) return true;
     return false;
+  }
+
+  /// リンクタップ起動の単一ファネル（🤝#3・Issue #61）。
+  ///
+  /// scheme ガード（[tryParseExternalHttpUri]・非 https/http は無視）→
+  /// 設定分岐（`openLinksDirectly` OFF 既定 = [confirmExternalLink] の
+  /// 確認モーダル経由・ON = 直接）→ [launchExternalUri]。
+  /// 起動失敗は握りつぶし（throw しない・戻り値なし）。
+  @visibleForTesting
+  static Future<void> openExternalLink(
+    BuildContext context,
+    WidgetRef ref,
+    String url,
+  ) async {
+    final uri = tryParseExternalHttpUri(url);
+    if (uri == null) return;
+    final openDirectly = ref.read(settingsProvider).openLinksDirectly;
+    if (!openDirectly) {
+      final confirmed = await confirmExternalLink(context, uri);
+      if (!confirmed) return;
+    }
+    await launchExternalUri(uri);
   }
 
   /// ペインインジケータ（backend 分岐: herdr = notifier / tmux = Consumer）。
