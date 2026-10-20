@@ -239,7 +239,38 @@ jobs:
       # を維持することを確認する。絶対パス埋め込み等により環境が異なるとバイト
       # 同一にはならないため、manifest の sha256 はコミット済み配布バイナリ
       # （assets/herdr-caret-helper/<id>/herdr-caret-helper）との一致を検証する。
-      - name: Run helper tests
+      # cargo test を hyperlinks / scrollback-links / caret の 3 ステップ
+      # に分け、失敗をサブシステム単位で切り分けられるようにする（テストの
+      # 改名・再構成はせず、バイナリ選択と `cargo test`名前フィルタで分離）。
+      # 3 ステップの合計はクレート全体の `cargo test` と一致する（scroll 系の
+      # attach テスト 3 件だけが scrollback-links と caret の両方で重複実行
+      # される — scrollback-links の attach/AttachScroll 送信も、caret の
+      # attach 一般機能も、どちらも本物の契約なので意図的に許容している）。
+      - name: "Run helper tests (hyperlinks: fixture regression + loopback)"
+        working-directory: tools/herdr-caret-helper
+        run: |
+          cargo test --test hyperlinks_grammar --test hyperlinks_aggregation --test hyperlinks_loopback --test hyperlinks_cli
+          cargo test --lib -- hyperlinks:: tracker::
+
+      - name: "Run helper tests (scrollback-links)"
+        working-directory: tools/herdr-caret-helper
+        run: |
+          cargo test --lib -- scrollback::
+          cargo test --test attach scroll
+
+      - name: "Run helper tests (caret: wire/codec/attach/observe foundations)"
+        working-directory: tools/herdr-caret-helper
+        run: |
+          cargo test --test codec --test loopback --test attach --test api_client --test caret22_pure --test protocols
+          cargo test --lib -- --skip hyperlinks:: --skip tracker:: --skip scrollback::
+
+      # 補足: 上の
+      # 3 ステップは列挙方式のため、新しい tests/*.rs や bin 単体テスト・
+      # doctest が追加されても、いずれの列挙にも入っていなければ CI から
+      # 黙って抜け落ちる。catch-all で `cargo test`（フィルタなし）を実行
+      # することで、bin テストと doctest を含め漏れなく拾う。数秒で終わる
+      # ため、3 ステップとの二重実行コストは問題にならない。
+      - name: "Run helper tests (catch-all: all targets)"
         working-directory: tools/herdr-caret-helper
         run: cargo test
 
