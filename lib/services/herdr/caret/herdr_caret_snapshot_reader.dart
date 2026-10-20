@@ -53,7 +53,9 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
 
   final HerdrCaretHelperRunner _runner;
   final HerdrStatus Function() _statusProvider;
-  final HerdrSnapshotCache Function() _cacheProvider;
+
+  /// 現在の cache。画面破棄後（`snapshotCache = null`）は null を返す。
+  final HerdrSnapshotCache? Function() _cacheProvider;
   final bool Function() _enabled;
   final Duration _ttl;
   final Duration _timeout;
@@ -68,7 +70,7 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
   HerdrCaretHelperSnapshotReader({
     required HerdrCaretHelperRunner runner,
     required HerdrStatus Function() statusProvider,
-    required HerdrSnapshotCache Function() cacheProvider,
+    required HerdrSnapshotCache? Function() cacheProvider,
     required bool Function() enabled,
     Duration ttl = defaultTtl,
     Duration timeout = defaultTimeout,
@@ -130,6 +132,11 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
 
     // epoch / adapter identity を実行前に記録する。
     final cacheBefore = _cacheProvider();
+    if (cacheBefore == null) {
+      // 破棄済み（画面破棄で cache が null 化済み）。実行しない。
+      _logState('disposed', paneId);
+      return null;
+    }
     final epochBefore = cacheBefore.epoch;
 
     // single-flight（pane + epoch が同一なら合流）。
@@ -177,6 +184,11 @@ class HerdrCaretHelperSnapshotReader implements HerdrCaretSnapshotReader {
       // stale 検出: await 中に pane 切替（epoch++）・再接続（adapter
       // 差し替え = cache 再生成）が無いかを照合する。
       final cacheAfter = _cacheProvider();
+      if (cacheAfter == null) {
+        // await 中に画面が破棄された。結果は破棄（例外にはしない）。
+        _logState('disposed', paneId);
+        return null;
+      }
       if (!identical(cacheAfter, cacheBefore) ||
           cacheAfter.epoch != epochBefore) {
         _logState('stale', paneId); // 結果は破棄
