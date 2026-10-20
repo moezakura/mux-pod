@@ -22,6 +22,8 @@ import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/providers/terminal_display_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_view_shell.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_frame_reader.dart';
+import 'package:flutter_muxpod/services/herdr/hyperlink/scrollback_link_cache.dart';
 import 'package:flutter_muxpod/theme/design_colors.dart';
 
 import '../../../helpers/fake_settings_notifier.dart';
@@ -78,6 +80,9 @@ Widget buildAnsiLinkSubject(
   int cursorX = 0,
   int cursorY = 0,
   double fontSize = 14.0,
+  PaneHyperlinks? herdrHyperlinks,
+  ScrollbackLinkCache? scrollbackLinkCache,
+  ({Object? identity, int generation})? currentScrollbackSnapshotIdentity,
 }) {
   return ProviderScope(
     overrides: [
@@ -110,6 +115,10 @@ Widget buildAnsiLinkSubject(
               mode: mode,
               cursorX: cursorX,
               cursorY: cursorY,
+              herdrHyperlinks: herdrHyperlinks,
+              scrollbackLinkCache: scrollbackLinkCache,
+              currentScrollbackSnapshotIdentity:
+                  currentScrollbackSnapshotIdentity,
               onLinkTap: (url) {
                 harness.tappedUrls.add(url);
                 unawaited(
@@ -158,6 +167,9 @@ Future<AnsiLinkTapHarness> pumpAnsiLinkTerminal(
   int cursorX = 0,
   int cursorY = 0,
   double fontSize = 14.0,
+  PaneHyperlinks? herdrHyperlinks,
+  ScrollbackLinkCache? scrollbackLinkCache,
+  ({Object? identity, int generation})? currentScrollbackSnapshotIdentity,
 }) async {
   final harness = AnsiLinkTapHarness();
   mockUrlLauncher(tester, harness, canLaunch: canLaunch);
@@ -170,6 +182,9 @@ Future<AnsiLinkTapHarness> pumpAnsiLinkTerminal(
       cursorX: cursorX,
       cursorY: cursorY,
       fontSize: fontSize,
+      herdrHyperlinks: herdrHyperlinks,
+      scrollbackLinkCache: scrollbackLinkCache,
+      currentScrollbackSnapshotIdentity: currentScrollbackSnapshotIdentity,
     ),
   );
   await tester.pumpAndSettle();

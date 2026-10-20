@@ -16,6 +16,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../services/backend/domain/pane_frame_reader.dart'
+    show PaneHyperlinks;
 import '../../../services/tmux/tmux_facade.dart';
 
 /// root State のライフサイクル・widget パラメータへの窓口。
@@ -59,18 +61,26 @@ abstract interface class SessionHost {
   Object? get injectedPaneContentReader;
   Object? get herdrCacheClock;
   Object? get herdrCaretReader;
+  Object? get herdrHyperlinkReader;
   Object? get bottomFollowEpsilon;
 }
 
-/// C9: pending 表示対象（`_pendingTargetIdentity` / `_pendingCaret`）の保管。
+/// pending 表示対象（`_pendingTargetIdentity` / `_pendingCaret` /
+/// `_pendingHyperlinks`）の保管。
 ///
 /// 値の生成・照合（エポック）は herdr API が行う。本領域（session poll）は
 /// この store へ書き込み、`_applyUpdate` で読み取る。
+///
+/// [pendingHyperlinks]（herdr OSC 8 ハイパーリンク実験機能）は
+/// [pendingCaret] と同型（null 許容・throw しない・sync・副作用は内部保持の
+/// み）。委譲実装は `terminal_screen_ports.dart` 側にある。
 abstract interface class PendingViewStore {
   Object? get pendingTargetIdentity;
   set pendingTargetIdentity(Object? value);
   dynamic get pendingCaret;
   set pendingCaret(dynamic value);
+  PaneHyperlinks? get pendingHyperlinks;
+  set pendingHyperlinks(PaneHyperlinks? value);
 }
 
 /// G5/G6: 転送フローのリソース保持・破棄窓口。
@@ -116,6 +126,7 @@ abstract interface class SessionInputPort {
   void captureSelectUpdate({
     required String content,
     dynamic caret,
+    PaneHyperlinks? hyperlinks,
     Object? targetIdentity,
   });
   dynamic takeBufferedUpdate();
@@ -202,6 +213,14 @@ class SessionEnv {
 
   /// root がセット: フォアグラウンド復帰時（tree refresh 等）。
   void Function()? onResumePolling;
+
+  /// root がセット: ポーリング一時停止時（herdr スクロールモードの
+  /// リンク読取の待機中取得キャンセル等）。
+  void Function()? onPausePolling;
+
+  /// root がセット: 切断時（herdr スクロールモードのリンク読取の
+  /// 待機中取得キャンセル等）。
+  void Function()? onDisconnect;
 }
 
 /// ダウンロード SnackBar の表示仕様（ui の純関数の戻り値）。

@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/settings_provider.dart' show settingsProvider;
 import '../../../providers/terminal_display_provider.dart'
     show terminalDisplayProvider;
-import '../../../services/backend/domain/pane_frame_reader.dart' show PaneCaret;
+import '../../../services/backend/domain/pane_frame_reader.dart'
+    show PaneCaret, PaneHyperlinks;
 import '../../../services/terminal/font_calculator.dart' show FontCalculator;
 import '../widgets/ansi_terminal_model.dart' show TerminalMode;
 import '../widgets/terminal_zoom.dart' show fitTerminalZoomFactor;
@@ -34,10 +35,27 @@ class TerminalModeController {
   ScrollModeSource _source = ScrollModeSource.none;
   bool _isCopyModeDetected = false;
 
+  /// モード変化の通知。[_setMode] が変化を検知したときだけ発火
+  /// する（同じモードへの遷移では発火しない）。「select から離脱したか」
+  /// 等の判断はここでは行わず、呼び出し側（root）に委ねる。null 許容
+  /// （未設定なら発火なし）。throw しない。sync。
+  void Function(TerminalMode previous, TerminalMode next)? onModeChanged;
+
+  /// [_mode] の唯一の書き込み口（`_mode` 直書きをここへ集約）。
+  /// 変化した（[previous] != [next]）ときだけ [onModeChanged] を発火する。
+  void _setMode(TerminalMode next) {
+    final previous = _mode;
+    _mode = next;
+    if (previous != next) {
+      onModeChanged?.call(previous, next);
+    }
+  }
+
   // 選択状態保持用（スクロールモード中の更新抑制・C7）。
   String _bufferedContent = '';
   bool _hasBufferedUpdate = false;
   PaneCaret? _bufferedCaret;
+  PaneHyperlinks? _bufferedHyperlinks;
   Object? _bufferedTargetIdentity;
 
   // ズームスケール / scrollSend 自動フィットズーム退避値。
@@ -51,6 +69,7 @@ class TerminalModeController {
   bool get isCopyModeDetected => _isCopyModeDetected;
   bool get hasBufferedUpdate => _hasBufferedUpdate;
   String get bufferedContent => _bufferedContent;
+  PaneHyperlinks? get bufferedHyperlinks => _bufferedHyperlinks;
   double get zoomScale => _zoomScale;
 
   /// 表示中の実効ズーム倍率（永続 zoomFactor × ピンチ中のプレビュー _zoomScale）。
@@ -71,7 +90,7 @@ class TerminalModeController {
 
   /// 通常モードへ（`_resetTerminalMode` / copy-mode 終了の正集合）。
   void applyNormal() {
-    _mode = TerminalMode.normal;
+    _setMode(TerminalMode.normal);
     _source = ScrollModeSource.none;
     _isCopyModeDetected = false;
     _clearBuffer();
@@ -79,7 +98,7 @@ class TerminalModeController {
 
   /// scrollSend モードへ（原子性契約 C1: mode と source を同時に設定）。
   void applyScrollSend() {
-    _mode = TerminalMode.scrollSend;
+    _setMode(TerminalMode.scrollSend);
     _source = ScrollModeSource.none;
     _isCopyModeDetected = false;
     _clearBuffer();
@@ -87,7 +106,7 @@ class TerminalModeController {
 
   /// select モードへ（手動・copy-mode cancel 導線）。
   void applySelectManual() {
-    _mode = TerminalMode.select;
+    _setMode(TerminalMode.select);
     _source = ScrollModeSource.manual;
     _isCopyModeDetected = false;
     _clearBuffer();
@@ -97,21 +116,21 @@ class TerminalModeController {
   /// `_loadDeepHistoryOnScroll` の setState と同一。copy-mode フラグとバッファは
   /// 触らない）。
   void applySelectForHistory() {
-    _mode = TerminalMode.select;
+    _setMode(TerminalMode.select);
     _source = ScrollModeSource.manual;
   }
 
   /// tmux copy-mode 自動検出（poll が呼ぶ・HEAD の setState と同一）。
   void applySelectTmux({required bool fromScrollSend}) {
     if (fromScrollSend) _isCopyModeDetected = true;
-    _mode = TerminalMode.select;
+    _setMode(TerminalMode.select);
     _source = ScrollModeSource.tmux;
   }
 
   /// tmux copy-mode 終了（poll が呼ぶ・HEAD の setState と同一。バッファは
   /// クリアせず、適用は呼び出し側の `onApplyBuffered` が行う）。
   void applyTmuxEnded() {
-    _mode = TerminalMode.normal;
+    _setMode(TerminalMode.normal);
     _source = ScrollModeSource.none;
     _isCopyModeDetected = false;
   }
@@ -125,10 +144,12 @@ class TerminalModeController {
   void captureSelectUpdate({
     required String content,
     PaneCaret? caret,
+    PaneHyperlinks? hyperlinks,
     Object? targetIdentity,
   }) {
     _bufferedContent = content;
     _bufferedCaret = caret;
+    _bufferedHyperlinks = hyperlinks;
     _hasBufferedUpdate = true;
     _bufferedTargetIdentity = targetIdentity;
   }
@@ -144,6 +165,7 @@ class TerminalModeController {
     final update = TerminalBufferedUpdate(
       content: _bufferedContent,
       caret: _bufferedCaret,
+      hyperlinks: _bufferedHyperlinks,
       targetIdentity: _bufferedTargetIdentity,
     );
     _clearBuffer();
@@ -211,6 +233,7 @@ class TerminalModeController {
     _bufferedContent = '';
     _hasBufferedUpdate = false;
     _bufferedCaret = null;
+    _bufferedHyperlinks = null;
     _bufferedTargetIdentity = null;
   }
 }

@@ -16,6 +16,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../providers/tmux_provider.dart';
+import '../../services/backend/domain/pane_frame_reader.dart'
+    show PaneHyperlinks;
+import 'widgets/ansi_terminal_model.dart' show TerminalMode;
 import '../../services/tmux/tmux_facade.dart';
 import 'download_snackbar_display.dart' show downloadSnackBarDisplay;
 import 'herdr/herdr_controller.dart';
@@ -81,6 +84,10 @@ class TerminalScreenAdapter implements TerminalPortSource {
   Object? _pendingTargetIdentity;
   dynamic _pendingCaret;
 
+  /// 通常表示のハイパーリンク pending（herdr OSC 8 ハイパーリンク実験機能）。
+  /// [_pendingCaret] と同型（PendingViewStore 参照）。
+  PaneHyperlinks? _pendingHyperlinks;
+
   @override
   TmuxFacade get tmux => _tmux;
 
@@ -92,6 +99,10 @@ class TerminalScreenAdapter implements TerminalPortSource {
   set pendingTargetIdentity(Object? value) => _pendingTargetIdentity = value;
   @override
   dynamic get pendingCaret => _pendingCaret;
+  @override
+  PaneHyperlinks? get pendingHyperlinks => _pendingHyperlinks;
+  @override
+  set pendingHyperlinks(PaneHyperlinks? value) => _pendingHyperlinks = value;
   @override
   set pendingCaret(dynamic value) => _pendingCaret = value;
 
@@ -171,6 +182,7 @@ class TerminalScreenAdapter implements TerminalPortSource {
         lastPaneId: () => access.lastPaneId,
         clock: access.herdrCacheClock,
         injectedCaretReader: () => access.herdrCaretReader,
+        injectedHyperlinkReader: () => access.herdrHyperlinkReader,
         hasInjectedPaneContentReader: () =>
             access.injectedPaneContentReader != null,
         clearTmuxProvider: () => access.ref.read(tmuxProvider.notifier).clear(),
@@ -192,6 +204,15 @@ class TerminalScreenAdapter implements TerminalPortSource {
         isResizing: () => runtime.isResizing,
         setResizing: (v) => runtime.isResizing = v,
         setTargetSource: (s) => runtime.targetSource = s,
+        bodyLinesFor: () => viewport.bodyLineTexts() ?? const [],
+        isActive: () => !runtime.isInBackground,
+        isSelectModeActive: () =>
+            input.modeController.mode == TerminalMode.select,
+        notifyScrollbackLinksUpdated: () => access.markNeedsBuild(),
+        injectedScrollbackLinkHelperRunner: () =>
+            access.herdrScrollbackLinkHelperRunner,
+        currentSnapshotIdentity: () =>
+            input.scrollFollow.currentSnapshotIdentity,
       ),
     );
 
@@ -224,6 +245,20 @@ class TerminalScreenAdapter implements TerminalPortSource {
     env.afterListenersSetup = transfer.ensureListeners;
     env.onReconnectSuccess = connection.onReconnectSuccess;
     env.onResumePolling = resize.onResumed;
+    env.onPausePolling = () => herdr.scrollbackLinkReader?.cancelPending();
+    env.onDisconnect = () => herdr.scrollbackLinkReader?.cancelPending();
+
+    // herdr スクロールモードのリンク読取: viewport 確定・mode 変化を
+    // HerdrScrollbackLinkReader へ転送する。reader 未代入中でも
+    // 捨てないよう HerdrCaretComposer.notifyViewportSettled 経由にする。
+    input.scrollFollow.onViewportSettled = (identity, lineCount, range) {
+      herdr.caret.notifyViewportSettled(identity, lineCount, range);
+    };
+    input.modeController.onModeChanged = (previous, next) {
+      if (previous == TerminalMode.select && next != TerminalMode.select) {
+        herdr.scrollbackLinkReader?.endSession();
+      }
+    };
   }
 
   void _clearViewCaret() {
@@ -235,10 +270,15 @@ class TerminalScreenAdapter implements TerminalPortSource {
 
   /// herdr の切替・セッション確立時の view クリア（HEAD `_switchHerdrTarget` /
   /// `_setupHerdrSession` の ①② 相当・NG-1）。
+  ///
+  /// [hyperlinks] も [caret] と同じ経路でクリアする。pending 側
+  /// （[_pendingCaret]）はここでは対象にしない（既存 caret も同様。pending
+  /// は次の poll の [SessionViewPipeline.scheduleUpdate] で上書きされる）。
   void _resetView() {
     runtime.viewNotifier.value = runtime.viewNotifier.value.copyWith(
       content: '',
       caret: null,
+      hyperlinks: null,
     );
     runtime.hasInitialScrolled = false;
   }
@@ -279,6 +319,7 @@ class TerminalScreenAdapter implements TerminalPortSource {
     herdr.disposeCaches();
     _pendingTargetIdentity = null;
     _pendingCaret = null;
+    _pendingHyperlinks = null;
   }
 
   /// P8: notifier 群（view → herdrDisplay → herdrPaneIndicator → latency）。

@@ -41,6 +41,43 @@ class TerminalScrollFollowController {
   /// markNeedsBuild。深い履歴ロード前に同期適用する必要がある）。
   void Function()? onEnterSelectForHistory;
 
+  /// herdr OSC 8 ハイパーリンク・スクロールモードのリンク読取への
+  /// 通知。スクロール停止時（[onScrollNotification] の
+  /// ScrollEndNotification 分岐）とスナップショット確定時（
+  /// [loadHistoryForScroll] 成功後）にそのまま呼ぶ（debounce はしない。
+  /// の reader 側が 400ms debounce・2 秒 trailing-edge を持つ）。
+  /// select モード中だけ呼ぶ。引数 null 不可。throw しない。sync。
+  void Function(
+    ({Object? identity, int generation}) snapshotIdentity,
+    int lineCount,
+    ({int top, int bottom}) visibleRange,
+  )?
+  onViewportSettled;
+
+  /// [onViewportSettled] に渡すスナップショット世代。
+  ///
+  /// [loadHistoryForScroll] が select モードで内容確定に成功する都度
+  /// インクリメントする（同じ pane・epoch でも
+  /// スナップショットが差し替わったことを区別するため。基底の
+  /// pane/epoch/adapter identity は [scrollback.captureTargetIdentity] が
+  /// 別に担う）。
+  int _snapshotGeneration = 0;
+
+  /// 現在のスナップショットの identity。
+  ///
+  /// スナップショットが一度も確定していなければ `null`（[_snapshotGeneration]
+  /// が 0）。リンクの重ね合わせが、`ScrollbackLinkCache` の世代とここを
+  /// 照合し、一致しない（新しいスナップショットに切り替わった後、
+  /// 古い世代の結果しかキャッシュに無い）ときは重ねないために使う
+  /// （スナップショット差し替え後の結果を表示に混ぜない）。
+  ({Object? identity, int generation})? get currentSnapshotIdentity {
+    if (_snapshotGeneration == 0) return null;
+    return (
+      identity: scrollback.captureTargetIdentity(),
+      generation: _snapshotGeneration,
+    );
+  }
+
   /// 最下部との距離がこの値以下なら「最下部表示中」とみなす（float 誤差対策）。
   static const double _bottomFollowEpsilon = 1.0;
 
@@ -62,6 +99,11 @@ class TerminalScrollFollowController {
   /// 所有する ScrollController（root の `_terminalScrollController` を受け、listener 登録する）。
   ScrollController? _attachedController;
 
+  /// [detach] 済みか（detach 後は [onViewportSettled] を呼ばない。
+  /// `onScrollNotification` は widget の `NotificationListener` から直接
+  /// 呼ばれ `attach`/`detach` の対象外のため、このフラグで別途ガードする）。
+  bool _isDetached = false;
+
   // ----（が読む）----
   bool get isPinnedToBottom => _isPinnedToBottom;
   bool get isBottomLock => _isBottomLock;
@@ -74,11 +116,13 @@ class TerminalScrollFollowController {
   void attach(ScrollController controller) {
     _attachedController = controller;
     controller.addListener(onScroll);
+    _isDetached = false;
   }
 
   void detach() {
     _attachedController?.removeListener(onScroll);
     _attachedController = null;
+    _isDetached = true;
   }
 
   // ---- FAB 操作 / ドラッグ / スクロール ----
@@ -119,6 +163,10 @@ class TerminalScrollFollowController {
       handleUserScrollDrag(n.dragDetails != null);
     } else if (n is ScrollEndNotification) {
       _isUserScrollDragging = false;
+      // スクロール停止の通知（debounce なし。reader 側が持つ）。
+      if (_mode() == TerminalMode.select) {
+        _notifyViewportSettled();
+      }
     } else if (n is OverscrollNotification) {
       // inventory: TERM-SCROLL-002
       return onTerminalOverscroll(n);
@@ -209,22 +257,81 @@ class TerminalScrollFollowController {
           : '\n'.allMatches(content).length + 1;
       final prepended = newLines - oldLines;
       scrollback.setDisplayedContent(content);
+      _snapshotGeneration++;
       if (prepended > 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (host.isMounted && !host.isDisposed) {
             viewport.jumpToLineFromTop(prepended);
           }
+          _notifyViewportSettledIfActive();
+        });
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _notifyViewportSettledIfActive();
         });
       }
     } else {
       scrollback.setDisplayedContent(content);
+      _snapshotGeneration++;
       // ライブ位置（末尾）に合わせ、そこから上へ履歴を遡れるようにする。
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (host.isMounted && !host.isDisposed) {
           viewport.scrollToBottom();
         }
+        _notifyViewportSettledIfActive();
       });
     }
+  }
+
+  /// mounted/disposed ガードを通してから [_notifyViewportSettled] を呼ぶ
+  /// （post-frame コールバック共通のガード）。
+  void _notifyViewportSettledIfActive() {
+    if (!host.isMounted || host.isDisposed) return;
+    if (_isDetached) return;
+    // select 専用（4 経路分離・D12 と同じ規律）: この時点でモードが
+    // select でなくなっていれば呼ばない。
+    if (_mode() != TerminalMode.select) return;
+    _notifyViewportSettled();
+  }
+
+  /// [onViewportSettled] へ現在の viewport 状態を通知する。
+  ///
+  /// [viewport.visibleLineRange] が `null`（レイアウト未確定）のときは
+  /// 次フレームで 1 回だけ再試行する（それ以上はリトライしない）。
+  void _notifyViewportSettled([int attempt = 0]) {
+    final callback = onViewportSettled;
+    if (callback == null) return;
+    if (_isDetached) return;
+    final range = viewport.visibleLineRange();
+    if (range == null) {
+      if (attempt >= 1) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!host.isMounted || host.isDisposed) return;
+        if (_isDetached) return;
+        if (_mode() != TerminalMode.select) return;
+        _notifyViewportSettled(attempt + 1);
+      });
+      // このコールバックだけではフレームが予約されるとは
+      // 限らない（他に予約要因が無いと発火が遅れる）。ここで明示的に
+      // 予約する。
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
+    callback(
+      (
+        identity: scrollback.captureTargetIdentity(),
+        generation: _snapshotGeneration,
+      ),
+      _currentLineCount(),
+      range,
+    );
+  }
+
+  /// [scrollback.displayedContent] の行数（[loadHistoryForScroll] の
+  /// `prepended` 計算と同じ数え方）。
+  int _currentLineCount() {
+    final content = scrollback.displayedContent;
+    return content.isEmpty ? 0 : '\n'.allMatches(content).length + 1;
   }
 
   // inventory: TERM-SCROLL-004

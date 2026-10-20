@@ -431,6 +431,7 @@ class SessionConnectionFlow {
 
   /// SSH接続を切断して前の画面に戻る（移設元 `_disconnect`）。
   Future<void> disconnect(BuildContext context) async {
+    env.onDisconnect?.call();
     runtime.cancelPollTimers();
 
     // stale tmuxProvider 対策（T9）

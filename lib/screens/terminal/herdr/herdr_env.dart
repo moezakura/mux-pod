@@ -5,6 +5,9 @@ import '../../../services/backend/domain/multiplexer_backend.dart';
 import '../../../services/backend/domain/pane_writer.dart';
 import '../../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
 import '../../../services/herdr/herdr_pane_frame_reader.dart';
+import '../../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../../services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart'
+    show HerdrScrollbackLinkHelperRunner;
 import '../../../services/tmux/commands/layout.dart';
 import '../target_source.dart';
 import 'herdr_types.dart';
@@ -24,6 +27,7 @@ class HerdrEnv {
     required this.lastPaneId,
     required this.clock,
     required this.injectedCaretReader,
+    required this.injectedHyperlinkReader,
     required this.hasInjectedPaneContentReader,
     required this.clearTmuxProvider,
     required this.suspendPolling,
@@ -43,6 +47,12 @@ class HerdrEnv {
     required this.isResizing,
     required this.setResizing,
     required this.setTargetSource,
+    required this.bodyLinesFor,
+    required this.isActive,
+    required this.isSelectModeActive,
+    required this.notifyScrollbackLinksUpdated,
+    required this.injectedScrollbackLinkHelperRunner,
+    required this.currentSnapshotIdentity,
   });
 
   final WidgetRef ref;
@@ -71,6 +81,11 @@ class HerdrEnv {
 
   /// テスト注入 caret reader（`TerminalScreen.herdrCaretReader`）。
   final HerdrCaretSnapshotReader? Function() injectedCaretReader;
+
+  /// テスト注入 hyperlink reader（`TerminalScreen.herdrHyperlinkReader`・
+  /// herdr OSC 8 ハイパーリンク実験機能）。[injectedCaretReader] と
+  /// 同じ経路（本番は null）。
+  final HerdrHyperlinkReader? Function() injectedHyperlinkReader;
 
   /// 診断用: 注入 paneContentReader があるか（HEAD の診断文字列と同一）。
   final bool Function() hasInjectedPaneContentReader;
@@ -114,6 +129,40 @@ class HerdrEnv {
   /// 表示対象 pane ソースを session（[TargetSource]）へ伝播する。
   /// poll は session 側の targetSource から現在 pane ID を読む。
   final void Function(TargetSource) setTargetSource;
+
+  /// スクロールモードの現在の本文行（プレーンテキスト）。
+  ///
+  /// `TerminalViewportPort.bodyLineTexts()` への即時委譲元。
+  /// `HerdrScrollbackLinkReader.bodyLinesFor` へそのまま渡す。
+  final List<String> Function() bodyLinesFor;
+
+  /// バックグラウンド中でないか（`!runtime.isInBackground`）。
+  /// `HerdrScrollbackLinkReader.isActive` へそのまま渡す。
+  final bool Function() isActive;
+
+  /// 現在 select モードか（`input.modeController.mode ==
+  /// TerminalMode.select`）。[HerdrCaretComposer.onScrollbackLinkReaderAssigned]
+  /// が、reader 未代入中に届いた viewport 確定を代入後に再送してよいかの
+  /// 判定に使う。
+  final bool Function() isSelectModeActive;
+
+  /// スクロールモードのリンク取得結果が更新されたときの再描画通知
+  /// （`access.markNeedsBuild()` への即時委譲）。
+  /// `HerdrScrollbackLinkReader.onUpdated` へそのまま渡す。
+  final void Function() notifyScrollbackLinksUpdated;
+
+  /// テスト注入 scrollback-links helper runner（`TerminalScreen.
+  /// herdrScrollbackLinkHelperRunner`）。[injectedCaretReader] と同じ
+  /// 経路（本番は null）。SSH 境界だけを差し替え、reader 本体は本番と同じ
+  /// ものを動かす。
+  final HerdrScrollbackLinkHelperRunner? Function()
+  injectedScrollbackLinkHelperRunner;
+
+  /// 現在のスクロールモードのスナップショット identity。
+  /// `TerminalScrollFollowController.currentSnapshotIdentity` への即時委譲。
+  /// `HerdrScrollbackLinkReader.currentSnapshotIdentity` へそのまま渡す。
+  final ({Object? identity, int generation})? Function()
+  currentSnapshotIdentity;
 }
 
 /// herdr state の単一所有（notifier×2・リングバッファ・cache・bridge）と、

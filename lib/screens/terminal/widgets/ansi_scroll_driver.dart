@@ -164,6 +164,30 @@ class AnsiScrollDriver {
       );
     });
   }
+
+  /// 現在描画中の行の範囲（0-based、両端含む。
+  /// `[i_top, i_bot]`）。
+  ///
+  /// 固定 `itemExtent`（[AnsiDisplayModel.lineHeight]）のリストであることを
+  /// 利用し、スクロールオフセットとビューポート高さから直接算出する
+  /// （`scrollToCaret` と同じ `parsedLinesCache`/`lineHeight` を使用）。
+  /// controller 未接続・行が無い・lineHeight が不正なときは `null`
+  /// （呼び出し側は次フレームで 1 回だけ再試行する）。
+  ({int top, int bottom})? visibleLineRange() {
+    if (!host.isActive || !controller.hasClients) return null;
+    final lines = content.parsedLinesCache;
+    if (lines == null || lines.isEmpty) return null;
+    final lineHeight = content.lineHeight;
+    if (lineHeight <= 0) return null;
+
+    final pos = controller.position;
+    final lastIndex = lines.length - 1;
+    final top = (pos.pixels / lineHeight).floor().clamp(0, lastIndex);
+    final bottomRaw =
+        ((pos.pixels + pos.viewportDimension) / lineHeight).ceil() - 1;
+    final bottom = bottomRaw.clamp(top, lastIndex);
+    return (top: top, bottom: bottom);
+  }
 }
 
 /// [AnsiScrollDriver] が State から読み取るホストインターフェース。

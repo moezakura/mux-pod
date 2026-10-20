@@ -121,13 +121,19 @@ class SessionPollEngine {
       }
 
       // コンテンツ差分があれば更新（C1/C7 port 経由・select バッファは 3 段契約）
+      // hyperlinks（herdr OSC 8 ハイパーリンク実験機能）も差分判定に
+      // 含める。本文・caret が同じでもリンクだけ変わった poll を取りこぼさ
+      // ない（変更判定にリンクの同値判定を加えないと、本文が同じでリンクだけ
+      // 変わった更新が表示に届かない）。
       final currentView = runtime.viewNotifier.value;
       if (processedOutput != currentView.content ||
-          !caretEquals(snapshot.caret, currentView.caret)) {
+          !caretEquals(snapshot.caret, currentView.caret) ||
+          !paneHyperlinksEquals(snapshot.hyperlinks, currentView.hyperlinks)) {
         if (env.input.isSelectManualActive) {
           env.input.captureSelectUpdate(
             content: processedOutput,
             caret: snapshot.caret,
+            hyperlinks: snapshot.hyperlinks,
             targetIdentity: herdrIdentity,
           );
         } else {
@@ -135,6 +141,7 @@ class SessionPollEngine {
             processedOutput,
             targetIdentity: herdrIdentity,
             caret: snapshot.caret,
+            hyperlinks: snapshot.hyperlinks,
           );
         }
       }

@@ -10,6 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/backend/domain/pane_content_reader.dart';
 import '../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
+import '../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart'
+    show HerdrScrollbackLinkHelperRunner;
 import '../../widgets/scroll_to_bottom_button.dart'
     show ScrollToBottomButtonState;
 import 'widgets/ansi_text_view.dart' show AnsiTextViewState;
@@ -59,6 +62,15 @@ abstract interface class TerminalScreenAccess {
   PaneContentReader? get injectedPaneContentReader;
   DateTime Function()? get herdrCacheClock;
   HerdrCaretSnapshotReader? get herdrCaretReader;
+
+  /// テスト注入用: 通常表示のハイパーリンク reader（herdr OSC 8 ハイパー
+  /// リンク実験機能）。[herdrCaretReader] と同じ経路（本番は null）。
+  HerdrHyperlinkReader? get herdrHyperlinkReader;
+
+  /// テスト注入用: スクロールモードのリンク読取の SSH 境界（helper
+  /// runner）（herdr OSC 8 ハイパーリンク実験機能）。
+  /// [herdrCaretReader] と同じ経路（本番は null）。
+  HerdrScrollbackLinkHelperRunner? get herdrScrollbackLinkHelperRunner;
 
   // GlobalKey（root 所有・シェルと AnsiTextView が使用）
   GlobalKey<AnsiTextViewState> get ansiTextViewKey;

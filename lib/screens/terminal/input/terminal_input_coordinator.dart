@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/custom_keys_provider.dart' show customKeysProvider;
 import '../../../screens/custom_keys/custom_keys_screen.dart'
     show CustomKeysScreen;
-import '../../../services/backend/domain/pane_frame_reader.dart' show PaneCaret;
+import '../../../services/backend/domain/pane_frame_reader.dart'
+    show PaneCaret, PaneHyperlinks;
 import '../../../services/backend/domain/wheel_encoder.dart'
     show ScrollSendKind;
 import '../../../services/custom_keys/custom_key_button.dart'
@@ -162,6 +163,9 @@ class TerminalInputCoordinator {
 
   TerminalScrollFollowController get scrollFollow => _follow;
 
+  /// mode 変化通知の登録窓口（root が `onModeChanged` を設定する）。
+  TerminalModeController get modeController => _mode;
+
   // --- モード遷移（副作用順は HEAD L1036-1143 を厳守・R1/R2） ---
 
   /// 通常モードへ戻す（TERM-MODE-RESET-001）。
@@ -250,11 +254,13 @@ class TerminalInputCoordinator {
   void captureSelectUpdate({
     required String content,
     PaneCaret? caret,
+    PaneHyperlinks? hyperlinks,
     Object? targetIdentity,
   }) {
     _mode.captureSelectUpdate(
       content: content,
       caret: caret,
+      hyperlinks: hyperlinks,
       targetIdentity: targetIdentity,
     );
   }
@@ -381,6 +387,9 @@ class TerminalInputCoordinator {
 
   @visibleForTesting
   String bufferedContentForTesting() => _mode.bufferedContent;
+
+  @visibleForTesting
+  PaneHyperlinks? bufferedHyperlinksForTesting() => _mode.bufferedHyperlinks;
 
   @visibleForTesting
   void overrideScrollSendKindForTesting(ScrollSendKind? kind) {

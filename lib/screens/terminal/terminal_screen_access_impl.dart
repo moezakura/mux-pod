@@ -8,6 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../services/backend/domain/pane_content_reader.dart';
 import '../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
+import '../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart'
+    show HerdrScrollbackLinkHelperRunner;
 import '../../widgets/scroll_to_bottom_button.dart'
     show ScrollToBottomButtonState;
 import 'terminal_reconnect_panel.dart';
@@ -28,6 +31,8 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
     required this.injectedPaneContentReaderOf,
     required this.herdrCacheClockOf,
     required this.herdrCaretReaderOf,
+    required this.herdrHyperlinkReaderOf,
+    required this.herdrScrollbackLinkHelperRunnerOf,
     required BuildContext Function() contextOf,
     required bool Function() isMountedFn,
     required bool Function() isDisposedFn,
@@ -55,6 +60,9 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
   final PaneContentReader? Function() injectedPaneContentReaderOf;
   final DateTime Function()? Function() herdrCacheClockOf;
   final HerdrCaretSnapshotReader? Function() herdrCaretReaderOf;
+  final HerdrHyperlinkReader? Function() herdrHyperlinkReaderOf;
+  final HerdrScrollbackLinkHelperRunner? Function()
+  herdrScrollbackLinkHelperRunnerOf;
   final BuildContext Function() _contextOf;
   final bool Function() _isMounted;
   final bool Function() _isDisposed;
@@ -111,6 +119,13 @@ class TerminalScreenAccessImpl implements TerminalScreenAccess {
 
   @override
   HerdrCaretSnapshotReader? get herdrCaretReader => herdrCaretReaderOf();
+
+  @override
+  HerdrHyperlinkReader? get herdrHyperlinkReader => herdrHyperlinkReaderOf();
+
+  @override
+  HerdrScrollbackLinkHelperRunner? get herdrScrollbackLinkHelperRunner =>
+      herdrScrollbackLinkHelperRunnerOf();
 
   // ---- #125 切断UX（状態所有者へ委譲）----
 

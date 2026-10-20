@@ -12,6 +12,8 @@ library;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../services/backend/domain/pane_frame_reader.dart'
+    show PaneHyperlinks;
 import 'session_env.dart';
 import 'session_models.dart';
 
@@ -51,12 +53,22 @@ class SessionViewPipeline {
   String _pendingContent = '';
 
   /// スロットリング付きで更新をスケジュール（`_scheduleUpdate`）。
-  void scheduleUpdate(String content, {Object? targetIdentity, dynamic caret}) {
+  ///
+  /// [hyperlinks]（herdr OSC 8 ハイパーリンク実験機能）は [caret] と
+  /// 並行して pending へ書込・適用する。新規引数は `dynamic` にせず
+  /// [PaneHyperlinks]? で型付けする。
+  void scheduleUpdate(
+    String content, {
+    Object? targetIdentity,
+    dynamic caret,
+    PaneHyperlinks? hyperlinks,
+  }) {
     _pendingContent = content;
 
     // C9: pending は root State（PendingViewStore）へ書込（二重所有回避）。
     env.pendingStore.pendingTargetIdentity = targetIdentity;
     env.pendingStore.pendingCaret = caret;
+    env.pendingStore.pendingHyperlinks = hyperlinks;
 
     // すでに更新がスケジュール済みなら何もしない
     if (_pendingUpdate) return;
@@ -91,6 +103,7 @@ class SessionViewPipeline {
     view.viewNotifier.value = view.viewNotifier.value.copyWith(
       content: _pendingContent,
       caret: env.pendingStore.pendingCaret as dynamic,
+      hyperlinks: env.pendingStore.pendingHyperlinks,
     );
 
     // 初回コンテンツ受信時に一番下へスクロール（TERM-SCROLL-004）
@@ -122,6 +135,7 @@ class SessionViewPipeline {
       buffered.content,
       targetIdentity: buffered.targetIdentity,
       caret: buffered.caret,
+      hyperlinks: buffered.hyperlinks as PaneHyperlinks?,
     );
   }
 }

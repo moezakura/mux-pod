@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/terminal_display_provider.dart';
 import '../../../services/backend/domain/pane_frame_reader.dart';
+import '../../../services/herdr/hyperlink/scrollback_link_cache.dart';
+import '../../../services/terminal/ansi_parser.dart' show ParsedLine;
 import '../../../services/terminal/font_calculator.dart';
 import '../../../services/terminal/terminal_font_styles.dart';
 import '../../../services/tmux/pane_navigator.dart';
@@ -19,6 +21,8 @@ import 'ansi_link_probe.dart';
 import 'ansi_scroll_driver.dart';
 import 'ansi_terminal_model.dart';
 import 'ansi_terminal_view.dart';
+import 'herdr_hyperlink_reconciler.dart';
+import 'herdr_scrollback_hyperlink_overlay.dart';
 import 'terminal_zoom.dart';
 
 export 'ansi_terminal_model.dart' show KeyInputEvent, TerminalMode;
@@ -75,6 +79,31 @@ class AnsiTextView extends ConsumerStatefulWidget {
   /// 同じ経路へ集約する。
   final PaneCaret? caret;
 
+  /// herdr 通常表示のリンク情報。
+  ///
+  /// null なら重ね合わせを行わない（パーサ由来の OSC 8 のみ表示。既存挙動と
+  /// 同一）。[mode] が [TerminalMode.select]（スクロールモード）の間は、
+  /// このフィールドの値に関わらず重ね合わせを行わない（スクロールモード中は
+  /// 通常表示の viewport リンクを重ねず、別経路の `ScrollbackLinkCache` に
+  /// 切り替える）。
+  final PaneHyperlinks? herdrHyperlinks;
+
+  /// herdr スクロールモードのリンクキャッシュ。
+  ///
+  /// [mode] が [TerminalMode.select] のときだけ参照する。`null` なら
+  /// 重ね合わせを行わない（未取得・機能 OFF・非 herdr backend 等）。
+  /// 世代ガード（[currentScrollbackSnapshotIdentity] との identity・
+  /// generation 照合。identity は `==` で比較する）は [AnsiTextViewState]
+  /// 側で行う（`herdr_scrollback_hyperlink_overlay.dart`）。
+  final ScrollbackLinkCache? scrollbackLinkCache;
+
+  /// 現在のスクロールモードのスナップショット identity。
+  ///
+  /// `TerminalScrollFollowController.currentSnapshotIdentity` と同じ形。
+  /// [scrollbackLinkCache] の identity・generation のどちらかと一致しなければ
+  /// 重ね合わせない（スナップショット差し替え後の結果を表示に混ぜない）。
+  final ({Object? identity, int generation})? currentScrollbackSnapshotIdentity;
+
   /// ホールド+スワイプで矢印キー入力時のコールバック
   /// direction: 'Up', 'Down', 'Left', 'Right'
   final void Function(String direction)? onArrowSwipe;
@@ -117,6 +146,9 @@ class AnsiTextView extends ConsumerStatefulWidget {
     this.cursorX = 0,
     this.cursorY = 0,
     this.caret,
+    this.herdrHyperlinks,
+    this.scrollbackLinkCache,
+    this.currentScrollbackSnapshotIdentity,
     this.onArrowSwipe,
     this.onTwoFingerSwipe,
     this.navigableDirections,
@@ -164,6 +196,30 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
   /// 方式）から行われる。`onLinkProbeTap` 合成方式は結線しない（二重起動
   /// 防止・同時結線禁止）。
   final AnsiLinkProbeRegistry _linkProbeRegistry = AnsiLinkProbeRegistry();
+
+  /// herdr 通常表示のリンク重ね合わせのメモ
+  /// （入力が同じなら前回の結果を返す）。
+  final HerdrHyperlinkReconcileMemo _herdrHyperlinkMemo =
+      HerdrHyperlinkReconcileMemo();
+
+  /// herdr スクロールモードのリンク重ね合わせのメモ。
+  /// `(cache.generation, cache.revision)` をキーにする
+  /// （[ScrollbackLinkCache.revision] のドキュメント参照）。
+  final HerdrScrollbackHyperlinkMemo _scrollbackHyperlinkMemo =
+      HerdrScrollbackHyperlinkMemo();
+
+  /// 直近の `build()` が計算した本文（herdr のリンク重ね合わせを適用する
+  /// **前**の解析済み行）。[bodyLineTexts] が呼ばれたときに初めて
+  /// プレーンテキストへ変換する遅延評価（電力方針 #128。設定 OFF・tmux
+  /// backend など `bodyLineTexts()` を誰も呼ばない場合は `segments.map((s)=>s.text).join()` のコストを払わない）。
+  /// 描画前（`initState` 直後）は `null`。
+  List<ParsedLine>? _bodyLineTextsSource;
+
+  /// [bodyLineTexts] の計算結果のメモ（[_bodyLineTextsSource] が
+  /// `AnsiDisplayModel.parsedLines` のキャッシュにより同一インスタンスの
+  /// ままなら、呼ばれるたびに再計算しない）。
+  List<ParsedLine>? _cachedBodyLineTextsSource;
+  List<String>? _cachedBodyLineTexts;
 
   /// 描画に使う解決済みカーソル位置と描画可否。
   ({int x, int y, bool draw}) get _resolvedCaret =>
@@ -246,6 +302,33 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
 
   /// カーソル位置までスクロール
   void scrollToCaret() => _scrollDriver.scrollToCaret();
+
+  /// 現在描画中の行の範囲（`AnsiScrollDriver.visibleLineRange` への
+  /// 委譲）。
+  ({int top, int bottom})? visibleLineRange() =>
+      _scrollDriver.visibleLineRange();
+
+  /// 直近の `build()` が計算した本文のプレーンテキスト行
+  /// （[_bodyLineTextsSource] 参照）。herdr のリンク重ね合わせを適用する前の
+  /// 行数・行内容と一致する（オーバーレイは表示スタイルのみを変え、行数・
+  /// テキスト内容自体は変えない）。呼ばれたときに初めて変換する遅延評価
+  /// （電力方針 #128）。throw しない・sync・副作用は
+  /// このメモの更新のみ。描画前（`initState` 直後）は空リスト。
+  List<String> bodyLineTexts() {
+    final source = _bodyLineTextsSource;
+    if (source == null) return const [];
+    if (identical(_cachedBodyLineTextsSource, source)) {
+      return _cachedBodyLineTexts!;
+    }
+    final texts = List<String>.generate(
+      source.length,
+      (i) => source[i].segments.map((s) => s.text).join(),
+      growable: false,
+    );
+    _cachedBodyLineTextsSource = source;
+    _cachedBodyLineTexts = texts;
+    return texts;
+  }
 
   // === 修飾キートグル（外部からの制御用） ===
 
@@ -418,6 +501,32 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
           fontFamily: settings.fontFamily,
         );
 
+        // herdr のリンク重ね合わせを適用する**前**の本文（parsedLines）
+        // の参照だけを持つ（電力方針 #128）。プレーン
+        // テキストへの変換（`segments.map((s)=>s.text).join()`。
+        // `herdr_hyperlink_reconciler.dart` と同じ式）は [bodyLineTexts] が
+        // 実際に呼ばれたときにだけ行う（遅延評価）。
+        _bodyLineTextsSource = parsedLines;
+
+        // herdr 通常表示のリンク重ね合わせ。
+        // スクロールモード（select）は通常表示の viewport リンクを重ねず、
+        // ScrollbackLinkCache 経由の重ね合わせに切り替える。
+        final displayLines = isSelectMode
+            ? _scrollbackHyperlinkMemo.overlay(
+                bodyLines: parsedLines,
+                parser: _content.parser,
+                cache: widget.scrollbackLinkCache,
+                currentSnapshotIdentity:
+                    widget.currentScrollbackSnapshotIdentity,
+              )
+            : _herdrHyperlinkMemo.reconcile(
+                bodyLines: parsedLines,
+                parser: _content.parser,
+                hyperlinks: widget.herdrHyperlinks,
+                paneWidth: widget.paneWidth,
+                paneHeight: widget.paneHeight,
+              );
+
         // 行に依存しない基本スタイルは1回だけ計算
         // （itemBuilder内での毎フレームGoogleFonts呼び出しを回避）
         final baseTextStyle = TerminalFontStyles.getTextStyle(
@@ -432,7 +541,7 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
         // コンテンツがビューポートに満たない場合、先頭パディングで下端に揃える
         // （履歴が少ないライブ表示でもターミナルとして自然な見た目になる）。
         // コンテンツ高 ≥ ビューポート高ならパディングなし（従来動作を維持）。
-        final contentHeight = parsedLines.length * lineHeight;
+        final contentHeight = displayLines.length * lineHeight;
         final viewportHeight = constraints.maxHeight.isFinite
             ? constraints.maxHeight
             : contentHeight;
@@ -448,13 +557,13 @@ class AnsiTextViewState extends ConsumerState<AnsiTextView>
           physics: widget.mode == TerminalMode.scrollSend
               ? const NeverScrollableScrollPhysics()
               : const ClampingScrollPhysics(),
-          itemCount: parsedLines.length,
+          itemCount: displayLines.length,
           itemExtent: lineHeight,
           rowBuilder: (context, index) => AnsiLineRow(
-            line: parsedLines[index],
+            line: displayLines[index],
             index: index,
             content: _content,
-            parsedLineCount: parsedLines.length,
+            parsedLineCount: displayLines.length,
             paneHeight: widget.paneHeight,
             mode: widget.mode,
             showTerminalCursor: settings.showTerminalCursor,
