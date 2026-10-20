@@ -1031,6 +1031,8 @@
   "settingsOpenLinksDirectlyDescription": "Open https/http links in the terminal without confirmation. When off, a confirmation dialog shows the URL before opening.",
   "settingsExperimentalHerdrCaretPositionTitle": "Experimental: Herdr caret position",
   "settingsExperimentalHerdrCaretPositionDescription": "Experimental. Herdr connections only, best-effort (falls back to the current view on failure). Installs a small helper client on the SSH host.",
+  "settingsExperimentalHerdrHyperlinksTitle": "Experimental: Herdr hyperlinks",
+  "settingsExperimentalHerdrHyperlinksDescription": "Experimental. Herdr connections only, best-effort (falls back to plain text without links on failure). Installs a small helper client on the SSH host. In scroll mode, the Herdr display on the PC scrolls briefly while links are fetched. With Herdr v0.7.5/v0.8.2, another client directly attached to the same pane may be disconnected.",
   "settingsAdjustMode": "Adjust Mode",
   "settingsAdjustModeNone": "None",
   "settingsAdjustModeAutoFit": "Auto Fit",

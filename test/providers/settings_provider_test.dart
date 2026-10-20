@@ -432,4 +432,82 @@ void main() {
       },
     );
   });
+
+  group('SettingsNotifier experimentalHerdrHyperlinksEnabled 永続化', () {
+    test('未保存時はデフォルト false になる', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(settingsProvider.notifier).reload();
+
+      expect(
+        container.read(settingsProvider).experimentalHerdrHyperlinksEnabled,
+        isFalse,
+      );
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.containsKey('settings_experimental_herdr_hyperlinks_enabled'),
+        isFalse,
+      );
+    });
+
+    test(
+      'setExperimentalHerdrHyperlinksEnabled で state が更新され SharedPreferences に保存される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setExperimentalHerdrHyperlinksEnabled(true);
+
+        expect(
+          container.read(settingsProvider).experimentalHerdrHyperlinksEnabled,
+          isTrue,
+        );
+        final prefs = await SharedPreferences.getInstance();
+        expect(
+          prefs.getBool('settings_experimental_herdr_hyperlinks_enabled'),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      '保存した experimentalHerdrHyperlinksEnabled は新規コンテナ（再起動相当）の再読込で復元される',
+      () async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container.read(settingsProvider.notifier).reload();
+        await container
+            .read(settingsProvider.notifier)
+            .setExperimentalHerdrHyperlinksEnabled(true);
+
+        final restarted = ProviderContainer();
+        addTearDown(restarted.dispose);
+        await restarted.read(settingsProvider.notifier).reload();
+
+        expect(
+          restarted.read(settingsProvider).experimentalHerdrHyperlinksEnabled,
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'copyWith は experimentalHerdrHyperlinksEnabled を指定しない場合他の設定のみ変更する',
+      () {
+        const base = AppSettings(experimentalHerdrHyperlinksEnabled: true);
+        final updated = base.copyWith(keepScreenOn: false);
+        expect(updated.experimentalHerdrHyperlinksEnabled, isTrue);
+        expect(updated.keepScreenOn, isFalse);
+
+        final toggled = base.copyWith(
+          experimentalHerdrHyperlinksEnabled: false,
+        );
+        expect(toggled.experimentalHerdrHyperlinksEnabled, isFalse);
+      },
+    );
+  });
 }

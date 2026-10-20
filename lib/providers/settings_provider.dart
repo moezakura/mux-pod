@@ -155,6 +155,16 @@ class SettingsNotifier extends Notifier<AppSettings> {
     );
   }
 
+  /// 実験的: Herdrハイパーリンク（通常表示・スクロールモード共通）の取得を設定
+  // inventory: SETTINGS-HERDR-HYPERLINKS-007
+  Future<void> setExperimentalHerdrHyperlinksEnabled(bool value) async {
+    state = state.copyWith(experimentalHerdrHyperlinksEnabled: value);
+    await _persistence.save(
+      SettingsPersistence.experimentalHerdrHyperlinksEnabledKey,
+      value,
+    );
+  }
+
   /// ペインナビゲーション方向の反転を設定
   Future<void> setInvertPaneNavigation(bool value) async {
     state = state.copyWith(invertPaneNavigation: value);

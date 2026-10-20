@@ -118,19 +118,19 @@ void main() {
       final systemIndex = container.read(settingsSearchIndexProvider);
       expect(
         systemIndex.items.length,
-        44,
-      ); // Display12+Behavior13+Connection16+About3
+        45,
+      ); // Display13+Behavior13+Connection16+About3
       expect(systemIndex.current, isNotNull);
       expect(systemIndex.other, isNotNull);
 
       await setLanguage('ja');
       final jaIndex = container.read(settingsSearchIndexProvider);
-      expect(jaIndex.items.length, 44);
+      expect(jaIndex.items.length, 45);
       expect(jaIndex.other, isNotNull); // en 側も並置
 
       await setLanguage('en');
       final enIndex = container.read(settingsSearchIndexProvider);
-      expect(enIndex.items.length, 44);
+      expect(enIndex.items.length, 45);
       expect(enIndex.other, isNotNull); // ja 側も並置
     });
   });
@@ -152,6 +152,11 @@ void main() {
     test('タイトル: "caret" で experimentalHerdrCaretPosition がヒット', () async {
       await setQuery('caret');
       expect(hitIds(), contains('experimentalHerdrCaretPosition'));
+    });
+
+    test('タイトル: "hyperlink" で experimentalHerdrHyperlinks がヒット', () async {
+      await setQuery('hyperlink');
+      expect(hitIds(), contains('experimentalHerdrHyperlinks'));
     });
 
     test('カテゴリ名マッチ: "Behavior" で Behavior カテゴリ全項目がヒット', () async {
@@ -231,6 +236,24 @@ void main() {
       },
     );
 
+    test(
+      'ja 表示中に "hyperlink" で experimentalHerdrHyperlinks がヒット（en ラベル照合）',
+      () async {
+        await setLanguage('ja');
+        await setQuery('hyperlink');
+        expect(hitIds(), contains('experimentalHerdrHyperlinks'));
+      },
+    );
+
+    test(
+      'en 表示中に「ハイパーリンク」で experimentalHerdrHyperlinks がヒット（ja ラベル照合）',
+      () async {
+        await setLanguage('en');
+        await setQuery('ハイパーリンク');
+        expect(hitIds(), contains('experimentalHerdrHyperlinks'));
+      },
+    );
+
     test("'system'（端末ロケール=テスト en）でも en/ja 両方言語でヒット（M-2）", () async {
       // 初期値 'system' のまま
       await setQuery('font');
@@ -275,15 +298,64 @@ void main() {
     });
   });
 
-  group('検索対象の完全性（全44項目）', () {
-    test('44項目すべてが descriptor に存在しカテゴリと order が一意', () {
+  group('experimentalHerdrHyperlinks の文言（副作用2点の明記）', () {
+    // 確定した文言と一字一句一致することを確認する。
+    // 副作用2点: (1) PC側のHerdrの表示が動く、(2) 17/20で別クライアントが切断され得る。
+    const enTitle = 'Experimental: Herdr hyperlinks';
+    const enDescription =
+        'Experimental. Herdr connections only, best-effort (falls back to '
+        'plain text without links on failure). Installs a small helper '
+        'client on the SSH host. In scroll mode, the Herdr display on the '
+        'PC scrolls briefly while links are fetched. With Herdr '
+        'v0.7.5/v0.8.2, another client directly attached to the same pane '
+        'may be disconnected.';
+    const jaTitle = '実験的: Herdrハイパーリンク';
+    const jaDescription =
+        '実験的機能。Herdr接続のみで動作し、best-effortで取得します'
+        '（失敗時はリンクなしの従来表示）。SSH先へ小さな補助クライアントを'
+        '配置します。スクロールモードでは、リンク取得のためPC側のHerdrの'
+        '表示が一時的にスクロールします。Herdr v0.7.5/v0.8.2では、'
+        '同じペインに直接attachしている別のクライアントが切断されることが'
+        'あります。';
+
+    test('en の title/description が確定文言と一字一句一致する', () {
+      final l10n = l10nForLanguage('en');
+      expect(l10n.settingsExperimentalHerdrHyperlinksTitle, enTitle);
+      expect(
+        l10n.settingsExperimentalHerdrHyperlinksDescription,
+        enDescription,
+      );
+      // 副作用2点が説明文に含まれる
+      expect(enDescription, contains('the Herdr display on the PC scrolls'));
+      expect(
+        enDescription,
+        contains('another client directly attached to the same pane'),
+      );
+    });
+
+    test('ja の title/description が確定文言と一字一句一致する', () {
+      final l10n = l10nForLanguage('ja');
+      expect(l10n.settingsExperimentalHerdrHyperlinksTitle, jaTitle);
+      expect(
+        l10n.settingsExperimentalHerdrHyperlinksDescription,
+        jaDescription,
+      );
+      // 副作用2点が説明文に含まれる
+      expect(jaDescription, contains('PC側のHerdrの表示が一時的にスクロール'));
+      expect(jaDescription, contains('別のクライアントが切断されることが'));
+    });
+  });
+
+  group('検索対象の完全性（全45項目）', () {
+    test('45項目すべてが descriptor に存在しカテゴリと order が一意', () {
       final index = container.read(settingsSearchIndexProvider);
       final ids = index.items.map((e) => e.id).toList();
-      expect(ids.toSet().length, 44);
+      expect(ids.toSet().length, 45);
       expect(
         ids,
         containsAll([
           'openLinksDirectly',
+          'experimentalHerdrHyperlinks',
           'background-mobile',
           'background-wifi',
           'background-unknown',
@@ -299,7 +371,7 @@ void main() {
       }
       expect(
         index.items.where((e) => e.category == SettingsCategory.display).length,
-        12,
+        13,
       );
       expect(
         index.items
