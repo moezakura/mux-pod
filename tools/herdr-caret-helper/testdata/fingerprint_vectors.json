@@ -1,0 +1,27 @@
+[
+  {
+    "case": "ascii",
+    "displayText": "hello world",
+    "fingerprint": "779a65e7023cd2e7"
+  },
+  {
+    "case": "cjk-fullwidth",
+    "displayText": "こんにちは",
+    "fingerprint": "350b421dd8fc91ad"
+  },
+  {
+    "case": "combining-character",
+    "displayText": "café",
+    "fingerprint": "14ecc3ece0723bb7"
+  },
+  {
+    "case": "whitespace-only",
+    "displayText": "   ",
+    "fingerprint": null
+  },
+  {
+    "case": "trailing-whitespace",
+    "displayText": "hello   ",
+    "fingerprint": "a430d84680aabd0b"
+  }
+]

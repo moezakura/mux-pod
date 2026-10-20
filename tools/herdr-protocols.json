@@ -1,4 +1,6 @@
 {
   "minimumSupportedProtocol": 17,
-  "caretSupportedProtocols": [17, 20]
+  "caretSupportedProtocols": [17, 20, 22],
+  "hyperlinkSupportedProtocols": [17, 20, 22],
+  "scrollbackLinkSupportedProtocols": [17, 20, 22]
 }
