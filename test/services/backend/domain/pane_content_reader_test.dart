@@ -1,4 +1,5 @@
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
+import 'package:flutter_muxpod/services/backend/domain/pane_frame_reader.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_read.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_pane_content_reader.dart';
@@ -35,6 +36,18 @@ void main() {
       expect(snapshot.cursorY, 0);
       expect(snapshot.paneMode, '');
       expect(snapshot.hasAnsi, isFalse);
+      expect(snapshot.caret, isNull);
+      // hyperlinks は既定 null（tmux 等・未取得時は既存の挙動に影響なし）。
+      expect(snapshot.hyperlinks, isNull);
+    });
+
+    test('hyperlinks is carried through when provided', () {
+      const hyperlinks = PaneHyperlinks(frameWidth: 80, frameHeight: 24);
+      const snapshot = MultiplexerPaneSnapshot(
+        content: 'hello',
+        hyperlinks: hyperlinks,
+      );
+      expect(snapshot.hyperlinks, same(hyperlinks));
     });
 
     test('geometry is carried through and exposes width/height', () {

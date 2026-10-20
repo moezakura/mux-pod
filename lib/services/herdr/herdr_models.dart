@@ -150,6 +150,14 @@ class HerdrPane {
   /// 内部ターミナル ID。
   final String? terminalId;
 
+  /// pane の viewport 行数（`scroll.viewport_rows`。herdr OSC 8 ハイパーリンク
+  /// 実験機能）。
+  ///
+  /// `scroll` キーが無い・`viewport_rows` が無い・型が不正（整数以外）の
+  /// いずれでも null（欠損値。例外は投げない・フォールバックとしてのみ
+  /// 使う。値 0 は欠損ではなく「0」として null と区別する）。
+  final int? viewportRows;
+
   const HerdrPane({
     required this.id,
     required this.workspaceId,
@@ -160,6 +168,7 @@ class HerdrPane {
     this.foregroundCwd,
     this.revision = 0,
     this.terminalId,
+    this.viewportRows,
   });
 }
 
@@ -325,6 +334,16 @@ class HerdrSnapshot {
   /// [tab] に属する pane を返す。
   List<HerdrPane> panesFor(HerdrTab tab) =>
       panes.where((p) => p.tabId == tab.id).toList();
+
+  // inventory: HERDR-MODELS-SNAPSHOT-004
+  /// [id] の pane（無ければ null）。[HerdrLayout.rectFor] と対称
+  /// （herdr OSC 8 ハイパーリンク実験機能・viewport_rows 参照用）。
+  HerdrPane? paneFor(String id) {
+    for (final pane in panes) {
+      if (pane.id == id) return pane;
+    }
+    return null;
+  }
 }
 
 // inventory: HERDR-MODELS-PANE-CONTENT-001

@@ -54,6 +54,10 @@ class MultiplexerPaneSnapshot {
   /// （従来の cursorX / cursorY 契約へフォールバックする）。
   final PaneCaret? caret;
 
+  /// herdr 通常表示のリンク情報。他 backend・未取得時・設定 OFF
+  /// では null（既存フィールドには影響しない）。
+  final PaneHyperlinks? hyperlinks;
+
   const MultiplexerPaneSnapshot({
     required this.content,
     this.geometry,
@@ -62,6 +66,7 @@ class MultiplexerPaneSnapshot {
     this.paneMode = '',
     this.hasAnsi = false,
     this.caret,
+    this.hyperlinks,
   });
 
   /// 後方互換: 文字幅（不明なら 0）。

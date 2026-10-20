@@ -11,9 +11,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
+import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_installer.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_manager.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_manifest.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_shell_args.dart';
+import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_ssh.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_models.dart';
 import 'package:flutter_muxpod/services/sftp/sftp_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -272,6 +274,19 @@ void main() {
       expect(helperCmd, contains('--cols 100'));
       expect(helperCmd, contains('--rows 30'));
       expect(helperCmd, contains('--timeout-ms 1000'));
+      // hyperlinks/scrollback-links は --api-socket を渡すが、
+      // caret は渡さない（従来どおり）。
+      expect(helperCmd, isNot(contains('--api-socket')));
+    });
+
+    test('protocol 22 は実行対象になり '
+        '--protocol 22 で helper を呼ぶ', () async {
+      final env = _Env()..setUpLinux();
+      await env.run(status: env.status(protocol: 22));
+      final helperCmd = env.ssh.execCommands.firstWhere(
+        (c) => c.contains('--pane '),
+      );
+      expect(helperCmd, contains('--protocol 22'));
     });
 
     test('install memo: 同一 SshClient では 2 回目の run で uname を再実行しない', () async {
@@ -484,6 +499,76 @@ void main() {
       final env = _Env()..setUpLinux();
       env.ssh.execExceptions['--pane'] = TimeoutException('timed out');
       await expectLater(env.run(), _failsWith(HerdrCaretHelperFailure.timeout));
+    });
+  });
+
+  group('installer 共有', () {
+    test('installer を注入しなければ内部生成した installer を getter で返す', () {
+      final env = _Env()..setUpLinux();
+      expect(env.manager.installer, isA<HerdrCaretInstaller>());
+    });
+
+    test('installer を注入すると getter が同一インスタンスを返す', () {
+      final env = _Env()..setUpLinux();
+      final sharedInstaller = HerdrCaretInstaller(
+        ssh: env.ssh,
+        manifest: env.manifest,
+        sshRunner: HerdrCaretSshRunner(env.ssh),
+      );
+      final manager = HerdrCaretHelperManager(
+        ssh: env.ssh,
+        manifest: env.manifest,
+        installer: sharedInstaller,
+      );
+      expect(manager.installer, same(sharedInstaller));
+    });
+
+    test('既に配置済みの installer を注入すると、その manager の run() は '
+        'install（uname・sha256sum・upload）を再実行しない', () async {
+      final env = _Env()..setUpLinux();
+      final sharedInstaller = HerdrCaretInstaller(
+        ssh: env.ssh,
+        manifest: env.manifest,
+        sshRunner: HerdrCaretSshRunner(env.ssh),
+        binaryLoader: (assetPath) async => helperBytes,
+        sftpService: SftpService(),
+      );
+      // caret の manager が先に呼んで配置済みの状態を模す。
+      await sharedInstaller.ensureInstalled(
+        HerdrCaretHelperManager.defaultRunTimeout,
+      );
+      env.ssh.execCommands.clear();
+
+      final hyperlinkManager = HerdrCaretHelperManager(
+        ssh: env.ssh,
+        manifest: env.manifest,
+        installer: sharedInstaller,
+      );
+      final result = await hyperlinkManager.run(
+        status: env.status(),
+        paneId: 'w1:p2',
+        cols: 80,
+        rows: 24,
+      );
+      expect(result.remotePath, env.remotePath);
+      // install 済みの installer を共有したため、uname 等は再実行されない。
+      expect(env.ssh.execCommands.where((c) => c == 'uname -s'), isEmpty);
+      expect(env.ssh.openSftpCalls, 0);
+      // helper 自体の実行は毎回行われる（single-flight しない契約は不変）。
+      expect(
+        env.ssh.execCommands.where((c) => c.contains('--pane ')),
+        hasLength(1),
+      );
+    });
+
+    test('installer 未指定時は既存どおり binaryLoader/sftpService から内部生成する', () async {
+      // 既存の「未指定時は内部生成」経路のテスト（run 成功群）は無変更で
+      // 通ることを別グループで確認済み。ここでは getter が null にならない
+      // ことだけを再確認する（回帰の固定点）。
+      final env = _Env()..setUpLinux();
+      final result = await env.run();
+      expect(result.remotePath, env.remotePath);
+      expect(env.manager.installer, isNotNull);
     });
   });
 }

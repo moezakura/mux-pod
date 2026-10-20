@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter_muxpod/services/herdr/herdr_models.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -107,6 +108,7 @@ void main() {
       expect(pane.foregroundCwd, '/tmp');
       expect(pane.revision, 0);
       expect(pane.terminalId, 'term_6586edf6f766f1');
+      expect(pane.viewportRows, 23);
     });
 
     test('hierarchy helpers group tabs and panes by parent id', () {
@@ -120,6 +122,67 @@ void main() {
       expect(snapshot.panesFor(tab).first.id, 'w1:p1');
     });
 
+    test('paneFor returns the matching pane, or null if absent', () {
+      final snapshot = HerdrSnapshotParser.parse(kSnapshotFixture);
+      expect(snapshot.paneFor('w1:p1')?.id, 'w1:p1');
+      expect(snapshot.paneFor('w9:p9'), isNull);
+    });
+  });
+
+  group('HerdrPane.viewportRows（scroll.viewport_rows）', () {
+    HerdrPane paneWithScroll(String? scrollJson) {
+      final json =
+          '{"id":"cli:api:snapshot","result":{"snapshot":{"protocol":17,'
+          '"version":"0.7.5","workspaces":[],"tabs":[],"panes":[{'
+          '"pane_id":"w1:p1","workspace_id":"w1","tab_id":"w1:t1"'
+          '${scrollJson == null ? '' : ',"scroll":$scrollJson'}'
+          '}]},"type":"session_snapshot"}}';
+      return HerdrSnapshotParser.parse(json).panes.single;
+    }
+
+    test('present: scroll.viewport_rows が整数なら値を返す', () {
+      expect(paneWithScroll('{"viewport_rows":23}').viewportRows, 23);
+    });
+
+    test('absent: scroll キー自体が無ければ null', () {
+      expect(paneWithScroll(null).viewportRows, isNull);
+    });
+
+    test('0: 値 0 は欠損ではなく 0 として返す（null と区別する）', () {
+      expect(paneWithScroll('{"viewport_rows":0}').viewportRows, 0);
+    });
+
+    test('異常値（viewport_rows が文字列）: 例外を投げず null になり、'
+        '他フィールドのパースも成功する', () {
+      final pane = paneWithScroll('{"viewport_rows":"23"}');
+      expect(pane.viewportRows, isNull);
+      expect(pane.id, 'w1:p1');
+    });
+
+    test('異常値（scroll 自体がオブジェクトでない）: 例外を投げず null になり、'
+        'snapshot 全体のパースも成功する', () {
+      expect(() => paneWithScroll('"not-an-object"'), returnsNormally);
+      expect(paneWithScroll('"not-an-object"').viewportRows, isNull);
+    });
+
+    test('負値: ドメイン検証はせず、そのまま int として返す', () {
+      expect(paneWithScroll('{"viewport_rows":-1}').viewportRows, -1);
+    });
+
+    test('非有限 double（1e400 相当。JSON は指数表記で届く）: 例外を投げず null になる'
+        '（num.toInt() は Infinity/NaN で '
+        'UnsupportedError を投げるため int 以外は受け入れない）', () {
+      final pane = paneWithScroll('{"viewport_rows":1e400}');
+      expect(pane.viewportRows, isNull);
+      expect(pane.id, 'w1:p1');
+    });
+
+    test('小数（5.7）: 整数以外は null（黙って切り捨てない）', () {
+      expect(paneWithScroll('{"viewport_rows":5.7}').viewportRows, isNull);
+    });
+  });
+
+  group('HerdrSnapshotParser (continued)', () {
     test('tolerates missing optional fields', () {
       const json =
           '{"id":"cli:api:snapshot","result":{"snapshot":{"protocol":17,'

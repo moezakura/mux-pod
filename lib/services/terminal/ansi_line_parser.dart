@@ -3,6 +3,46 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'ansi_models.dart';
 import 'ansi_sgr_parser.dart';
 
+/// 文字オフセット単位（UTF-16 コードユニット）の URL 範囲 1 件
+/// （[AnsiLineParser.overlayLineLinks] の入力）。
+///
+/// メモ化のキー比較に値の等価性を使うため `==`/`hashCode` をオーバーライド
+/// する（同ファイルの [AnsiStyle] と同じ方式。free function ではなくこちら
+/// を採用: このファイル内のみで使う小さな値型のため）。
+final class CharLinkRange {
+  /// 開始（inclusive）。
+  final int start;
+
+  /// 終了（exclusive）。
+  final int end;
+
+  final String url;
+
+  const CharLinkRange({
+    required this.start,
+    required this.end,
+    required this.url,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CharLinkRange &&
+          start == other.start &&
+          end == other.end &&
+          url == other.url;
+
+  @override
+  int get hashCode => Object.hash(start, end, url);
+}
+
+/// [AnsiLineParser] が元の行ごとに保持する、直近1件の重ね合わせ結果。
+class _OverlayMemo {
+  final List<CharLinkRange> ranges;
+  final ParsedLine line;
+  const _OverlayMemo(this.ranges, this.line);
+}
+
 /// ANSIテキストをセグメント列・行リストへ分解する。
 ///
 /// SGRパラメータの解釈は注入された [AnsiSgrParser] に委譲する。
@@ -43,6 +83,15 @@ class AnsiLineParser {
   /// 同じ ParsedLine インスタンスを返すため SpanRenderer のスパンキャッシュ
   /// （弱参照キー）も同時にヒットする。
   Map<(AnsiStyle, String?, String), ParsedLine> _lineCache = const {};
+
+  /// [overlayLineLinks] が生成した重ね合わせ済み行のメモ。
+  ///
+  /// キーは元の行（[parseLines] が返したインスタンス）で、元の行ごとに
+  /// 直近1件だけを持つ（弱参照キー。元の行が GC されればこのエントリも
+  /// 一緒に消える。`_lineCache` を経由しない直接の副作用はここだけ）。
+  final Expando<_OverlayMemo> _overlays = Expando<_OverlayMemo>(
+    'herdrOverlayMemo',
+  );
 
   /// ANSIテキストをセグメントに分解
   ///
@@ -92,15 +141,154 @@ class AnsiLineParser {
     return parsed;
   }
 
-  /// 直近の [parseLines] が返した [ParsedLine] インスタンスのいずれかと
-  /// [identical] かどうかを返す。
+  /// 直近の [parseLines] が返した [ParsedLine] インスタンス、または
+  /// その行に対する直近の [overlayLineLinks] の結果のいずれかと
+  /// [identical] かどうかを返す（意味は変えない。「直近の parseLines
+  /// が返した行か」の判定を、その行から作られた直近の重ね合わせ結果にも
+  /// 広げるだけ。元の行が `_lineCache` から外れれば、重ね合わせ結果も
+  /// 判定対象から外れる — [_overlays] は元の行をキーにした弱参照のため）。
   ///
   /// スパンキャッシュ（SpanRenderer の弱参照 Expando）は ParsedLine
   /// インスタンスの同一性に依存するため、ファサードの委譲箇所で
   /// 「LineParser が生成したインスタンス」であることを assert するための
   /// 検証口（設計 v2 の規約違反検知）。
-  bool contains(ParsedLine line) =>
-      _lineCache.values.any((p) => identical(p, line));
+  bool contains(ParsedLine line) => _lineCache.values.any(
+    (p) => identical(p, line) || identical(_overlays[p]?.line, line),
+  );
+
+  /// [line]（[parseLines] が返した既知の行そのもの。[overlayLineLinks] の
+  /// 過去の戻り値は不可）に、文字オフセット単位の URL 範囲を重ねた行を返す。
+  ///
+  /// 呼び出し規約:
+  /// - null: [line]・[ranges]・戻り値のいずれも non-nullable。[ranges] は
+  ///   空リスト可（その場合 [line] をそのまま返す。新しいインスタンスは
+  ///   作らない）。
+  /// - 失敗時: throw しない。各区間は [line] の全文字列長で clamp し、
+  ///   clamp 後に `start >= end` になる区間は捨てる。区間が重なる場合は、
+  ///   [ranges] に先に現れたものを優先する（決定的規則）。
+  /// - 同期処理。
+  /// - 副作用は、[line] ごとに直近1件だけ持つメモ（[_overlays]）の更新の
+  ///   みで、[_lineCache]（[parseLines] の行キャッシュ）は変更しない。
+  ///
+  /// [line] が直近の [parseLines] の行キャッシュに無い呼び出しは委譲元の
+  /// 契約違反として assert で検知する（[contains] は
+  /// 「元の行 または その直近1段の重ね合わせ結果」を既知とする広い判定の
+  /// ため、ここでの入力検証には使えない。[overlayLineLinks] の戻り値を再度
+  /// 入力に渡すと、2 段目の重ね合わせ結果が [_overlays] に元の行以外の
+  /// キーで登録され、[contains] の1段限定の判定から漏れて
+  /// [AnsiParser.lineToTextSpan] の assert を壊すため、常に元の行だけを
+  /// 受け付ける）。
+  ParsedLine overlayLineLinks(
+    ParsedLine line, {
+    required List<CharLinkRange> ranges,
+  }) {
+    assert(
+      _lineCache.values.any((p) => identical(p, line)),
+      'overlayLineLinks の line は AnsiLineParser.parseLines が返した'
+      'インスタンスそのものであること（overlayLineLinks の戻り値を再度渡す'
+      'ことはできない）',
+    );
+    if (ranges.isEmpty) return line;
+
+    final memo = _overlays[line];
+    if (memo != null && _sameRanges(memo.ranges, ranges)) {
+      return memo.line;
+    }
+
+    final overlaid = _overlayLine(line, ranges);
+    _overlays[line] = _OverlayMemo(List.unmodifiable(ranges), overlaid);
+    return overlaid;
+  }
+
+  static bool _sameRanges(List<CharLinkRange> a, List<CharLinkRange> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// [line] の全文字列に対して [ranges] を重ね合わせ、新しい行を構築する
+  /// （境界分割 + 隣接する同一 style・url のセグメントの統合）。
+  ///
+  /// [ranges] は既に文字オフセット単位（呼び出し側で列 → 文字オフセット
+  /// 変換済み）である前提。既存 url のある位置は上書きしない（主判断は
+  /// 呼び出し側だが、ここでも防御的に確認する）。変化が無ければ [line] を
+  /// そのまま返す（identity 維持）。
+  ParsedLine _overlayLine(ParsedLine line, List<CharLinkRange> ranges) {
+    final lineText = line.segments.map((s) => s.text).join();
+    final lineLength = lineText.length;
+    if (lineLength == 0) return line;
+
+    final segmentBounds = <int>[0];
+    var acc = 0;
+    for (final segment in line.segments) {
+      acc += segment.text.length;
+      segmentBounds.add(acc);
+    }
+
+    // 位置ごとの割り当て url。clamp・空区間除去の後、「先に現れたものを
+    // 優先」する決定的規則で埋める（後続の range は既に埋まった位置を
+    // 上書きしない）。
+    final assignedUrl = List<String?>.filled(lineLength, null);
+    for (final range in ranges) {
+      final start = range.start.clamp(0, lineLength);
+      final end = range.end.clamp(0, lineLength);
+      if (start >= end) continue;
+      for (var pos = start; pos < end; pos++) {
+        assignedUrl[pos] ??= range.url;
+      }
+    }
+
+    int segmentIndexAt(int pos) {
+      for (var i = 0; i < line.segments.length; i++) {
+        if (pos >= segmentBounds[i] && pos < segmentBounds[i + 1]) return i;
+      }
+      return line.segments.length - 1;
+    }
+
+    // segment 境界 + range 境界を集約した分割点でテキストを再構成する。
+    final boundarySet = <int>{0, lineLength, ...segmentBounds};
+    for (final range in ranges) {
+      boundarySet.add(range.start.clamp(0, lineLength));
+      boundarySet.add(range.end.clamp(0, lineLength));
+    }
+    final boundaries = boundarySet.toList()..sort();
+
+    final newSegments = <AnsiSegment>[];
+    var changed = false;
+    for (var b = 0; b < boundaries.length - 1; b++) {
+      final start = boundaries[b];
+      final end = boundaries[b + 1];
+      if (start >= end) continue;
+
+      final originalSegment = line.segments[segmentIndexAt(start)];
+      // 既存 url があれば優先し、上書きしない（防御的確認）。
+      final url = originalSegment.url ?? assignedUrl[start];
+      if (originalSegment.url == null && url != null) changed = true;
+
+      final text = lineText.substring(start, end);
+      if (newSegments.isNotEmpty) {
+        final last = newSegments.last;
+        if (last.style == originalSegment.style && last.url == url) {
+          newSegments[newSegments.length - 1] = AnsiSegment(
+            last.text + text,
+            originalSegment.style,
+            url: url,
+          );
+          continue;
+        }
+      }
+      newSegments.add(AnsiSegment(text, originalSegment.style, url: url));
+    }
+
+    if (!changed) return line;
+    return ParsedLine(
+      segments: newSegments,
+      endStyle: line.endStyle,
+      endUrl: line.endUrl,
+    );
+  }
 
   /// テキストを走査してセグメント列・終了スタイル・終了 URL 状態を返す。
   ///

@@ -5,6 +5,7 @@ import 'ansi_models.dart';
 import 'ansi_span_renderer.dart';
 import 'ansi_sgr_parser.dart';
 
+export 'ansi_line_parser.dart' show CharLinkRange;
 export 'ansi_models.dart';
 export 'ansi_span_renderer.dart' show LinkTapResolver;
 
@@ -72,6 +73,15 @@ class AnsiParser {
   /// 引き継ぐ（🤝#2 行間 URL carry）。
   /// 返り値の[ParsedLine]リストは、仮想スクロールで行単位にレンダリングするために使用。
   List<ParsedLine> parseLines(String input) => _lineParser.parseLines(input);
+
+  /// [line] に文字オフセット単位の URL 範囲を重ねた行を返す（委譲のみ）。
+  ///
+  /// 呼び出し規約・assert は [AnsiLineParser.overlayLineLinks] のドキュメント
+  /// を参照。
+  ParsedLine overlayLineLinks(
+    ParsedLine line, {
+    required List<CharLinkRange> ranges,
+  }) => _lineParser.overlayLineLinks(line, ranges: ranges);
 
   /// セグメントをTextSpanに変換
   TextSpan toTextSpan(

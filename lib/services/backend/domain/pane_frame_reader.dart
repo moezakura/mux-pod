@@ -74,6 +74,80 @@ final class PaneCaret {
   }
 }
 
+/// helper が返す1件のリンク範囲（表示セル単位、両端含む、0始まり）。
+///
+/// 同じ行の中の1区間を表す。行をまたぐリンクはトラッカー側で行ごとの複数
+/// [PaneHyperlinkRange] に分けられる（herdr helper `hyperlinks`/
+/// `scrollback-links` の出力契約）。
+final class PaneHyperlinkRange {
+  /// 行番号（0始まり。取得元フレーム内の座標系）。
+  final int row;
+
+  /// 開始列（表示セル単位・0始まり・含む）。
+  final int startCol;
+
+  /// 終了列（表示セル単位・0始まり・含む）。
+  final int endCol;
+
+  const PaneHyperlinkRange({
+    required this.row,
+    required this.startCol,
+    required this.endCol,
+  });
+
+  @override
+  String toString() => 'PaneHyperlinkRange(row=$row, $startCol..$endCol)';
+}
+
+/// 1つの URL に対応するリンク（複数区間を持ち得る。行またぎ・非連続範囲を含む）。
+///
+/// 同一 URL の範囲は helper 側で1エントリへ集約される。
+final class PaneHyperlink {
+  final String url;
+  final List<PaneHyperlinkRange> ranges;
+
+  const PaneHyperlink({required this.url, required this.ranges});
+
+  @override
+  String toString() => 'PaneHyperlink($url, ${ranges.length} ranges)';
+}
+
+/// 通常表示（viewport）1回分のリンク取得結果（helper `hyperlinks` 由来。
+/// herdr OSC 8 ハイパーリンク実験機能）。
+///
+/// [rowFingerprints] は行番号（取得元フレーム内・0始まり）→ 16桁0埋め
+/// 小文字 hex（64bit FNV-1a。helper の `rowHashes` と同じ表現。空でない行のみ
+/// 持つ）で、本文行との整列に使う。tmux 等の backend・未取得時・
+/// 設定 OFF では null（[PaneFrame.hyperlinks] / [MultiplexerPaneSnapshot.hyperlinks] /
+/// `TerminalViewData.hyperlinks` がすべて optional）。
+final class PaneHyperlinks {
+  /// 取得時点の frame 幅（文字セル数・寸法検証用）。
+  final int frameWidth;
+
+  /// 取得時点の frame 高さ（文字セル数）。
+  final int frameHeight;
+
+  final List<PaneHyperlink> links;
+
+  final Map<int, String> rowFingerprints;
+
+  /// helper の出力量上限で行が切られたかどうか（helper 出力の `truncated`）。
+  final bool truncated;
+
+  const PaneHyperlinks({
+    required this.frameWidth,
+    required this.frameHeight,
+    this.links = const [],
+    this.rowFingerprints = const {},
+    this.truncated = false,
+  });
+
+  @override
+  String toString() =>
+      'PaneHyperlinks(${frameWidth}x$frameHeight, ${links.length} links, '
+      'truncated=$truncated)';
+}
+
 /// ペイン表示フレーム（content と geometry を合成した結果）。
 final class PaneFrame {
   /// 表示用の生テキスト（ANSI エスケープ付きの場合あり）。
@@ -98,6 +172,10 @@ final class PaneFrame {
   /// （従来の cursorX/cursorY 契約へフォールバックする）。
   final PaneCaret? caret;
 
+  /// herdr 通常表示のリンク情報。他 backend・未取得時・設定 OFF
+  /// では null（既存の cursorX/cursorY・content 契約には影響しない）。
+  final PaneHyperlinks? hyperlinks;
+
   const PaneFrame({
     required this.content,
     this.geometry,
@@ -106,12 +184,13 @@ final class PaneFrame {
     this.paneMode = '',
     this.hasAnsi = false,
     this.caret,
+    this.hyperlinks,
   });
 
   /// 共通 snapshot 形式へ変換する（表示コアはこの抽象に依存）。
   ///
-  /// 既存の cursorX / cursorY 契約は維持し、[caret] は追加フィールドとして
-  /// のみ伝搬する（既存 tmux 経路・テストは無影響）。
+  /// 既存の cursorX / cursorY 契約は維持し、[caret] / [hyperlinks] は追加
+  /// フィールドとしてのみ伝搬する（既存 tmux 経路・テストは無影響）。
   MultiplexerPaneSnapshot toSnapshot() => MultiplexerPaneSnapshot(
     content: content,
     geometry: geometry,
@@ -120,6 +199,7 @@ final class PaneFrame {
     paneMode: paneMode,
     hasAnsi: hasAnsi,
     caret: caret,
+    hyperlinks: hyperlinks,
   );
 }
 

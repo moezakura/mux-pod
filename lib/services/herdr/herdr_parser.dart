@@ -205,6 +205,13 @@ HerdrPane _parsePane(dynamic raw) {
     foregroundCwd: _asString(map, 'foreground_cwd'),
     revision: _asInt(map, 'revision'),
     terminalId: _asString(map, 'terminal_id'),
+    // viewport_rows は fallback 専用のオプション値のため、`scroll` が
+    // 欠損・不正形でも pane 全体のパースを失敗させない（_asMapOrNullSafe /
+    // _asIntOrNullSafe は例外を投げない）。
+    viewportRows: _asIntOrNullSafe(
+      _asMapOrNullSafe(map, 'scroll'),
+      'viewport_rows',
+    ),
   );
 }
 
@@ -260,6 +267,33 @@ String? _asString(dynamic parent, String key) {
   if (value == null) return null;
   if (value is String) return value;
   throw FormatException('Expected "$key" to be a string');
+}
+
+/// 欠損・型不正のいずれでも null を返す（例外を投げない）オブジェクト取得。
+///
+/// [_asMapOrNull] と異なり、キーの値が object 以外でも例外を投げない
+/// （herdr OSC 8 ハイパーリンク実験機能: `scroll` のような
+/// fallback 専用フィールドが壊れていても、呼び出し元の pane 全体の
+/// パースを失敗させないため）。
+Map<String, dynamic>? _asMapOrNullSafe(dynamic parent, String key) {
+  if (parent is! Map<String, dynamic>) return null;
+  final value = parent[key];
+  return value is Map<String, dynamic> ? value : null;
+}
+
+/// 欠損・型不正のいずれでも null を返す（例外を投げない）整数取得。
+///
+/// [_asInt] と異なり、欠損時は 0 ではなく null（「欠損値か実値 0 か」を
+/// 型で区別する。herdr OSC 8 ハイパーリンク実験機能）。
+///
+/// `int` 以外（`double` を含む）はすべて null にする（`num.toInt()` は非有限 double（`1e400` 等。JSON 上は `1e400` の
+/// ような指数表記で届く）に対して例外（`UnsupportedError`）を投げるため、
+/// fallback 専用フィールドとしては危険。小数（`5.7` 等）を黙って切り捨てる
+/// のも「整数以外は null」という契約に反するため、`int` のみを受け入れる）。
+int? _asIntOrNullSafe(dynamic parent, String key) {
+  if (parent is! Map<String, dynamic>) return null;
+  final value = parent[key];
+  return value is int ? value : null;
 }
 
 int _asInt(dynamic parent, String key) {
