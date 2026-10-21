@@ -97,8 +97,24 @@ class _FakeHerdrCaretHost implements HerdrCaretHost {
   @override
   HerdrAdapter? get frameAdapter => frameAdapterValue;
 
+  /// [snapshotCache] の読み出し回数。
+  int snapshotCacheReads = 0;
+
+  /// 非 null なら、[snapshotCache] の [swapSnapshotCacheOnRead] 回目の読み出し
+  /// でこの cache へ差し替える（以降の読み出しも差し替え後を返す）。await
+  /// 中に再接続（cache 差し替え）が起きた状況を模す。
+  HerdrSnapshotCache? swapSnapshotCacheTo;
+  int swapSnapshotCacheOnRead = 0;
+
   @override
-  HerdrSnapshotCache? get snapshotCache => snapshotCacheValue;
+  HerdrSnapshotCache? get snapshotCache {
+    snapshotCacheReads++;
+    if (swapSnapshotCacheTo != null &&
+        snapshotCacheReads == swapSnapshotCacheOnRead) {
+      snapshotCacheValue = swapSnapshotCacheTo;
+    }
+    return snapshotCacheValue;
+  }
 
   @override
   HerdrCaretSnapshotReader? get injectedReader => null;
@@ -726,6 +742,87 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 500));
       expect(runner.calls, 0, reason: 'select モードを抜けていれば再送しないこと');
+    });
+  });
+
+  group('HerdrCaretComposer の準備中にスナップショットが差し替わった場合', () {
+    const settings = AppSettings(
+      keepScreenOn: false,
+      experimentalHerdrHyperlinksEnabled: true,
+    );
+
+    // setup 系が snapshotCache を読む順序は、1 回目が開始時の取得、
+    // 2 回目が manifest 読込後の確認、3 回目が installer 取得後の確認。
+    Future<_FakeHerdrCaretHost> pumpHost(
+      WidgetTester tester,
+      FakeSshClient ssh, {
+      int? swapOnRead,
+    }) async {
+      final host = _FakeHerdrCaretHost(
+        ref: await _pumpRefFor(tester, ssh, settings: settings),
+      );
+      host.snapshotCacheValue = HerdrSnapshotCache(() => HerdrAdapter(ssh));
+      host.frameAdapterValue = HerdrAdapter(ssh);
+      host.scrollbackLinkCache = ScrollbackLinkCache();
+      if (swapOnRead != null) {
+        host.swapSnapshotCacheTo = HerdrSnapshotCache(() => HerdrAdapter(ssh));
+        host.swapSnapshotCacheOnRead = swapOnRead;
+      }
+      return host;
+    }
+
+    testWidgets('setupHyperlinkProduction は manifest 読込中に差し替わると'
+        ' hyperlinkReader を登録しない', (tester) async {
+      final ssh = FakeSshClient();
+
+      final control = await pumpHost(tester, ssh);
+      await tester.runAsync(
+        () => HerdrCaretComposer(control).setupHyperlinkProduction(ssh),
+      );
+      expect(control.hyperlinkReader, isNotNull, reason: '差し替えなしなら登録される');
+      expect(control.setFrameReaderCalls, 1);
+
+      final host = await pumpHost(tester, ssh, swapOnRead: 2);
+      await tester.runAsync(
+        () => HerdrCaretComposer(host).setupHyperlinkProduction(ssh),
+      );
+      expect(host.hyperlinkReader, isNull);
+      expect(host.setFrameReaderCalls, 0);
+    });
+
+    testWidgets('setupHyperlinkProduction は installer 取得の待機中に差し替わると'
+        ' hyperlinkReader を登録しない', (tester) async {
+      final ssh = FakeSshClient();
+
+      final host = await pumpHost(tester, ssh, swapOnRead: 3);
+      await tester.runAsync(
+        () => HerdrCaretComposer(host).setupHyperlinkProduction(ssh),
+      );
+      expect(host.hyperlinkReader, isNull);
+      expect(host.setFrameReaderCalls, 0);
+    });
+
+    testWidgets('setupScrollbackLinkReader は manifest 読込中・installer 取得の'
+        '待機中のどちらで差し替わっても reader を登録しない', (tester) async {
+      final ssh = FakeSshClient();
+
+      final control = await pumpHost(tester, ssh);
+      await tester.runAsync(
+        () => HerdrCaretComposer(control).setupScrollbackLinkReader(ssh),
+      );
+      expect(control.scrollbackLinkReader, isNotNull, reason: '差し替えなしなら登録される');
+
+      for (final swapOnRead in [2, 3]) {
+        final host = await pumpHost(tester, ssh, swapOnRead: swapOnRead);
+        await tester.runAsync(
+          () => HerdrCaretComposer(host).setupScrollbackLinkReader(ssh),
+        );
+        expect(
+          host.scrollbackLinkReader,
+          isNull,
+          reason: '$swapOnRead 回目の読み出しで差し替わった場合',
+        );
+      }
     });
   });
 }
