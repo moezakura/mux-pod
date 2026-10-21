@@ -214,11 +214,17 @@ class SessionRuntimeController {
   // 表示適用（pipeline に委譲・C1/C9 経由）
   // ---------------------------------------------------------------------------
 
-  void scheduleUpdate(String content, {Object? targetIdentity, dynamic caret}) {
+  void scheduleUpdate(
+    String content, {
+    Object? targetIdentity,
+    dynamic caret,
+    PaneHyperlinks? hyperlinks,
+  }) {
     _pipeline.scheduleUpdate(
       content,
       targetIdentity: targetIdentity,
       caret: caret,
+      hyperlinks: hyperlinks,
     );
   }
 

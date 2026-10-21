@@ -33,4 +33,14 @@ class TerminalViewportPort {
 
   /// ズームをリセット（ui のメニュー `resetZoom` が利用）。
   void resetZoom() => _view?.resetZoom();
+
+  /// 現在描画中の行の範囲（上端・下端の行インデックス `[i_top, i_bot]`。
+  /// `AnsiTextView.visibleLineRange` への即時委譲）。`AnsiTextView` が
+  /// 組み立てられる前・破棄後・レイアウト未確定は `null`。
+  ({int top, int bottom})? visibleLineRange() => _view?.visibleLineRange();
+
+  /// 直近の本文のプレーンテキスト行（`HerdrScrollbackLinkReader.
+  /// bodyLinesFor` が使う。`AnsiTextView.bodyLineTexts` への即時委譲）。
+  /// `AnsiTextView` が組み立てられる前・破棄後は `null`。
+  List<String>? bodyLineTexts() => _view?.bodyLineTexts();
 }

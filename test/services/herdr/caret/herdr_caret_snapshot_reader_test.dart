@@ -8,7 +8,9 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_helper_manager.dart';
+import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_snapshot.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_snapshot_reader.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_adapter.dart';
 import 'package:flutter_muxpod/services/herdr/herdr_models.dart';
@@ -66,7 +68,7 @@ class _ReaderEnv {
     reader = HerdrCaretHelperSnapshotReader(
       runner: runner,
       statusProvider: () => status,
-      cacheProvider: () => cache,
+      cacheProvider: () => disposed ? null : cache,
       enabled: () => enabled,
       clock: () => now,
     );
@@ -82,6 +84,9 @@ class _ReaderEnv {
     socket: '/tmp/herdr.sock',
   );
   bool enabled = true;
+
+  /// true の間 cacheProvider は破棄後の状態（snapshotCache = null）になる。
+  bool disposed = false;
   DateTime now = DateTime(2026, 1, 1, 12, 0, 0);
 }
 
@@ -211,6 +216,99 @@ void main() {
       final s = await future;
       expect(s, isNull);
       expect(env.reader.cachedSnapshot, isNull);
+    });
+  });
+
+  group('破棄後の扱い（snapshotCache が null になった後）', () {
+    /// debugPrint の出力を集めて返す（終了時に元へ戻す）。
+    Future<List<String>> captureLogs(Future<void> Function() body) async {
+      final logs = <String>[];
+      final original = debugPrint;
+      debugPrint = (String? message, {int? wrapWidth}) {
+        if (message != null) logs.add(message);
+      };
+      try {
+        await body();
+      } finally {
+        debugPrint = original;
+      }
+      return logs;
+    }
+
+    test(
+      'in-flight 中に cache が破棄され run が正常に返ると null を返し invalid を記録しない',
+      () async {
+        final env = _ReaderEnv();
+        final gate = Completer<void>();
+        env.runner.gate = gate;
+        HerdrCaretSnapshot? result;
+        final logs = await captureLogs(() async {
+          final future = env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
+          expect(env.runner.calls, 1);
+          env.disposed = true; // 画面破棄: snapshotCache = null
+          gate.complete();
+          result = await future;
+        });
+        expect(result, isNull);
+        expect(env.reader.cachedSnapshot, isNull);
+        expect(logs.where((l) => l.contains('invalid')), isEmpty);
+        expect(
+          logs.where((l) => l.contains('[herdr-caret] disposed')),
+          hasLength(1),
+        );
+      },
+    );
+
+    test('破棄済み（cacheProvider が null 相当）では runner を呼ばず null を返す', () async {
+      final env = _ReaderEnv();
+      env.disposed = true;
+      HerdrCaretSnapshot? result;
+      final logs = await captureLogs(() async {
+        result = await env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
+      });
+      expect(result, isNull);
+      expect(env.runner.calls, 0);
+      expect(logs.where((l) => l.contains('invalid')), isEmpty);
+    });
+
+    test('破棄後に run が HerdrCaretHelperException を投げても従来どおり分類ログを記録する', () async {
+      final env = _ReaderEnv();
+      final gate = Completer<void>();
+      env.runner.gate = gate;
+      env.runner.error = HerdrCaretHelperException(
+        HerdrCaretHelperFailure.timeout,
+        'timed out',
+      );
+      HerdrCaretSnapshot? result;
+      final logs = await captureLogs(() async {
+        final future = env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
+        env.disposed = true;
+        gate.complete();
+        result = await future;
+      });
+      expect(result, isNull);
+      expect(
+        logs.where((l) => l.contains('[herdr-caret] timeout')),
+        hasLength(1),
+      );
+      expect(logs.where((l) => l.contains('invalid')), isEmpty);
+    });
+
+    test('破棄後に完了しても _inFlight は除去され、再度 read できる', () async {
+      final env = _ReaderEnv();
+      final gate = Completer<void>();
+      env.runner.gate = gate;
+      final future = env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
+      env.disposed = true;
+      gate.complete();
+      expect(await future, isNull);
+      await Future<void>.delayed(Duration.zero); // whenComplete の除去を待つ
+
+      env.disposed = false;
+      env.runner.gate = null;
+      final r = await env.reader.read(paneId: 'w1:p1', cols: 80, rows: 24);
+      expect(r, isNotNull);
+      expect(env.runner.calls, 2); // 合流せず新規実行
     });
   });
 

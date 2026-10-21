@@ -14,6 +14,9 @@ import '../../../services/herdr/herdr_adapter.dart';
 import '../../../services/herdr/herdr_models.dart';
 import '../../../services/herdr/herdr_resize_bridge.dart';
 import '../../../services/herdr/herdr_snapshot_cache.dart';
+import '../../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../../services/herdr/hyperlink/herdr_scrollback_link_reader.dart';
+import '../../../services/herdr/hyperlink/scrollback_link_cache.dart';
 import '../../../services/ssh/ssh_client.dart';
 import '../../../services/tmux/pane_navigator.dart';
 import 'herdr_caret.dart';
@@ -44,12 +47,27 @@ class HerdrController implements HerdrHost {
     frameAdapter: () => frameAdapter,
     snapshotCache: () => _snapshotCache,
     injectedReader: env.injectedCaretReader,
+    injectedHyperlinkReader: env.injectedHyperlinkReader,
     caretReader: () => caretReader,
     setCaretReader: (v) => caretReader = v,
     caretStatus: () => caretStatus,
     setCaretStatus: (v) => caretStatus = v,
+    hyperlinkReader: () => hyperlinkReader,
+    setHyperlinkReader: (v) => hyperlinkReader = v,
     onFrameReader: env.setFrameReader,
     onClearViewCaret: env.clearViewCaret,
+    currentPaneId: () => paneId,
+    scrollbackLinkCache: () => scrollbackLinkCache,
+    setScrollbackLinkCache: (v) => scrollbackLinkCache = v,
+    scrollbackLinkReader: () => scrollbackLinkReader,
+    setScrollbackLinkReader: (v) => scrollbackLinkReader = v,
+    injectedScrollbackLinkHelperRunner: env.injectedScrollbackLinkHelperRunner,
+    bodyLinesFor: env.bodyLinesFor,
+    isActive: env.isActive,
+    isSelectModeActive: env.isSelectModeActive,
+    notifyScrollbackLinksUpdated: env.notifyScrollbackLinksUpdated,
+    currentSnapshotIdentity: env.currentSnapshotIdentity,
+    scrollbackLinkClock: env.clock,
   );
 
   late final HerdrSetupFlow _setup = HerdrSetupFlow(this);
@@ -86,6 +104,13 @@ class HerdrController implements HerdrHost {
   HerdrAdapter? frameAdapter;
   HerdrCaretSnapshotReader? caretReader;
   HerdrStatus? caretStatus;
+  HerdrHyperlinkReader? hyperlinkReader;
+
+  /// スクロールモードのリンクキャッシュ。
+  ScrollbackLinkCache? scrollbackLinkCache;
+
+  /// スクロールモードのリンク読取。
+  HerdrScrollbackLinkReader? scrollbackLinkReader;
   @override
   HerdrResizeBridge? resizeBridge;
 
@@ -439,10 +464,59 @@ class HerdrController implements HerdrHost {
     final adapter = HerdrAdapter(client);
     _snapshotCache = HerdrSnapshotCache(() => adapter, clock: env.clock);
     frameAdapter = adapter;
+    // 新しい client（再接続含む）に紐づく status を新規に取り直す（herdr
+    // OSC 8 ハイパーリンク実験機能）。前 client の caretStatus を持ち越さない。
+    caretStatus = null;
+    // 前 client の hyperlinkReader も持ち越さない。
+    hyperlinkReader = caret.resolveInjectedHyperlink();
     caretReader = caret.resolveInjected();
     final frameReader = caret.buildFrameReader();
     if (env.injectedCaretReader() == null) {
       unawaited(caret.setupProduction(client));
+    }
+    // hyperlinks 実験フラグ ON なら status を取得する（herdr OSC 8
+    // ハイパーリンク実験機能: caret とリンクのどちらかが ON なら status を
+    // 取得する）。caret 側（setupProduction）も同じ [HerdrCaretComposer.
+    // ensureStatus] の single-flight を通るため、
+    // 両方 ON でも `herdr status` の SSH 実行は 1 回にまとまる。
+    // caret 側の gate 条件をここで複製する必要はない。
+    // hyperlink reader が注入されている場合は（テスト用）、caret の
+    // injectedReader 経路と対称に、status 取得含め production 側の SSH
+    // 呼び出しを一切行わない。
+    if (env.ref.read(settingsProvider).experimentalHerdrHyperlinksEnabled &&
+        env.injectedHyperlinkReader() == null) {
+      unawaited(caret.ensureStatus(client));
+      // 通常表示のハイパーリンク reader を構築する。installer は
+      // setupProduction と共有する（HerdrCaretComposer.ensureInstaller）。
+      unawaited(caret.setupHyperlinkProduction(client));
+    }
+    // 前 client の scrollbackLinkReader も持ち越さない。dispose で
+    // 古いタイマー（debounce/interval/busy再試行）を止め、null 化してから
+    // cache を作り直す（dispose/null 化を
+    // 先に行わないと、setupScrollbackLinkReader が非同期で完了するまでの
+    // 間、古い reader が新しい cache とは別の古い cache に書き込み続け、
+    // overlay 側は新しい cache しか読まないためリンクが二度と表示されない
+    // 事故になる）。cache 自体は設定 OFF でも無害（未使用のまま）なので
+    // 常に作り直す。
+    scrollbackLinkReader?.dispose();
+    scrollbackLinkReader = null;
+    // 古い engine の viewport 確定引数を新しい reader へ送らない
+    // （dispose/null 化と同じタイミングでクリアする）。
+    caret.clearPendingViewportSettle();
+    scrollbackLinkCache = ScrollbackLinkCache();
+    if (env.ref.read(settingsProvider).experimentalHerdrHyperlinksEnabled) {
+      final injectedScrollbackLinkRunner = caret
+          .resolveInjectedScrollbackLinkRunner();
+      if (injectedScrollbackLinkRunner != null) {
+        scrollbackLinkReader = caret.buildScrollbackLinkReader(
+          injectedScrollbackLinkRunner,
+        );
+        // 注入 runner 経路は同期代入のため通常は保留なしだが、
+        // setupProduction 側と対称にしておく（無害・no-op が大半）。
+        caret.onScrollbackLinkReaderAssigned();
+      } else {
+        unawaited(caret.setupScrollbackLinkReader(client));
+      }
     }
     resizeBridge = HerdrResizeBridge(
       client: client,
@@ -484,6 +558,10 @@ class HerdrController implements HerdrHost {
     frameAdapter = null;
     caretReader = null;
     caretStatus = null;
+    hyperlinkReader = null;
+    scrollbackLinkReader?.dispose();
+    scrollbackLinkReader = null;
+    scrollbackLinkCache = null;
     _switchEvents.clear();
   }
 

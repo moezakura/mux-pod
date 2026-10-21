@@ -1031,6 +1031,8 @@
   "settingsOpenLinksDirectlyDescription": "ターミナルの https/http リンクを確認なしで開きます。オフの場合、開く前に確認ダイアログで URL を表示します。",
   "settingsExperimentalHerdrCaretPositionTitle": "実験的: Herdrカーソル位置",
   "settingsExperimentalHerdrCaretPositionDescription": "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時は従来表示へフォールバック）。SSH先へ小さな補助クライアントを配置します。",
+  "settingsExperimentalHerdrHyperlinksTitle": "実験的: Herdrハイパーリンク",
+  "settingsExperimentalHerdrHyperlinksDescription": "実験的機能。Herdr接続のみで動作し、best-effortで取得します（失敗時はリンクなしの従来表示）。SSH先へ小さな補助クライアントを配置します。スクロールモードでは、リンク取得のためPC側のHerdrの表示が一時的にスクロールします。Herdr v0.7.5/v0.8.2では、同じペインに直接attachしている別のクライアントが切断されることがあります。",
   "settingsAdjustMode": "調整モード",
   "settingsAdjustModeNone": "なし",
   "settingsAdjustModeAutoFit": "自動フィット",

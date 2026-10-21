@@ -11,7 +11,7 @@ void main() {
   });
 
   group('SettingsPersistence キー互換', () {
-    test('44 キーの文字列が既存定義と完全互換である', () {
+    test('45 キーの文字列が既存定義と完全互換である', () {
       // テストはキー文字列直書きで検証するため、ここで互換を固定する。
       expect(SettingsPersistence.darkModeKey, 'settings_dark_mode');
       expect(SettingsPersistence.fontSizeKey, 'settings_font_size');
@@ -48,6 +48,10 @@ void main() {
       expect(
         SettingsPersistence.experimentalHerdrCaretPositionEnabledKey,
         'settings_experimental_herdr_caret_position_enabled',
+      );
+      expect(
+        SettingsPersistence.experimentalHerdrHyperlinksEnabledKey,
+        'settings_experimental_herdr_hyperlinks_enabled',
       );
       expect(SettingsPersistence.invertPaneNavKey, 'settings_invert_pane_nav');
       expect(

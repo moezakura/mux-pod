@@ -1,5 +1,5 @@
-//! Loopback integration tests: a mock herdr server on one end of a UnixStream
-//! pair and the observe runner on the other.
+//! Loopback tests for the caret observe runners on protocols 17 and 20
+//! (`run_observe17` / `run_observe20`), including the handshake failures.
 
 use herdr_caret_helper::runner::{run_observe17, run_observe20, CaretOutput, Params, RunError};
 use herdr_caret_helper::wire::*;

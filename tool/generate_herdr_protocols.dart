@@ -11,11 +11,18 @@ void main(List<String> args) {
           as Map<String, dynamic>;
   final minimum = config['minimumSupportedProtocol'] as int;
   final caret = (config['caretSupportedProtocols'] as List).cast<int>();
+  final hyperlink = (config['hyperlinkSupportedProtocols'] as List).cast<int>();
+  final scrollbackLink = (config['scrollbackLinkSupportedProtocols'] as List)
+      .cast<int>();
+  bool invalid(List<int> values) =>
+      values.isEmpty ||
+      values.toSet().length != values.length ||
+      values.any((value) => value < minimum || value > 255);
   if (minimum < 0 ||
       minimum > 255 ||
-      caret.isEmpty ||
-      caret.toSet().length != caret.length ||
-      caret.any((value) => value < minimum || value > 255)) {
+      invalid(caret) ||
+      invalid(hyperlink) ||
+      invalid(scrollbackLink)) {
     throw FormatException('Invalid Herdr protocol configuration');
   }
   const header =
@@ -25,10 +32,14 @@ void main(List<String> args) {
     'lib/services/herdr/herdr_protocols.g.dart':
         '$header\n'
         'const int kHerdrMinSupportedProtocol = $minimum;\n'
-        'const Set<int> kHerdrCaretSupportedProtocols = {${caret.join(', ')}};\n',
+        'const Set<int> kHerdrCaretSupportedProtocols = {${caret.join(', ')}};\n'
+        'const Set<int> kHerdrHyperlinkSupportedProtocols = {${hyperlink.join(', ')}};\n'
+        'const Set<int> kHerdrScrollbackLinkSupportedProtocols = {${scrollbackLink.join(', ')}};\n',
     'tools/herdr-caret-helper/src/protocols.rs':
         '$header\n'
-        'pub const CARET_SUPPORTED_PROTOCOLS: &[u8] = &[${caret.join(', ')}];\n',
+        'pub const CARET_SUPPORTED_PROTOCOLS: &[u8] = &[${caret.join(', ')}];\n'
+        'pub const HYPERLINK_SUPPORTED_PROTOCOLS: &[u8] = &[${hyperlink.join(', ')}];\n'
+        'pub const SCROLLBACK_LINK_SUPPORTED_PROTOCOLS: &[u8] = &[${scrollbackLink.join(', ')}];\n',
   };
   for (final entry in outputs.entries) {
     final file = File('${root.path}/${entry.key}');

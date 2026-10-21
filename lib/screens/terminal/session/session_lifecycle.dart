@@ -140,6 +140,7 @@ class SessionLifecycle {
 
   /// `_pausePolling`（移設元 L908-917）。
   void pausePolling() {
+    env.onPausePolling?.call();
     runtime.isInBackground = true;
     runtime.cancelPollTimers();
     WakelockPlus.disable();

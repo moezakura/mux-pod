@@ -1,61 +1,60 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/settings_provider.dart' show settingsProvider;
 import '../../../providers/ssh_provider.dart' show sshProvider;
 import '../../../services/backend/domain/multiplexer_backend.dart';
+import '../../../services/herdr/caret/herdr_caret_helper_installer.dart';
 import '../../../services/herdr/caret/herdr_caret_helper_manager.dart';
 import '../../../services/herdr/caret/herdr_caret_helper_manifest.dart';
 import '../../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
+import '../../../services/herdr/caret/herdr_caret_ssh.dart';
 import '../../../services/herdr/herdr_adapter.dart';
 import '../../../services/herdr/herdr_models.dart';
 import '../../../services/herdr/herdr_pane_frame_reader.dart';
-import '../../../services/herdr/herdr_snapshot_cache.dart';
+import '../../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../../services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart';
+import '../../../services/herdr/hyperlink/herdr_scrollback_link_reader.dart';
 import '../../../services/ssh/ssh_client.dart';
+import 'herdr_caret_host.dart';
+import 'herdr_link_composer.dart';
 
-/// 合成ファクトリが required とする外部依存（root が提供）。
-///
-/// caret / frame reader の生成に必要な herdr state（cache / adapter / reader /
-/// status）と、画面側の反映先（frameReader・view caret）への接続を抽象化する。
-abstract interface class HerdrCaretHost {
-  WidgetRef get ref;
-
-  bool get isMounted;
-
-  bool get isDisposed;
-
-  MultiplexerBackendKind get backendKind;
-
-  HerdrAdapter? get frameAdapter;
-
-  HerdrSnapshotCache? get snapshotCache;
-
-  /// テスト注入用 reader（`TerminalScreen.herdrCaretReader`）。
-  HerdrCaretSnapshotReader? get injectedReader;
-
-  HerdrCaretSnapshotReader? get caretReader;
-
-  set caretReader(HerdrCaretSnapshotReader? value);
-
-  HerdrStatus? get caretStatus;
-
-  set caretStatus(HerdrStatus? value);
-
-  /// 構築した frame reader をポーリングループへ反映する（session 側）。
-  void setFrameReader(HerdrPaneFrameReader reader);
-
-  /// OFF 遷移時・切替時に view の caret をクリアする（session 側）。
-  void clearViewCaret();
-}
+export 'herdr_caret_host.dart';
 
 /// caret reader / frame reader / status / executablePath の合成ファクトリ。
 class HerdrCaretComposer {
   HerdrCaretComposer(this._host);
 
   final HerdrCaretHost _host;
+
+  /// 通常リンク・スクロールリンクの準備を担う協調クラス。配置確認・status・
+  /// frame reader の共有状態は持たせず、このクラスのメソッドをコールバックで渡す。
+  late final HerdrLinkComposer _links = HerdrLinkComposer(
+    host: _host,
+    ensureInstaller: ensureInstaller,
+    readStatus: readStatus,
+    logCaretState: logCaretState,
+    buildFrameReader: buildFrameReader,
+  );
+
+  /// [ensureStatus] の single-flight 用 in-flight future。
+  Future<HerdrStatus>? _statusInFlight;
+
+  /// [ensureInstaller] の memo と single-flight 用 in-flight future
+  /// （caret と 2 つのリンク読取で 1 インスタンスを共有し、配置確認の SSH
+  /// 実行（uname・sha256sum 等）を機能ごとに重複させない）。
+  ///
+  /// memo は接続単位。`_installerSshClient` /
+  /// `_installerInFlightSshClient` で紐づく [SshClient] を記録し、
+  /// [ensureInstaller] 呼び出し時の client と `identical` でなければ
+  /// 作り直す（再接続で新しい [SshClient] に差し替わっても memo が古い
+  /// client を握ったままだと、helper 配置確認が切断済み client 上で行われ
+  /// 失敗し続けるため。caret は従来から再接続のたびに installer を作り直す）。
+  HerdrCaretInstaller? _installer;
+  SshClient? _installerSshClient;
+  Future<HerdrCaretInstaller>? _installerInFlight;
+  SshClient? _installerInFlightSshClient;
 
   /// 注入 reader（テスト用）を設定ゲート付きで解決する。
   ///
@@ -69,6 +68,11 @@ class HerdrCaretComposer {
     return _host.injectedReader;
   }
 
+  /// 注入 hyperlink reader（テスト用）を設定ゲート付きで解決する。
+  /// 本体は [HerdrLinkComposer.resolveInjectedHyperlink]。
+  HerdrHyperlinkReader? resolveInjectedHyperlink() =>
+      _links.resolveInjectedHyperlink();
+
   /// 現在の caret reader を合成した herdr frame reader を構築する。
   ///
   /// caret reader 差し替え（production 構築完了・設定変化・再接続）のたびに
@@ -81,6 +85,7 @@ class HerdrCaretComposer {
       adapter!,
       HerdrPaneLayoutResolver(cache!),
       caretReader: _host.caretReader,
+      hyperlinkReader: _host.hyperlinkReader,
     );
   }
 
@@ -101,15 +106,149 @@ class HerdrCaretComposer {
   }
 
   /// `herdr status --json` を取得して memoize する。失敗は caret 無効のまま継続。
+  ///
+  /// 失敗時は memo しない（[_host.caretStatus] は未設定のまま）。既存の
+  /// best-effort 契約どおり、次回呼び出しで再取得を試みる
+  /// （この catch ブロックは失敗を memo しない）。
   Future<void> refreshStatus(SshClient sshClient) async {
     try {
       final status = await HerdrAdapter(sshClient).status();
       if (_host.isDisposed) return;
+      // 取得中に再接続（client 差し替え）が起きていたら、古い client の
+      // status を書き戻さない。
+      if (!identical(_host.ref.read(sshProvider.notifier).client, sshClient)) {
+        return;
+      }
       _host.caretStatus = status;
     } catch (_) {
       logCaretState('unsupported', 'status fetch failed');
     }
   }
+
+  /// Herdr status を single-flight で確実に取得する（herdr OSC 8
+  /// ハイパーリンク実験機能）。
+  ///
+  /// caret・hyperlinks・scrollback-links のどの機能から呼ばれても共有される
+  /// （未取得ならその場で1回取得する single-flight）。既に取得済みなら即時返し、取得中なら合流する。
+  /// 取得失敗時は [readStatus] の既定値（`const HerdrStatus()`）を返す
+  /// （caret の既存 `refreshStatus` と同じ best-effort 契約。throw しない）。
+  Future<HerdrStatus> ensureStatus(SshClient sshClient) {
+    final current = _host.caretStatus;
+    if (current != null) return Future.value(current);
+    final inFlight = _statusInFlight;
+    if (inFlight != null) return inFlight;
+    final future = _fetchStatus(sshClient);
+    _statusInFlight = future;
+    future.whenComplete(() {
+      if (identical(_statusInFlight, future)) _statusInFlight = null;
+    });
+    return future;
+  }
+
+  Future<HerdrStatus> _fetchStatus(SshClient sshClient) async {
+    await refreshStatus(sshClient);
+    return readStatus();
+  }
+
+  /// helper installer を single-flight で確実に取得する
+  /// （caret と 2 つのリンク読取で 1 インスタンスを共有し、配置確認の SSH
+  /// 実行（uname・sha256sum 等）を機能ごとに重複させない）。
+  ///
+  /// 既に構築済み（同一 [SshClient]）なら即時返し、構築中（同一 client）なら
+  /// 合流する。client が変わっていれば（再接続）作り直す。失敗時は memo
+  /// しない（次の要求で再試行できる。[HerdrCaretInstaller] 自体のコンスト
+  /// ラクタは SSH を呼ばないため、ここで失敗するのは通常起きない）。
+  Future<HerdrCaretInstaller> ensureInstaller(
+    SshClient sshClient,
+    HerdrCaretHelperManifest manifest,
+  ) {
+    final current = _installer;
+    if (current != null && identical(_installerSshClient, sshClient)) {
+      return Future.value(current);
+    }
+    final inFlight = _installerInFlight;
+    if (inFlight != null && identical(_installerInFlightSshClient, sshClient)) {
+      return inFlight;
+    }
+    // `Future(() {...})`（Timer.run ベース・マクロタスク）は使わない。
+    // testWidgets の FakeAsync 環境ではマクロタスクは明示的に時間を進め
+    // ないと発火せず await がハングする（実測: 300 秒超でも完了しない）。
+    // async 関数（マイクロタスクベース）にすることで ensureStatus/
+    // _fetchStatus と同様に自動で完了する。
+    final future = _buildInstaller(sshClient, manifest);
+    _installerInFlight = future;
+    _installerInFlightSshClient = sshClient;
+    future.then<void>(
+      (_) {},
+      onError: (Object _) {
+        if (identical(_installerInFlight, future)) {
+          _installerInFlight = null;
+          _installerInFlightSshClient = null;
+        }
+      },
+    );
+    return future;
+  }
+
+  Future<HerdrCaretInstaller> _buildInstaller(
+    SshClient sshClient,
+    HerdrCaretHelperManifest manifest,
+  ) async {
+    final installer = HerdrCaretInstaller(
+      ssh: sshClient,
+      manifest: manifest,
+      sshRunner: HerdrCaretSshRunner(sshClient),
+    );
+    _installer = installer;
+    _installerSshClient = sshClient;
+    return installer;
+  }
+
+  /// hyperlink reader の enabled ゲート。本体は [HerdrLinkComposer.isHyperlinkEnabled]。
+  bool isHyperlinkEnabled() => _links.isHyperlinkEnabled();
+
+  /// production の通常表示ハイパーリンク reader を非同期で構築する。
+  /// 本体は [HerdrLinkComposer.setupHyperlinkProduction]。
+  Future<void> setupHyperlinkProduction(SshClient sshClient) =>
+      _links.setupHyperlinkProduction(sshClient);
+
+  /// 注入 scrollback-links helper runner（テスト用）を設定ゲート付きで解決する。
+  /// 本体は [HerdrLinkComposer.resolveInjectedScrollbackLinkRunner]。
+  HerdrScrollbackLinkHelperRunner? resolveInjectedScrollbackLinkRunner() =>
+      _links.resolveInjectedScrollbackLinkRunner();
+
+  /// スクロールモードの現在対象 pane。本体は
+  /// [HerdrLinkComposer.currentScrollbackLinkPane]。
+  HerdrScrollbackLinkCurrentPane? currentScrollbackLinkPane() =>
+      _links.currentScrollbackLinkPane();
+
+  /// [HerdrScrollbackLinkReader] を [runner] から構築する。本体は
+  /// [HerdrLinkComposer.buildScrollbackLinkReader]。
+  HerdrScrollbackLinkReader buildScrollbackLinkReader(
+    HerdrScrollbackLinkHelperRunner runner,
+  ) => _links.buildScrollbackLinkReader(runner);
+
+  /// root の viewport 確定配線から呼ぶ。本体は
+  /// [HerdrLinkComposer.notifyViewportSettled]。
+  void notifyViewportSettled(
+    ({Object? identity, int generation}) snapshotIdentity,
+    int lineCount,
+    ({int top, int bottom}) visibleRange,
+  ) => _links.notifyViewportSettled(snapshotIdentity, lineCount, visibleRange);
+
+  /// reader 代入直後に呼ぶ。本体は
+  /// [HerdrLinkComposer.onScrollbackLinkReaderAssigned]。
+  void onScrollbackLinkReaderAssigned() =>
+      _links.onScrollbackLinkReaderAssigned();
+
+  /// エンジン再構築時に保持中の viewport 確定引数を捨てる。本体は
+  /// [HerdrLinkComposer.clearPendingViewportSettle]。
+  void clearPendingViewportSettle() => _links.clearPendingViewportSettle();
+
+  /// production のスクロールモードのリンク読取を非同期で構築する。
+  /// 本体は [HerdrLinkComposer.setupScrollbackLinkReader]。
+  Future<void> setupScrollbackLinkReader(SshClient sshClient) =>
+      _links.setupScrollbackLinkReader(sshClient);
 
   /// production の herdr caret reader を非同期で構築する。
   ///
@@ -138,20 +277,26 @@ class HerdrCaretComposer {
     if (!identical(_host.snapshotCache, cache)) return;
 
     try {
+      final installer = await ensureInstaller(sshClient, manifest);
+      if (_host.isDisposed || !identical(_host.snapshotCache, cache)) return;
       final manager = HerdrCaretHelperManager(
         ssh: sshClient,
         manifest: manifest,
+        installer: installer,
       );
       final reader = HerdrCaretHelperSnapshotReader(
         runner: manager,
         statusProvider: readStatus,
-        cacheProvider: () => _host.snapshotCache!,
+        cacheProvider: () => _host.snapshotCache,
         enabled: isEnabled,
       );
       if (_host.isDisposed || !identical(_host.snapshotCache, cache)) return;
       _host.caretReader = reader;
       _host.setFrameReader(buildFrameReader());
-      unawaited(refreshStatus(sshClient));
+      // ensureStatus 経由にする: hyperlinks
+      // 側も同じ single-flight を通るため、両方 ON でも `herdr status` の
+      // SSH 実行は 1 回にまとまる（`refreshStatus` を直接呼ぶと合流しない）。
+      unawaited(ensureStatus(sshClient));
     } catch (_) {
       _host.caretReader = null;
     }
@@ -201,86 +346,4 @@ class HerdrCaretComposer {
     final path = (raw == null || raw.isEmpty) ? 'herdr' : raw;
     return "'${path.replaceAll("'", r"'\''")}'";
   }
-}
-
-/// [HerdrCaretHost] のコールバック実装（controller が組み立てる・cycle 回避）。
-class HerdrCaretHostImpl implements HerdrCaretHost {
-  HerdrCaretHostImpl({
-    required this.ref,
-    required bool Function() isMounted,
-    required bool Function() isDisposed,
-    required MultiplexerBackendKind Function() backendKind,
-    required HerdrAdapter? Function() frameAdapter,
-    required HerdrSnapshotCache? Function() snapshotCache,
-    required HerdrCaretSnapshotReader? Function() injectedReader,
-    required HerdrCaretSnapshotReader? Function() caretReader,
-    required void Function(HerdrCaretSnapshotReader? value) setCaretReader,
-    required HerdrStatus? Function() caretStatus,
-    required void Function(HerdrStatus? value) setCaretStatus,
-    required void Function(HerdrPaneFrameReader reader) onFrameReader,
-    required VoidCallback onClearViewCaret,
-  }) : _isMounted = isMounted,
-       _isDisposed = isDisposed,
-       _backendKind = backendKind,
-       _frameAdapter = frameAdapter,
-       _snapshotCache = snapshotCache,
-       _injectedReader = injectedReader,
-       _caretReader = caretReader,
-       _setCaretReader = setCaretReader,
-       _caretStatus = caretStatus,
-       _setCaretStatus = setCaretStatus,
-       _onFrameReader = onFrameReader,
-       _onClearViewCaret = onClearViewCaret;
-
-  @override
-  final WidgetRef ref;
-
-  final bool Function() _isMounted;
-  final bool Function() _isDisposed;
-  final MultiplexerBackendKind Function() _backendKind;
-  final HerdrAdapter? Function() _frameAdapter;
-  final HerdrSnapshotCache? Function() _snapshotCache;
-  final HerdrCaretSnapshotReader? Function() _injectedReader;
-  final HerdrCaretSnapshotReader? Function() _caretReader;
-  final void Function(HerdrCaretSnapshotReader? value) _setCaretReader;
-  final HerdrStatus? Function() _caretStatus;
-  final void Function(HerdrStatus? value) _setCaretStatus;
-  final void Function(HerdrPaneFrameReader reader) _onFrameReader;
-  final VoidCallback _onClearViewCaret;
-
-  @override
-  bool get isMounted => _isMounted();
-
-  @override
-  bool get isDisposed => _isDisposed();
-
-  @override
-  MultiplexerBackendKind get backendKind => _backendKind();
-
-  @override
-  HerdrAdapter? get frameAdapter => _frameAdapter();
-
-  @override
-  HerdrSnapshotCache? get snapshotCache => _snapshotCache();
-
-  @override
-  HerdrCaretSnapshotReader? get injectedReader => _injectedReader();
-
-  @override
-  HerdrCaretSnapshotReader? get caretReader => _caretReader();
-
-  @override
-  set caretReader(HerdrCaretSnapshotReader? value) => _setCaretReader(value);
-
-  @override
-  HerdrStatus? get caretStatus => _caretStatus();
-
-  @override
-  set caretStatus(HerdrStatus? value) => _setCaretStatus(value);
-
-  @override
-  void setFrameReader(HerdrPaneFrameReader reader) => _onFrameReader(reader);
-
-  @override
-  void clearViewCaret() => _onClearViewCaret();
 }

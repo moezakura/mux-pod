@@ -3,8 +3,8 @@
 /// 1回実行（snapshot取得）を担う runner interface 実装のオーケストレーター。
 ///
 /// 処理フロー（Phase 3 契約）:
-/// 1. HerdrStatus.serverProtocol が 17/20 以外なら実行しない
-///    （unsupportedProtocol）。
+/// 1. HerdrStatus.serverProtocol が allow-list（[kHerdrCaretSupportedProtocols]。
+///    現在の対応 protocol は 17/20/22）に無ければ実行しない（unsupportedProtocol）。
 /// 2. HerdrStatus.socket を `derive_client_socket_from_api_socket` と同じ規則で
 ///    `*-client.sock` へ導出（null なら unsupported）。
 /// 3. paneId / frame size の形式検証（不正は invalidOutput）。
@@ -15,9 +15,12 @@
 ///
 /// 本クラスは検証と順序制御のみを行い、install は [HerdrCaretInstaller]、
 /// 実行は [HerdrCaretHelperExecutor]、SSH 実行基盤は [HerdrCaretSshRunner]
-/// へ委譲する。installer は Manager と 1:1 で生成され、SshClient 差し替え時も
-/// memo は `_ssh` identity で自動追従する（接続単位を「インスタンス単位」に
-/// 読み替えない・同一インスタンスへの再 install を防ぐだけ）。
+/// へ委譲する。installer は既定では Manager と 1:1 で生成され、SshClient
+/// 差し替え時も memo は `_ssh` identity で自動追従する（接続単位を
+/// 「インスタンス単位」に読み替えない・同一インスタンスへの再 install を
+/// 防ぐだけ）。呼び出し側が既存 installer を渡した場合はそれを共有する
+/// （herdr OSC 8 ハイパーリンク実験機能: caret とリンク読取
+/// 2種で 1 インスタンスを共有し、配置確認の SSH 実行を機能ごとに重複させない）。
 ///
 /// セキュリティ規則（L1）: socket path・pane 本文・helper 出力の未検証内容を
 /// 例外メッセージ・ログへ残さない。失敗分類だけを伝える。
@@ -53,25 +56,36 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   late final HerdrCaretInstaller _installer;
   late final HerdrCaretHelperExecutor _executor;
 
+  /// [installer] が非 null ならそれを使う（[binaryLoader] / [sftpService] は
+  /// 無視される。呼び出し側が既にそれらを反映して installer を構築済みの
+  /// ため）。null（既定）なら現行どおり内部生成する。
   HerdrCaretHelperManager({
     required SshClient ssh,
     required HerdrCaretHelperManifest manifest,
     HerdrCaretBinaryLoader? binaryLoader,
     SftpService? sftpService,
+    HerdrCaretInstaller? installer,
   }) {
     _sshRunner = HerdrCaretSshRunner(ssh);
-    _installer = HerdrCaretInstaller(
-      ssh: ssh,
-      manifest: manifest,
-      sshRunner: _sshRunner,
-      binaryLoader: binaryLoader ?? HerdrCaretInstaller.rootBundleLoad,
-      sftpService: sftpService ?? SftpService(),
-    );
+    _installer =
+        installer ??
+        HerdrCaretInstaller(
+          ssh: ssh,
+          manifest: manifest,
+          sshRunner: _sshRunner,
+          binaryLoader: binaryLoader ?? HerdrCaretInstaller.rootBundleLoad,
+          sftpService: sftpService ?? SftpService(),
+        );
     _executor = HerdrCaretHelperExecutor(
       sshRunner: _sshRunner,
       manifest: manifest,
     );
   }
+
+  /// 構築済み installer（外部注入時はそのまま、未指定時は内部生成した
+  /// もの）。他の manager（hyperlinks・scrollback-links）へ共有する
+  /// ために公開する。
+  HerdrCaretInstaller get installer => _installer;
 
   @override
   Future<HerdrCaretHelperRunResult> run({
@@ -83,7 +97,8 @@ class HerdrCaretHelperManager implements HerdrCaretHelperRunner {
   }) async {
     final execTimeout = timeout ?? defaultRunTimeout;
 
-    // protocol は helper 実行前に判定（17/20 以外は配置・実行しない）。
+    // protocol は helper 実行前に判定（allow-list 外は配置・実行しない。
+    // 現在の対応 protocol は 17/20/22）。
     if (!isHerdrCaretProtocolSupported(status.serverProtocol)) {
       _fail(
         HerdrCaretHelperFailure.unsupportedProtocol,

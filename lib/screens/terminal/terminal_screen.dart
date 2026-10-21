@@ -29,9 +29,16 @@ import '../../providers/settings_provider.dart';
 import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/backend/domain/pane_content_reader.dart';
+import '../../services/backend/domain/pane_frame_reader.dart'
+    show PaneHyperlinks;
 import '../../services/backend/domain/pane_writer.dart';
 import '../../services/backend/domain/wheel_encoder.dart' show ScrollSendKind;
 import '../../services/herdr/caret/herdr_caret_snapshot_reader.dart';
+import '../../services/herdr/hyperlink/herdr_hyperlink_alignment.dart'
+    show HerdrHyperlinkRange;
+import '../../services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import '../../services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart'
+    show HerdrScrollbackLinkHelperRunner;
 import '../../services/tmux/commands/layout.dart' show SplitDirection;
 import '../../services/tmux/pane_navigator.dart' show SwipeDirection;
 import '../../services/terminal/tmux_key_display.dart' show KeyOverlayPosition;
@@ -80,6 +87,17 @@ class TerminalScreen extends ConsumerStatefulWidget {
   /// テスト用: herdr caret snapshot reader の注入。
   final HerdrCaretSnapshotReader? herdrCaretReader;
 
+  /// テスト用: 通常表示のハイパーリンク reader の注入（herdr OSC 8 ハイパー
+  /// リンク実験機能）。[herdrCaretReader] と同じ経路（本番は null）。
+  final HerdrHyperlinkReader? herdrHyperlinkReader;
+
+  /// テスト用: スクロールモードのリンク読取の SSH 境界（helper runner）の
+  /// 注入（herdr OSC 8 ハイパーリンク実験機能）。[herdrCaretReader]
+  /// と同じ経路（本番は null）。[herdrCaretReader]/[herdrHyperlinkReader] は
+  /// reader 本体を注入するが、これは SSH 境界だけを差し替え、reader 本体
+  /// （`HerdrScrollbackLinkReader`）は本番と同じものが動く。
+  final HerdrScrollbackLinkHelperRunner? herdrScrollbackLinkHelperRunner;
+
   const TerminalScreen({
     super.key,
     required this.connectionId,
@@ -93,6 +111,8 @@ class TerminalScreen extends ConsumerStatefulWidget {
     this.initialPaneId,
     this.herdrCacheClock,
     this.herdrCaretReader,
+    this.herdrHyperlinkReader,
+    this.herdrScrollbackLinkHelperRunner,
   });
 
   @override
@@ -131,6 +151,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
     injectedPaneContentReaderOf: () => widget.paneContentReader,
     herdrCacheClockOf: () => widget.herdrCacheClock,
     herdrCaretReaderOf: () => widget.herdrCaretReader,
+    herdrHyperlinkReaderOf: () => widget.herdrHyperlinkReader,
+    herdrScrollbackLinkHelperRunnerOf: () =>
+        widget.herdrScrollbackLinkHelperRunner,
     contextOf: () => context,
     isMountedFn: () => mounted,
     isDisposedFn: () => _isDisposed,
@@ -260,6 +283,82 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
   String bufferedContentForTesting() =>
       _adapter.input.bufferedContentForTesting();
 
+  /// 選択モード中にバッファされた hyperlinks（herdr OSC 8 ハイパーリンク
+  /// 実験機能）。[bufferedContentForTesting] と同型。
+  @visibleForTesting
+  PaneHyperlinks? bufferedHyperlinksForTesting() =>
+      _adapter.input.bufferedHyperlinksForTesting();
+
+  /// 現在の表示に反映済みの hyperlinks（herdr OSC 8 ハイパーリンク実験機能）。
+  /// poll → pendingHyperlinks → view 反映の結果を直接検証する。
+  @visibleForTesting
+  PaneHyperlinks? currentHyperlinksForTesting() =>
+      _adapter.runtime.viewNotifier.value.hyperlinks;
+
+  /// 表示 view（viewNotifier）の更新回数を検証するための購読フック（herdr
+  /// OSC 8 ハイパーリンク実験機能: 「本文も hyperlinks も
+  /// 変わらない poll では更新を予約しない」の検証用）。戻り値は解除用
+  /// コールバック。
+  @visibleForTesting
+  VoidCallback watchViewForTesting(VoidCallback listener) {
+    _adapter.runtime.viewNotifier.addListener(listener);
+    return () => _adapter.runtime.viewNotifier.removeListener(listener);
+  }
+
+  /// スクロールモードのリンクキャッシュの内容（herdr OSC 8 ハイパーリンク
+  /// 実験機能）。fake runner の結果が overlay 用のキャッシュへ
+  /// 反映されたこと（またはendSession/cancelPendingで空になったこと）を
+  /// 検証する。
+  @visibleForTesting
+  Map<int, List<HerdrHyperlinkRange>> scrollbackLinksForTesting() =>
+      _adapter.herdr.scrollbackLinkCache?.linksByBodyLine ?? const {};
+
+  /// `HerdrScrollbackLinkReader.bodyLinesFor` に実際に渡っている値
+  /// （herdr OSC 8 ハイパーリンク実験機能）。
+  /// `terminal_root_bindings.dart` の `bodyLinesFor: () =>
+  /// viewport.bodyLineTexts() ?? const []` と同じ式を直接呼び、空配列の
+  /// まま通ってしまう偽の GREEN でないこと（実際の本文が渡っていること）を
+  /// 検証する。
+  @visibleForTesting
+  List<String> scrollbackLinkBodyLinesForTesting() =>
+      _adapter.input.viewport.bodyLineTexts() ?? const [];
+
+  /// select モードでのスクロール確定（[TerminalScrollFollowController]
+  /// の `onScrollNotification` の軸ガードを通すだけの合成
+  /// `ScrollEndNotification`）を模擬する（herdr OSC 8 ハイパーリンク実験
+  /// 機能）。実際のドラッグ操作なしに `onViewportSettled` を発火させ、
+  /// スクロールモードのリンク読取を検証する
+  /// （`terminal_scroll_follow_controller_test.dart` の
+  /// `syntheticVerticalScrollEnd` と同じ手法）。
+  @visibleForTesting
+  void notifyViewportSettledForTesting(BuildContext context) {
+    _adapter.input.scrollFollow.onScrollNotification(
+      ScrollEndNotification(
+        context: context,
+        metrics: FixedScrollMetrics(
+          minScrollExtent: 0,
+          maxScrollExtent: 1000,
+          pixels: 500,
+          viewportDimension: 400,
+          axisDirection: AxisDirection.down,
+          devicePixelRatio: 1.0,
+        ),
+      ),
+    );
+  }
+
+  /// 実際のスクロール位置を変える（herdr OSC 8 ハイパーリンク実験機能）。
+  /// [notifyViewportSettledForTesting] が読む
+  /// `viewport.visibleLineRange()` はこの合成通知の metrics ではなく実際の
+  /// スクロール位置から計算される
+  /// （`TerminalScrollFollowController._notifyViewportSettled`）ため、
+  /// 「往復済みの窓を再度要求して `ScrollbackLinkCache.hasFetched` に
+  /// 弾かれ、配線の有無に関わらず往復 0 回になる」偽の GREEN を避けるには、
+  /// [notifyViewportSettledForTesting] の前に実際の位置を変える必要がある。
+  @visibleForTesting
+  void jumpToLineFromTopForTesting(int lineIndex) =>
+      _adapter.input.viewport.jumpToLineFromTop(lineIndex);
+
   @visibleForTesting
   bool canForTesting(PaneCapabilities required) =>
       _adapter.runtime.can(required);
@@ -349,6 +448,9 @@ class _TerminalScreenState extends ConsumerState<TerminalScreen>
       viewNotifier: runtime.viewNotifier,
       herdrDisplayNotifier: _adapter.herdr.displayNotifier,
       herdrPaneIndicatorNotifier: _adapter.herdr.indicatorNotifier,
+      scrollbackLinkCache: _adapter.herdr.scrollbackLinkCache,
+      currentScrollbackSnapshotIdentity:
+          _adapter.input.scrollFollow.currentSnapshotIdentity,
       latencyNotifier: runtime.latencyNotifier,
       sshState: (runtime.sshState as SshState?) ?? const SshState(),
       isConnecting: runtime.isConnecting,

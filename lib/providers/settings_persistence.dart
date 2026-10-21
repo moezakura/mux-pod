@@ -34,6 +34,8 @@ class SettingsPersistence {
   // inventory: SETTINGS-HERDR-CARET-005
   static const String experimentalHerdrCaretPositionEnabledKey =
       'settings_experimental_herdr_caret_position_enabled';
+  static const String experimentalHerdrHyperlinksEnabledKey =
+      'settings_experimental_herdr_hyperlinks_enabled';
   static const String invertPaneNavKey = 'settings_invert_pane_nav';
   // inventory: SETTINGS-SCROLL-SEND-004
   static const String scrollSendInputKey = 'settings_scroll_send_input';
@@ -107,6 +109,8 @@ class SettingsPersistence {
       // inventory: SETTINGS-HERDR-CARET-006
       experimentalHerdrCaretPositionEnabled:
           prefs.getBool(experimentalHerdrCaretPositionEnabledKey) ?? false,
+      experimentalHerdrHyperlinksEnabled:
+          prefs.getBool(experimentalHerdrHyperlinksEnabledKey) ?? false,
       invertPaneNavigation: prefs.getBool(invertPaneNavKey) ?? false,
       // inventory: SETTINGS-SCROLL-SEND-005
       scrollSendInput: prefs.getString(scrollSendInputKey) ?? 'wheel',

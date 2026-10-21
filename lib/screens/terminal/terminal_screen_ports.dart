@@ -53,6 +53,11 @@ abstract interface class TerminalPortSource {
   set pendingTargetIdentity(Object? value);
   dynamic get pendingCaret;
   set pendingCaret(dynamic value);
+
+  /// 通常表示のハイパーリンク pending（herdr OSC 8 ハイパーリンク実験機能）。
+  /// [pendingCaret] と同型。
+  PaneHyperlinks? get pendingHyperlinks;
+  set pendingHyperlinks(PaneHyperlinks? value);
 }
 
 /// root が実装すべき port の単一実装（SessionEnv・協調オブジェクトへ注入）。
@@ -133,6 +138,8 @@ class TerminalScreenPorts
   @override
   Object? get herdrCaretReader => access.herdrCaretReader;
   @override
+  Object? get herdrHyperlinkReader => access.herdrHyperlinkReader;
+  @override
   Object? get bottomFollowEpsilon => 1.0;
 
   // ===================== PendingViewStore =====================
@@ -146,6 +153,11 @@ class TerminalScreenPorts
   dynamic get pendingCaret => source.pendingCaret;
   @override
   set pendingCaret(dynamic value) => source.pendingCaret = value;
+  @override
+  PaneHyperlinks? get pendingHyperlinks => source.pendingHyperlinks;
+  @override
+  set pendingHyperlinks(PaneHyperlinks? value) =>
+      source.pendingHyperlinks = value;
 
   // ===================== TerminalInputHost =====================
 
@@ -354,10 +366,12 @@ class TerminalScreenPorts
   void captureSelectUpdate({
     required String content,
     dynamic caret,
+    PaneHyperlinks? hyperlinks,
     Object? targetIdentity,
   }) => source.input.captureSelectUpdate(
     content: content,
     caret: caret,
+    hyperlinks: hyperlinks,
     targetIdentity: targetIdentity,
   );
   @override

@@ -16,6 +16,9 @@ import 'package:flutter_muxpod/providers/tmux_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/services/backend/domain/pane_content_reader.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_snapshot_reader.dart';
+import 'package:flutter_muxpod/services/herdr/hyperlink/herdr_hyperlink_reader.dart';
+import 'package:flutter_muxpod/services/herdr/hyperlink/herdr_scrollback_link_helper_manager.dart'
+    show HerdrScrollbackLinkHelperRunner;
 import 'package:flutter_muxpod/services/keychain/secure_storage.dart';
 import 'package:flutter_muxpod/widgets/image_transfer_confirm_dialog.dart';
 
@@ -136,6 +139,14 @@ class TerminalTestScaffold {
     // テスト用: herdr caret snapshot reader の注入（設定 ON 時のみ有効）。
     // 設定 OFF では呼び出し・副作用とも一切起きないことを検証できる。
     HerdrCaretSnapshotReader? herdrCaretReader,
+    // テスト用: 通常表示のハイパーリンク reader の注入（herdr OSC 8
+    // ハイパーリンク実験機能）。herdrCaretReader と同じ経路
+    // （設定 ON 時のみ有効・設定 OFF では呼び出し・副作用とも一切起きない）。
+    HerdrHyperlinkReader? herdrHyperlinkReader,
+    // テスト用: スクロールモードのリンク読取の SSH 境界（helper runner）の
+    // 注入（herdr OSC 8 ハイパーリンク実験機能）。herdrCaretReader と
+    // 同じ経路（設定 ON 時のみ有効）。reader 本体は本番と同じものが動く。
+    HerdrScrollbackLinkHelperRunner? herdrScrollbackLinkHelperRunner,
     // cache TTL 動作の検証用: fake clock（例: `() => tester.binding.clock.now()`）。
     DateTime Function()? herdrCacheClock,
     // tmuxProvider の初期状態（T9: stale tmuxProvider が herdr セッション確立
@@ -213,6 +224,8 @@ class TerminalTestScaffold {
             initialPaneId: initialPaneId,
             paneContentReader: paneContentReader,
             herdrCaretReader: herdrCaretReader,
+            herdrHyperlinkReader: herdrHyperlinkReader,
+            herdrScrollbackLinkHelperRunner: herdrScrollbackLinkHelperRunner,
             herdrCacheClock: herdrCacheClock,
           ),
         ),

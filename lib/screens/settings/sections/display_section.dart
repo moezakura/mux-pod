@@ -82,6 +82,17 @@ class DisplaySection extends ConsumerWidget {
                 .setExperimentalHerdrCaretPositionEnabled(value);
           },
         ),
+        SwitchListTile(
+          secondary: const Icon(Icons.science),
+          title: Text(l10n.settingsExperimentalHerdrHyperlinksTitle),
+          subtitle: Text(l10n.settingsExperimentalHerdrHyperlinksDescription),
+          value: settings.experimentalHerdrHyperlinksEnabled,
+          onChanged: (value) {
+            ref
+                .read(settingsProvider.notifier)
+                .setExperimentalHerdrHyperlinksEnabled(value);
+          },
+        ),
         ListTile(
           leading: const Icon(Icons.tune),
           title: Text(l10n.settingsAdjustMode),
@@ -227,7 +238,7 @@ class DisplaySection extends ConsumerWidget {
   }
 }
 
-/// Display セクションの検索 descriptor（全11項目・3グループ）。
+/// Display セクションの検索 descriptor（全13項目・3グループ）。
 ///
 /// 値ラベルは静的選択肢（en/ja 両解決）を descriptor に列挙する。
 /// 現在値（subtitle）は動的のためヘイストックに含めない（DR-11・critic H2）。
@@ -287,6 +298,15 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   SettingsSearchItem(
     category: SettingsCategory.display,
     orderInCategory: 5,
+    id: 'experimentalHerdrHyperlinks',
+    title: (l10n) => l10n.settingsExperimentalHerdrHyperlinksTitle,
+    description: (l10n) => l10n.settingsExperimentalHerdrHyperlinksDescription,
+    groupLabel: (l10n) => l10n.settingsGroupTerminal,
+    icon: Icons.science,
+  ),
+  SettingsSearchItem(
+    category: SettingsCategory.display,
+    orderInCategory: 6,
     id: 'adjustMode',
     title: (l10n) => l10n.settingsAdjustMode,
     valueLabels: [
@@ -299,7 +319,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 6,
+    orderInCategory: 7,
     id: 'fontSize',
     title: (l10n) => l10n.settingsFontSize,
     groupLabel: (l10n) => l10n.settingsGroupTerminal,
@@ -307,7 +327,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 7,
+    orderInCategory: 8,
     id: 'fontFamily',
     title: (l10n) => l10n.settingsFontFamily,
     groupLabel: (l10n) => l10n.settingsGroupTerminal,
@@ -315,7 +335,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 8,
+    orderInCategory: 9,
     id: 'minFontSize',
     title: (l10n) => l10n.settingsMinimumFontSize,
     groupLabel: (l10n) => l10n.settingsGroupTerminal,
@@ -324,7 +344,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   // --- 画面（Screen） ---
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 9,
+    orderInCategory: 10,
     id: 'keepScreenOn',
     title: (l10n) => l10n.settingsKeepScreenOn,
     description: (l10n) => l10n.settingsKeepScreenOnDescription,
@@ -333,7 +353,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 10,
+    orderInCategory: 11,
     id: 'screenOrientation',
     title: (l10n) => l10n.settingsScreenOrientation,
     valueLabels: [
@@ -346,7 +366,7 @@ final List<SettingsSearchItem> displaySearchDescriptors = [
   ),
   SettingsSearchItem(
     category: SettingsCategory.display,
-    orderInCategory: 11,
+    orderInCategory: 12,
     id: 'maxRefreshRate',
     title: (l10n) => l10n.settingsMaxRefreshRate,
     valueLabels: [

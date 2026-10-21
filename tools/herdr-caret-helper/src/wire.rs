@@ -86,11 +86,18 @@ pub enum ClientLaunchMode17 {
     TerminalAttach,
 }
 
-/// Minimal placeholder for the never-serialized `AttachScroll.source` field.
+/// `AttachScroll.source` (confirmed against real
+/// herdr source: `protocol/wire.rs` v0.7.5 :407-413 / v0.8.2 :461-467).
+/// `PageKey`'s `input` carries the bytes to inject into the program when
+/// host-scroll is not in effect (`plain_page_keys_use_host_scrollback()`
+/// is false) -- `PageKey { input: vec![] }` is the empty-injection form
+/// `attach.rs` uses to request pure host-scroll with no side effect
+/// on the program side when that condition holds (`PageKey{[]}`, scrolling
+/// Up then Down).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AttachScrollSource {
     Wheel,
-    PageKey,
+    PageKey { input: Vec<u8> },
 }
 
 /// Minimal placeholder for the never-serialized `InputEvents` payload.
@@ -111,8 +118,13 @@ pub enum ClientMessage17 {
         keybindings: ClientKeybindings,
         launch_mode: ClientLaunchMode17,
     },
-    Input { data: Vec<u8> },
-    ClipboardImage { extension: String, data: Vec<u8> },
+    Input {
+        data: Vec<u8>,
+    },
+    ClipboardImage {
+        extension: String,
+        data: Vec<u8>,
+    },
     Resize {
         cols: u16,
         rows: u16,
@@ -120,7 +132,10 @@ pub enum ClientMessage17 {
         cell_height_px: u32,
     },
     Detach,
-    AttachTerminal { terminal_id: String, takeover: bool },
+    AttachTerminal {
+        terminal_id: String,
+        takeover: bool,
+    },
     AttachScroll {
         source: AttachScrollSource,
         direction: u8,
@@ -129,9 +144,16 @@ pub enum ClientMessage17 {
         row: Option<u16>,
         modifiers: u8,
     },
-    InputEvents { events: Vec<ClientInputEvent> },
-    ObserveTerminal { target: String },
-    ControlTerminal { target: String, takeover: bool },
+    InputEvents {
+        events: Vec<ClientInputEvent>,
+    },
+    ObserveTerminal {
+        target: String,
+    },
+    ControlTerminal {
+        target: String,
+        takeover: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -158,8 +180,13 @@ pub enum ClientMessage20 {
         keybindings: ClientKeybindings,
         launch_mode: ClientLaunchMode20,
     },
-    Input { data: Vec<u8> },
-    ClipboardImage { extension: String, data: Vec<u8> },
+    Input {
+        data: Vec<u8>,
+    },
+    ClipboardImage {
+        extension: String,
+        data: Vec<u8>,
+    },
     Resize {
         cols: u16,
         rows: u16,
@@ -167,7 +194,10 @@ pub enum ClientMessage20 {
         cell_height_px: u32,
     },
     Detach,
-    AttachTerminal { terminal_id: String, takeover: bool },
+    AttachTerminal {
+        terminal_id: String,
+        takeover: bool,
+    },
     AttachScroll {
         source: AttachScrollSource,
         direction: u8,
@@ -176,9 +206,16 @@ pub enum ClientMessage20 {
         row: Option<u16>,
         modifiers: u8,
     },
-    InputEvents { events: Vec<ClientInputEvent> },
-    ObserveTerminal { target: String },
-    ControlTerminal { target: String, takeover: bool },
+    InputEvents {
+        events: Vec<ClientInputEvent>,
+    },
+    ObserveTerminal {
+        target: String,
+    },
+    ControlTerminal {
+        target: String,
+        takeover: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -194,18 +231,30 @@ pub enum ServerMessage17 {
     },
     Frame(FrameData),
     Terminal(TerminalFrame),
-    Graphics { bytes: Vec<u8> },
-    ServerShutdown { reason: Option<String> },
+    Graphics {
+        bytes: Vec<u8>,
+    },
+    ServerShutdown {
+        reason: Option<String>,
+    },
     Notify {
         kind: NotifyKind,
         message: String,
         body: Option<String>,
     },
-    Clipboard { data: String },
-    WindowTitle { title: Option<String> },
+    Clipboard {
+        data: String,
+    },
+    WindowTitle {
+        title: Option<String>,
+    },
     ReloadSoundConfig,
-    MouseCapture { enabled: bool },
-    PrefixInputSource { active: bool },
+    MouseCapture {
+        enabled: bool,
+    },
+    PrefixInputSource {
+        active: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -222,20 +271,37 @@ pub enum ServerMessage20 {
     },
     Frame(FrameData),
     Terminal(TerminalFrame),
-    Graphics { bytes: Vec<u8> },
-    ServerShutdown { reason: Option<String> },
+    Graphics {
+        bytes: Vec<u8>,
+    },
+    ServerShutdown {
+        reason: Option<String>,
+    },
     Notify {
         kind: NotifyKind,
         message: String,
         body: Option<String>,
     },
-    Clipboard { data: String },
-    WindowTitle { title: Option<String> },
+    Clipboard {
+        data: String,
+    },
+    WindowTitle {
+        title: Option<String>,
+    },
     ReloadSoundConfig,
-    MouseCapture { enabled: bool, sgr_pixels: bool },
-    KittyKeyboardReportAll { enabled: bool },
-    PrefixInputSource { active: bool },
-    TerminalBell { count: u16 },
+    MouseCapture {
+        enabled: bool,
+        sgr_pixels: bool,
+    },
+    KittyKeyboardReportAll {
+        enabled: bool,
+    },
+    PrefixInputSource {
+        active: bool,
+    },
+    TerminalBell {
+        count: u16,
+    },
     GraphicsFile {
         path: String,
         expected_len: u64,
@@ -244,7 +310,10 @@ pub enum ServerMessage20 {
         leading: Vec<u8>,
         control: String,
     },
-    GraphicsTransmissionRetired { transfer_id: u64, image_id: u32 },
+    GraphicsTransmissionRetired {
+        transfer_id: u64,
+        image_id: u32,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -266,12 +335,14 @@ pub fn write_frame<W: Write, M: Serialize>(writer: &mut W, msg: &M) -> Result<()
     Ok(())
 }
 
-/// Reads a length-prefixed frame and decodes it, enforcing that the decoder
-/// consumed the full payload (rejects trailing/truncated garbage).
-pub fn read_frame<R: Read, M: for<'de> Deserialize<'de>>(
-    reader: &mut R,
-    max_frame_size: usize,
-) -> Result<M, String> {
+/// Reads one length-prefixed frame's raw payload bytes without decoding them.
+///
+/// This is the tag-agnostic half of `read_frame`: it only trusts the framing
+/// (the `[u32LE length][payload]` envelope), never the payload's shape. Used
+/// by callers that must accept messages whose variant they do not know how to
+/// decode (e.g. the protocol-22 observe loop skipping unrecognized
+/// `ServerMessage` variants) without misaligning on their contents.
+pub fn read_frame_bytes<R: Read>(reader: &mut R, max_frame_size: usize) -> Result<Vec<u8>, String> {
     let mut len_buf = [0u8; 4];
     read_exact(reader, &mut len_buf)?;
     let claimed_len = u32::from_le_bytes(len_buf) as usize;
@@ -285,15 +356,25 @@ pub fn read_frame<R: Read, M: for<'de> Deserialize<'de>>(
 
     let mut payload = vec![0u8; claimed_len];
     read_exact(reader, &mut payload)?;
+    Ok(payload)
+}
 
-    let (msg, consumed) =
-        bincode::serde::decode_from_slice(&payload, bincode::config::standard())
-            .map_err(|e| format!("decode_error: {}", e))?;
+/// Reads a length-prefixed frame and decodes it, enforcing that the decoder
+/// consumed the full payload (rejects trailing/truncated garbage).
+pub fn read_frame<R: Read, M: for<'de> Deserialize<'de>>(
+    reader: &mut R,
+    max_frame_size: usize,
+) -> Result<M, String> {
+    let payload = read_frame_bytes(reader, max_frame_size)?;
 
-    if consumed != claimed_len {
+    let (msg, consumed) = bincode::serde::decode_from_slice(&payload, bincode::config::standard())
+        .map_err(|e| format!("decode_error: {}", e))?;
+
+    if consumed != payload.len() {
         return Err(format!(
             "trailing_bytes: decoded {} of declared {}",
-            consumed, claimed_len
+            consumed,
+            payload.len()
         ));
     }
     Ok(msg)

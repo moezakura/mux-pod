@@ -9,6 +9,7 @@ import '../../providers/ssh_provider.dart';
 import '../../providers/tmux_provider.dart';
 import '../../services/backend/domain/multiplexer_backend.dart';
 import '../../services/custom_keys/custom_key_button.dart';
+import '../../services/herdr/hyperlink/scrollback_link_cache.dart';
 import '../../services/terminal/tmux_key_display.dart';
 import '../../services/tmux/pane_navigator.dart';
 import '../../theme/design_colors.dart';
@@ -47,6 +48,14 @@ class TerminalViewShell extends ConsumerWidget {
   final int queuedCount;
   final MultiplexerBackendKind backendKind;
   final String? sessionName;
+
+  /// herdr スクロールモードのリンクキャッシュ。
+  /// [AnsiTextView.scrollbackLinkCache] へそのまま渡す。
+  final ScrollbackLinkCache? scrollbackLinkCache;
+
+  /// 現在のスクロールモードのスナップショット identity。
+  /// [AnsiTextView.currentScrollbackSnapshotIdentity] へそのまま渡す。
+  final ({Object? identity, int generation})? currentScrollbackSnapshotIdentity;
 
   // ---- 能力（root の `_can*` から入力）----
   final bool canSendText;
@@ -134,6 +143,8 @@ class TerminalViewShell extends ConsumerWidget {
     required this.queuedCount,
     required this.backendKind,
     this.sessionName,
+    this.scrollbackLinkCache,
+    this.currentScrollbackSnapshotIdentity,
     required this.canSendText,
     required this.canSendSpecialKey,
     required this.canFocusDirection,
@@ -455,6 +466,14 @@ class TerminalViewShell extends ConsumerWidget {
                   // Phase 4: herdr caret（非 null 時は
                   // visible/位置/範囲で描画判定。null は従来）。
                   caret: viewData.caret,
+                  // herdr 通常表示のリンク情報（非 null 時は
+                  // 行の整列を経て重ね合わせ。null は従来＝パーサ由来のみ）。
+                  herdrHyperlinks: viewData.hyperlinks,
+                  // herdr スクロールモードのリンクキャッシュ
+                  // （identity・generation の照合とメモ化は AnsiTextViewState 側で行う）。
+                  scrollbackLinkCache: scrollbackLinkCache,
+                  currentScrollbackSnapshotIdentity:
+                      currentScrollbackSnapshotIdentity,
                   // inventory: TERM-INPUT-005
                   onArrowSwipe: canSendSpecialKey ? onArrowSwipe : null,
                   // inventory: TERM-SCROLL-006

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_muxpod/providers/settings_provider.dart';
 import 'package:flutter_muxpod/screens/terminal/terminal_screen.dart';
 import 'package:flutter_muxpod/screens/terminal/widgets/ansi_text_view.dart';
 import 'package:flutter_muxpod/services/herdr/caret/herdr_caret_snapshot.dart';
@@ -10,6 +9,7 @@ import '../../helpers/terminal_test_scaffold.dart';
 import 'helpers/herdr_snapshot_fixtures.dart';
 import 'helpers/herdr_layout_fixtures.dart';
 import 'helpers/herdr_test_helpers.dart';
+import 'helpers/herdr_experimental_settings.dart';
 
 class _FakeHerdrCaretReader implements HerdrCaretSnapshotReader {
   _FakeHerdrCaretReader({this.snapshotOf});
@@ -70,14 +70,6 @@ Future<bool> caretSeen(WidgetTester tester) async {
 
 void main() {
   group('TerminalScreen herdr caret (Phase 4)', () {
-    // caret テスト共通の settings（実験フラグ ON・カーソル表示 ON）。
-    const caretOnSettings = AppSettings(
-      keepScreenOn: false,
-      experimentalHerdrCaretPositionEnabled: true,
-      adjustMode: 'manual',
-      fontSize: 14.0,
-    );
-
     testWidgets('設定OFF時は caret reader が呼ばれず helper wire も 0 回', (tester) async {
       // 注入フェイクを渡しても、設定 OFF（既定）では呼び出し・副作用とも
       // 一切起きない（enabled ゲート）。production manager（uname/sha256sum/
@@ -306,5 +298,90 @@ void main() {
 
     // 既存「Herdr は末尾へスクロール」テストは設定 OFF（既定）の回帰として
     // 上記「初回コンテンツ受信時は末尾アライン」で維持される。
+
+    group('herdr status 取得の共有ゲート（herdr OSC 8 ハイパーリンク実験機能）', () {
+      testWidgets('caret・hyperlinks とも OFF（既定）では status 取得の SSH が 0 回', (
+        tester,
+      ) async {
+        // 既存の caret テストと同じ既定設定（両フラグ OFF）で、
+        // hyperlinks 側の新規ゲート（_ensureStatusForHyperlinksIfNeeded）が
+        // 追加の SSH 実行を発生させないことを固定する回帰テスト。
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: herdrConnection(),
+          sessionName: 'lab-ws1',
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(
+          client.execCommands.any((c) => c.contains('herdr status')),
+          isFalse,
+          reason: 'caret・hyperlinks とも OFF の間は status 取得の SSH が 0 回であること',
+        );
+      });
+
+      testWidgets('hyperlinks ON・caret OFF でも status 取得を single-flight で1回行う', (
+        tester,
+      ) async {
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: herdrConnection(),
+          sessionName: 'lab-ws1',
+          settings: hyperlinksOnSettings,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(
+          client.execCommands.where((c) => c.contains('herdr status')).length,
+          1,
+          reason:
+              'hyperlinks ON なら caret が OFF でも status 取得（HerdrCaretComposer.'
+              'ensureStatus の single-flight）が1回走ること',
+        );
+      });
+
+      testWidgets('caret・hyperlinks とも ON でも status 取得は1回にまとまる', (
+        tester,
+      ) async {
+        // setupProduction（caret 側）と hyperlinks 側の起動が同じ
+        // HerdrCaretComposer.ensureStatus の single-flight を通るため、
+        // 両方 ON でも herdr status の SSH 実行は重複しない。
+        final client = await TerminalTestScaffold.pumpTerminalScreen(
+          tester,
+          connection: herdrConnection(),
+          sessionName: 'lab-ws1',
+          settings: bothOnSettings,
+          execOutputs: {
+            'herdr api snapshot': kHerdrSnapshotFixture,
+            'herdr pane read': 'content\n',
+          },
+          settle: false,
+        );
+        await tester.pump(const Duration(milliseconds: 100));
+
+        expect(
+          client.execCommands.where((c) => c.contains('herdr status')).length,
+          1,
+          reason: 'caret・hyperlinks とも ON でも status 取得の SSH は1回にまとまること',
+        );
+        // installer 配置確認（uname 等）の共有は、この統合テスト環境では
+        // HerdrCaretHelperManifest.load()（rootBundle 経由のアセット読込）が
+        // 到達しないため 0 回のまま検証できない（実測: uname -s は 0 回）。
+        // installer 共有（ensureInstaller の memo / single-flight）は
+        // herdr_caret_composer_test.dart の
+        // 「HerdrCaretComposer.ensureInstaller」group で、manifest.load() を
+        // 経由しない直接呼び出しにより検証する。
+      });
+    });
   });
 }
