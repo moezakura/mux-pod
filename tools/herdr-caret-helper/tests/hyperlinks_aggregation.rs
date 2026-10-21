@@ -1,14 +1,13 @@
 //! Regression tests for `hyperlinks::aggregate_frame` against the
 //! real captured fixtures, confirming same-URL aggregation and
-//! `rowHashes` coverage against the fixtures' known content (see each
-//! `.meta.md`).
+//! `rowHashes` coverage against the fixtures' known content.
 
 use herdr_caret_helper::hyperlinks::{aggregate_frame, AggregatedLink};
 use std::fs;
 
 #[test]
 fn v22_full_redraw_fixture_aggregates_five_distinct_links_with_one_range_each() {
-    // v22_full_redraw.meta.md: 5 known links, none repeated, so 5
+    // v22_full_redraw.bin holds 5 known links, none repeated, so 5
     // AggregatedLink entries. The "osc8-wrapped-long-url" one's text (78
     // chars, starting at col 2) happens to land exactly on the fixture's
     // last column (width 80, cols 0-79) — confirmed by inspecting the raw

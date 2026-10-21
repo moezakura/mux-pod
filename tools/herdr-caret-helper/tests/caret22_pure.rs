@@ -2,7 +2,7 @@
 //! (`src/runner.rs`), the pure function that backs the protocol-22 caret
 //! path (`run_observe22`). This proves the function itself is correct
 //! against the same real fixture `tests/hyperlinks_grammar.rs`'s
-//! `v22_fixture_trailing_cursor_state_matches_meta_md` already uses.
+//! `v22_fixture_trailing_cursor_state` already uses.
 
 use herdr_caret_helper::runner::CaretOutput;
 use herdr_caret_helper::tracker::track_frame;
@@ -10,7 +10,7 @@ use std::fs;
 
 #[test]
 fn v22_full_redraw_fixture_yields_a_visible_cursor_caret_output() {
-    // v22_full_redraw.meta.md: "このfixtureは `?25h`（表示）状態".
+    // The v22_full_redraw.bin fixture ends in the `?25h` (visible) cursor state.
     let bytes = fs::read("tests/fixtures/v22_full_redraw.bin").expect("fixture must exist");
     let tracked = track_frame(&bytes, 80, 40).expect("fixture must not be rejected");
 

@@ -5,7 +5,7 @@
 //! since `v22_full_redraw.bin`'s own `osc8-wrapped-long-url` turned out to
 //! end exactly at the last column rather than actually wrap), confirming
 //! zero rejections and that every known link's *exact*
-//! `(row, start_col, end_col)` range (per each fixture's `.meta.md`, cross-
+//! `(row, start_col, end_col)` range (hand-verified against each fixture's content and cross-
 //! checked against the tracker's own output) is
 //! produced, in emission order — not just that the right URLs are present
 //! somewhere. Full same-URL aggregation into the external JSON contract's
@@ -25,7 +25,7 @@ fn span(row: u16, start_col: u16, end_col: u16, url: &str) -> RawLinkSpan {
 
 #[test]
 fn v17_full_redraw_fixture_parses_with_exact_known_link_ranges() {
-    // v0.7.5, protocol 17. See tests/fixtures/v17_full_redraw.meta.md:
+    // v0.7.5, protocol 17. Fixture v17_full_redraw.bin:
     // cols=80 rows=24, frame.full=true, 2 known links, CUP before every
     // written cell (v0.7.5's own grammar).
     let bytes = fs::read("tests/fixtures/v17_full_redraw.bin").expect("fixture must exist");
@@ -41,7 +41,7 @@ fn v17_full_redraw_fixture_parses_with_exact_known_link_ranges() {
 
 #[test]
 fn v20_full_redraw_fixture_parses_with_exact_known_link_ranges() {
-    // v0.8.2, protocol 20. See tests/fixtures/v20_full_redraw.meta.md:
+    // v0.8.2, protocol 20. Fixture v20_full_redraw.bin:
     // cols=100 rows=29, frame.full=true, 2 known links, CUP omitted after
     // an ASCII width-1 cell.
     let bytes = fs::read("tests/fixtures/v20_full_redraw.bin").expect("fixture must exist");
@@ -62,8 +62,7 @@ fn v17_and_v20_fixtures_produce_identical_link_ranges_despite_different_cup_freq
     // omits it after an ASCII width-1 cell — the *only* grammar difference
     // across the 3 supported versions (confirmed directly against both
     // tagged sources; see the module doc comment in `src/tracker.rs`).
-    // Both fixtures were captured from the same demo script
-    // (`osc8-demo.sh`; both fixtures' own `.meta.md`), so the tracker must
+    // Both fixtures carry the same demo content, so the tracker must
     // resolve both CUP-frequency styles to the exact same link ranges, not
     // merely "the same URLs present somewhere".
     let v17 = fs::read("tests/fixtures/v17_full_redraw.bin").expect("fixture must exist");
@@ -78,7 +77,7 @@ fn v17_and_v20_fixtures_produce_identical_link_ranges_despite_different_cup_freq
 
 #[test]
 fn v22_full_redraw_fixture_parses_with_exact_known_link_ranges() {
-    // v0.9.1, protocol 22. See tests/fixtures/v22_full_redraw.meta.md:
+    // v0.9.1, protocol 22. Fixture v22_full_redraw.bin:
     // cols=80 rows=40, frame.full=true, 5 known links (including a CJK/
     // full-width-adjacent case and the `osc8-wrapped-long-url` link, whose
     // text happens to land exactly on the fixture's last column — see
@@ -102,7 +101,7 @@ fn v22_full_redraw_fixture_parses_with_exact_known_link_ranges() {
 /// `v22_full_redraw.bin`'s own `osc8-wrapped-long-url` turned out to end
 /// exactly at the last column, not actually wrap), for a link that *genuinely*
 /// spans multiple physical rows, for all 3 supported protocol versions,
-/// each checked against its own `.meta.md`'s hand-verified
+/// each checked against hand-verified
 /// `(row, startCol, endCol)` triples (1-origin/inclusive there, converted
 /// to this crate's 0-origin/inclusive here).
 ///
@@ -110,7 +109,7 @@ fn v22_full_redraw_fixture_parses_with_exact_known_link_ranges() {
 /// their ranges are expected to be byte-identical (asserted directly
 /// below) — v17 is captured at a different width (53 cols, its pane's own
 /// default size) so its wrap points differ, and is asserted separately
-/// against its own `.meta.md`.
+/// against its own hand-verified triples.
 #[test]
 fn v22_wrapped_link_fixture_parses_with_exact_known_link_ranges_spanning_two_rows() {
     let bytes = fs::read("tests/fixtures/v22_wrapped_link.bin").expect("fixture must exist");
@@ -163,7 +162,7 @@ fn v20_and_v22_wrapped_link_fixtures_produce_identical_link_ranges() {
 /// grouping same-URL spans together is `hyperlinks::aggregate_links`'s job
 /// not this module's. This test only confirms `track_frame` itself
 /// still parses every one of the 6 raw per-row spans (3 rows x 2 links)
-/// exactly as this fixture's `.meta.md` records them, in emission order.
+/// exactly as the hand-verified expectations record them, in emission order.
 #[test]
 fn v17_wrapped_link_fixture_parses_with_exact_known_link_ranges_as_separate_per_row_spans() {
     let bytes = fs::read("tests/fixtures/v17_wrapped_link.bin").expect("fixture must exist");
@@ -182,11 +181,10 @@ fn v17_wrapped_link_fixture_parses_with_exact_known_link_ranges_as_separate_per_
 }
 
 #[test]
-fn v22_fixture_trailing_cursor_state_matches_meta_md() {
-    // v22_full_redraw.meta.md: this fixture's cursor state is `?25h`
+fn v22_fixture_trailing_cursor_state() {
+    // The v22_full_redraw.bin fixture's cursor state is `?25h`
     // (visible), captured at the trailing CUP/DECSCUSR block (the exact
-    // position/shape are ground truth read directly
-    // from this fixture, not asserted in the .meta.md itself).
+    // position/shape are ground truth read directly from this fixture).
     let bytes = fs::read("tests/fixtures/v22_full_redraw.bin").expect("fixture must exist");
     let frame = track_frame(&bytes, 80, 40).expect("v22 fixture must not be rejected");
     assert_eq!(frame.cursor_position, Some((7, 22)));
