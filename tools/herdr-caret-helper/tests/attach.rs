@@ -1,7 +1,7 @@
 //! Loopback tests for the writable 17/20 attach + scroll control
 //! (`AttachTerminal` -> `AttachScroll` -> `Detach`), driven over
 //! `UnixStream::pair()` with a hand-written fake server (same style as
-//! `tests/loopback.rs`).
+//! `tests/loopback/`).
 
 use herdr_caret_helper::attach::{Attach17, Attach20, ScrollDirection};
 use herdr_caret_helper::runner::RunError;

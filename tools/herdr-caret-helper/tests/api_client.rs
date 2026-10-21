@@ -1,5 +1,5 @@
 //! Loopback tests for the herdr.sock JSON API client (`pane.get` /
-//! `pane.scroll`). Unlike the binary wire protocol tests (`tests/loopback.rs`,
+//! `pane.scroll`). Unlike the binary wire protocol tests (`tests/loopback/`,
 //! which use `UnixStream::pair()`), `api_client::pane_get`/`pane_scroll`
 //! connect by path, so these tests bind a real `UnixListener` under a
 //! per-test temp directory and run a hand-written fake JSON-line server

@@ -36,7 +36,7 @@
 //! arguments, or an existing caret call whose first token is always a
 //! `--flag` — falls through to the existing caret path unchanged, so
 //! existing caret invocations stay byte-for-byte compatible
-//! (`tests/loopback.rs` is unmodified by this change). Any other positional
+//! (see the loopback tests under `tests/loopback/`). Any other positional
 //! first argument (one that does not start with `-`) is rejected outright as
 //! `usage_error` rather than silently falling through to the caret path
 //! — see `main()`'s own comment on that check.

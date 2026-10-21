@@ -2,7 +2,7 @@
 //! itself (`src/hyperlinks.rs`), exercising its actual success path (JSON
 //! output) and its `render_rejected` failure path against a mock herdr
 //! server on one end of a `UnixStream::pair()` -- mirrors `tests/
-//! loopback.rs`'s style, but for the `hyperlinks` subcommand's full
+//! loopback/`'s style, but for the `hyperlinks` subcommand's full
 //! pipeline (`observe_terminal_ansi` -> `aggregate_frame` -> `sanitize_
 //! links` -> `render_output`) rather than only its CLI-level `usage_error`/
 //! `connect_failed` boundary checks (`tests/hyperlinks_cli.rs`,
@@ -29,7 +29,7 @@ fn osc8_close() -> &'static str {
 /// Drives one protocol-17 TerminalAnsi handshake to completion, then sends
 /// `frame` as the `Terminal` response -- the same handshake shape
 /// `observe17_ansi` (`src/ansi_runner.rs`) drives, hand-rolled here instead
-/// of reusing `tests/loopback.rs`'s `mock_server17` since that helper
+/// of reusing `tests/loopback/cursor.rs`'s `mock_server17` since that helper
 /// negotiates `SemanticFrame`, not `TerminalAnsi`.
 fn mock_hyperlinks_server17(mut sock: UnixStream, frame: TerminalFrame) {
     let hello: ClientMessage17 = read_frame(&mut sock, MAX_FRAME_SIZE).expect("read hello");
