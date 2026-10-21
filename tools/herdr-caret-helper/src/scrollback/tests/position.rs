@@ -1,5 +1,8 @@
 //! `record_original_position` and `move_to_offset`: pane scroll offset reads,
 //! absolute (22) and attach-based (17/20) moves, and their confirmation polls.
+//!
+//! The 17/20 cases reuse `attach::Attach17`/`Attach20`'s own `from_stream`
+//! (over `UnixStream::pair()`, no filesystem socket needed).
 
 use super::support::*;
 use crate::attach::{Attach17, Attach20};

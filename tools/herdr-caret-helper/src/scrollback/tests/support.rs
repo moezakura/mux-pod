@@ -2,6 +2,9 @@
 //! API server, canned `pane.get` / `pane.process_info` responses, a real-pty
 //! child for the 17/20 fail-closed size resolution, and RAII guards that
 //! clean up socket and lock-directory paths even when a test panics.
+//!
+//! The fake server is a local JSON-line server for `pane.get` / `pane.scroll`
+//! (mirrors tests/api_client.rs's `serve_one`).
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
