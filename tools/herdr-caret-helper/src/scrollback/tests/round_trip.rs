@@ -1,11 +1,4 @@
 //! `open_round_trip`: the attach dimensions sent for protocols 17 and 20.
-//!
-//! `open_round_trip` must pass (params.cols, original.viewport_rows) as both
-//! `Hello`'s and `Resize`'s dimensions — a mismatch resizes the user's real
-//! terminal and triggers an unwanted SIGWINCH. These go through
-//! `open_round_trip` itself (not `Attach17::from_stream` directly, like the
-//! `move_to_offset_*` tests in the position suite) over a real socket path,
-//! since `open_round_trip` only exposes `Attach17::connect`/`Attach20::connect`.
 
 use super::support::*;
 use crate::scrollback::args::{
