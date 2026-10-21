@@ -14,7 +14,7 @@ use std::os::unix::net::UnixListener;
 // `Resize`'s dimensions — a mismatch resizes the user's real terminal
 // and triggers an unwanted SIGWINCH. These go through
 // `open_round_trip` itself (not `Attach17::from_stream` directly, like
-// the `move_to_offset_*` tests above) over a real socket path, since
+// the `move_to_offset_*` tests in the position suite) over a real socket path, since
 // `open_round_trip` only exposes `Attach17::connect`/`Attach20::connect`.
 // -----------------------------------------------------------------
 
