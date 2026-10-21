@@ -15,7 +15,7 @@
 //! Every failure path returns `Err` — this module never guesses a
 //! dimension and never panics. Callers decide fail-open vs fail-closed
 //! (see `hyperlinks.rs`'s `resolve_dimensions` for the fail-open observe
-//! path, and `scrollback.rs`'s wiring for the fail-closed
+//! path, and `scrollback/position.rs`'s wiring for the fail-closed
 //! `scrollback-links` path).
 
 use std::ffi::c_void;

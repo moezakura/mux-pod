@@ -34,7 +34,7 @@ use std::time::Instant;
 /// resolved by bundling rather than `#[allow]`). A caller that resolved
 /// the real pty's pixel geometry (`winsize::real_size`,
 /// `hyperlinks::resolve_dimensions`, scrollback-links' fail-closed
-/// resolution in `scrollback.rs`) passes that `Winsize`. A caller
+/// resolution in `scrollback/position.rs`) passes that `Winsize`. A caller
 /// with nothing resolved (the plain caret path, protocol 22, via
 /// `runner::run_observe22`) passes `Winsize { cell_width_px: 0,
 /// cell_height_px: 0, .. }` explicitly, keeping its Hello/Resize
