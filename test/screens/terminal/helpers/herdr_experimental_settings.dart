@@ -11,7 +11,8 @@ const caretOnSettings = AppSettings(
   fontSize: 14.0,
 );
 
-/// hyperlinks 実験フラグのみ ON（caret は既定 OFF）。
+/// hyperlinks 実験フラグのみ ON（caret は既定 OFF）。status 取得の共有ゲートの
+/// テスト用。
 const hyperlinksOnSettings = AppSettings(
   keepScreenOn: false,
   experimentalHerdrHyperlinksEnabled: true,
@@ -19,7 +20,7 @@ const hyperlinksOnSettings = AppSettings(
   fontSize: 14.0,
 );
 
-/// caret・hyperlinks 両方 ON。
+/// caret・hyperlinks 両方 ON。両方 ON でも SSH 1 回になることのテスト用。
 const bothOnSettings = AppSettings(
   keepScreenOn: false,
   experimentalHerdrCaretPositionEnabled: true,
