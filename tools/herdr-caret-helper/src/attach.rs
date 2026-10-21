@@ -15,6 +15,7 @@
 //! only needs the handshake to complete and to detect an early rejection.
 
 use crate::error::RunError;
+use crate::frame_io::{encode_err, read_frame_deadline};
 use crate::winsize::Winsize;
 use crate::wire::*;
 use std::os::unix::net::UnixStream;
@@ -482,41 +483,4 @@ fn remaining(deadline: Instant) -> Result<Duration, RunError> {
     } else {
         Ok(deadline - now)
     }
-}
-
-fn read_frame_deadline<M: for<'de> serde::Deserialize<'de>>(
-    mut stream: &UnixStream,
-    deadline: Instant,
-) -> Result<M, RunError> {
-    let rem = remaining(deadline)?;
-    // A zero timeout would disable blocking; ensure a positive value (same
-    // guard as frame_io.rs's read_frame_deadline).
-    let rem = if rem.is_zero() {
-        Duration::from_millis(1)
-    } else {
-        rem
-    };
-    stream
-        .set_read_timeout(Some(rem))
-        .map_err(|_| RunError::Io)?;
-    read_frame(&mut stream, MAX_FRAME_SIZE).map_err(map_frame_err)
-}
-
-fn map_frame_err(e: String) -> RunError {
-    if e.contains("timeout") {
-        RunError::Timeout
-    } else if e.contains("unexpected_eof")
-        || e.contains("connection_reset")
-        || e.contains("io_error")
-    {
-        RunError::Io
-    } else if e.starts_with("oversized_frame") || e.starts_with("decode_error") {
-        RunError::Bincode(e)
-    } else {
-        RunError::Io
-    }
-}
-
-fn encode_err(e: String) -> RunError {
-    RunError::Bincode(e)
 }
