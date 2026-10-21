@@ -474,7 +474,7 @@ mod tests {
     /// `setsid` + a fresh `open()` of the slave in the child's `pre_exec`
     /// is the standard way a process acquires a real controlling terminal
     /// (an inherited, already-open fd would not trigger the kernel's
-    /// assignment). Mirrors `scrollback.rs::spawn_real_pty_process`
+    /// assignment). Mirrors `scrollback/tests/support.rs::spawn_real_pty_process`
     /// test helper (same technique, needed here so the `ZeroDimension` test
     /// goes through `real_size` itself, not just `read_raw_winsize`).
     /// Returns `None` under the same `open_test_pty_pair` skip/
