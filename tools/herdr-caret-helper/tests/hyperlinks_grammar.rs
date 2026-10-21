@@ -61,7 +61,7 @@ fn v17_and_v20_fixtures_produce_identical_link_ranges_despite_different_cup_freq
     // 17) emits a CUP before every written cell; v0.8.2 (protocol 20)
     // omits it after an ASCII width-1 cell — the *only* grammar difference
     // across the 3 supported versions (confirmed directly against both
-    // tagged sources; see the module doc comment in `src/tracker.rs`).
+    // tagged sources; see the module doc comment in `src/tracker/grammar.rs`).
     // Both fixtures carry the same demo content, so the tracker must
     // resolve both CUP-frequency styles to the exact same link ranges, not
     // merely "the same URLs present somewhere".

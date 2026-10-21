@@ -113,7 +113,7 @@ const MAX_SANITIZED_URI_BYTES: usize = 2048;
 /// `MAX_SANITIZED_URI_BYTES` (the additional cap) — either way, the
 /// caller must treat the link as invalid, not the whole frame (the tracker
 /// likewise excludes just the one link whose OSC 8 URI holds a C0 control
-/// byte, `Token::LinkOpenInvalid` in `tracker.rs`).
+/// byte, `Token::LinkOpenInvalid` in `tracker/grammar.rs`).
 fn sanitize_hyperlink_uri(uri: &str) -> Option<String> {
     let sanitized: String = uri
         .chars()
