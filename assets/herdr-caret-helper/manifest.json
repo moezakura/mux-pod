@@ -7,16 +7,16 @@
       "os": "linux",
       "arch": "x86_64",
       "asset": "assets/herdr-caret-helper/linux-x86_64/herdr-caret-helper",
-      "size": 1053024,
-      "sha256": "5df7caba4e7001f9a5129f04edfcb10fb14cb119f37aad4ad8cf54d24f914913"
+      "size": 1048488,
+      "sha256": "f960829338ddd3230f4bf893d3f0e2e42903f4b56e302a147b1d3909c9439c94"
     },
     {
       "id": "linux-aarch64",
       "os": "linux",
       "arch": "aarch64",
       "asset": "assets/herdr-caret-helper/linux-aarch64/herdr-caret-helper",
-      "size": 720480,
-      "sha256": "77861d6355b9593f044cb20fd9c1c488f48d15247c386b1cc96d079393901ce3"
+      "size": 716000,
+      "sha256": "f9f3114e9e4dfa789b895f89b152c9a54d89d2c52630dc53273dd0eae2120d10"
     }
   ]
 }
