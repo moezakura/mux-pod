@@ -101,9 +101,9 @@ fn v22_full_redraw_fixture_parses_with_exact_known_link_ranges() {
 /// `v22_full_redraw.bin`'s own `osc8-wrapped-long-url` turned out to end
 /// exactly at the last column, not actually wrap), for a link that *genuinely*
 /// spans multiple physical rows, for all 3 supported protocol versions,
-/// each checked against hand-verified
-/// `(row, startCol, endCol)` triples (1-origin/inclusive there, converted
-/// to this crate's 0-origin/inclusive here).
+/// each checked against hand-verified `(row, startCol, endCol)` triples
+/// (the expectations below are written 0-origin/inclusive, this crate's
+/// convention; a hand count on screen would be 1-origin).
 ///
 /// v20 and v22 share the same demo script and the same 73-column width, so
 /// their ranges are expected to be byte-identical (asserted directly
