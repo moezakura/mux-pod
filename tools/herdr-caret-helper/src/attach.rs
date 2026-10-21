@@ -14,7 +14,7 @@
 //! are observed separately over their own connections), it
 //! only needs the handshake to complete and to detect an early rejection.
 
-use crate::runner::RunError;
+use crate::error::RunError;
 use crate::winsize::Winsize;
 use crate::wire::*;
 use std::os::unix::net::UnixStream;
@@ -490,7 +490,7 @@ fn read_frame_deadline<M: for<'de> serde::Deserialize<'de>>(
 ) -> Result<M, RunError> {
     let rem = remaining(deadline)?;
     // A zero timeout would disable blocking; ensure a positive value (same
-    // guard as runner.rs's read_frame_deadline).
+    // guard as frame_io.rs's read_frame_deadline).
     let rem = if rem.is_zero() {
         Duration::from_millis(1)
     } else {

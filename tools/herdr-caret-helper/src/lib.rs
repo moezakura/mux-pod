@@ -3,6 +3,8 @@
 pub mod ansi_runner;
 pub mod api_client;
 pub mod attach;
+mod error;
+mod frame_io;
 pub mod hyperlinks;
 pub mod protocols;
 pub mod runner;

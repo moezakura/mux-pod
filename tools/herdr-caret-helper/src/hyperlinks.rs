@@ -9,8 +9,8 @@
 //! serialization matching the exact contract shape.
 
 use crate::ansi_runner::observe_terminal_ansi;
+use crate::error::RunError;
 use crate::is_hyperlink_protocol_supported;
-use crate::runner::RunError;
 use crate::tracker::{row_fingerprint, track_frame, RawLinkSpan, TrackError};
 use crate::winsize::Winsize;
 use serde::Serialize;

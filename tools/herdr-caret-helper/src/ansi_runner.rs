@@ -6,7 +6,8 @@
 //! `Terminal(TerminalFrame)` — the encoding the hyperlink tracker and
 //! the protocol-22 caret both consume.
 
-use crate::runner::{encode_err, read_frame_bytes_deadline, read_frame_deadline, RunError};
+use crate::error::RunError;
+use crate::frame_io::{encode_err, read_frame_bytes_deadline, read_frame_deadline};
 use crate::winsize::Winsize;
 use crate::wire::{
     write_frame, ClientKeybindings, ClientLaunchMode17, ClientLaunchMode20, ClientMessage17,

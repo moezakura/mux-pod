@@ -1,13 +1,16 @@
 //! Connection + observe runner shared by the CLI and loopback tests.
 
 use crate::ansi_runner::observe_terminal_ansi;
+use crate::frame_io::{encode_err, read_frame_deadline};
 use crate::is_caret_protocol_supported;
 use crate::tracker::{track_frame, TrackedFrame};
 use crate::winsize::Winsize;
 use crate::wire::*;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
+
+pub use crate::error::RunError;
 
 /// Snapshot output as a single JSON line on stdout.
 ///
@@ -130,78 +133,6 @@ pub struct Params {
     pub cols: u16,
     pub rows: u16,
     pub timeout_ms: u64,
-}
-
-/// Error kinds safe for stderr emission (never carry socket path / payload / content).
-///
-/// Kind strings (see `json()`) follow the documented failure classification
-/// verbatim: the common set (`usage_error`/`connect_failed`/`io_error`/
-/// `timeout`/`welcome_rejected`/`protocol_error`/`decode_error`) plus
-/// `render_rejected` (the `hyperlinks`/caret-22 tracker rejecting a frame)
-/// and, for `scrollback-links` only, `busy`,
-/// `unsupported_scroll`, and `attach_rejected`.
-#[derive(Debug)]
-pub enum RunError {
-    /// Could not connect to the socket.
-    Connect,
-    /// An I/O failure (EOF, reset, partial frame).
-    Io,
-    /// Deadline elapsed before a usable frame arrived.
-    Timeout,
-    /// The server rejected the handshake (Welcome.error present).
-    WelcomeRejected(String),
-    /// Protocol-level mismatch (version, encoding, wrong message, unknown variant).
-    Protocol(String),
-    /// Bincode/serialization failure.
-    Bincode(String),
-    /// CLI usage error.
-    Usage(String),
-    /// The tracker rejected an observed `TerminalAnsi` frame (unknown escape
-    /// sequence, invariant violation, wrong `full` state —
-    /// fail-closed condition). Kind: `render_rejected`.
-    RenderRejected(String),
-    /// `AttachTerminal` was rejected, or the attach connection was
-    /// disconnected mid-session (`ServerShutdown`, protocol error while
-    /// attached). Used by the 17/20 `scrollback-links` attach path.
-    /// Kind: `attach_rejected`.
-    AttachRejected(String),
-    /// The per-pane `scrollback-links` lock file could not be acquired
-    /// (another invocation already holds it for this pane). Kind: `busy`.
-    Busy,
-    /// The connected herdr server does not support `pane.scroll`
-    /// (added in v0.9.0; 17/20 servers predate it). Kind: `unsupported_scroll`.
-    UnsupportedScroll,
-    /// The real pty size could not be
-    /// determined (`winsize::real_size` failed, or `pane.process_info`
-    /// returned no `shell_pid`) for a `scrollback-links` invocation on
-    /// 17/20, which needs it to avoid resizing the pane's live terminal.
-    /// None of the other 11 kinds fit -- this is a local failure before any
-    /// wire connection is even attempted, not a wire-level I/O/protocol
-    /// issue (`Io`/`Protocol`) or a server-side rejection
-    /// (`AttachRejected`). Kind: `winsize_unavailable`.
-    WinsizeUnavailable(String),
-}
-
-impl RunError {
-    pub fn json(&self) -> String {
-        let kind = match self {
-            RunError::Connect => "connect_failed",
-            RunError::Io => "io_error",
-            RunError::Timeout => "timeout",
-            RunError::WelcomeRejected(_) => "welcome_rejected",
-            RunError::Protocol(_) => "protocol_error",
-            RunError::Bincode(_) => "decode_error",
-            RunError::Usage(_) => "usage_error",
-            RunError::RenderRejected(_) => "render_rejected",
-            RunError::AttachRejected(_) => "attach_rejected",
-            RunError::Busy => "busy",
-            RunError::UnsupportedScroll => "unsupported_scroll",
-            RunError::WinsizeUnavailable(_) => "winsize_unavailable",
-        };
-        // The detail is macro-safe: only the reason string (no path/payload/content).
-        serde_json::to_string(&serde_json::json!({ "error": kind }))
-            .unwrap_or_else(|_| r#"{"error":"internal"}"#.to_owned())
-    }
 }
 
 /// Connects to the socket and observes, returning the first cursor.
@@ -423,107 +354,6 @@ pub fn run_observe20(
         let msg: ServerMessage20 = read_frame_deadline(&stream, deadline)?;
         if let ServerMessage20::Frame(frame) = msg {
             return Ok(CaretOutput::from_frame(frame, 20, params.pane.clone()));
-        }
-    }
-}
-
-pub(crate) fn remaining(deadline: Instant) -> Option<Duration> {
-    let now = Instant::now();
-    if now >= deadline {
-        None
-    } else {
-        Some(deadline - now)
-    }
-}
-
-/// Arms the stream's read timeout to the time remaining until `deadline`.
-/// Shared by `read_frame_deadline` and `read_frame_bytes_deadline` so both
-/// obey the same per-read deadline arithmetic (a zero-or-negative remainder
-/// is a timeout; a zero `set_read_timeout` would instead disable blocking).
-fn arm_read_timeout(stream: &UnixStream, deadline: Instant) -> Result<(), RunError> {
-    let rem = remaining(deadline).ok_or(RunError::Timeout)?;
-    let rem = if rem.is_zero() {
-        Duration::from_millis(1)
-    } else {
-        rem
-    };
-    stream.set_read_timeout(Some(rem)).map_err(|_| RunError::Io)
-}
-
-pub(crate) fn read_frame_deadline<M: for<'de> Deserialize<'de>>(
-    mut stream: &UnixStream,
-    deadline: Instant,
-) -> Result<M, RunError> {
-    arm_read_timeout(stream, deadline)?;
-    read_frame(&mut stream, MAX_FRAME_SIZE).map_err(map_frame_err)
-}
-
-/// Same as `read_frame_deadline` but returns the raw frame payload bytes
-/// without decoding them. Used by the protocol-22 observe loop (`ansi_runner`)
-/// which must tolerate `ServerMessage` variants it does not know how to
-/// decode, without misaligning on their contents (see `wire::read_frame_bytes`).
-pub(crate) fn read_frame_bytes_deadline(
-    mut stream: &UnixStream,
-    deadline: Instant,
-) -> Result<Vec<u8>, RunError> {
-    arm_read_timeout(stream, deadline)?;
-    read_frame_bytes(&mut stream, MAX_FRAME_SIZE).map_err(map_frame_err)
-}
-
-pub(crate) fn map_frame_err(e: String) -> RunError {
-    if e.contains("timeout") {
-        RunError::Timeout
-    } else if e.contains("unexpected_eof")
-        || e.contains("connection_reset")
-        || e.contains("io_error")
-    {
-        RunError::Io
-    } else if e.starts_with("oversized_frame") || e.starts_with("decode_error") {
-        RunError::Bincode(e)
-    } else {
-        RunError::Io
-    }
-}
-
-pub(crate) fn encode_err(e: String) -> RunError {
-    RunError::Bincode(e)
-}
-
-#[cfg(test)]
-mod run_error_json_tests {
-    use super::RunError;
-
-    /// One assertion per kind, so a future rename/typo in `json()` breaks a
-    /// test instead of silently drifting from the documented wording.
-    #[test]
-    fn json_kind_matches_documented_wording() {
-        let cases: &[(RunError, &str)] = &[
-            (RunError::Connect, "connect_failed"),
-            (RunError::Io, "io_error"),
-            (RunError::Timeout, "timeout"),
-            (
-                RunError::WelcomeRejected("x".to_owned()),
-                "welcome_rejected",
-            ),
-            (RunError::Protocol("x".to_owned()), "protocol_error"),
-            (RunError::Bincode("x".to_owned()), "decode_error"),
-            (RunError::Usage("x".to_owned()), "usage_error"),
-            (RunError::RenderRejected("x".to_owned()), "render_rejected"),
-            (RunError::AttachRejected("x".to_owned()), "attach_rejected"),
-            (RunError::Busy, "busy"),
-            (RunError::UnsupportedScroll, "unsupported_scroll"),
-            (
-                RunError::WinsizeUnavailable("x".to_owned()),
-                "winsize_unavailable",
-            ),
-        ];
-        for (err, expected_kind) in cases {
-            assert_eq!(
-                err.json(),
-                format!("{{\"error\":\"{}\"}}", expected_kind),
-                "kind mismatch for {:?}",
-                err
-            );
         }
     }
 }

@@ -4,9 +4,9 @@
 //! (`acquire_lock`), followed by the observe/move/restore round trip.
 
 use crate::ansi_runner::observe_terminal_ansi;
+use crate::error::RunError;
 use crate::hyperlinks::{aggregate_frame, sanitize_links, AggregatedLink};
 use crate::is_scrollback_link_protocol_supported;
-use crate::runner::RunError;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs::{DirBuilder, OpenOptions};
@@ -1444,7 +1444,7 @@ mod tests {
         // is a usage_error, checked at parse time before any connection --
         // `parse_args`'s `Err(String)` becomes `RunError::Usage(..)` ->
         // `main.rs` prints kind `"usage_error"` (verified against
-        // `RunError::json`'s match arms in `runner.rs`).
+        // `RunError::json`'s match arms in `error.rs`).
         let a = args(&[
             "--api-socket",
             "s1",
@@ -1651,7 +1651,7 @@ mod tests {
     // -----------------------------------------------------------------
 
     use crate::attach::{Attach17, Attach20, ScrollDirection};
-    use crate::runner::read_frame_deadline;
+    use crate::frame_io::read_frame_deadline;
     use crate::wire::*;
     use std::io::{BufRead, BufReader, Write};
     use std::os::unix::net::{UnixListener, UnixStream};

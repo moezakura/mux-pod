@@ -40,7 +40,7 @@
 //! differently, and they are never used here). So every call below opens a
 //! fresh connection, writes one line, reads one line, and drops the stream.
 
-use crate::runner::RunError;
+use crate::error::RunError;
 use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
