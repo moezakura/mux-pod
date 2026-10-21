@@ -156,7 +156,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 
   /// 実験的: Herdrハイパーリンク（通常表示・スクロールモード共通）の取得を設定
-  // inventory: SETTINGS-HERDR-HYPERLINKS-007
   Future<void> setExperimentalHerdrHyperlinksEnabled(bool value) async {
     state = state.copyWith(experimentalHerdrHyperlinksEnabled: value);
     await _persistence.save(

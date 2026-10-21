@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-MANAGER-000
 /// SSH先への herdr-caret-helper `scrollback-links` サブコマンドの実行と、
 /// 出力 JSON の検証を担う manager（herdr OSC 8 ハイパーリンク実験機能）。
 ///

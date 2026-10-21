@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-JSON-TEST-000
 /// herdr_hyperlink_json.dart（`hyperlinks`/`scrollback-links` 共通の
 /// フィールド検証）の単体テスト。
 ///

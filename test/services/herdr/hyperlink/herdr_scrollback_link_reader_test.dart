@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-READER-TEST-000
 /// herdr_scrollback_link_reader.dart のテスト。
 ///
 /// [HerdrScrollbackLinkReader] は `Timer` による停止待ち 400ms・開始間隔

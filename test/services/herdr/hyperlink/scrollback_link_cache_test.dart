@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-CACHE-TEST-000
 /// scrollback_link_cache.dart のテスト。
 library;
 

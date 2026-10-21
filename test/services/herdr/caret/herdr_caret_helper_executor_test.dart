@@ -1,4 +1,3 @@
-// inventory: HERDR-CARET-EXEC-TEST-000
 /// herdr_caret_helper_executor.dart のテスト（サブコマンド対応・
 /// SSH実行timeoutとhelperの--timeout-ms分離・subcommand の
 /// allow-list 化・追加フラグの executor 自身による quote）。

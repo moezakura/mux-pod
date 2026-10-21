@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-READER-000
 /// herdr 通常表示のハイパーリンク読み取りサービス（herdr OSC 8 ハイパー
 /// リンク実験機能「通常表示のリンク読取」）。
 ///

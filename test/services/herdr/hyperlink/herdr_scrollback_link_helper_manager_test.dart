@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-MANAGER-TEST-000
 /// herdr_scrollback_link_helper_manager.dart のテスト。
 ///
 /// install 経路自体は caret の `herdr_caret_helper_manager_test.dart` で

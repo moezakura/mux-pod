@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-MANAGER-000
 /// SSH先への herdr-caret-helper `hyperlinks` サブコマンドの実行と、出力
 /// JSON の検証（型・寸法・範囲の境界・上限）を担う manager。
 ///

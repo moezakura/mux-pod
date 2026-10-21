@@ -81,7 +81,6 @@ class AppSettings {
 
   /// 実験的: Herdr接続でOSC 8ハイパーリンクを表示・タップできるようにする。
   /// 通常表示とスクロールモードの両方の取得を1つのスイッチで制御する。
-  // inventory: SETTINGS-HERDR-HYPERLINKS-001
   final bool experimentalHerdrHyperlinksEnabled;
 
   /// ペインナビゲーション方向の反転
@@ -172,7 +171,6 @@ class AppSettings {
     this.openLinksDirectly = false,
     // inventory: SETTINGS-HERDR-CARET-002
     this.experimentalHerdrCaretPositionEnabled = false,
-    // inventory: SETTINGS-HERDR-HYPERLINKS-002
     this.experimentalHerdrHyperlinksEnabled = false,
     this.invertPaneNavigation = false,
     // inventory: SETTINGS-SCROLL-SEND-002
@@ -235,7 +233,6 @@ class AppSettings {
     bool? openLinksDirectly,
     // inventory: SETTINGS-HERDR-CARET-003
     bool? experimentalHerdrCaretPositionEnabled,
-    // inventory: SETTINGS-HERDR-HYPERLINKS-003
     bool? experimentalHerdrHyperlinksEnabled,
     bool? invertPaneNavigation,
     // inventory: SETTINGS-SCROLL-SEND-003
@@ -292,7 +289,6 @@ class AppSettings {
       experimentalHerdrCaretPositionEnabled:
           experimentalHerdrCaretPositionEnabled ??
           this.experimentalHerdrCaretPositionEnabled,
-      // inventory: SETTINGS-HERDR-HYPERLINKS-004
       experimentalHerdrHyperlinksEnabled:
           experimentalHerdrHyperlinksEnabled ??
           this.experimentalHerdrHyperlinksEnabled,

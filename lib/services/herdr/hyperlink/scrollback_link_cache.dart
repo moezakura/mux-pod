@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-CACHE-000
 /// スクロールモードのリンクキャッシュ。
 ///
 /// 保持する状態は4つ:

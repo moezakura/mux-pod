@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-JSON-000
 /// `hyperlinks` と `scrollback-links`（1窓あたり）で共通の出力フィールド
 /// （`frameWidth`/`frameHeight`/`truncated`/`links`/`rowHashes`）を手書きで
 /// 検証し、domain 型 [PaneHyperlinks] へ変換する共通ロジック

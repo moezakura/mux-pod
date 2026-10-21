@@ -1,4 +1,3 @@
-// inventory: HERDR-FRAME-TEST-000
 /// herdr_pane_frame_reader.dart のテスト（herdr OSC 8 ハイパーリンク実験
 /// 機能）。
 ///

@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-READER-TEST-000
 /// herdr_hyperlink_reader.dart のテスト（herdr OSC 8 ハイパーリンク実験
 /// 機能）。
 ///

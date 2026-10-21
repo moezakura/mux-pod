@@ -34,7 +34,6 @@ class SettingsPersistence {
   // inventory: SETTINGS-HERDR-CARET-005
   static const String experimentalHerdrCaretPositionEnabledKey =
       'settings_experimental_herdr_caret_position_enabled';
-  // inventory: SETTINGS-HERDR-HYPERLINKS-005
   static const String experimentalHerdrHyperlinksEnabledKey =
       'settings_experimental_herdr_hyperlinks_enabled';
   static const String invertPaneNavKey = 'settings_invert_pane_nav';
@@ -110,7 +109,6 @@ class SettingsPersistence {
       // inventory: SETTINGS-HERDR-CARET-006
       experimentalHerdrCaretPositionEnabled:
           prefs.getBool(experimentalHerdrCaretPositionEnabledKey) ?? false,
-      // inventory: SETTINGS-HERDR-HYPERLINKS-006
       experimentalHerdrHyperlinksEnabled:
           prefs.getBool(experimentalHerdrHyperlinksEnabledKey) ?? false,
       invertPaneNavigation: prefs.getBool(invertPaneNavKey) ?? false,

@@ -1,4 +1,3 @@
-// inventory: HERDR-SCROLLBACK-LINK-READER-000
 /// スクロールモードのリンク読取サービス。
 ///
 /// [TerminalScrollFollowController.onViewportSettled] から呼ばれ、

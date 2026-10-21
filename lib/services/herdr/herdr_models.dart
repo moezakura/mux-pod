@@ -335,7 +335,6 @@ class HerdrSnapshot {
   List<HerdrPane> panesFor(HerdrTab tab) =>
       panes.where((p) => p.tabId == tab.id).toList();
 
-  // inventory: HERDR-MODELS-SNAPSHOT-004
   /// [id] の pane（無ければ null）。[HerdrLayout.rectFor] と対称
   /// （herdr OSC 8 ハイパーリンク実験機能・viewport_rows 参照用）。
   HerdrPane? paneFor(String id) {

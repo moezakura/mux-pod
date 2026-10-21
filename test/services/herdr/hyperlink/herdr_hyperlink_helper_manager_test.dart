@@ -1,4 +1,3 @@
-// inventory: HERDR-HYPERLINK-MANAGER-TEST-000
 /// herdr_hyperlink_helper_manager.dart のテスト。
 ///
 /// FakeSshClient で SSH コマンド列を記録・fixture 応答し、`hyperlinks`

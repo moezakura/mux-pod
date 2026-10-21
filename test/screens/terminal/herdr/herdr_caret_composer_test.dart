@@ -1,4 +1,3 @@
-// inventory: HERDR-CARET-COMPOSER-TEST-000
 /// HerdrCaretComposer.ensureStatus() のテスト（herdr OSC 8
 /// ハイパーリンク実験機能・Herdr status の single-flight 共有）。
 ///
